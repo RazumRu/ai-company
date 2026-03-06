@@ -10,10 +10,17 @@ export const RuntimeInstanceDtoSchema = {
         '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
     },
     graphId: {
-      type: 'string',
-      format: 'uuid',
-      pattern:
-        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+      anyOf: [
+        {
+          type: 'string',
+          format: 'uuid',
+          pattern:
+            '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     nodeId: {
       type: 'string',
@@ -87,9 +94,6 @@ export const CreateRepositoryDtoSchema = {
       type: 'string',
       default: 'main',
     },
-    token: {
-      type: 'string',
-    },
   },
   required: ['owner', 'repo', 'url'],
 } as const;
@@ -122,9 +126,6 @@ export const GitRepositoryDtoSchema = {
     },
     createdBy: {
       type: 'string',
-      format: 'uuid',
-      pattern:
-        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
     },
     projectId: {
       anyOf: [
@@ -150,6 +151,31 @@ export const GitRepositoryDtoSchema = {
       format: 'date-time',
       pattern:
         '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    installationId: {
+      anyOf: [
+        {
+          type: 'integer',
+          minimum: -9007199254740991,
+          maximum: 9007199254740991,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    syncedAt: {
+      anyOf: [
+        {
+          type: 'string',
+          format: 'date-time',
+          pattern:
+            '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
   },
   required: [
@@ -288,6 +314,28 @@ export const RepoIndexDtoSchema = {
   ],
 } as const;
 
+export const SyncRepositoriesResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    synced: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    removed: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    total: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+  },
+  required: ['synced', 'removed', 'total'],
+} as const;
+
 export const UpdateRepositoryDtoSchema = {
   type: 'object',
   properties: {
@@ -296,9 +344,6 @@ export const UpdateRepositoryDtoSchema = {
       format: 'uri',
     },
     defaultBranch: {
-      type: 'string',
-    },
-    token: {
       type: 'string',
     },
   },
@@ -568,9 +613,6 @@ export const ProjectDtoSchema = {
     },
     createdBy: {
       type: 'string',
-      format: 'uuid',
-      pattern:
-        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
     },
     createdAt: {
       type: 'string',
@@ -584,8 +626,27 @@ export const ProjectDtoSchema = {
       pattern:
         '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
     },
+    graphCount: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    threadCount: {
+      type: 'integer',
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
   },
-  required: ['id', 'name', 'settings', 'createdBy', 'createdAt', 'updatedAt'],
+  required: [
+    'id',
+    'name',
+    'settings',
+    'createdBy',
+    'createdAt',
+    'updatedAt',
+    'graphCount',
+    'threadCount',
+  ],
 } as const;
 
 export const UpdateProjectDtoSchema = {
@@ -946,6 +1007,168 @@ export const GraphDtoSchema = {
     'targetVersion',
     'schema',
     'status',
+    'createdAt',
+    'updatedAt',
+  ],
+} as const;
+
+export const GraphPreviewDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    name: {
+      type: 'string',
+    },
+    description: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    error: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    version: {
+      type: 'string',
+    },
+    targetVersion: {
+      type: 'string',
+    },
+    status: {
+      type: 'string',
+      enum: ['created', 'compiling', 'running', 'stopped', 'error'],
+    },
+    runningThreads: {
+      type: 'integer',
+      default: 0,
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    totalThreads: {
+      type: 'integer',
+      default: 0,
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    nodeCount: {
+      type: 'integer',
+      default: 0,
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    edgeCount: {
+      type: 'integer',
+      default: 0,
+      minimum: 0,
+      maximum: 9007199254740991,
+    },
+    agents: {
+      type: 'array',
+      default: [],
+      items: {
+        type: 'object',
+        properties: {
+          nodeId: {
+            type: 'string',
+          },
+          name: {
+            type: 'string',
+          },
+          description: {
+            type: 'string',
+          },
+        },
+        required: ['nodeId', 'name'],
+      },
+    },
+    triggerNodes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+          },
+          name: {
+            type: 'string',
+          },
+          template: {
+            type: 'string',
+          },
+        },
+        required: ['id', 'name', 'template'],
+      },
+    },
+    nodeDisplayNames: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {
+        type: 'string',
+      },
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    temporary: {
+      anyOf: [
+        {
+          default: false,
+          type: 'boolean',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    projectId: {
+      anyOf: [
+        {
+          type: 'string',
+          format: 'uuid',
+          pattern:
+            '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+  },
+  required: [
+    'id',
+    'name',
+    'version',
+    'targetVersion',
+    'status',
+    'triggerNodes',
+    'nodeDisplayNames',
     'createdAt',
     'updatedAt',
   ],
@@ -2084,6 +2307,9 @@ export const SetupInfoResponseDtoSchema = {
     installUrl: {
       type: 'string',
     },
+    newInstallationUrl: {
+      type: 'string',
+    },
     configured: {
       type: 'boolean',
     },
@@ -2091,7 +2317,7 @@ export const SetupInfoResponseDtoSchema = {
       type: 'string',
     },
   },
-  required: ['installUrl', 'configured', 'callbackPath'],
+  required: ['installUrl', 'newInstallationUrl', 'configured', 'callbackPath'],
 } as const;
 
 export const OAuthLinkRequestDtoSchema = {
@@ -2437,6 +2663,31 @@ export const ThreadDtoSchema = {
     status: {
       type: 'string',
       enum: ['running', 'done', 'need_more_info', 'stopped'],
+    },
+    agents: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              nodeId: {
+                type: 'string',
+              },
+              name: {
+                type: 'string',
+              },
+              description: {
+                type: 'string',
+              },
+            },
+            required: ['nodeId', 'name'],
+          },
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
   },
   required: [
@@ -3190,4 +3441,21 @@ export const SystemSettingsResponseDtoSchema = {
     },
   },
   required: ['githubAppEnabled'],
+} as const;
+
+export const AuthConfigResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    provider: {
+      type: 'string',
+      enum: ['keycloak', 'zitadel'],
+    },
+    issuer: {
+      type: 'string',
+    },
+    clientId: {
+      type: 'string',
+    },
+  },
+  required: ['provider', 'issuer', 'clientId'],
 } as const;

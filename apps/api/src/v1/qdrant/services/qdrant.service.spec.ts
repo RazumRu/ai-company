@@ -453,6 +453,65 @@ describe('QdrantService', () => {
     });
   });
 
+  describe('deleteCollection', () => {
+    it('should call client.deleteCollection and invalidate both caches', async () => {
+      // Pre-populate caches by ensuring a collection
+      await service.ensureCollection('del-col', 2);
+      mockClient.getCollection.mockClear();
+
+      await service.deleteCollection('del-col');
+
+      expect(mockClient.deleteCollection).toHaveBeenCalledWith('del-col');
+
+      // Verify caches were invalidated: a subsequent collectionExists call
+      // should hit getCollection again (not be served from knownCollections cache)
+      await service.deleteByFilter('del-col', {
+        must: [{ key: 'x', match: { value: 'y' } }],
+      });
+      expect(mockClient.getCollection).toHaveBeenCalled();
+    });
+
+    it('should swallow "collection not found" errors (idempotent)', async () => {
+      mockClient.deleteCollection.mockRejectedValueOnce(
+        new Error('Collection my_col not found'),
+      );
+
+      await expect(
+        service.deleteCollection('my_col'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('should rethrow non-"collection not found" errors', async () => {
+      mockClient.deleteCollection.mockRejectedValueOnce(
+        new Error('Connection timeout'),
+      );
+
+      await expect(service.deleteCollection('my_col')).rejects.toThrow(
+        'Connection timeout',
+      );
+    });
+
+    it('should invalidate cache even when an error is thrown (finally block)', async () => {
+      // Pre-populate caches
+      await service.ensureCollection('err-col', 2);
+      mockClient.getCollection.mockClear();
+
+      mockClient.deleteCollection.mockRejectedValueOnce(
+        new Error('Connection timeout'),
+      );
+
+      await expect(service.deleteCollection('err-col')).rejects.toThrow(
+        'Connection timeout',
+      );
+
+      // Cache should still be invalidated — getCollection must be called again
+      await service.deleteByFilter('err-col', {
+        must: [{ key: 'x', match: { value: 'y' } }],
+      });
+      expect(mockClient.getCollection).toHaveBeenCalled();
+    });
+  });
+
   describe('ensurePayloadIndex', () => {
     it('creates a payload index on an existing collection', async () => {
       await service.ensurePayloadIndex('test-collection', 'repo_id', 'keyword');

@@ -95,10 +95,62 @@ export interface RepoIndexParams {
   lastIndexedCommit?: string;
 }
 
+/** Thrown when a job detects it has been cancelled (e.g., repository deleted). */
+export class JobCancelledException extends Error {
+  constructor(message = 'Job cancelled') {
+    super(message);
+    this.name = 'JobCancelledException';
+  }
+}
+
 @Injectable()
 export class RepoIndexerService {
   private static readonly IGNORE_CACHE_MAX_SIZE = 50;
   private static readonly VECTOR_SIZE_CACHE_MAX_SIZE = 10;
+
+  /**
+   * Built-in file patterns excluded from indexing by default.
+   * Covers binary assets, compiled artifacts, lock files, and minified
+   * bundles that are semantically useless for vector search and waste tokens.
+   * Users can override via negations in .codebaseindexignore (e.g. `!*.svg`).
+   */
+  private static readonly BUILTIN_EXCLUDE_PATTERNS: string[] = [
+    // Images
+    '*.png', '*.jpg', '*.jpeg', '*.gif', '*.bmp', '*.tiff', '*.tif',
+    '*.ico', '*.webp', '*.avif', '*.heic', '*.heif', '*.raw',
+    '*.svg',
+    // Fonts
+    '*.ttf', '*.otf', '*.woff', '*.woff2', '*.eot',
+    // Audio / video
+    '*.mp3', '*.mp4', '*.wav', '*.ogg', '*.flac', '*.aac',
+    '*.avi', '*.mov', '*.mkv', '*.webm',
+    // Archives
+    '*.zip', '*.tar', '*.gz', '*.bz2', '*.xz', '*.7z', '*.rar',
+    // Compiled / binary
+    '*.exe', '*.dll', '*.so', '*.dylib', '*.bin', '*.obj', '*.o', '*.a',
+    '*.class', '*.pyc', '*.pyo', '*.pyd', '*.wasm',
+    // PDF / office documents
+    '*.pdf', '*.doc', '*.docx', '*.xls', '*.xlsx', '*.ppt', '*.pptx',
+    // Lock files
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
+    'composer.lock', 'Gemfile.lock', 'Cargo.lock', 'go.sum',
+    'poetry.lock', 'packages.lock.json',
+    // Minified bundles
+    '*.min.js', '*.min.css',
+    // Source maps
+    '*.map',
+    // Database files
+    '*.sqlite', '*.sqlite3', '*.db',
+  ];
+
+  /**
+   * Approximate bytes-per-token ratio for code. English prose averages ~4,
+   * but code with short identifiers, operators, and whitespace averages ~3.
+   * Using 3 intentionally overestimates slightly, which is preferable for
+   * budget/limit checks vs underestimating.
+   */
+  private static readonly BYTES_PER_TOKEN_ESTIMATE = 3;
+
   private readonly ignoreCache = new Map<string, ReturnType<typeof ignore>>();
   private readonly vectorSizePromiseCache = new Map<string, Promise<number>>();
 
@@ -170,7 +222,7 @@ export class RepoIndexerService {
       }
     }
 
-    return Math.floor(totalBytes / 4);
+    return Math.floor((totalBytes / RepoIndexerService.BYTES_PER_TOKEN_ESTIMATE) * this.getChunkOverlapFactor());
   }
 
   /**
@@ -286,7 +338,7 @@ export class RepoIndexerService {
       }
     }
 
-    return Math.floor(totalBytes / 4);
+    return Math.floor((totalBytes / RepoIndexerService.BYTES_PER_TOKEN_ESTIMATE) * this.getChunkOverlapFactor());
   }
 
   async resolveCurrentCommit(
@@ -581,6 +633,7 @@ export class RepoIndexerService {
     rawExecFn: RepoExecFn,
     updateRuntimeActivity?: () => Promise<void>,
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
+    signal?: AbortSignal,
   ): Promise<void> {
     const execFn = RepoIndexerService.withTimeout(rawExecFn);
     await this.runFullIndexInternal(
@@ -588,6 +641,7 @@ export class RepoIndexerService {
       execFn,
       updateRuntimeActivity,
       onProgressUpdate,
+      signal,
     );
   }
 
@@ -601,6 +655,7 @@ export class RepoIndexerService {
     execFn: RepoExecFn,
     updateRuntimeActivity?: () => Promise<void>,
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
+    signal?: AbortSignal,
   ): Promise<void> {
     const files = await this.listTrackedFiles(params.repoRoot, execFn);
     const matcher = await this.preloadIgnoreMatcher(params.repoRoot, execFn);
@@ -620,6 +675,10 @@ export class RepoIndexerService {
       totalFiles: filtered.length,
     });
 
+    if (signal?.aborted) {
+      throw new JobCancelledException('Indexing cancelled: repository deleted');
+    }
+
     // Pre-fetch existing chunk metadata from Qdrant to avoid per-file roundtrips
     const prefetchedChunks = await this.prefetchExistingChunks(
       params.collection,
@@ -632,6 +691,7 @@ export class RepoIndexerService {
       onProgressUpdate,
       prefetchedChunks,
       checkFileExists: false,
+      signal,
     });
 
     // Clean up orphaned chunks (files that no longer exist in the repo).
@@ -649,6 +709,7 @@ export class RepoIndexerService {
     rawExecFn: RepoExecFn,
     updateRuntimeActivity?: () => Promise<void>,
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
+    signal?: AbortSignal,
   ): Promise<void> {
     const execFn = RepoIndexerService.withTimeout(rawExecFn);
 
@@ -700,6 +761,7 @@ export class RepoIndexerService {
         execFn,
         updateRuntimeActivity,
         onProgressUpdate,
+        signal,
       );
       return;
     }
@@ -763,6 +825,7 @@ export class RepoIndexerService {
       onProgressUpdate,
       prefetchedChunks: null,
       checkFileExists: false,
+      signal,
     });
   }
 
@@ -785,6 +848,7 @@ export class RepoIndexerService {
       onProgressUpdate?: (tokenCount: number) => Promise<void>;
       prefetchedChunks: Map<string, PrefetchedChunkInfo> | null;
       checkFileExists: boolean;
+      signal?: AbortSignal;
     },
   ): Promise<Set<string>> {
     const processedPaths = new Set<string>();
@@ -795,6 +859,12 @@ export class RepoIndexerService {
 
     // Read files in parallel batches to overlap I/O
     for (let i = 0; i < files.length; i += FILE_READ_CONCURRENCY) {
+      if (options.signal?.aborted) {
+        throw new JobCancelledException(
+          'Indexing cancelled: repository deleted',
+        );
+      }
+
       const fileSlice = files.slice(i, i + FILE_READ_CONCURRENCY);
       const fileInputs = await Promise.all(
         fileSlice.map(async (relativePath) => {
@@ -854,6 +924,11 @@ export class RepoIndexerService {
             batchTokenCount + chunk.tokenCount > maxTokens &&
             batch.length > 0
           ) {
+            if (options.signal?.aborted) {
+              throw new JobCancelledException(
+                'Indexing cancelled: repository deleted',
+              );
+            }
             await this.flushChunkBatch(
               params.collection,
               batch,
@@ -880,6 +955,11 @@ export class RepoIndexerService {
 
         // Flush every N files to save progress
         if (filesInCurrentBatch >= options.batchFileCount && batch.length > 0) {
+          if (options.signal?.aborted) {
+            throw new JobCancelledException(
+              'Indexing cancelled: repository deleted',
+            );
+          }
           await this.flushChunkBatch(
             params.collection,
             batch,
@@ -1255,6 +1335,8 @@ export class RepoIndexerService {
         .filter((line) => line.trim() && !line.trimStart().startsWith('#'));
 
     const matcher = ignore();
+    // Built-in exclusions first — user patterns can override with negations
+    matcher.add(RepoIndexerService.BUILTIN_EXCLUDE_PATTERNS);
     if (gitignoreContent) {
       matcher.add(parseLines(gitignoreContent));
     }
@@ -1651,7 +1733,7 @@ export class RepoIndexerService {
   private async embedWithRetry(
     model: string,
     input: string[],
-    maxRetries = 2,
+    maxRetries = 3,
   ): Promise<number[][]> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -1661,7 +1743,7 @@ export class RepoIndexerService {
       } catch (err) {
         lastError = err;
         if (attempt < maxRetries) {
-          const delayMs = 1000 * 2 ** attempt;
+          const delayMs = 2000 * 2 ** attempt;
           this.logger.warn('Embedding API call failed, retrying', {
             attempt: attempt + 1,
             maxRetries,
@@ -1945,8 +2027,27 @@ export class RepoIndexerService {
   }
 
   // ---------------------------------------------------------------------------
-  // Private: chunking signature
+  // Private: chunking helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the overlap inflation factor: ratio of tokens actually indexed
+   * (including overlapping regions) to raw tokens in source text.
+   * Mirrors the guarded logic in chunkText().
+   */
+  private getChunkOverlapFactor(): number {
+    const targetTokens = Math.min(
+      environment.codebaseChunkTargetTokens,
+      environment.codebaseEmbeddingMaxTokens,
+    );
+    const effectiveOverlap = Math.min(
+      environment.codebaseChunkOverlapTokens,
+      Math.max(0, targetTokens - 1),
+    );
+    const stride = targetTokens - effectiveOverlap;
+    if (stride <= 0) return 1;
+    return targetTokens / stride;
+  }
 
   private buildChunkingSignature(): Record<string, unknown> {
     return {
@@ -1956,6 +2057,7 @@ export class RepoIndexerService {
       break_strategy: 'token-window',
       line_counting: 'line-start-offsets',
       max_file_bytes: environment.codebaseMaxFileBytes,
+      builtin_exclude_patterns: RepoIndexerService.BUILTIN_EXCLUDE_PATTERNS,
       ignore_rules: { sources: ['.gitignore', '.codebaseindexignore'] },
       embedding_input: { format: 'raw' },
       point_id_scheme: {

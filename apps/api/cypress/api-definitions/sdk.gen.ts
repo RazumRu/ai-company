@@ -31,6 +31,8 @@ import type {
   DestroyGraphResponses,
   ExecuteTriggerData,
   ExecuteTriggerResponses,
+  ExportThreadData,
+  ExportThreadResponses,
   FindGraphByIdData,
   FindGraphByIdResponses,
   FindProjectByIdData,
@@ -41,6 +43,8 @@ import type {
   GetAllProjectsResponses,
   GetAllTemplatesData,
   GetAllTemplatesResponses,
+  GetAuthConfigData,
+  GetAuthConfigResponses,
   GetByGraphData,
   GetByGraphResponses,
   GetCompiledNodesData,
@@ -51,6 +55,8 @@ import type {
   GetGraphRevisionResponses,
   GetGraphRevisionsData,
   GetGraphRevisionsResponses,
+  GetGraphsPreviewData,
+  GetGraphsPreviewResponses,
   GetOverviewData,
   GetOverviewResponses,
   GetRepoIndexByRepositoryIdData,
@@ -103,6 +109,8 @@ import type {
   SuggestGraphInstructionsResponses,
   SuggestKnowledgeContentData,
   SuggestKnowledgeContentResponses,
+  SyncRepositoriesData,
+  SyncRepositoriesResponses,
   TriggerReindexData,
   TriggerReindexResponses,
   UnlinkInstallationData,
@@ -138,7 +146,6 @@ export const getRuntimes = <ThrowOnError extends boolean = false>(
   options: Options<GetRuntimesData, ThrowOnError>,
 ) =>
   (options.client ?? client).get<GetRuntimesResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/runtimes',
     ...options,
@@ -152,7 +159,6 @@ export const getRepositories = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories',
     ...options,
@@ -166,7 +172,6 @@ export const createRepository = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories',
     ...options,
@@ -184,9 +189,21 @@ export const getRepoIndexes = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories/indexes',
+    ...options,
+  });
+
+export const syncRepositories = <ThrowOnError extends boolean = false>(
+  options?: Options<SyncRepositoriesData, ThrowOnError>,
+) =>
+  (options?.client ?? client).post<
+    SyncRepositoriesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-repositories/sync',
     ...options,
   });
 
@@ -211,7 +228,6 @@ export const getRepositoryById = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories/{id}',
     ...options,
@@ -225,7 +241,6 @@ export const updateRepository = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories/{id}',
     ...options,
@@ -245,7 +260,6 @@ export const getRepoIndexByRepositoryId = <
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories/{id}/index',
     ...options,
@@ -259,7 +273,6 @@ export const triggerReindex = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/git-repositories/reindex',
     ...options,
@@ -273,7 +286,6 @@ export const listModels = <ThrowOnError extends boolean = false>(
   options?: Options<ListModelsData, ThrowOnError>,
 ) =>
   (options?.client ?? client).get<ListModelsResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/litellm/models',
     ...options,
@@ -287,7 +299,6 @@ export const getAllProjects = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/projects',
     ...options,
@@ -301,7 +312,6 @@ export const createProject = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/projects',
     ...options,
@@ -332,7 +342,6 @@ export const findProjectById = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/projects/{id}',
     ...options,
@@ -343,7 +352,6 @@ export const updateProject = <ThrowOnError extends boolean = false>(
 ) =>
   (options.client ?? client).put<UpdateProjectResponses, unknown, ThrowOnError>(
     {
-      responseType: 'json',
       security: [{ scheme: 'bearer', type: 'http' }],
       url: '/api/v1/projects/{id}',
       ...options,
@@ -359,7 +367,6 @@ export const getAllGraphs = <ThrowOnError extends boolean = false>(
 ) =>
   (options?.client ?? client).get<GetAllGraphsResponses, unknown, ThrowOnError>(
     {
-      responseType: 'json',
       security: [{ scheme: 'bearer', type: 'http' }],
       url: '/api/v1/graphs',
       ...options,
@@ -370,7 +377,6 @@ export const createGraph = <ThrowOnError extends boolean = false>(
   options: Options<CreateGraphData, ThrowOnError>,
 ) =>
   (options.client ?? client).post<CreateGraphResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs',
     ...options,
@@ -378,6 +384,19 @@ export const createGraph = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options.headers,
     },
+  });
+
+export const getGraphsPreview = <ThrowOnError extends boolean = false>(
+  options?: Options<GetGraphsPreviewData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetGraphsPreviewResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/graphs/preview',
+    ...options,
   });
 
 export const deleteGraph = <ThrowOnError extends boolean = false>(
@@ -398,7 +417,6 @@ export const findGraphById = <ThrowOnError extends boolean = false>(
 ) =>
   (options.client ?? client).get<FindGraphByIdResponses, unknown, ThrowOnError>(
     {
-      responseType: 'json',
       security: [{ scheme: 'bearer', type: 'http' }],
       url: '/api/v1/graphs/{id}',
       ...options,
@@ -409,7 +427,6 @@ export const updateGraph = <ThrowOnError extends boolean = false>(
   options: Options<UpdateGraphData, ThrowOnError>,
 ) =>
   (options.client ?? client).put<UpdateGraphResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{id}',
     ...options,
@@ -427,7 +444,6 @@ export const getCompiledNodes = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{id}/nodes',
     ...options,
@@ -437,7 +453,6 @@ export const runGraph = <ThrowOnError extends boolean = false>(
   options: Options<RunGraphData, ThrowOnError>,
 ) =>
   (options.client ?? client).post<RunGraphResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{id}/run',
     ...options,
@@ -448,7 +463,6 @@ export const destroyGraph = <ThrowOnError extends boolean = false>(
 ) =>
   (options.client ?? client).post<DestroyGraphResponses, unknown, ThrowOnError>(
     {
-      responseType: 'json',
       security: [{ scheme: 'bearer', type: 'http' }],
       url: '/api/v1/graphs/{id}/destroy',
       ...options,
@@ -463,7 +477,6 @@ export const executeTrigger = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/triggers/{triggerId}/execute',
     ...options,
@@ -481,7 +494,6 @@ export const getGraphRevisions = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/revisions',
     ...options,
@@ -495,7 +507,6 @@ export const getGraphRevision = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/revisions/{id}',
     ...options,
@@ -509,7 +520,6 @@ export const getAllTemplates = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/templates',
     ...options,
@@ -520,7 +530,6 @@ export const getSetupInfo = <ThrowOnError extends boolean = false>(
 ) =>
   (options?.client ?? client).get<GetSetupInfoResponses, unknown, ThrowOnError>(
     {
-      responseType: 'json',
       security: [{ scheme: 'bearer', type: 'http' }],
       url: '/api/v1/github-app/setup',
       ...options,
@@ -535,7 +544,6 @@ export const linkViaOAuthCode = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/github-app/oauth/link',
     ...options,
@@ -553,7 +561,6 @@ export const linkInstallation = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/github-app/installations/{installationId}/link',
     ...options,
@@ -567,7 +574,6 @@ export const listInstallations = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/github-app/installations',
     ...options,
@@ -581,7 +587,6 @@ export const unlinkInstallation = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/github-app/installations/{installationId}',
     ...options,
@@ -591,7 +596,6 @@ export const listDocs = <ThrowOnError extends boolean = false>(
   options?: Options<ListDocsData, ThrowOnError>,
 ) =>
   (options?.client ?? client).get<ListDocsResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/knowledge-docs',
     ...options,
@@ -601,7 +605,6 @@ export const createDoc = <ThrowOnError extends boolean = false>(
   options: Options<CreateDocData, ThrowOnError>,
 ) =>
   (options.client ?? client).post<CreateDocResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/knowledge-docs',
     ...options,
@@ -624,7 +627,6 @@ export const getDoc = <ThrowOnError extends boolean = false>(
   options: Options<GetDocData, ThrowOnError>,
 ) =>
   (options.client ?? client).get<GetDocResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/knowledge-docs/{id}',
     ...options,
@@ -634,7 +636,6 @@ export const updateDoc = <ThrowOnError extends boolean = false>(
   options: Options<UpdateDocData, ThrowOnError>,
 ) =>
   (options.client ?? client).put<UpdateDocResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/knowledge-docs/{id}',
     ...options,
@@ -648,7 +649,6 @@ export const getThreads = <ThrowOnError extends boolean = false>(
   options?: Options<GetThreadsData, ThrowOnError>,
 ) =>
   (options?.client ?? client).get<GetThreadsResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads',
     ...options,
@@ -672,7 +672,6 @@ export const getThreadById = <ThrowOnError extends boolean = false>(
 ) =>
   (options.client ?? client).get<GetThreadByIdResponses, unknown, ThrowOnError>(
     {
-      responseType: 'json',
       security: [{ scheme: 'bearer', type: 'http' }],
       url: '/api/v1/threads/{threadId}',
       ...options,
@@ -687,7 +686,6 @@ export const getThreadByExternalId = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/external/{externalThreadId}',
     ...options,
@@ -701,7 +699,6 @@ export const getThreadMessages = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/messages',
     ...options,
@@ -715,9 +712,17 @@ export const getThreadUsageStatistics = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/usage-statistics',
+    ...options,
+  });
+
+export const exportThread = <ThrowOnError extends boolean = false>(
+  options: Options<ExportThreadData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<ExportThreadResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/{threadId}/export',
     ...options,
   });
 
@@ -729,7 +734,6 @@ export const setThreadMetadata = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/metadata',
     ...options,
@@ -749,7 +753,6 @@ export const setThreadMetadataByExternalId = <
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/external/{externalThreadId}/metadata',
     ...options,
@@ -763,7 +766,6 @@ export const stopThread = <ThrowOnError extends boolean = false>(
   options: Options<StopThreadData, ThrowOnError>,
 ) =>
   (options.client ?? client).post<StopThreadResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/stop',
     ...options,
@@ -777,7 +779,6 @@ export const stopThreadByExternalId = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/external/{externalThreadId}/stop',
     ...options,
@@ -791,7 +792,6 @@ export const suggestAgentInstructions = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-instructions',
     ...options,
@@ -809,7 +809,6 @@ export const suggestGraphInstructions = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/graphs/{graphId}/suggest-instructions',
     ...options,
@@ -827,7 +826,6 @@ export const analyzeThread = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/threads/{threadId}/analyze',
     ...options,
@@ -845,7 +843,6 @@ export const suggestKnowledgeContent = <ThrowOnError extends boolean = false>(
     unknown,
     ThrowOnError
   >({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/knowledge-docs/suggest',
     ...options,
@@ -859,7 +856,6 @@ export const getOverview = <ThrowOnError extends boolean = false>(
   options?: Options<GetOverviewData, ThrowOnError>,
 ) =>
   (options?.client ?? client).get<GetOverviewResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/analytics/overview',
     ...options,
@@ -869,7 +865,6 @@ export const getByGraph = <ThrowOnError extends boolean = false>(
   options?: Options<GetByGraphData, ThrowOnError>,
 ) =>
   (options?.client ?? client).get<GetByGraphResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/analytics/by-graph',
     ...options,
@@ -879,8 +874,16 @@ export const getSettings = <ThrowOnError extends boolean = false>(
   options?: Options<GetSettingsData, ThrowOnError>,
 ) =>
   (options?.client ?? client).get<GetSettingsResponses, unknown, ThrowOnError>({
-    responseType: 'json',
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/system/settings',
     ...options,
   });
+
+export const getAuthConfig = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAuthConfigData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetAuthConfigResponses,
+    unknown,
+    ThrowOnError
+  >({ url: '/api/v1/system/config', ...options });

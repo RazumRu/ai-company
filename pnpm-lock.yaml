@@ -185,9 +185,6 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.18.0)
-      axios:
-        specifier: ^1.13.6
-        version: 1.13.6
       bullmq:
         specifier: ^5.70.2
         version: 5.70.2
@@ -415,9 +412,6 @@ importers:
       ajv-formats:
         specifier: ^3.0.1
         version: 3.0.1(ajv@8.18.0)
-      axios:
-        specifier: ^1.13.6
-        version: 1.13.6
       cypress:
         specifier: ^15.11.0
         version: 15.11.0

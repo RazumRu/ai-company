@@ -1,6 +1,7 @@
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { environment } from '../../../environments';
 import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
@@ -55,6 +56,11 @@ const mockLogger = {
   info: vi.fn(),
 };
 
+// Default env: codebaseChunkTargetTokens=200, codebaseChunkOverlapTokens=30,
+// codebaseEmbeddingMaxTokens=30000. Effective: targetTokens=200, overlap=30,
+// stride=170, factor = 200/170.
+const OVERLAP_FACTOR = 200 / 170;
+
 describe('RepoIndexerService', () => {
   let service: RepoIndexerService;
 
@@ -70,7 +76,7 @@ describe('RepoIndexerService', () => {
   });
 
   describe('estimateTokenCount', () => {
-    it('sums file sizes from git ls-tree and divides by 4', async () => {
+    it('sums file sizes from git ls-tree, divides by 4, and applies overlap factor', async () => {
       const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
         if (params.cmd.includes('ls-tree -r --long HEAD')) {
           return {
@@ -88,7 +94,7 @@ describe('RepoIndexerService', () => {
       });
 
       const result = await service.estimateTokenCount('/repo', execFn);
-      expect(result).toBe(Math.floor(3500 / 4));
+      expect(result).toBe(Math.floor((3500 / 3) * OVERLAP_FACTOR));
     });
 
     it('returns 0 when git command fails', async () => {
@@ -123,7 +129,121 @@ describe('RepoIndexerService', () => {
 
       const result = await service.estimateTokenCount('/repo', execFn);
       // Only src/index.ts (1000 bytes) should be counted
-      expect(result).toBe(Math.floor(1000 / 4));
+      expect(result).toBe(Math.floor((1000 / 3) * OVERLAP_FACTOR));
+    });
+
+    it('excludes image and lock files via built-in extension patterns', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-tree -r --long HEAD')) {
+          return {
+            exitCode: 0,
+            stdout: [
+              '100644 blob abc123    4000\tsrc/app.ts',
+              '100644 blob def456   50000\tassets/logo.png',
+              '100644 blob ghi789   10000\tpackage-lock.json',
+              '100644 blob jkl012    2000\tfonts/inter.woff2',
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateTokenCount('/repo', execFn);
+      // Only src/app.ts (4000 bytes) should contribute
+      expect(result).toBe(Math.floor((4000 / 3) * OVERLAP_FACTOR));
+    });
+
+    it('allows .codebaseindexignore to re-include a built-in excluded extension', async () => {
+      const execFn: RepoExecFn = vi.fn().mockImplementation(async (params) => {
+        if (params.cmd.includes('ls-tree -r --long HEAD')) {
+          return {
+            exitCode: 0,
+            stdout: [
+              '100644 blob abc123    4000\tsrc/app.ts',
+              '100644 blob def456    2000\ticons/logo.svg',
+            ].join('\n'),
+            stderr: '',
+          };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '!*.svg', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+      const result = await service.estimateTokenCount('/repo', execFn);
+      // Both files should contribute since .codebaseindexignore negates *.svg
+      expect(result).toBe(Math.floor(((4000 + 2000) / 3) * OVERLAP_FACTOR));
+    });
+
+    it('uses factor 1.0 when overlap >= target tokens (no division by zero)', async () => {
+      const mutableEnv = environment as {
+        -readonly [K in keyof typeof environment]: (typeof environment)[K];
+      };
+      const originalTarget = mutableEnv.codebaseChunkTargetTokens;
+      const originalMaxTokens = mutableEnv.codebaseEmbeddingMaxTokens;
+      // Force targetTokens to 0 so stride = 0 - 0 = 0, triggering the guard
+      mutableEnv.codebaseChunkTargetTokens = 0;
+      mutableEnv.codebaseEmbeddingMaxTokens = 0;
+
+      try {
+        const execFn: RepoExecFn = vi
+          .fn()
+          .mockImplementation(async (params) => {
+            if (params.cmd.includes('ls-tree -r --long HEAD')) {
+              return {
+                exitCode: 0,
+                stdout: '100644 blob abc123    4000\tsrc/index.ts',
+                stderr: '',
+              };
+            }
+            return { exitCode: 0, stdout: '', stderr: '' };
+          });
+
+        const result = await service.estimateTokenCount('/repo', execFn);
+        // factor = 1.0 when stride <= 0, so no overlap inflation
+        expect(result).toBe(Math.floor(4000 / 3));
+      } finally {
+        mutableEnv.codebaseChunkTargetTokens = originalTarget;
+        mutableEnv.codebaseEmbeddingMaxTokens = originalMaxTokens;
+      }
+    });
+  });
+
+  describe('shouldIndexPathSync with built-in exclusions', () => {
+    it('excludes png files', async () => {
+      const execFn: RepoExecFn = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+      });
+      const matcher = await service.preloadIgnoreMatcher('/repo', execFn);
+      expect(service.shouldIndexPathSync('assets/logo.png', matcher)).toBe(
+        false,
+      );
+    });
+
+    it('excludes package-lock.json', async () => {
+      const execFn: RepoExecFn = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+      });
+      const matcher = await service.preloadIgnoreMatcher('/repo', execFn);
+      expect(service.shouldIndexPathSync('package-lock.json', matcher)).toBe(
+        false,
+      );
+    });
+
+    it('still indexes .ts files', async () => {
+      const execFn: RepoExecFn = vi.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+      });
+      const matcher = await service.preloadIgnoreMatcher('/repo', execFn);
+      expect(service.shouldIndexPathSync('src/index.ts', matcher)).toBe(true);
     });
   });
 
@@ -438,8 +558,8 @@ describe('RepoIndexerService', () => {
         'bbb222',
         execFn,
       );
-      // (800 + 400) / 4 = 300
-      expect(result).toBe(300);
+      // (800 + 400) / 4 * OVERLAP_FACTOR
+      expect(result).toBe(Math.floor(((800 + 400) / 3) * OVERLAP_FACTOR));
     });
 
     it('falls back to full estimate when diff fails', async () => {
@@ -471,8 +591,8 @@ describe('RepoIndexerService', () => {
         'bbb222',
         execFn,
       );
-      // Full repo: (2000 + 1000 + 600) / 4 = 900
-      expect(result).toBe(900);
+      // Full repo: (2000 + 1000 + 600) / 4 * OVERLAP_FACTOR
+      expect(result).toBe(Math.floor(((2000 + 1000 + 600) / 3) * OVERLAP_FACTOR));
     });
 
     it('includes working tree changes in estimation', async () => {
@@ -510,8 +630,8 @@ describe('RepoIndexerService', () => {
         'bbb222',
         execFn,
       );
-      // (400 + 800) / 4 = 300
-      expect(result).toBe(300);
+      // (400 + 800) / 4 * OVERLAP_FACTOR
+      expect(result).toBe(Math.floor(((400 + 800) / 3) * OVERLAP_FACTOR));
     });
 
     it('returns 0 when there are no changed files', async () => {
@@ -566,8 +686,8 @@ describe('RepoIndexerService', () => {
         'bbb222',
         execFn,
       );
-      // 1200 / 4 = 300 (file counted only once despite appearing in both)
-      expect(result).toBe(300);
+      // 1200 / 4 * OVERLAP_FACTOR (file counted only once despite appearing in both)
+      expect(result).toBe(Math.floor((1200 / 3) * OVERLAP_FACTOR));
     });
 
     it('excludes changed files matching .codebaseindexignore patterns', async () => {
@@ -602,7 +722,7 @@ describe('RepoIndexerService', () => {
         execFn,
       );
       // Only src/index.ts (800 bytes) should be counted; dist/bundle.js is ignored
-      expect(result).toBe(Math.floor(800 / 4));
+      expect(result).toBe(Math.floor((800 / 3) * OVERLAP_FACTOR));
     });
   });
 

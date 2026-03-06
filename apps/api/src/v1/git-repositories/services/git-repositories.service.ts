@@ -161,31 +161,7 @@ export class GitRepositoriesService {
       throw new NotFoundException('REPOSITORY_NOT_FOUND');
     }
 
-    // Clean up all associated Qdrant collections and BullMQ jobs (one per branch)
-    const repoIndexes = await this.repoIndexDao.getAll({
-      repositoryId: id,
-    });
-
-    const collections = new Set<string>();
-    for (const index of repoIndexes) {
-      if (index.qdrantCollection) {
-        collections.add(index.qdrantCollection);
-      }
-      // Cancel any pending/waiting BullMQ jobs for this index
-      await this.repoIndexQueueService.removeJob(index.id);
-    }
-
-    for (const collection of collections) {
-      try {
-        await this.qdrantService.raw.deleteCollection(collection);
-      } catch (error) {
-        // Log but don't fail deletion if Qdrant cleanup fails
-        this.logger.warn(`Failed to delete Qdrant collection ${collection}`, {
-          collection,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
+    await this.cleanupRepositoryResourcesById(id);
 
     // Delete the repository (CASCADE will delete repo_indexes rows)
     await this.gitRepositoriesDao.deleteById(id);
@@ -312,14 +288,19 @@ export class GitRepositoriesService {
       repository.url,
     );
 
-    // Check if indexing is already in progress
+    // Check if indexing is already in progress. Include soft-deleted rows
+    // so we can restore them instead of hitting a unique constraint violation.
     const existingIndex = await this.repoIndexDao.getOne({
       repositoryId: data.repositoryId,
       branch,
-    });
+      withDeleted: true,
+    } as Parameters<typeof this.repoIndexDao.getOne>[0]);
+
+    const isSoftDeleted = existingIndex?.deletedAt != null;
 
     if (
       existingIndex &&
+      !isSoftDeleted &&
       (existingIndex.status === RepoIndexStatus.InProgress ||
         existingIndex.status === RepoIndexStatus.Pending)
     ) {
@@ -337,9 +318,14 @@ export class GitRepositoriesService {
     let repoIndex: RepoIndexEntity;
 
     if (existingIndex) {
+      // Restore soft-deleted row before updating
+      if (isSoftDeleted) {
+        await this.repoIndexDao.restoreById(existingIndex.id);
+      }
       // Reset existing index with calculated metadata
       // Keep previous estimatedTokens as a rough estimate until new calculation completes
       await this.repoIndexDao.updateById(existingIndex.id, {
+        repoUrl: normalizedRepoUrl,
         status: RepoIndexStatus.Pending,
         qdrantCollection: collection,
         embeddingModel,
@@ -347,11 +333,14 @@ export class GitRepositoriesService {
         chunkingSignatureHash,
         errorMessage: null,
         indexedTokens: 0,
+        lastIndexedCommit: null,
         // Preserve estimatedTokens from previous index as initial estimate
-        estimatedTokens: existingIndex.estimatedTokens,
+        estimatedTokens: isSoftDeleted ? 0 : existingIndex.estimatedTokens,
       });
       repoIndex = {
         ...existingIndex,
+        deletedAt: null,
+        repoUrl: normalizedRepoUrl,
         status: RepoIndexStatus.Pending,
         qdrantCollection: collection,
         embeddingModel,
@@ -359,8 +348,8 @@ export class GitRepositoriesService {
         chunkingSignatureHash,
         errorMessage: null,
         indexedTokens: 0,
-        // Preserve estimatedTokens from previous index as initial estimate
-        estimatedTokens: existingIndex.estimatedTokens,
+        lastIndexedCommit: null,
+        estimatedTokens: isSoftDeleted ? 0 : existingIndex.estimatedTokens,
       };
     } else {
       // Create new index entry with calculated metadata
@@ -522,6 +511,7 @@ export class GitRepositoriesService {
     const toRemove = existingRepos.filter((r) => !syncedKeys.has(`${r.owner}/${r.repo}`));
 
     for (const repo of toRemove) {
+      await this.cleanupRepositoryResourcesById(repo.id);
       await this.gitRepositoriesDao.deleteById(repo.id);
     }
 
@@ -532,6 +522,39 @@ export class GitRepositoriesService {
       removed: toRemove.length,
       total,
     };
+  }
+
+  /**
+   * Remove all BullMQ jobs and Qdrant collections associated with a repository's indexes.
+   * Called before deleting a repository to ensure external resources are cleaned up.
+   */
+  private async cleanupRepositoryResourcesById(repositoryId: string): Promise<void> {
+    const repoIndexes = await this.repoIndexDao.getAll({ repositoryId });
+
+    const collections = new Set<string>();
+    for (const index of repoIndexes) {
+      if (index.qdrantCollection) {
+        collections.add(index.qdrantCollection);
+      }
+      await this.repoIndexQueueService.removeJob(index.id);
+    }
+
+    for (const collection of collections) {
+      try {
+        await this.qdrantService.deleteCollection(collection);
+      } catch (error) {
+        this.logger.warn(`Failed to delete Qdrant collection ${collection}`, {
+          collection,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Soft-delete repo_index rows so they don't appear as "indexed" if the
+    // repository is restored during a future sync. The unique constraint
+    // still covers soft-deleted rows, so getOrInitIndexForRepo will restore
+    // and reset them when re-indexing is triggered.
+    await this.repoIndexDao.delete({ repositoryId });
   }
 
   private prepareRepositoryResponse(

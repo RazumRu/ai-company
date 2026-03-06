@@ -1,4 +1,5 @@
 /.cursor
+/.claude
 /.docker
 /.github
 /.husky
@@ -7,10 +8,12 @@
 /pnpm-workspace.yaml
 /release.config.cjs
 **/node_modules
+**/.turbo
 /CLAUDE.md
 /LICENSE
 /README.md
 /scripts
+/assets
 **/tsconfig.*
 /turbo.json
 **/vitest.config.*

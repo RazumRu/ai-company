@@ -29,7 +29,7 @@ model_list:
       api_key: os.environ/OPENROUTER_API_KEY
 
   # OpenRouter provider — OpenAI
-  # Pricing in LiteLLM DB: gpt-5-mini ✓, gpt-5.2-codex ✓, gpt-5.2 ✓
+  # Pricing in LiteLLM DB: gpt-5-mini ✓, gpt-5.2-codex ✓, gpt-5.2 ✓, gpt-5.4 ?, gpt-5.4-codex ?
   - model_name: text-embedding-3-small
     litellm_params:
       model: openrouter/openai/text-embedding-3-small
@@ -61,6 +61,20 @@ model_list:
       additional_drop_params: [ "stop" ]
     model_info:
       base_model: gpt-5.1-codex-mini     # map pricing from LiteLLM DB
+
+  - model_name: gpt-5.4
+    litellm_params:
+      model: openrouter/openai/gpt-5.4
+      api_key: os.environ/OPENROUTER_API_KEY
+      drop_params: true
+      additional_drop_params: [ "stop" ]
+
+  - model_name: gpt-5.4-codex
+    litellm_params:
+      model: openrouter/openai/gpt-5.4-codex
+      api_key: os.environ/OPENROUTER_API_KEY
+      drop_params: true
+      additional_drop_params: [ "stop" ]
 
   - model_name: gpt-5.2
     litellm_params:
@@ -111,6 +125,16 @@ model_list:
   #     that prefixes tool names with "proxy_"
   #   - supports_assistant_prefill: false — CLIProxyAPI rejects conversations ending
   #     with an assistant message ("prefill" error); this tells LiteLLM to strip them
+  - model_name: codex-5.4-oauth
+    litellm_params:
+      model: openai/codex-5.4
+      api_base: http://cli-proxy-api:8317/v1/
+      api_key: cliproxy-local-key
+      drop_params: true
+    model_info:
+      supports_response_schema: false
+      supports_assistant_prefill: false
+
   - model_name: codex-5.3-oauth
     litellm_params:
       model: openai/codex-5.3

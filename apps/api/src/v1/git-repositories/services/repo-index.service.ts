@@ -29,6 +29,7 @@ import {
 } from './repo-index-queue.service';
 import {
   CODEBASE_COLLECTION_PREFIX,
+  JobCancelledException,
   RepoExecFn,
   RepoIndexerService,
 } from './repo-indexer.service';
@@ -92,7 +93,9 @@ export class RepoIndexService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     this.repoIndexQueueService.setCallbacks({
-      onProcess: this.processIndexJob.bind(this),
+      onProcess: async (data, signal) => {
+        await this.processIndexJob(data, signal);
+      },
       onStalled: this.handleStalledJob.bind(this),
       onRetry: this.handleRetryJob.bind(this),
       onFailed: this.handleFailedJob.bind(this),
@@ -231,7 +234,7 @@ export class RepoIndexService implements OnModuleInit {
       for (const collection of codebaseCollections) {
         if (!dbCollectionNames.has(collection)) {
           try {
-            await this.qdrantService.raw.deleteCollection(collection);
+            await this.qdrantService.deleteCollection(collection);
             this.logger.warn('Deleted orphaned Qdrant collection', {
               collection,
             });
@@ -287,7 +290,7 @@ export class RepoIndexService implements OnModuleInit {
           !deletedCollections.has(index.qdrantCollection)
         ) {
           try {
-            await this.qdrantService.raw.deleteCollection(
+            await this.qdrantService.deleteCollection(
               index.qdrantCollection,
             );
             deletedCollections.add(index.qdrantCollection);
@@ -735,7 +738,10 @@ export class RepoIndexService implements OnModuleInit {
   // Private: BullMQ processor
   // ---------------------------------------------------------------------------
 
-  private async processIndexJob(data: RepoIndexJobData): Promise<void> {
+  private async processIndexJob(
+    data: RepoIndexJobData,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const { repoIndexId, branch } = data;
     // Normalize so the Qdrant repo_id is consistent regardless of source
     const repoUrl = this.repoIndexerService.deriveRepoId(data.repoUrl);
@@ -754,6 +760,13 @@ export class RepoIndexService implements OnModuleInit {
     }
     if (entity.status === RepoIndexStatus.Completed) {
       this.logger.debug('Repo index already completed, skipping job', {
+        repoIndexId,
+      });
+      return;
+    }
+
+    if (signal?.aborted) {
+      this.logger.debug('Repo index job cancelled before start', {
         repoIndexId,
       });
       return;
@@ -831,6 +844,13 @@ export class RepoIndexService implements OnModuleInit {
         throw new Error(
           `git clone failed: ${RepoIndexService.sanitizeUrl(cloneRes.stderr)}`,
         );
+      }
+
+      if (signal?.aborted) {
+        this.logger.debug('Repo index job cancelled after clone', {
+          repoIndexId,
+        });
+        return;
       }
 
       // If this is a reindex (entity has a lastIndexedCommit), deepen the
@@ -922,6 +942,7 @@ export class RepoIndexService implements OnModuleInit {
           execFn,
           updateRuntimeActivity,
           onProgressUpdate,
+          signal,
         );
       } else {
         await this.repoIndexerService.runIncrementalIndex(
@@ -929,6 +950,7 @@ export class RepoIndexService implements OnModuleInit {
           execFn,
           updateRuntimeActivity,
           onProgressUpdate,
+          signal,
         );
       }
 
@@ -954,6 +976,27 @@ export class RepoIndexService implements OnModuleInit {
         currentCommit,
         indexedTokens: totalIndexedTokens,
       });
+    } catch (err) {
+      if (err instanceof JobCancelledException) {
+        this.logger.debug('Repo index job cancelled, exiting cleanly', {
+          repoIndexId,
+        });
+        return;
+      }
+      // If the abort signal fired (repo was deleted), treat any error as
+      // cancellation — the Qdrant collection may have been deleted mid-flight,
+      // causing 404s or fetch failures that are not JobCancelledException.
+      if (signal?.aborted) {
+        this.logger.debug(
+          'Repo index job failed after cancellation signal, treating as cancelled',
+          {
+            repoIndexId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        );
+        return;
+      }
+      throw err;
     } finally {
       // Cleanup ephemeral container
       if (runtimeInstance) {

@@ -89,6 +89,7 @@ const mockQdrantService = {
     getCollections: vi.fn().mockResolvedValue({ collections: [] }),
     deleteCollection: vi.fn().mockResolvedValue(true),
   },
+  deleteCollection: vi.fn().mockResolvedValue(undefined),
 };
 const mockRuntimeProvider = {};
 const mockRuntimeInstanceDao = {
@@ -154,7 +155,7 @@ describe('RepoIndexService', () => {
     mockRepoIndexQueueService.addIndexJob.mockResolvedValue(undefined);
     mockRepoIndexQueueService.removeJob.mockResolvedValue(undefined);
     mockQdrantService.raw.getCollections.mockResolvedValue({ collections: [] });
-    mockQdrantService.raw.deleteCollection.mockResolvedValue(true);
+    mockQdrantService.deleteCollection.mockResolvedValue(undefined);
     mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
       'text-embedding-3-small',
     );
@@ -629,19 +630,22 @@ describe('RepoIndexService', () => {
   });
 
   describe('processIndexJob (background path)', () => {
+    type ProcessIndexJobFn = (
+      data: { repoIndexId: string; repoUrl: string; branch: string },
+      signal?: AbortSignal,
+    ) => Promise<void>;
+
+    const callProcessIndexJob = (
+      data: { repoIndexId: string; repoUrl: string; branch: string },
+      signal?: AbortSignal,
+    ) =>
+      (service as unknown as { processIndexJob: ProcessIndexJobFn })
+        .processIndexJob(data, signal);
+
     it('skips when entity is not found', async () => {
       mockRepoIndexDao.getOne.mockResolvedValue(null);
 
-      // Call the private method directly
-      await (
-        service as unknown as {
-          processIndexJob: (data: {
-            repoIndexId: string;
-            repoUrl: string;
-            branch: string;
-          }) => Promise<void>;
-        }
-      ).processIndexJob({
+      await callProcessIndexJob({
         repoIndexId: 'missing-id',
         repoUrl: 'https://github.com/owner/repo',
         branch: 'main',
@@ -660,15 +664,7 @@ describe('RepoIndexService', () => {
         status: RepoIndexStatus.Completed,
       } as unknown as RepoIndexEntity);
 
-      await (
-        service as unknown as {
-          processIndexJob: (data: {
-            repoIndexId: string;
-            repoUrl: string;
-            branch: string;
-          }) => Promise<void>;
-        }
-      ).processIndexJob({
+      await callProcessIndexJob({
         repoIndexId: 'done-id',
         repoUrl: 'https://github.com/owner/repo',
         branch: 'main',
@@ -679,6 +675,34 @@ describe('RepoIndexService', () => {
         { repoIndexId: 'done-id' },
       );
       expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
+    });
+
+    it('returns cleanly without throwing when signal is already aborted', async () => {
+      mockRepoIndexDao.getOne.mockResolvedValue({
+        id: 'cancel-id',
+        status: RepoIndexStatus.Pending,
+        indexedTokens: 0,
+        estimatedTokens: 100,
+      } as unknown as RepoIndexEntity);
+
+      const abortController = new AbortController();
+      abortController.abort();
+
+      await callProcessIndexJob(
+        {
+          repoIndexId: 'cancel-id',
+          repoUrl: 'https://github.com/owner/repo',
+          branch: 'main',
+        },
+        abortController.signal,
+      );
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Repo index job cancelled before start',
+        { repoIndexId: 'cancel-id' },
+      );
+      expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
+      expect(mockRepoIndexDao.updateById).not.toHaveBeenCalled();
     });
   });
 
@@ -889,7 +913,7 @@ describe('RepoIndexService', () => {
       mockQdrantService.raw.getCollections.mockResolvedValue({
         collections: setup.qdrantCollections,
       });
-      mockQdrantService.raw.deleteCollection.mockResolvedValue(true);
+      mockQdrantService.deleteCollection.mockResolvedValue(undefined);
 
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,
@@ -926,10 +950,10 @@ describe('RepoIndexService', () => {
         ],
       });
 
-      expect(mockQdrantService.raw.deleteCollection).toHaveBeenCalledWith(
+      expect(mockQdrantService.deleteCollection).toHaveBeenCalledWith(
         'codebase_orphan_1536',
       );
-      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalledWith(
+      expect(mockQdrantService.deleteCollection).not.toHaveBeenCalledWith(
         'codebase_valid_1536',
       );
     });
@@ -991,7 +1015,7 @@ describe('RepoIndexService', () => {
         dbIndexes: [],
       });
 
-      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalled();
+      expect(mockQdrantService.deleteCollection).not.toHaveBeenCalled();
     });
 
     it('deletes stale indexes older than the configured threshold', async () => {
@@ -1022,7 +1046,7 @@ describe('RepoIndexService', () => {
 
       // Stale index: both DB row and Qdrant collection should be deleted
       expect(mockRepoIndexDao.deleteById).toHaveBeenCalledWith('idx-stale');
-      expect(mockQdrantService.raw.deleteCollection).toHaveBeenCalledWith(
+      expect(mockQdrantService.deleteCollection).toHaveBeenCalledWith(
         'codebase_stale_1536',
       );
       // Fresh index: neither should be deleted
@@ -1093,7 +1117,7 @@ describe('RepoIndexService', () => {
       });
 
       expect(mockRepoIndexDao.deleteById).not.toHaveBeenCalled();
-      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalled();
+      expect(mockQdrantService.deleteCollection).not.toHaveBeenCalled();
     });
 
     it('does not delete Qdrant collection when another fresh row still references it', async () => {
@@ -1122,7 +1146,7 @@ describe('RepoIndexService', () => {
       // Stale row should be deleted from DB
       expect(mockRepoIndexDao.deleteById).toHaveBeenCalledWith('idx-stale');
       // But the Qdrant collection must NOT be deleted — fresh row still needs it
-      expect(mockQdrantService.raw.deleteCollection).not.toHaveBeenCalledWith(
+      expect(mockQdrantService.deleteCollection).not.toHaveBeenCalledWith(
         'codebase_shared_1536',
       );
       // Fresh row should not be deleted

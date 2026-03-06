@@ -13,7 +13,7 @@ export interface RepoIndexJobData {
 
 export interface RepoIndexQueueCallbacks {
   /** Called to process the job */
-  onProcess: (data: RepoIndexJobData) => Promise<void>;
+  onProcess: (data: RepoIndexJobData, signal?: AbortSignal) => Promise<void>;
   /** Called when a job is detected as stalled (server died mid-processing) */
   onStalled: (repoIndexId: string) => Promise<void>;
   /** Called when a job fails but will be retried */
@@ -36,8 +36,10 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   private worker!: Worker<RepoIndexJobData>;
   private redisQueue!: IORedis;
   private redisWorker!: IORedis;
+  private redisSub!: IORedis;
   private callbacks?: RepoIndexQueueCallbacks;
   private readonly queueName = `repo-index-${environment.env}`;
+  private readonly cancelChannel = `repo-index-cancel:${environment.env}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 
@@ -54,6 +56,13 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
     });
     this.redisWorker.on('error', (err) => {
       this.logger.error(err, 'Redis worker connection error');
+    });
+
+    this.redisSub = new IORedis(environment.redisUrl, {
+      maxRetriesPerRequest: null,
+    });
+    this.redisSub.on('error', (err) => {
+      this.logger.error(err, 'Redis subscriber connection error');
     });
 
     this.queue = new Queue<RepoIndexJobData>(this.queueName, {
@@ -95,6 +104,15 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
 
     this.worker.on('failed', this.handleJobFailed.bind(this));
     this.worker.on('stalled', this.handleJobStalled.bind(this));
+
+    this.redisSub.subscribe(this.cancelChannel).catch((err) => {
+      this.logger.warn('Failed to subscribe to cancel channel', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    this.redisSub.on('message', (_channel: string, jobId: string) => {
+      this.worker.cancelJob(jobId, 'Repository deleted');
+    });
   }
 
   /**
@@ -171,8 +189,33 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Remove a job from the queue by its ID. Best-effort: if the job is active
-   * or already gone, we silently skip.
+   * Cancel an active job on any worker instance.
+   * Uses native BullMQ signal cancellation locally and Redis pub/sub for remote workers.
+   */
+  async cancelActiveJob(repoIndexId: string): Promise<void> {
+    const cancelledLocally = this.worker.cancelJob(
+      repoIndexId,
+      'Repository deleted',
+    );
+
+    if (!cancelledLocally) {
+      // Job might be on another instance — broadcast via Redis pub/sub
+      try {
+        const client = await this.queue.client;
+        await client.publish(this.cancelChannel, repoIndexId);
+      } catch (err) {
+        this.logger.debug('Failed to publish cancel event', {
+          repoIndexId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  /**
+   * Remove a job from the queue by its ID. For active jobs, uses native
+   * BullMQ signal cancellation. Best-effort: if the job is already
+   * gone or cancellation races with completion, we warn and continue.
    */
   async removeJob(repoIndexId: string): Promise<void> {
     try {
@@ -180,14 +223,16 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
       if (!job) return;
 
       const state = await job.getState();
+
       if (state === 'active') {
-        // Cannot safely remove an active job; it will be cleaned up by its own
-        // error handler or stalled detection once the container is gone.
-        this.logger.debug('Cannot remove active job, skipping', {
-          repoIndexId,
-        });
+        this.logger.warn(
+          'Cancelling active repo index job due to repository deletion',
+          { repoIndexId },
+        );
+        await this.cancelActiveJob(repoIndexId);
         return;
       }
+
       await job.remove();
       this.logger.debug('Removed queued job', { repoIndexId, state });
     } catch (err) {
@@ -198,11 +243,15 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async processJob(job: Job<RepoIndexJobData>): Promise<void> {
+  private async processJob(
+    job: Job<RepoIndexJobData>,
+    _token?: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     if (!this.callbacks) {
       throw new Error('Queue callbacks not configured');
     }
-    await this.callbacks.onProcess(job.data);
+    await this.callbacks.onProcess(job.data, signal);
   }
 
   private async handleJobStalled(jobId: string): Promise<void> {
@@ -283,6 +332,7 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
     for (const [name, conn] of [
       ['queue', this.redisQueue],
       ['worker', this.redisWorker],
+      ['subscriber', this.redisSub],
     ] as const) {
       try {
         await conn?.quit();

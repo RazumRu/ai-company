@@ -115,6 +115,23 @@ export class QdrantService {
     this.vectorSizeCache.delete(name);
   }
 
+  /**
+   * Delete a Qdrant collection and invalidate the local cache entries for it.
+   * Swallows "collection not found" errors (idempotent).
+   */
+  async deleteCollection(name: string): Promise<void> {
+    try {
+      await this.client.deleteCollection(name);
+    } catch (error) {
+      if (QdrantService.isCollectionNotFoundError(error)) {
+        return;
+      }
+      throw error;
+    } finally {
+      this.invalidateCollectionCache(name);
+    }
+  }
+
   async ensureCollection(
     name: string,
     vectorSize: number,

@@ -23,7 +23,7 @@ export const generateClient = async ({ url, output }) => {
         name: '@hey-api/typescript',
         enums: 'typescript',
       },
-      '@hey-api/client-axios',
+      '@hey-api/client-fetch',
     ],
   });
 };

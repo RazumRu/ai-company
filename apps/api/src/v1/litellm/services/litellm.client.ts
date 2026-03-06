@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import axios, { AxiosRequestConfig } from 'axios';
 
 import { environment } from '../../../environments';
 import { LiteLLMModelInfo } from '../litellm.types';
@@ -14,14 +13,22 @@ export class LiteLlmClient {
   } | null = null;
   private modelListInFlight: Promise<LiteLLMModelInfo[]> | null = null;
 
-  private async request<T>(path: string, params?: AxiosRequestConfig) {
-    return axios.request<T>({
-      url: `${environment.llmBaseUrl}${path}`,
+  private async request<T>(path: string): Promise<T> {
+    const response = await fetch(`${environment.llmBaseUrl}${path}`, {
       headers: {
         Authorization: `Bearer ${environment.litellmMasterKey}`,
       },
-      ...params,
+      signal: AbortSignal.timeout(30_000),
     });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '');
+      throw new Error(
+        `LiteLLM request failed: ${response.status} ${response.statusText}${body ? ` - ${body}` : ''}`,
+      );
+    }
+
+    return response.json() as Promise<T>;
   }
 
   async listModels() {
@@ -34,7 +41,7 @@ export class LiteLlmClient {
       }[];
     }>('/v1/models');
 
-    return response.data.data;
+    return response.data;
   }
 
   async getModelInfo(model: string): Promise<LiteLLMModelInfo | null> {
@@ -65,9 +72,7 @@ export class LiteLlmClient {
       const response = await this.request<{ data: LiteLLMModelInfo[] }>(
         '/v1/model/info',
       );
-      const models = Array.isArray(response.data.data)
-        ? response.data.data
-        : [];
+      const models = Array.isArray(response.data) ? response.data : [];
       this.modelListCache = {
         expiresAt: Date.now() + LiteLlmClient.MODEL_LIST_TTL_MS,
         data: models,

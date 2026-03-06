@@ -33,6 +33,7 @@ describe('GitRepositoriesService', () => {
   let qdrantService: QdrantService;
   let gitHubAppService: GitHubAppService;
   let gitHubAppInstallationDao: GitHubAppInstallationDao;
+  let logger: DefaultLogger;
 
   const mockUserId = 'user-123';
   const mockProjectId = '11111111-1111-1111-1111-111111111111';
@@ -85,6 +86,8 @@ describe('GitRepositoriesService', () => {
             create: vi.fn(),
             updateById: vi.fn(),
             deleteById: vi.fn(),
+            delete: vi.fn(),
+            restoreById: vi.fn(),
             incrementIndexedTokens: vi.fn(),
           },
         },
@@ -112,9 +115,7 @@ describe('GitRepositoriesService', () => {
         {
           provide: QdrantService,
           useValue: {
-            raw: {
-              deleteCollection: vi.fn(),
-            },
+            deleteCollection: vi.fn(),
           },
         },
         {
@@ -157,6 +158,7 @@ describe('GitRepositoriesService', () => {
     qdrantService = module.get<QdrantService>(QdrantService);
     gitHubAppService = module.get<GitHubAppService>(GitHubAppService);
     gitHubAppInstallationDao = module.get<GitHubAppInstallationDao>(GitHubAppInstallationDao);
+    logger = module.get<DefaultLogger>(DefaultLogger);
   });
 
   describe('createRepository', () => {
@@ -293,9 +295,7 @@ describe('GitRepositoriesService', () => {
       vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue([
         mockRepoIndex as any,
       ]);
-      vi.spyOn(qdrantService.raw, 'deleteCollection').mockResolvedValue(
-        undefined as any,
-      );
+      vi.spyOn(qdrantService, 'deleteCollection').mockResolvedValue(undefined);
       vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
 
       await service.deleteRepository(mockCtx, mockRepositoryId);
@@ -303,9 +303,12 @@ describe('GitRepositoriesService', () => {
       expect(repoIndexDao.getAll).toHaveBeenCalledWith({
         repositoryId: mockRepositoryId,
       });
-      expect(qdrantService.raw.deleteCollection).toHaveBeenCalledWith(
+      expect(qdrantService.deleteCollection).toHaveBeenCalledWith(
         'codebase_my_repo_1536',
       );
+      expect(repoIndexDao.delete).toHaveBeenCalledWith({
+        repositoryId: mockRepositoryId,
+      });
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
     });
 
@@ -318,8 +321,11 @@ describe('GitRepositoriesService', () => {
 
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
+      expect(repoIndexDao.delete).toHaveBeenCalledWith({
+        repositoryId: mockRepositoryId,
+      });
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
-      expect(qdrantService.raw.deleteCollection).not.toHaveBeenCalled();
+      expect(qdrantService.deleteCollection).not.toHaveBeenCalled();
     });
 
     it('should delete repository even if Qdrant cleanup fails', async () => {
@@ -334,7 +340,7 @@ describe('GitRepositoriesService', () => {
       vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue([
         mockRepoIndex as any,
       ]);
-      vi.spyOn(qdrantService.raw, 'deleteCollection').mockRejectedValue(
+      vi.spyOn(qdrantService, 'deleteCollection').mockRejectedValue(
         new Error('Qdrant connection failed'),
       );
       vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
@@ -343,6 +349,102 @@ describe('GitRepositoriesService', () => {
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to delete Qdrant collection'),
+        expect.any(Object),
+      );
+    });
+
+    it('should call removeJob for each repo index', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const mockIndexes = [
+        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: 'col-a' },
+        { id: 'index-2', repositoryId: mockRepositoryId, qdrantCollection: 'col-b' },
+        { id: 'index-3', repositoryId: mockRepositoryId, qdrantCollection: 'col-c' },
+      ];
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue(mockIndexes as any);
+      vi.spyOn(qdrantService, 'deleteCollection').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+
+      await service.deleteRepository(mockCtx, mockRepositoryId);
+
+      expect(repoIndexQueueService.removeJob).toHaveBeenCalledTimes(3);
+      expect(repoIndexQueueService.removeJob).toHaveBeenCalledWith('index-1');
+      expect(repoIndexQueueService.removeJob).toHaveBeenCalledWith('index-2');
+      expect(repoIndexQueueService.removeJob).toHaveBeenCalledWith('index-3');
+    });
+
+    it('should deduplicate: two indexes sharing one collection calls deleteCollection once', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const sharedCollection = 'codebase_shared_1536';
+      const mockIndexes = [
+        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: sharedCollection },
+        { id: 'index-2', repositoryId: mockRepositoryId, qdrantCollection: sharedCollection },
+      ];
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue(mockIndexes as any);
+      vi.spyOn(qdrantService, 'deleteCollection').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+
+      await service.deleteRepository(mockCtx, mockRepositoryId);
+
+      expect(qdrantService.deleteCollection).toHaveBeenCalledTimes(1);
+      expect(qdrantService.deleteCollection).toHaveBeenCalledWith(sharedCollection);
+    });
+
+    it('should call deleteCollection for each distinct collection name', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const mockIndexes = [
+        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: 'col-alpha' },
+        { id: 'index-2', repositoryId: mockRepositoryId, qdrantCollection: 'col-beta' },
+      ];
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue(mockIndexes as any);
+      vi.spyOn(qdrantService, 'deleteCollection').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+
+      await service.deleteRepository(mockCtx, mockRepositoryId);
+
+      expect(qdrantService.deleteCollection).toHaveBeenCalledTimes(2);
+      expect(qdrantService.deleteCollection).toHaveBeenCalledWith('col-alpha');
+      expect(qdrantService.deleteCollection).toHaveBeenCalledWith('col-beta');
+    });
+
+    it('should perform cleanup before deleteById (call ordering)', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const mockIndexes = [
+        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: 'col-a' },
+      ];
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue(mockIndexes as any);
+      vi.spyOn(qdrantService, 'deleteCollection').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+
+      await service.deleteRepository(mockCtx, mockRepositoryId);
+
+      const removeJobOrder = vi.mocked(repoIndexQueueService.removeJob).mock.invocationCallOrder[0]!;
+      const deleteCollectionOrder = vi.mocked(qdrantService.deleteCollection).mock.invocationCallOrder[0]!;
+      const deleteByIdOrder = vi.mocked(dao.deleteById).mock.invocationCallOrder[0]!;
+
+      expect(removeJobOrder).toBeLessThan(deleteByIdOrder);
+      expect(deleteCollectionOrder).toBeLessThan(deleteByIdOrder);
+    });
+
+    it('should throw NotFoundException and not call cleanup when repository does not exist', async () => {
+      vi.spyOn(dao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.deleteRepository(mockCtx, mockRepositoryId),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(repoIndexDao.getAll).not.toHaveBeenCalled();
+      expect(qdrantService.deleteCollection).not.toHaveBeenCalled();
     });
   });
 
@@ -437,6 +539,35 @@ describe('GitRepositoriesService', () => {
         }),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should restore and reset a soft-deleted index instead of creating a new one', async () => {
+      const mockRepository = createMockRepositoryEntity();
+      const softDeletedIndex = createMockRepoIndexEntity({
+        deletedAt: new Date('2024-06-01'),
+      });
+
+      vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
+      vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(softDeletedIndex);
+      vi.spyOn(repoIndexDao, 'restoreById').mockResolvedValue(undefined);
+      vi.spyOn(repoIndexDao, 'updateById').mockResolvedValue(null);
+
+      const result = await service.triggerReindex(mockCtx, {
+        repositoryId: mockRepositoryId,
+        branch: 'main',
+      });
+
+      expect(repoIndexDao.restoreById).toHaveBeenCalledWith('index-123');
+      expect(repoIndexDao.updateById).toHaveBeenCalledWith(
+        'index-123',
+        expect.objectContaining({
+          status: RepoIndexStatus.Pending,
+          lastIndexedCommit: null,
+          estimatedTokens: 0,
+        }),
+      );
+      expect(repoIndexDao.create).not.toHaveBeenCalled();
+      expect(result.repoIndex.status).toBe(RepoIndexStatus.Pending);
+    });
   });
 
   describe('syncRepositories', () => {
@@ -502,6 +633,7 @@ describe('GitRepositoriesService', () => {
         headers: { get: () => null },
       } as unknown as Response);
       vi.spyOn(dao, 'getAll').mockResolvedValue([revokedRepo]);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue([]);
       vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
       vi.spyOn(dao, 'count').mockResolvedValue(0);
 
@@ -534,6 +666,58 @@ describe('GitRepositoriesService', () => {
       await service.syncRepositories(mockCtx);
 
       expect(dao.deleteById).not.toHaveBeenCalled();
+    });
+
+    it('calls cleanup (removeJob + deleteCollection) before deleteById when sync removes a repo', async () => {
+      const revokedRepo = createMockRepositoryEntity({
+        id: 'revoked-repo-id',
+        owner: 'octocat',
+        repo: 'OldRepo',
+        installationId: 12345,
+      } as Partial<GitRepositoryEntity>);
+
+      const mockIndexes = [
+        { id: 'idx-1', repositoryId: 'revoked-repo-id', qdrantCollection: 'col-revoked' },
+      ];
+
+      vi.spyOn(gitHubAppInstallationDao, 'getAll').mockResolvedValue([{
+        id: 'install-uuid-1',
+        installationId: 12345,
+        userId: mockUserId,
+        isActive: true,
+        accountLogin: 'octocat',
+        accountType: 'User',
+        createdAt: new Date('2024-01-01T00:00:00Z'),
+        updatedAt: new Date('2024-01-01T00:00:00Z'),
+        deletedAt: null,
+      } as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ total_count: 0, repositories: [] }),
+        headers: { get: () => null },
+      } as unknown as Response);
+      vi.spyOn(dao, 'getAll').mockResolvedValue([revokedRepo]);
+      vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue(mockIndexes as any);
+      vi.spyOn(qdrantService, 'deleteCollection').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'count').mockResolvedValue(0);
+
+      await service.syncRepositories(mockCtx);
+
+      // Verify cleanup was called
+      expect(repoIndexQueueService.removeJob).toHaveBeenCalledWith('idx-1');
+      expect(qdrantService.deleteCollection).toHaveBeenCalledWith('col-revoked');
+      expect(dao.deleteById).toHaveBeenCalledWith('revoked-repo-id');
+
+      // Verify ordering: cleanup before delete
+      const removeJobOrder = vi.mocked(repoIndexQueueService.removeJob).mock.invocationCallOrder[0]!;
+      const deleteCollectionOrder = vi.mocked(qdrantService.deleteCollection).mock.invocationCallOrder[0]!;
+      const deleteByIdOrder = vi.mocked(dao.deleteById).mock.invocationCallOrder[0]!;
+
+      expect(removeJobOrder).toBeLessThan(deleteByIdOrder);
+      expect(deleteCollectionOrder).toBeLessThan(deleteByIdOrder);
     });
 
     it('does not trigger indexing after successful sync', async () => {

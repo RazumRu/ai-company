@@ -7,20 +7,27 @@ import {
   RepoIndexQueueService,
 } from './repo-index-queue.service';
 
+const mockRedisClient = {
+  publish: vi.fn().mockResolvedValue(1),
+};
+
 const mockQueue = {
   add: vi.fn().mockResolvedValue(undefined),
   close: vi.fn().mockResolvedValue(undefined),
   getJob: vi.fn().mockResolvedValue(null),
+  client: Promise.resolve(mockRedisClient),
 };
 
 const mockWorker = {
   on: vi.fn(),
   close: vi.fn().mockResolvedValue(undefined),
+  cancelJob: vi.fn().mockReturnValue(true),
 };
 
 const mockRedis = {
   quit: vi.fn().mockResolvedValue(undefined),
   on: vi.fn(),
+  subscribe: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockLogger = {
@@ -69,6 +76,19 @@ describe('RepoIndexQueueService', () => {
       expect(callbacks.onProcess).not.toHaveBeenCalled();
       // Worker is created when setCallbacks is called
       expect(mockWorker.on).toHaveBeenCalled();
+    });
+
+    it('subscribes to the cancel channel', () => {
+      service.setCallbacks({
+        onProcess: vi.fn(),
+        onStalled: vi.fn(),
+        onRetry: vi.fn(),
+        onFailed: vi.fn(),
+      });
+
+      expect(mockRedis.subscribe).toHaveBeenCalledWith(
+        expect.stringContaining('repo-index-cancel:'),
+      );
     });
   });
 
@@ -167,6 +187,13 @@ describe('RepoIndexQueueService', () => {
 
       mockQueue.getJob.mockResolvedValueOnce(mockJob);
 
+      service.setCallbacks({
+        onProcess: vi.fn(),
+        onStalled: vi.fn(),
+        onRetry: vi.fn(),
+        onFailed: vi.fn(),
+      });
+
       await service.removeJob('waiting-job-id');
 
       expect(mockQueue.getJob).toHaveBeenCalledWith('waiting-job-id');
@@ -182,17 +209,113 @@ describe('RepoIndexQueueService', () => {
       // No error thrown, just returns
     });
 
-    it('skips removal for active jobs', async () => {
+    it('cancels active jobs via cancelActiveJob', async () => {
       const mockJob = {
         getState: vi.fn().mockResolvedValue('active'),
-        remove: vi.fn(),
       };
 
       mockQueue.getJob.mockResolvedValueOnce(mockJob);
+      mockWorker.cancelJob.mockReturnValue(true);
+
+      service.setCallbacks({
+        onProcess: vi.fn(),
+        onStalled: vi.fn(),
+        onRetry: vi.fn(),
+        onFailed: vi.fn(),
+      });
 
       await service.removeJob('active-job-id');
 
-      expect(mockJob.remove).not.toHaveBeenCalled();
+      expect(mockWorker.cancelJob).toHaveBeenCalledWith(
+        'active-job-id',
+        'Repository deleted',
+      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Cancelling active repo index job due to repository deletion',
+        { repoIndexId: 'active-job-id' },
+      );
+    });
+
+    it('publishes cancel event when cancelJob returns false (remote worker)', async () => {
+      const mockJob = {
+        getState: vi.fn().mockResolvedValue('active'),
+      };
+
+      mockQueue.getJob.mockResolvedValueOnce(mockJob);
+      mockWorker.cancelJob.mockReturnValue(false);
+
+      service.setCallbacks({
+        onProcess: vi.fn(),
+        onStalled: vi.fn(),
+        onRetry: vi.fn(),
+        onFailed: vi.fn(),
+      });
+
+      await service.removeJob('remote-job-id');
+
+      expect(mockWorker.cancelJob).toHaveBeenCalledWith(
+        'remote-job-id',
+        'Repository deleted',
+      );
+      expect(mockRedisClient.publish).toHaveBeenCalledWith(
+        expect.stringContaining('repo-index-cancel:'),
+        'remote-job-id',
+      );
+    });
+  });
+
+  describe('cancelActiveJob', () => {
+    beforeEach(() => {
+      service.setCallbacks({
+        onProcess: vi.fn(),
+        onStalled: vi.fn(),
+        onRetry: vi.fn(),
+        onFailed: vi.fn(),
+      });
+    });
+
+    it('cancels locally when worker.cancelJob returns true', async () => {
+      mockWorker.cancelJob.mockReturnValue(true);
+
+      await service.cancelActiveJob('local-job-id');
+
+      expect(mockWorker.cancelJob).toHaveBeenCalledWith(
+        'local-job-id',
+        'Repository deleted',
+      );
+      expect(mockRedisClient.publish).not.toHaveBeenCalled();
+    });
+
+    it('publishes to Redis when worker.cancelJob returns false', async () => {
+      mockWorker.cancelJob.mockReturnValue(false);
+
+      await service.cancelActiveJob('remote-job-id');
+
+      expect(mockWorker.cancelJob).toHaveBeenCalledWith(
+        'remote-job-id',
+        'Repository deleted',
+      );
+      expect(mockRedisClient.publish).toHaveBeenCalledWith(
+        expect.stringContaining('repo-index-cancel:'),
+        'remote-job-id',
+      );
+    });
+
+    it('logs debug and does not throw when Redis publish fails', async () => {
+      mockWorker.cancelJob.mockReturnValue(false);
+      mockRedisClient.publish.mockRejectedValueOnce(
+        new Error('Redis connection lost'),
+      );
+
+      await service.cancelActiveJob('failing-job-id');
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Failed to publish cancel event',
+        expect.objectContaining({
+          repoIndexId: 'failing-job-id',
+          error: 'Redis connection lost',
+        }),
+      );
     });
   });
 
@@ -262,7 +385,7 @@ describe('RepoIndexQueueService', () => {
   });
 
   describe('onModuleDestroy', () => {
-    it('closes worker, queue, and redis', async () => {
+    it('closes worker, queue, and redis connections including subscriber', async () => {
       // Worker is created by setCallbacks, must call it first
       service.setCallbacks({
         onProcess: vi.fn(),
@@ -275,6 +398,7 @@ describe('RepoIndexQueueService', () => {
 
       expect(mockWorker.close).toHaveBeenCalled();
       expect(mockQueue.close).toHaveBeenCalled();
+      // quit is called for queue, worker, and subscriber connections (3 times)
       expect(mockRedis.quit).toHaveBeenCalled();
     });
 
