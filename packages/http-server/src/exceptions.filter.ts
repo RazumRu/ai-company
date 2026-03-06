@@ -47,12 +47,13 @@ export class ExceptionsFilter extends BaseExceptionFilter {
 
     const data = exceptionHandler.handle(exception);
 
+    const isServerError = data.statusCode >= 500;
     response.status(data.statusCode).send({
       statusCode: data.statusCode,
       code: data.code,
-      message: data.message,
-      fullMessage: data.fullMessage,
-      fields: data.fields,
+      message: isServerError ? 'Internal server error' : data.message,
+      fullMessage: isServerError ? undefined : data.fullMessage,
+      fields: isServerError ? undefined : data.fields,
     });
   }
 }

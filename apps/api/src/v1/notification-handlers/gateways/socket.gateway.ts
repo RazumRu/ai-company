@@ -18,6 +18,7 @@ import { isPlainObject } from 'lodash';
 import { Server, Socket } from 'socket.io';
 import type { UnknownRecord } from 'type-fest';
 
+import { environment } from '../../../environments';
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import {
   IEnrichedNotification,
@@ -27,7 +28,12 @@ import { NotificationHandler } from '../services/notification-handler.service';
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: (() => {
+      const env = process.env.CORS_ALLOWED_ORIGINS?.trim();
+      if (!env) return false;
+      if (env === '*') return '*';
+      return env.split(',').map((o) => o.trim()).filter(Boolean);
+    })(),
     credentials: true,
   },
 })
@@ -109,8 +115,10 @@ export class SocketGateway
           : undefined;
 
       // Get auth data from the socket handshake for dev mode authentication
+      const isDev = environment.env !== 'production';
       const authData: Record<string, string> = {};
       for (const [key, value] of Object.entries(authRecord)) {
+        if (!isDev && key.startsWith('x-dev-jwt-')) continue;
         if (typeof value === 'string') {
           authData[key] = value;
         }
@@ -205,6 +213,10 @@ export class SocketGateway
     client: Socket,
     payload: { graphId: string },
   ): Promise<void> {
+    if (!payload?.graphId || typeof payload.graphId !== 'string') {
+      return;
+    }
+
     try {
       const graphRoom = this.getGraphRoomName(payload.graphId);
       await client.leave(graphRoom);

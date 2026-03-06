@@ -15,6 +15,13 @@ import typeormconfig from './db/typeormconfig';
 import { environment } from './environments';
 import { RedisIoAdapter } from './v1/notification-handlers/gateways/redis-io.adapter';
 
+if (environment.authDevMode && environment.env === 'production') {
+  console.error(
+    'FATAL: AUTH_DEV_MODE=true is not allowed in production. Exiting.',
+  );
+  process.exit(1);
+}
+
 const bootstrapper = buildBootstrapper({
   environment: environment.env,
   appName: environment.appName,
@@ -30,6 +37,7 @@ bootstrapper.addExtension(
       swagger: {
         path: environment.swaggerPath,
       },
+      corsOrigin: environment.corsAllowedOrigins,
       helmetOptions: {
         contentSecurityPolicy: false,
         crossOriginOpenerPolicy: {

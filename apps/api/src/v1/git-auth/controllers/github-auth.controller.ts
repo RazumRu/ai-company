@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { BadRequestException } from '@packages/common';
 import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -60,6 +61,12 @@ export class GitHubAuthController {
   ): Promise<UnlinkInstallationResponseDto> {
     const userId = ctx.checkSub();
     const installationId = Number(installationIdParam);
+    if (!Number.isInteger(installationId) || installationId <= 0) {
+      throw new BadRequestException(
+        'INVALID_INSTALLATION_ID',
+        'installationId must be a positive integer',
+      );
+    }
     return this.gitHubAppProviderService.unlinkInstallation(
       userId,
       installationId,

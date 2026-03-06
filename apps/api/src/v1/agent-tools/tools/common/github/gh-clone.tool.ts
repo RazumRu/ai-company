@@ -11,6 +11,7 @@ import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-no
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../../git-repositories/git-repositories.types';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -136,11 +137,13 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     const title = this.generateTitle?.(args, config);
     const messageMetadata = { __title: title };
 
-    const cmd = [`gh repo clone ${args.owner}/${args.repo}`];
+    const cmd = [
+      `gh repo clone ${shQuote(args.owner + '/' + args.repo)}`,
+    ];
 
     // Add workdir if specified
     if (args.workdir) {
-      cmd.push(args.workdir);
+      cmd.push(shQuote(args.workdir));
     }
 
     if (args.branch || args.depth) {
@@ -148,7 +151,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     }
 
     if (args.branch) {
-      cmd.push(`--branch ${args.branch}`);
+      cmd.push(`--branch ${shQuote(args.branch)}`);
     }
 
     if (args.depth) {
@@ -276,7 +279,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       // Use `git symbolic-ref refs/remotes/origin/HEAD` to get the remote default branch
       const res = await this.execGhCommand(
         {
-          cmd: `git -C "${clonePath}" symbolic-ref refs/remotes/origin/HEAD`,
+          cmd: `git -C ${shQuote(clonePath)} symbolic-ref refs/remotes/origin/HEAD`,
         },
         config,
         cfg,
@@ -294,7 +297,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       // Fallback: read the current branch (accurate when no --branch was specified)
       const fallbackRes = await this.execGhCommand(
         {
-          cmd: `git -C "${clonePath}" symbolic-ref --short HEAD`,
+          cmd: `git -C ${shQuote(clonePath)} symbolic-ref --short HEAD`,
         },
         config,
         cfg,
@@ -329,11 +332,11 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
 
       // Search for instruction files in the repository root
       const findCmd = instructionFiles
-        .map((file) => `"${file}"`)
+        .map((file) => shQuote(file))
         .join(' -o -name ');
       const searchResult = await this.execGhCommand(
         {
-          cmd: `find "${clonePath}" -maxdepth 1 -type f \\( -name ${findCmd} \\)`,
+          cmd: `find ${shQuote(clonePath)} -maxdepth 1 -type f \\( -name ${findCmd} \\)`,
         },
         config,
         cfg,
@@ -368,7 +371,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
 
       const catResult = await this.execGhCommand(
         {
-          cmd: `cat "${instructionFilePath}"`,
+          cmd: `cat ${shQuote(instructionFilePath)}`,
         },
         config,
         cfg,

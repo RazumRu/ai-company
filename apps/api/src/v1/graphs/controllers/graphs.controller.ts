@@ -9,6 +9,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -97,6 +98,7 @@ export class GraphsController {
     await this.graphsService.delete(contextDataStorage, params.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post(':id/run')
   async runGraph(
     @Param() params: EntityUUIDDto,
@@ -113,6 +115,7 @@ export class GraphsController {
     return await this.graphsService.destroy(contextDataStorage, params.id);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post(':graphId/triggers/:triggerId/execute')
   async executeTrigger(
     @Param('graphId') graphId: string,

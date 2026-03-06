@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 import { AgentsModule } from './v1/agents/agents.module';
 import { AiSuggestionsModule } from './v1/ai-suggestions/ai-suggestions.module';
@@ -20,6 +22,7 @@ import { ThreadsModule } from './v1/threads/threads.module';
 @Module({
   imports: [
     EventEmitterModule.forRoot(),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     CacheModule,
     RuntimeModule,
     AgentsModule,
@@ -37,6 +40,6 @@ import { ThreadsModule } from './v1/threads/threads.module';
     ThreadsModule,
   ],
   controllers: [],
-  providers: [],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}

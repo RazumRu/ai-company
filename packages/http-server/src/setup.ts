@@ -106,16 +106,31 @@ export const setupSwagger = (
   );
 };
 
+/**
+ * Parse a comma-separated CORS origin string into the value accepted by enableCors().
+ * '*' → '*' (allow all), empty/undefined → false (disabled), otherwise → string[].
+ */
+const parseCorsOrigin = (raw?: string): boolean | string | string[] => {
+  if (!raw || raw.trim() === '') return false;
+  if (raw.trim() === '*') return '*';
+  return raw
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+};
+
 export const setupMiddlewares = (
   app: INestApplication,
   {
     helmetOptions,
     compression,
     stripResponse = true,
+    corsOrigin,
   }: {
     helmetOptions?: Parameters<typeof helmet>[0];
     compression?: FastifyCompressOptions;
     stripResponse?: boolean;
+    corsOrigin?: string;
   },
 ) => {
   const serverApp = <NestFastifyApplication>app;
@@ -149,9 +164,10 @@ export const setupMiddlewares = (
     );
   }
 
+  const resolvedOrigin = parseCorsOrigin(corsOrigin ?? '*');
   serverApp.enableCors({
     methods: '*',
-    origin: '*',
+    origin: resolvedOrigin,
   });
   serverApp.use(helmet(helmetOptions || { contentSecurityPolicy: false }));
 
@@ -243,6 +259,7 @@ export const buildHttpNestApp = async (
     helmetOptions: params.helmetOptions,
     compression: params.compression,
     stripResponse: params.stripResponse,
+    corsOrigin: params.corsOrigin,
   });
 
   setupPrefix(app, {

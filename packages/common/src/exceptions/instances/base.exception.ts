@@ -1,5 +1,3 @@
-import { get } from 'lodash';
-
 import { EXCEPTION_CODES } from '../exceptions.codes';
 import { IExceptionData, IExceptionFieldError } from '../exceptions.types';
 
@@ -21,11 +19,8 @@ export class BaseException extends Error {
   ) {
     const description =
       data.description ||
-      get(
-        EXCEPTION_CODES,
-        errorCode,
-        `[${errorCode}] An exception has occurred`,
-      );
+      EXCEPTION_CODES[errorCode] ||
+      `[${errorCode}] An exception has occurred`;
     super(description);
 
     this.errorCode = errorCode;
@@ -45,7 +40,8 @@ export class BaseException extends Error {
   public getMessage(): string {
     return (
       this.data.description ||
-      get(EXCEPTION_CODES, this.code, `An exception has occurred`)
+      EXCEPTION_CODES[this.code] ||
+      `An exception has occurred`
     );
   }
 

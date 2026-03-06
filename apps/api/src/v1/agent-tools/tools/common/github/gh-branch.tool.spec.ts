@@ -162,14 +162,14 @@ describe('GhBranchTool', () => {
       expect((tool as any).execGhCommand).toHaveBeenCalledTimes(2);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'cd "/runtime-workspace/repo" && git checkout main' },
+        { cmd: `cd '/runtime-workspace/repo' && git checkout 'main'` },
         mockConfig,
         mockCfg,
       );
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         2,
         {
-          cmd: 'cd "/runtime-workspace/repo" && git checkout -b "feat/add-new-feature"',
+          cmd: `cd '/runtime-workspace/repo' && git checkout -b 'feat/add-new-feature'`,
         },
         mockConfig,
         mockCfg,
@@ -204,7 +204,7 @@ describe('GhBranchTool', () => {
       expect(result.branchName).toBe('fix/fix-bug');
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'cd "/runtime-workspace/repo" && git checkout develop' },
+        { cmd: `cd '/runtime-workspace/repo' && git checkout 'develop'` },
         mockConfig,
         mockCfg,
       );
@@ -439,7 +439,7 @@ describe('GhBranchTool', () => {
         expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
           2,
           {
-            cmd: `cd "/runtime-workspace/repo" && git checkout -b "${type}/test-branch"`,
+            cmd: `cd '/runtime-workspace/repo' && git checkout -b '${type}/test-branch'`,
           },
           mockConfig,
           mockCfg,
@@ -475,14 +475,14 @@ describe('GhBranchTool', () => {
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'cd "/path/to/repo" && git checkout main' },
+        { cmd: `cd '/path/to/repo' && git checkout 'main'` },
         mockConfig,
         mockCfg,
       );
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         2,
         {
-          cmd: 'cd "/path/to/repo" && git checkout -b "feat/add-new-feature"',
+          cmd: `cd '/path/to/repo' && git checkout -b 'feat/add-new-feature'`,
         },
         mockConfig,
         mockCfg,
@@ -515,7 +515,7 @@ describe('GhBranchTool', () => {
       expect(result.success).toBe(true);
       expect((tool as any).execGhCommand).toHaveBeenNthCalledWith(
         1,
-        { cmd: 'cd "/runtime-workspace/my-repo" && git checkout main' },
+        { cmd: `cd '/runtime-workspace/my-repo' && git checkout 'main'` },
         mockConfig,
         mockCfg,
       );

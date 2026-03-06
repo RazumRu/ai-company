@@ -24,6 +24,11 @@ export class SystemController {
     };
   }
 
+  /**
+   * Public endpoint (no @OnlyForAuthorized) — intentionally unauthenticated.
+   * Returns OIDC provider config needed by the frontend before login.
+   * Only expose non-sensitive values here (provider type, issuer URL, client ID).
+   */
   @Get('config')
   getAuthConfig(): AuthConfigResponseDto {
     const isZitadel = environment.authProvider === 'zitadel';

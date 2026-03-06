@@ -4,6 +4,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -139,8 +140,7 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
 
   private buildCommand(cmd: string, path?: string): string {
     if (path) {
-      const p = JSON.stringify(path);
-      return `cd ${p} && ${cmd}`;
+      return `cd ${shQuote(path)} && ${cmd}`;
     }
     return cmd;
   }
@@ -160,7 +160,10 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
     // First, checkout the base branch to ensure we're starting from the right point
     const checkoutBaseRes = await this.execGhCommand(
       {
-        cmd: this.buildCommand(`git checkout ${baseBranch}`, args.path),
+        cmd: this.buildCommand(
+          `git checkout ${shQuote(baseBranch)}`,
+          args.path,
+        ),
       },
       config,
       cfg,
@@ -180,7 +183,7 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
     const branchRes = await this.execGhCommand(
       {
         cmd: this.buildCommand(
-          `git checkout -b ${JSON.stringify(branchName)}`,
+          `git checkout -b ${shQuote(branchName)}`,
           args.path,
         ),
       },

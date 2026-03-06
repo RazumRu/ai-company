@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
+import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -94,8 +95,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
 
   private buildCommand(cmd: string, path?: string): string {
     if (path) {
-      const p = JSON.stringify(path);
-      return `cd ${p} && ${cmd}`;
+      return `cd ${shQuote(path)} && ${cmd}`;
     }
     return cmd;
   }
@@ -144,7 +144,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     const res = await this.execGhCommand(
       {
         cmd: this.buildCommand(
-          `git symbolic-ref refs/remotes/${remote}/HEAD`,
+          `git symbolic-ref ${shQuote('refs/remotes/' + remote + '/HEAD')}`,
           args.path,
         ),
       },
@@ -177,7 +177,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     const res = await this.execGhCommand(
       {
         cmd: this.buildCommand(
-          `git remote get-url ${JSON.stringify(remote)}`,
+          `git remote get-url ${shQuote(remote)}`,
           args.path,
         ),
       },
@@ -222,8 +222,8 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
     // Build git push command
     // Always use -u to set upstream tracking, which is required for newly created branches
     const pushCmd = args.branch
-      ? `git push -u ${JSON.stringify(remote)} ${JSON.stringify(args.branch)}`
-      : `git push -u ${JSON.stringify(remote)} HEAD`;
+      ? `git push -u ${shQuote(remote)} ${shQuote(args.branch)}`
+      : `git push -u ${shQuote(remote)} HEAD`;
 
     const pushRes = await this.execGhCommand(
       {

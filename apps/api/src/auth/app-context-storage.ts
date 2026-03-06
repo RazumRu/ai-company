@@ -6,6 +6,9 @@ import type { FastifyRequest } from 'fastify';
 export class AppContextStorage<
   T extends IContextData = IContextData,
 > extends AuthContextStorage<T> {
+  private static readonly UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   constructor(contextData: T | undefined, request: FastifyRequest) {
     super(contextData, request);
   }
@@ -21,6 +24,10 @@ export class AppContextStorage<
     const id = this.projectId;
     if (!id) {
       throw new UnauthorizedException('PROJECT_NOT_SELECTED');
+    }
+
+    if (!AppContextStorage.UUID_RE.test(id)) {
+      throw new UnauthorizedException('INVALID_PROJECT_ID');
     }
 
     return id;

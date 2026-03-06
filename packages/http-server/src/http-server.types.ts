@@ -20,6 +20,8 @@ export interface IHttpServerParams {
   // compression with @fastify/compress
   compression?: FastifyCompressOptions;
   stripResponse?: boolean;
+  /** Comma-separated allowed origins for CORS, or '*' for all. Empty string disables CORS. */
+  corsOrigin?: string;
 }
 
 export interface IRequestBodySummary {
