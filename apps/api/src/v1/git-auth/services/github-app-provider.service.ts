@@ -187,13 +187,6 @@ export class GitHubAppProviderService {
     );
 
     if (existing) {
-      try {
-        await this.gitHubAppService.deleteInstallation(installationId);
-      } catch (error) {
-        this.logger.warn(
-          `Failed to delete installation ${installationId} from GitHub: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
       await this.gitProviderConnectionDao.updateById(existing.id, {
         isActive: false,
       });
@@ -261,13 +254,6 @@ export class GitHubAppProviderService {
 
     for (const conn of connections) {
       const installationId = conn.metadata['installationId'] as number;
-      try {
-        await this.gitHubAppService.deleteInstallation(installationId);
-      } catch (error) {
-        this.logger.warn(
-          `Failed to delete installation ${installationId} from GitHub: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
       await this.gitProviderConnectionDao.updateById(conn.id, {
         isActive: false,
       });

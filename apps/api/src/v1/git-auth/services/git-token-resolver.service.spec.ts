@@ -90,6 +90,7 @@ describe('GitTokenResolverService', () => {
       );
 
       expect(result).toBeNull();
+      expect(mockConnectionDao.getOne).toHaveBeenCalledTimes(1);
     });
 
     it('should return null when App token generation fails and no fallback', async () => {
@@ -100,18 +101,6 @@ describe('GitTokenResolverService', () => {
       mockGitHubAppService.getInstallationToken.mockRejectedValue(
         new Error('Token generation failed'),
       );
-
-      const result = await service.resolveToken(
-        GitProvider.GitHub,
-        'my-org',
-        'user-1',
-      );
-
-      expect(result).toBeNull();
-    });
-
-    it('should return null when nothing is available', async () => {
-      mockConnectionDao.getOne.mockResolvedValue(null);
 
       const result = await service.resolveToken(
         GitProvider.GitHub,
@@ -146,22 +135,19 @@ describe('GitTokenResolverService', () => {
       expect(mockConnectionDao.getOne).not.toHaveBeenCalled();
     });
 
-    it('should fall back to any active connection when exact owner match is not found', async () => {
-      // First call (exact match) returns null
-      mockConnectionDao.getOne.mockResolvedValueOnce(null);
-      // Second call (fallback — any active connection) returns a connection
-      mockConnectionDao.getOne.mockResolvedValueOnce({
-        id: 'conn-2',
-        userId: 'user-1',
-        provider: GitProvider.GitHub,
-        accountLogin: 'other-org',
-        isActive: true,
-        metadata: { installationId: 99999, accountType: 'Organization' },
-      });
-      mockGitHubAppService.getInstallationToken.mockResolvedValue('fallback-token');
+    it('should return null when no exact owner match exists without falling back', async () => {
+      mockConnectionDao.getOne.mockResolvedValue(null);
 
       const result = await service.resolveToken(GitProvider.GitHub, 'unknown-owner', 'user-1');
-      expect(result).toEqual({ token: 'fallback-token', source: GitHubAuthMethod.GithubApp });
+
+      expect(result).toBeNull();
+      expect(mockConnectionDao.getOne).toHaveBeenCalledTimes(1);
+      expect(mockConnectionDao.getOne).toHaveBeenCalledWith({
+        userId: 'user-1',
+        provider: GitProvider.GitHub,
+        accountLogin: 'unknown-owner',
+        isActive: true,
+      });
     });
   });
 

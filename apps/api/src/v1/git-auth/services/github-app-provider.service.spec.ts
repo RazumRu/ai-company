@@ -309,7 +309,7 @@ describe('GitHubAppProviderService', () => {
   });
 
   describe('unlinkInstallation', () => {
-    it('should delete from GitHub, deactivate locally, and emit event', async () => {
+    it('should deactivate locally and emit event without calling GitHub delete', async () => {
       mockConnectionDao.getAll.mockResolvedValue([
         {
           id: 'record-1',
@@ -322,9 +322,7 @@ describe('GitHubAppProviderService', () => {
 
       const result = await service.unlinkInstallation('user-123', 12345);
 
-      expect(mockGitHubAppService.deleteInstallation).toHaveBeenCalledWith(
-        12345,
-      );
+      expect(mockGitHubAppService.deleteInstallation).not.toHaveBeenCalled();
       expect(mockConnectionDao.updateById).toHaveBeenCalledWith('record-1', {
         isActive: false,
       });
@@ -335,34 +333,6 @@ describe('GitHubAppProviderService', () => {
           provider: GitProvider.GitHub,
           connectionIds: ['record-1'],
           accountLogins: ['my-org'],
-          githubInstallationIds: [12345],
-        }),
-      );
-      expect(result).toEqual({ unlinked: true });
-    });
-
-    it('should still deactivate locally and emit event if GitHub deletion fails', async () => {
-      mockConnectionDao.getAll.mockResolvedValue([
-        {
-          id: 'record-1',
-          userId: 'user-123',
-          provider: GitProvider.GitHub,
-          accountLogin: 'my-org',
-          metadata: { installationId: 12345 },
-        } as unknown as GitProviderConnectionEntity,
-      ]);
-      mockGitHubAppService.deleteInstallation.mockRejectedValue(
-        new Error('GitHub API error'),
-      );
-
-      const result = await service.unlinkInstallation('user-123', 12345);
-
-      expect(mockConnectionDao.updateById).toHaveBeenCalledWith('record-1', {
-        isActive: false,
-      });
-      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-        INSTALLATION_UNLINKED_EVENT,
-        expect.objectContaining({
           githubInstallationIds: [12345],
         }),
       );
@@ -442,7 +412,7 @@ describe('GitHubAppProviderService', () => {
   });
 
   describe('disconnectAll', () => {
-    it('should delete all installations from GitHub, deactivate locally, and emit event', async () => {
+    it('should deactivate all connections locally and emit event without calling GitHub delete', async () => {
       mockConnectionDao.getAll.mockResolvedValue([
         { id: 'r1', accountLogin: 'org-a', metadata: { installationId: 100 } },
         { id: 'r2', accountLogin: 'org-b', metadata: { installationId: 200 } },
@@ -450,7 +420,7 @@ describe('GitHubAppProviderService', () => {
 
       const result = await service.disconnectAll('user-123');
 
-      expect(mockGitHubAppService.deleteInstallation).toHaveBeenCalledTimes(2);
+      expect(mockGitHubAppService.deleteInstallation).not.toHaveBeenCalled();
       expect(mockConnectionDao.updateById).toHaveBeenCalledTimes(2);
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         INSTALLATION_UNLINKED_EVENT,
@@ -459,27 +429,6 @@ describe('GitHubAppProviderService', () => {
           provider: GitProvider.GitHub,
           connectionIds: ['r1', 'r2'],
           accountLogins: ['org-a', 'org-b'],
-          githubInstallationIds: [100, 200],
-        }),
-      );
-      expect(result).toEqual({ unlinked: true });
-    });
-
-    it('should continue even if some GitHub deletions fail', async () => {
-      mockConnectionDao.getAll.mockResolvedValue([
-        { id: 'r1', accountLogin: 'org-a', metadata: { installationId: 100 } },
-        { id: 'r2', accountLogin: 'org-b', metadata: { installationId: 200 } },
-      ]);
-      mockGitHubAppService.deleteInstallation
-        .mockRejectedValueOnce(new Error('fail'))
-        .mockResolvedValueOnce(undefined);
-
-      const result = await service.disconnectAll('user-123');
-
-      expect(mockConnectionDao.updateById).toHaveBeenCalledTimes(2);
-      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
-        INSTALLATION_UNLINKED_EVENT,
-        expect.objectContaining({
           githubInstallationIds: [100, 200],
         }),
       );

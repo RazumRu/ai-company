@@ -125,7 +125,7 @@ export class GitHubAppService {
    * Exchange an OAuth authorization code for a user access token,
    * then return the user's installations of this GitHub App.
    *
-   * When `installationIdHint` is provided and all other discovery methods return empty,
+   * When `installationIdHint` is provided and the user-scoped list is empty,
    * fetches that specific installation via the app JWT and verifies the user has access
    * (user login or org membership must match the installation's account login).
    */
@@ -200,50 +200,9 @@ export class GitHubAppService {
       return userInstallations;
     }
 
-    // Fallback: use app-level JWT to list all installations of the app,
-    // filtered to only those belonging to the authenticated user's orgs or personal account.
-    // This handles the case where the user installed the app via a new tab
-    // without completing the OAuth user-authorization flow.
-    this.logger.warn(
-      'User-scoped installation list empty, falling back to app-level list',
-    );
-
-    // Resolve user identity and org memberships (needed for both fallback strategies)
-    const allowedLogins = await this.resolveAllowedLogins(userOctokit);
-
-    try {
-      const appJwt = this.generateJwt();
-      const appOctokit = new Octokit({ auth: appJwt });
-      const response = await appOctokit.apps.listInstallations();
-
-      this.logger.log(
-        `Total app installations: ${response.data.length}, accounts: ${response.data.map((i) => (i.account && 'login' in i.account ? String(i.account.login) : '(unknown)')).join(', ') || '(none)'}`,
-      );
-
-      const filtered = response.data
-        .filter((inst) => {
-          const login = inst.account && 'login' in inst.account
-            ? String(inst.account.login)
-            : '';
-          return login !== '' && allowedLogins.has(login.toLowerCase());
-        })
-        .map((inst) => this.mapInstallation(inst));
-
-      this.logger.log(
-        `Filtered to ${filtered.length} installations matching user orgs`,
-      );
-
-      if (filtered.length > 0) {
-        return filtered;
-      }
-    } catch (error) {
-      this.logger.error(
-        `App-level listInstallations fallback failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-
-    // Final fallback: if an installationId hint was provided, verify it directly
+    // If an installationId hint was provided, verify the user has access to it
     if (installationIdHint !== undefined) {
+      const allowedLogins = await this.resolveAllowedLogins(userOctokit);
       return this.verifyHintedInstallation(installationIdHint, allowedLogins);
     }
 
@@ -262,30 +221,6 @@ export class GitHubAppService {
     } catch (e) {
       this.logger.debug('Failed to fetch GitHub App slug', e);
       return null;
-    }
-  }
-
-  /**
-   * Delete a GitHub App installation from GitHub's side.
-   * This revokes all access the App had to the org/user repos.
-   */
-  async deleteInstallation(installationId: number): Promise<void> {
-    this.assertConfigured();
-
-    const appJwt = this.generateJwt();
-    const octokit = new Octokit({ auth: appJwt });
-
-    try {
-      await octokit.apps.deleteInstallation({
-        installation_id: installationId,
-      });
-    } catch (error) {
-      this.logger.error(
-        `Failed to delete GitHub App installation ${installationId}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      throw new BadRequestException('GITHUB_APP_INSTALLATION_DELETE_FAILED');
-    } finally {
-      this.tokenCache.delete(installationId);
     }
   }
 

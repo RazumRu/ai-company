@@ -51,38 +51,8 @@ export class GitTokenResolverService {
           return { token, source: GitHubAuthMethod.GithubApp };
         } catch (error) {
           this.logger.warn(
-            `Failed to get GitHub App token for owner ${owner}, falling back: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to get GitHub App token for owner ${owner}: ${error instanceof Error ? error.message : String(error)}`,
           );
-        }
-      }
-
-      // 2. Fallback: try any active installation for the user.
-      // The user may have a personal installation that also has access to
-      // org repos.
-      // GitHub's API will enforce actual repo access permissions.
-      if (!connection) {
-        const fallbackConnection = await this.gitProviderConnectionDao.getOne({
-          userId,
-          provider,
-          isActive: true,
-        });
-
-        if (fallbackConnection) {
-          try {
-            const installationId = fallbackConnection.metadata[
-              'installationId'
-            ] as number;
-            const token =
-              await this.gitHubAppService.getInstallationToken(installationId);
-            this.logger.log(
-              `No GitHub App installation for owner ${owner}, using fallback installation ${fallbackConnection.accountLogin}`,
-            );
-            return { token, source: GitHubAuthMethod.GithubApp };
-          } catch (error) {
-            this.logger.warn(
-              `Failed to get fallback GitHub App token for owner ${owner}: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
         }
       }
     }

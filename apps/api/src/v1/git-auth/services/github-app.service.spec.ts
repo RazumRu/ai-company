@@ -32,7 +32,6 @@ vi.mock('../../../environments', () => ({
 const mockCreateInstallationAccessToken = vi.fn();
 const mockGetInstallation = vi.fn();
 const mockGetAuthenticated = vi.fn();
-const mockDeleteInstallation = vi.fn();
 const mockListInstallationsForAuthenticatedUser = vi.fn();
 const mockListInstallations = vi.fn();
 const mockListForAuthenticatedUser = vi.fn();
@@ -44,7 +43,6 @@ vi.mock('@octokit/rest', () => {
       createInstallationAccessToken: mockCreateInstallationAccessToken,
       getInstallation: mockGetInstallation,
       getAuthenticated: mockGetAuthenticated,
-      deleteInstallation: mockDeleteInstallation,
       listInstallationsForAuthenticatedUser:
         mockListInstallationsForAuthenticatedUser,
       listInstallations: mockListInstallations,
@@ -213,72 +211,18 @@ describe('GitHubAppService', () => {
       expect(mockListInstallations).not.toHaveBeenCalled();
     });
 
-    it('should fall back to app-level listInstallations filtered by user orgs when user-scoped returns empty', async () => {
+    it('should return empty array when user-scoped returns empty and no hint is provided', async () => {
       mockListInstallationsForAuthenticatedUser.mockResolvedValue({
         data: { installations: [] },
       });
-      mockListForAuthenticatedUser.mockResolvedValue({
-        data: [{ login: 'org-three' }],
-      });
-      mockGetAuthenticatedUser.mockResolvedValue({
-        data: { login: 'my-user' },
-      });
-      mockListInstallations.mockResolvedValue({
-        data: [
-          { id: 300, account: { login: 'org-three', type: 'Organization' } },
-          { id: 301, account: { login: 'other-org', type: 'Organization' } },
-          { id: 302, account: { login: 'my-user', type: 'User' } },
-        ],
-      });
-
-      const result =
-        await service.exchangeCodeAndGetInstallations('test-code');
-
-      expect(mockListInstallationsForAuthenticatedUser).toHaveBeenCalledTimes(1);
-      expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
-        id: 300,
-        account: { login: 'org-three', type: 'Organization' },
-      });
-      expect(result[1]).toEqual({
-        id: 302,
-        account: { login: 'my-user', type: 'User' },
-      });
-      expect(mockListInstallations).toHaveBeenCalled();
-    });
-
-    it('should return empty array when both endpoints return empty', async () => {
-      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
-        data: { installations: [] },
-      });
-      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
-      mockGetAuthenticatedUser.mockResolvedValue({
-        data: { login: 'my-user' },
-      });
-      mockListInstallations.mockResolvedValue({ data: [] });
 
       const result =
         await service.exchangeCodeAndGetInstallations('test-code');
 
       expect(result).toEqual([]);
-    });
-
-    it('should return empty array when user-scoped is empty and app-level throws', async () => {
-      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
-        data: { installations: [] },
-      });
-      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
-      mockGetAuthenticatedUser.mockResolvedValue({
-        data: { login: 'my-user' },
-      });
-      mockListInstallations.mockRejectedValue(
-        new Error('App JWT auth failed'),
-      );
-
-      const result =
-        await service.exchangeCodeAndGetInstallations('test-code');
-
-      expect(result).toEqual([]);
+      expect(mockListInstallations).not.toHaveBeenCalled();
+      expect(mockListForAuthenticatedUser).not.toHaveBeenCalled();
+      expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
     });
 
     it('should throw GITHUB_APP_LIST_INSTALLATIONS_FAILED when user-scoped throws an error', async () => {
@@ -303,7 +247,7 @@ describe('GitHubAppService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should use installationId hint when all other methods return empty', async () => {
+    it('should use installationId hint when user-scoped returns empty', async () => {
       mockListInstallationsForAuthenticatedUser.mockResolvedValue({
         data: { installations: [] },
       });
@@ -313,7 +257,6 @@ describe('GitHubAppService', () => {
       mockGetAuthenticatedUser.mockResolvedValue({
         data: { login: 'my-user' },
       });
-      mockListInstallations.mockResolvedValue({ data: [] });
       mockGetInstallation.mockResolvedValue({
         data: {
           id: 55555,
@@ -331,6 +274,7 @@ describe('GitHubAppService', () => {
         id: 55555,
         account: { login: 'my-org', type: 'Organization' },
       });
+      expect(mockListInstallations).not.toHaveBeenCalled();
     });
 
     it('should throw ForbiddenException when hinted installation does not match user access', async () => {
@@ -341,7 +285,6 @@ describe('GitHubAppService', () => {
       mockGetAuthenticatedUser.mockResolvedValue({
         data: { login: 'my-user' },
       });
-      mockListInstallations.mockResolvedValue({ data: [] });
       mockGetInstallation.mockResolvedValue({
         data: {
           id: 99999,
@@ -376,21 +319,17 @@ describe('GitHubAppService', () => {
       expect(mockGetInstallation).not.toHaveBeenCalled();
     });
 
-    it('should return empty array when hint is not provided and all methods return empty', async () => {
+    it('should return empty array when hint is not provided and user-scoped returns empty', async () => {
       mockListInstallationsForAuthenticatedUser.mockResolvedValue({
         data: { installations: [] },
       });
-      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
-      mockGetAuthenticatedUser.mockResolvedValue({
-        data: { login: 'my-user' },
-      });
-      mockListInstallations.mockResolvedValue({ data: [] });
 
       const result =
         await service.exchangeCodeAndGetInstallations('test-code');
 
       expect(result).toEqual([]);
       expect(mockGetInstallation).not.toHaveBeenCalled();
+      expect(mockListInstallations).not.toHaveBeenCalled();
     });
   });
 
@@ -447,55 +386,6 @@ describe('GitHubAppService', () => {
     });
   });
 
-  describe('deleteInstallation', () => {
-    it('should delete installation and clear token cache on success', async () => {
-      mockCreateInstallationAccessToken.mockResolvedValue({
-        data: { token: 'ghs_cached_token' },
-      });
-      mockDeleteInstallation.mockResolvedValue(undefined);
-
-      // Populate the cache first
-      await service.getInstallationToken(12345);
-      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(1);
-
-      await service.deleteInstallation(12345);
-
-      expect(mockDeleteInstallation).toHaveBeenCalledWith({
-        installation_id: 12345,
-      });
-
-      // After deletion, the cache should be cleared — a fresh token fetch hits the API again
-      mockCreateInstallationAccessToken.mockResolvedValue({
-        data: { token: 'ghs_new_token' },
-      });
-      const newToken = await service.getInstallationToken(12345);
-      expect(newToken).toBe('ghs_new_token');
-      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(2);
-    });
-
-    it('should clear token cache even when GitHub API deletion fails', async () => {
-      mockCreateInstallationAccessToken.mockResolvedValue({
-        data: { token: 'ghs_cached_token' },
-      });
-      mockDeleteInstallation.mockRejectedValue(new Error('GitHub API error'));
-
-      // Populate the cache first
-      await service.getInstallationToken(12345);
-      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(1);
-
-      await expect(service.deleteInstallation(12345)).rejects.toThrow(
-        BadRequestException,
-      );
-
-      // Despite the failure, the cache entry should have been cleared
-      mockCreateInstallationAccessToken.mockResolvedValue({
-        data: { token: 'ghs_new_token' },
-      });
-      const newToken = await service.getInstallationToken(12345);
-      expect(newToken).toBe('ghs_new_token');
-      expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(2);
-    });
-  });
 });
 
 describe('GitHubAppService (unconfigured)', () => {

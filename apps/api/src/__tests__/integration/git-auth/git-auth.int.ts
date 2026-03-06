@@ -313,11 +313,7 @@ describe('Git Auth Integration Tests', () => {
   });
 
   describe('GitHubAppProviderService.disconnectAll()', () => {
-    it('marks all active connections as inactive and attempts GitHub deletion', async () => {
-      const deleteInstallationSpy = vi
-        .spyOn(gitHubAppService, 'deleteInstallation')
-        .mockResolvedValue(undefined);
-
+    it('marks all active connections as inactive without calling GitHub API', async () => {
       const conn1 = await createConnection({
         accountLogin: uniqueLogin('disconnect-org-1'),
         metadata: { installationId: 800001, accountType: 'Organization' },
@@ -332,8 +328,6 @@ describe('Git Auth Integration Tests', () => {
       );
 
       expect(result).toEqual({ unlinked: true });
-      expect(deleteInstallationSpy).toHaveBeenCalledWith(800001);
-      expect(deleteInstallationSpy).toHaveBeenCalledWith(800002);
 
       const updated1 = await gitProviderConnectionDao.getOne({
         id: conn1.id,
@@ -343,32 +337,6 @@ describe('Git Auth Integration Tests', () => {
       });
       expect(updated1!.isActive).toBe(false);
       expect(updated2!.isActive).toBe(false);
-
-      deleteInstallationSpy.mockRestore();
-    });
-
-    it('marks connections as inactive even when GitHub deletion fails', async () => {
-      const deleteInstallationSpy = vi
-        .spyOn(gitHubAppService, 'deleteInstallation')
-        .mockRejectedValue(
-          new BadRequestException('GITHUB_APP_INSTALLATION_DELETE_FAILED'),
-        );
-
-      const conn = await createConnection({
-        accountLogin: uniqueLogin('disconnect-fail-org'),
-        metadata: { installationId: 800003, accountType: 'Organization' },
-      });
-
-      const result = await gitHubAppProviderService.disconnectAll(
-        TEST_USER_ID,
-      );
-
-      expect(result).toEqual({ unlinked: true });
-
-      const updated = await gitProviderConnectionDao.getOne({ id: conn.id });
-      expect(updated!.isActive).toBe(false);
-
-      deleteInstallationSpy.mockRestore();
     });
   });
 });
