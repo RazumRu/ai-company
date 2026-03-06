@@ -98,6 +98,25 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Remove all stale active jobs from the queue. Call on startup before
+   * re-adding recovery jobs to avoid race conditions with stalled detection.
+   */
+  async cleanStaleActiveJobs(): Promise<void> {
+    try {
+      const cleaned = await this.queue.clean(0, 100, 'active');
+      if (cleaned.length > 0) {
+        this.logger.debug('Cleaned stale active jobs from queue', {
+          count: cleaned.length,
+        });
+      }
+    } catch (err) {
+      this.logger.warn('Failed to clean stale active jobs', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
    * Add a job to the queue. If a job with the same ID already exists:
    * - If waiting/delayed: skip (already queued)
    * - If active: try to move to failed (orphaned from previous server), then re-add

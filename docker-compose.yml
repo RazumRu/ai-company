@@ -130,9 +130,15 @@ services:
     image: daytonaio/daytona-api:v0.149.0
     profiles:
       - daytona
+    restart: on-failure
     networks:
       - daytona
       - geniro-infra
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
     environment:
       - PORT=3986
       # Database (shared geniro_ai network — access via container name)
@@ -198,6 +204,7 @@ services:
     image: daytonaio/daytona-runner:v0.149.0
     profiles:
       - daytona
+    restart: on-failure
     privileged: true
     networks:
       - daytona

@@ -172,6 +172,10 @@ export class RepoIndexService implements OnModuleInit {
         count: incompleteJobs.length,
       });
 
+      // Clean stale active jobs from the previous worker before re-adding,
+      // otherwise BullMQ's stalled detection races with the new jobs.
+      await this.repoIndexQueueService.cleanStaleActiveJobs();
+
       for (const index of incompleteJobs) {
         // Reset to Pending (in case it was InProgress when server died)
         await this.repoIndexDao.updateById(index.id, {

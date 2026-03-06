@@ -1364,10 +1364,15 @@ export class RepoIndexerService {
       return null;
     }
 
+    // Replace lone surrogates (U+D800–U+DFFF) with the replacement character.
+    // They can appear when head -c cuts a file mid-multibyte-sequence, or from
+    // certain non-UTF-8 encodings. JSON.stringify / Qdrant rejects them outright.
+    const sanitizedContent = content.toWellFormed();
+
     return {
       relativePath,
-      content,
-      fileHash: this.hash(content),
+      content: sanitizedContent,
+      fileHash: this.hash(sanitizedContent),
     };
   }
 
@@ -1444,7 +1449,9 @@ export class RepoIndexerService {
 
       const startOffset = charOffset(startToken);
       const endOffset = charOffset(endToken);
-      const text = content.slice(startOffset, endOffset);
+      // toWellFormed() replaces lone surrogates that can appear when the
+      // token-boundary offset splits a multi-code-unit character (e.g. emoji).
+      const text = content.slice(startOffset, endOffset).toWellFormed();
       const startLine = this.lineForOffset(lineStarts, startOffset);
       const endLine = this.lineForOffset(
         lineStarts,

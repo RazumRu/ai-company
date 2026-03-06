@@ -1258,6 +1258,102 @@ describe('RepoIndexerService', () => {
     });
   });
 
+  describe('prepareFileIndexInput surrogate sanitization (via runFullIndex)', () => {
+    /**
+     * prepareFileIndexInput is private, so we test it indirectly through
+     * runFullIndex. The mock execFn returns surrogate-containing content from
+     * the `head -c` call, and we assert on the text stored in upsertPoints.
+     */
+
+    const baseParams = {
+      repoId: 'https://github.com/owner/repo',
+      repoRoot: '/workspace/repo',
+      currentCommit: 'abc123',
+      collection: 'codebase_test_main_3',
+      vectorSize: 3,
+      embeddingModel: 'text-embedding-3-small',
+    };
+
+    const makeExecFn = (fileContent: string): RepoExecFn =>
+      vi.fn().mockImplementation(async (params: { cmd: string }) => {
+        if (params.cmd.includes('ls-files')) {
+          return { exitCode: 0, stdout: 'src/file.ts\n', stderr: '' };
+        }
+        if (params.cmd.includes('.codebaseindexignore')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (params.cmd.includes('head -c')) {
+          return { exitCode: 0, stdout: fileContent, stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      });
+
+    beforeEach(() => {
+      mockQdrantService.scrollAll.mockResolvedValue([]);
+      mockQdrantService.raw.scroll.mockResolvedValue({
+        points: [],
+        next_page_offset: null,
+      });
+      mockOpenaiService.embeddings.mockResolvedValue({
+        embeddings: [[0.1, 0.2, 0.3]],
+        usage: null,
+      });
+    });
+
+    it('replaces a lone high surrogate with U+FFFD in the indexed payload text', async () => {
+      // U+D83D is a high surrogate not followed by a low surrogate
+      const loneHighSurrogate = '\uD83D';
+      const rawContent = `before${loneHighSurrogate}after`;
+      const expectedContent = 'before\uFFFDafter';
+
+      await service.runFullIndex(baseParams, makeExecFn(rawContent));
+
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalledWith(
+        baseParams.collection,
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({ text: expectedContent }),
+          }),
+        ]),
+      );
+    });
+
+    it('replaces a lone low surrogate with U+FFFD in the indexed payload text', async () => {
+      // U+DC00 is a low surrogate not preceded by a high surrogate
+      const loneLowSurrogate = '\uDC00';
+      const rawContent = `before${loneLowSurrogate}after`;
+      const expectedContent = 'before\uFFFDafter';
+
+      await service.runFullIndex(baseParams, makeExecFn(rawContent));
+
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalledWith(
+        baseParams.collection,
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({ text: expectedContent }),
+          }),
+        ]),
+      );
+    });
+
+    it('passes a valid surrogate pair through unchanged', async () => {
+      // U+D83D + U+DE00 forms the valid emoji 😀 (U+1F600)
+      const validSurrogatePair = '\uD83D\uDE00';
+      const rawContent = `hello ${validSurrogatePair} world`;
+
+      await service.runFullIndex(baseParams, makeExecFn(rawContent));
+
+      expect(mockQdrantService.upsertPoints).toHaveBeenCalledWith(
+        baseParams.collection,
+        expect.arrayContaining([
+          expect.objectContaining({
+            payload: expect.objectContaining({ text: rawContent }),
+          }),
+        ]),
+      );
+    });
+  });
+
   describe('withTimeout', () => {
     it('returns the result when exec completes before timeout', async () => {
       const execFn: RepoExecFn = vi.fn().mockResolvedValue({

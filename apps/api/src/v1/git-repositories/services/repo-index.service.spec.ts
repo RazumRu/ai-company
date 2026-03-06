@@ -75,6 +75,7 @@ const mockRepoIndexQueueService = {
   setCallbacks: vi.fn(),
   addIndexJob: vi.fn().mockResolvedValue(undefined),
   removeJob: vi.fn().mockResolvedValue(undefined),
+  cleanStaleActiveJobs: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockLlmModelsService = {
