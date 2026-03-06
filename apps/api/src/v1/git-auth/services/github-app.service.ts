@@ -139,6 +139,7 @@ export class GitHubAppService {
   async exchangeCodeAndGetInstallations(
     code: string,
     userId?: string,
+    hintedInstallationId?: number,
   ): Promise<MappedInstallation[]> {
     const clientId = environment.githubAppClientId;
     const clientSecret = environment.githubAppClientSecret;
@@ -202,6 +203,16 @@ export class GitHubAppService {
 
     if (userInstallations.length > 0) {
       return userInstallations;
+    }
+
+    if (hintedInstallationId) {
+      const hintedInstallation = await this.findInstallationByHint(
+        userOctokit,
+        hintedInstallationId,
+      );
+      if (hintedInstallation) {
+        return [hintedInstallation];
+      }
     }
 
     // Fallback: targeted lookup by previously-linked logins
@@ -274,6 +285,40 @@ export class GitHubAppService {
           `Unexpected error looking up installation for ${login}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
+      return null;
+    }
+  }
+
+  /**
+   * Verify that the authenticated GitHub user can access the hinted installation
+   * via the user token before trusting the installation ID from the callback.
+   */
+  private async findInstallationByHint(
+    userOctokit: Octokit,
+    installationId: number,
+  ): Promise<MappedInstallation | null> {
+    try {
+      await userOctokit.request(
+        'GET /user/installations/{installation_id}/repositories',
+        {
+          installation_id: installationId,
+          per_page: 1,
+        },
+      );
+
+      return await this.getInstallation(installationId);
+    } catch (error) {
+      const status =
+        error instanceof Object && 'status' in error
+          ? (error as { status: number }).status
+          : undefined;
+
+      if (status !== 404 && status !== 403) {
+        this.logger.warn(
+          `Unexpected error validating hinted installation ${installationId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
       return null;
     }
   }

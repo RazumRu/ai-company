@@ -140,7 +140,7 @@ export class GitRepositoriesService {
       order: { createdAt: 'DESC' },
     };
 
-    if (projectId) {
+    if (projectId && query.installationId === undefined) {
       searchParams.projectId = projectId;
     }
 
@@ -427,7 +427,16 @@ export class GitRepositoriesService {
   private async performSync(userId: string): Promise<SyncRepositoriesResponse> {
     const installations = await this.gitHubAppProviderService.getActiveInstallations(userId);
 
+    this.logger.log(
+      `[git-sync] user=${userId} active_installations=${installations.length} installation_ids=${installations
+        .map((installation) => installation.metadata['installationId'] as number)
+        .join(',') || '(none)'}`,
+    );
+
     if (installations.length === 0) {
+      this.logger.log(
+        `[git-sync] user=${userId} no active installations, returning empty sync result`,
+      );
       return { synced: 0, removed: 0, total: 0 };
     }
 
@@ -442,9 +451,15 @@ export class GitRepositoriesService {
 
     for (const installation of installations) {
       const ghInstallationId = installation.metadata['installationId'] as number;
+      this.logger.log(
+        `[git-sync] user=${userId} installation=${ghInstallationId} account=${installation.accountLogin} starting sync`,
+      );
       let token: string;
       try {
         token = await this.gitHubAppService.getInstallationToken(ghInstallationId);
+        this.logger.log(
+          `[git-sync] user=${userId} installation=${ghInstallationId} token fetched successfully`,
+        );
       } catch (err) {
         this.logger.warn(
           `Installation ${ghInstallationId} token fetch failed, auto-deactivating: ${err instanceof Error ? err.message : String(err)}`,
@@ -458,6 +473,7 @@ export class GitRepositoriesService {
 
       let page = 1;
       let totalCount = 0;
+      let installationAccessible = true;
 
       do {
         const response = await fetch(
@@ -471,12 +487,28 @@ export class GitRepositoriesService {
           },
         );
 
-        if (response.status === 403) {
+        this.logger.log(
+          `[git-sync] user=${userId} installation=${ghInstallationId} page=${page} github_status=${response.status}`,
+        );
+
+        const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+        if (
+          response.status === 429 ||
+          (response.status === 403 && rateLimitRemaining === '0')
+        ) {
           throw new InternalException('GITHUB_RATE_LIMITED');
         }
 
         if (!response.ok) {
-          throw new InternalException('GITHUB_SYNC_FAILED');
+          this.logger.warn(
+            `Installation ${ghInstallationId} repository listing failed with status ${response.status}, auto-deactivating`,
+          );
+          await this.gitHubAppProviderService.deactivateByInstallationId(
+            userId,
+            ghInstallationId,
+          );
+          installationAccessible = false;
+          break;
         }
 
         const data = (await response.json()) as {
@@ -490,6 +522,9 @@ export class GitRepositoriesService {
         };
 
         totalCount = data.total_count;
+        this.logger.log(
+          `[git-sync] user=${userId} installation=${ghInstallationId} page=${page} repositories_received=${data.repositories.length} total_count=${data.total_count}`,
+        );
 
         for (const ghRepo of data.repositories) {
           allGithubRepos.push({
@@ -504,6 +539,14 @@ export class GitRepositoriesService {
         if (data.repositories.length < 100) break;
         page++;
       } while (allGithubRepos.length < totalCount);
+
+      if (!installationAccessible) {
+        continue;
+      }
+
+      this.logger.log(
+        `[git-sync] user=${userId} installation=${ghInstallationId} completed sync pass`,
+      );
     }
 
     if (allGithubRepos.length > 0) {
@@ -541,6 +584,10 @@ export class GitRepositoriesService {
     }
 
     const total = await this.gitRepositoriesDao.count({ createdBy: userId });
+
+    this.logger.log(
+      `[git-sync] user=${userId} sync complete synced=${allGithubRepos.length} removed=${toRemove.length} total=${total}`,
+    );
 
     return {
       synced: allGithubRepos.length,

@@ -122,6 +122,7 @@ describe('GitRepositoriesService', () => {
         {
           provide: DefaultLogger,
           useValue: {
+            log: vi.fn(),
             debug: vi.fn(),
             warn: vi.fn(),
             error: vi.fn(),
@@ -306,6 +307,29 @@ describe('GitRepositoriesService', () => {
           installationId: 12345,
         }),
       );
+    });
+
+    it('should omit projectId filter when installationId is provided', async () => {
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+
+      const query: GetRepositoriesQueryDto = {
+        limit: 50,
+        offset: 0,
+        installationId: 12345,
+      };
+
+      await service.getRepositories(mockCtx, query);
+
+      expect(dao.getAll).toHaveBeenCalledWith({
+        createdBy: mockUserId,
+        owner: undefined,
+        repo: undefined,
+        provider: undefined,
+        installationId: 12345,
+        limit: 50,
+        offset: 0,
+        order: { createdAt: 'DESC' },
+      });
     });
   });
 
@@ -883,6 +907,98 @@ describe('GitRepositoriesService', () => {
       );
       expect(dao.upsertGithubSyncRepos).toHaveBeenCalledTimes(1);
       expect(result).toEqual({ synced: 1, removed: 0, total: 1 });
+    });
+
+    it('auto-deactivates installation when repository listing returns not found during sync', async () => {
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
+        mockInstallation as any,
+      ]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
+        'ghs_token123',
+      );
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 404,
+        headers: { get: () => null },
+      } as unknown as Response);
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(dao, 'count').mockResolvedValue(0);
+
+      const result = await service.syncRepositories(mockCtx);
+
+      expect(
+        gitHubAppProviderService.deactivateByInstallationId,
+      ).toHaveBeenCalledWith(mockUserId, 12345);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('repository listing failed with status 404'),
+      );
+      expect(result).toEqual({ synced: 0, removed: 0, total: 0 });
+    });
+
+    it('continues syncing healthy installations when another installation listing is inaccessible', async () => {
+      const deadInstallation = {
+        ...mockInstallation,
+        id: 'install-dead',
+        metadata: { installationId: 99999, accountType: 'Organization' },
+      };
+      const healthyInstallation = {
+        ...mockInstallation,
+        id: 'install-healthy',
+        metadata: { installationId: 12345, accountType: 'User' },
+      };
+
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
+        deadInstallation as any,
+        healthyInstallation as any,
+      ]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken')
+        .mockResolvedValueOnce('ghs_dead_token')
+        .mockResolvedValueOnce('ghs_token123');
+      vi.spyOn(global, 'fetch')
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          headers: { get: () => '10' },
+        } as unknown as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ total_count: 1, repositories: [mockGithubRepo] }),
+          headers: { get: () => null },
+        } as unknown as Response);
+      vi.spyOn(dao, 'upsertGithubSyncRepos').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'restoreSoftDeleted').mockResolvedValue(undefined);
+      vi.spyOn(dao, 'getAll').mockResolvedValue([]);
+      vi.spyOn(dao, 'count').mockResolvedValue(1);
+
+      const result = await service.syncRepositories(mockCtx);
+
+      expect(
+        gitHubAppProviderService.deactivateByInstallationId,
+      ).toHaveBeenCalledWith(mockUserId, 99999);
+      expect(dao.upsertGithubSyncRepos).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ synced: 1, removed: 0, total: 1 });
+    });
+
+    it('throws when GitHub rate limits repository listing', async () => {
+      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
+        mockInstallation as any,
+      ]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
+        'ghs_token123',
+      );
+      vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: false,
+        status: 403,
+        headers: { get: (name: string) => (name === 'x-ratelimit-remaining' ? '0' : null) },
+      } as unknown as Response);
+
+      await expect(service.syncRepositories(mockCtx)).rejects.toThrow(
+        'GITHUB_RATE_LIMITED',
+      );
+      expect(
+        gitHubAppProviderService.deactivateByInstallationId,
+      ).not.toHaveBeenCalled();
     });
 
     it('does not trigger indexing after successful sync', async () => {

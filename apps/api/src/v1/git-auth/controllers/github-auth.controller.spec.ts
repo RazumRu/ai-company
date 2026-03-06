@@ -53,7 +53,7 @@ describe('GitHubAuthController', () => {
   describe('linkViaOAuthCode', () => {
     it('should extract userId and delegate to the provider service', async () => {
       const result = await controller.linkViaOAuthCode(
-        { code: 'auth-code' } as any,
+        { code: 'auth-code', installationId: 321 } as any,
         mockCtx as any,
       );
 
@@ -61,6 +61,7 @@ describe('GitHubAuthController', () => {
       expect(mockProviderService.linkViaOAuthCode).toHaveBeenCalledWith(
         'user-123',
         'auth-code',
+        321,
       );
       expect(result.linked).toBe(true);
     });

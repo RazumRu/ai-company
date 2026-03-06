@@ -32,6 +32,7 @@ const mockGetAuthenticated = vi.fn();
 const mockListInstallationsForAuthenticatedUser = vi.fn();
 const mockGetOrgInstallation = vi.fn();
 const mockGetUserInstallation = vi.fn();
+const mockOctokitRequest = vi.fn();
 
 vi.mock('@octokit/rest', () => {
   class MockOctokit {
@@ -44,6 +45,8 @@ vi.mock('@octokit/rest', () => {
       getOrgInstallation: mockGetOrgInstallation,
       getUserInstallation: mockGetUserInstallation,
     };
+
+    request = mockOctokitRequest;
 
   }
   return { Octokit: MockOctokit };
@@ -218,6 +221,59 @@ describe('GitHubAppService', () => {
         await service.exchangeCodeAndGetInstallations('test-code');
 
       expect(result).toEqual([]);
+    });
+
+    it('should accept a hinted installation after validating it with the user token', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockOctokitRequest.mockResolvedValue({
+        data: { total_count: 0, repositories: [] },
+      });
+      mockGetInstallation.mockResolvedValue({
+        data: {
+          id: 777,
+          account: { login: 'fresh-org', type: 'Organization' },
+        },
+      });
+
+      const result = await service.exchangeCodeAndGetInstallations(
+        'test-code',
+        undefined,
+        777,
+      );
+
+      expect(mockOctokitRequest).toHaveBeenCalledWith(
+        'GET /user/installations/{installation_id}/repositories',
+        {
+          installation_id: 777,
+          per_page: 1,
+        },
+      );
+      expect(result).toEqual([
+        {
+          id: 777,
+          account: { login: 'fresh-org', type: 'Organization' },
+        },
+      ]);
+    });
+
+    it('should ignore a hinted installation when the user token cannot validate access', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockOctokitRequest.mockRejectedValue(
+        Object.assign(new Error('Forbidden'), { status: 403 }),
+      );
+
+      const result = await service.exchangeCodeAndGetInstallations(
+        'test-code',
+        undefined,
+        777,
+      );
+
+      expect(result).toEqual([]);
+      expect(mockGetInstallation).not.toHaveBeenCalled();
     });
 
     it('should throw GITHUB_APP_LIST_INSTALLATIONS_FAILED when user-scoped throws an error', async () => {

@@ -120,6 +120,18 @@ describe('GitHubAppProviderService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('should forward an installation hint to GitHubAppService', async () => {
+      mockGitHubAppService.exchangeCodeAndGetInstallations.mockResolvedValue([
+        { id: 100, account: { login: 'org-a', type: 'Organization' } },
+      ]);
+
+      await service.linkViaOAuthCode('user-123', 'code', 100);
+
+      expect(
+        mockGitHubAppService.exchangeCodeAndGetInstallations,
+      ).toHaveBeenCalledWith('code', 'user-123', 100);
+    });
+
     it('should link all accessible installations', async () => {
       mockGitHubAppService.exchangeCodeAndGetInstallations.mockResolvedValue([
         { id: 100, account: { login: 'org-a', type: 'Organization' } },

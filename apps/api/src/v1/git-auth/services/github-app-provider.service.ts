@@ -54,13 +54,17 @@ export class GitHubAppProviderService {
   async linkViaOAuthCode(
     userId: string,
     code: string,
+    installationId?: number,
   ): Promise<LinkInstallationResponse> {
     this.logger.log(
-      `Exchanging OAuth code for installations (code length: ${code.length})`,
+      `Exchanging OAuth code for installations (code length: ${code.length}, installation hint: ${installationId ?? 'none'})`,
     );
 
-    const installations =
-      await this.gitHubAppService.exchangeCodeAndGetInstallations(code, userId);
+    const installations = await this.gitHubAppService.exchangeCodeAndGetInstallations(
+      code,
+      userId,
+      installationId,
+    );
 
     this.logger.log(
       `Received ${installations.length} installations from OAuth code exchange`,
