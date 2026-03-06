@@ -129,26 +129,9 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     return GhCloneToolSchema;
   }
 
-  public async invoke(
-    args: GhCloneToolSchemaType,
-    config: GhBaseToolConfig,
-    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
-  ): Promise<ToolInvokeResult<GhCloneToolOutput>> {
-    const title = this.generateTitle?.(args, config);
-    const messageMetadata = { __title: title };
-
-    const cmd = [
-      `gh repo clone ${shQuote(args.owner + '/' + args.repo)}`,
-    ];
-
-    // Add workdir if specified
-    if (args.workdir) {
-      cmd.push(shQuote(args.workdir));
-    }
-
-    if (args.branch || args.depth) {
-      cmd.push('--');
-    }
+  private buildCloneInnerCommand(args: GhCloneToolSchemaType): string {
+    const repoUrl = `https://github.com/${args.owner}/${args.repo}.git`;
+    const cmd: string[] = ['git clone --progress'];
 
     if (args.branch) {
       cmd.push(`--branch ${shQuote(args.branch)}`);
@@ -158,14 +141,88 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       cmd.push(`--depth ${args.depth}`);
     }
 
-    const res = await this.execGhCommand(
+    cmd.push(shQuote(repoUrl));
+
+    if (args.workdir) {
+      cmd.push(shQuote(args.workdir));
+    }
+
+    return cmd.join(' ');
+  }
+
+  private buildCloneCommand(
+    args: GhCloneToolSchemaType,
+    authenticated: boolean,
+  ): string {
+    const cloneCommand = this.buildCloneInnerCommand(args);
+    const authPrefix = authenticated
+      ? 'auth_header=$(printf "x-access-token:%s" "$GH_TOKEN" | base64 | tr -d "\\n")'
+      : '';
+    const authConfig = authenticated
+      ? 'git -c http.extraHeader="Authorization: Basic $auth_header"'
+      : 'git';
+    const cloneInvocation = cloneCommand.replace(/^git\b/, authConfig);
+    const heartbeatLabel = `${args.owner}/${args.repo}`;
+
+    const script = [
+      'set -o pipefail',
+      authPrefix,
+      `( ${cloneInvocation} 2>&1 | perl -pe 's/\\r/\\n/g' ) & clone_pid=$!`,
+      `while kill -0 "$clone_pid" 2>/dev/null; do echo "[clone-heartbeat] ${heartbeatLabel} $(date -Iseconds)" >&2; sleep 5; done`,
+      'wait "$clone_pid"',
+    ]
+      .filter(Boolean)
+      .join('; ');
+
+    return `bash -lc ${shQuote(script)}`;
+  }
+
+  public async invoke(
+    args: GhCloneToolSchemaType,
+    config: GhBaseToolConfig,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  ): Promise<ToolInvokeResult<GhCloneToolOutput>> {
+    const title = this.generateTitle?.(args, config);
+    const messageMetadata = { __title: title };
+
+    // Resolve token once. Clone uses prompt-disabled git over HTTPS; when a token
+    // is available we inject it via an Authorization header, otherwise we clone
+    // anonymously for public repos. Both paths use a synthetic heartbeat so long
+    // silent git phases do not trip Daytona's 60s inactivity timeout.
+    let resolvedToken: string | null = null;
+    try {
+      resolvedToken = await this.resolveToken(config, args.owner);
+    } catch {
+      // No token available — resolvedToken stays null
+    }
+
+    let res = await this.execGhCommand(
       {
-        cmd: cmd.join(' '),
+        cmd: resolvedToken
+          ? this.buildCloneCommand(args, true)
+          : this.buildCloneCommand(args, false),
         owner: args.owner,
+        resolvedToken,
       },
       config,
       cfg,
     );
+
+    if (res.exitCode !== 0 && resolvedToken) {
+      this.logger.warn(
+        `Authenticated clone failed for ${args.owner}/${args.repo}, retrying anonymously: ${res.stderr || res.stdout || 'unknown error'}`,
+      );
+
+      res = await this.execGhCommand(
+        {
+          cmd: this.buildCloneCommand(args, false),
+          owner: args.owner,
+          resolvedToken: null,
+        },
+        config,
+        cfg,
+      );
+    }
 
     if (res.exitCode !== 0) {
       return {

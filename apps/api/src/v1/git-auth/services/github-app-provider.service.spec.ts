@@ -165,27 +165,6 @@ describe('GitHubAppProviderService', () => {
       });
     });
 
-    it('should pass installationId hint to exchangeCodeAndGetInstallations', async () => {
-      mockGitHubAppService.exchangeCodeAndGetInstallations.mockResolvedValue([
-        { id: 42000, account: { login: 'hint-org', type: 'Organization' } },
-      ]);
-
-      const result = await service.linkViaOAuthCode(
-        'user-123',
-        'code',
-        42000,
-      );
-
-      expect(
-        mockGitHubAppService.exchangeCodeAndGetInstallations,
-      ).toHaveBeenCalledWith('code', 42000);
-      expect(result).toEqual({
-        linked: true,
-        accountLogin: 'hint-org',
-        accountType: 'Organization',
-      });
-    });
-
     it('should throw NO_ACCESSIBLE_INSTALLATIONS when all installations fail token generation', async () => {
       mockGitHubAppService.exchangeCodeAndGetInstallations.mockResolvedValue([
         { id: 100, account: { login: 'org-a', type: 'Organization' } },

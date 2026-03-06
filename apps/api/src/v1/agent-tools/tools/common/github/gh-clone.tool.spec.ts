@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
+import { GitRepositoryEntity } from '../../../../git-repositories/entity/git-repository.entity';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { GhBaseToolConfig } from './gh-base.tool';
 import { GhCloneTool, GhCloneToolSchemaType } from './gh-clone.tool';
@@ -115,7 +116,7 @@ describe('GhCloneTool', () => {
 
       vi.spyOn(mockGitRepositoriesDao, 'getOne').mockResolvedValue({
         id: 'existing-id',
-      } as any);
+      } as Partial<GitRepositoryEntity> as GitRepositoryEntity);
 
       await tool.invoke(args, mockConfig, mockCfg);
 
@@ -125,6 +126,86 @@ describe('GhCloneTool', () => {
           url: 'https://github.com/octocat/Hello-World.git',
         }),
       );
+    });
+
+    it('should use git clone when no token is available', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+      };
+
+      const noTokenConfig: GhBaseToolConfig = {
+        runtimeProvider: mockConfig.runtimeProvider,
+        resolveTokenForOwner: vi.fn().mockResolvedValue(null),
+      };
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      await tool.invoke(args, noTokenConfig, mockCfg);
+
+      expect(execGhCommandSpy).toHaveBeenCalled();
+      const firstCallParams = execGhCommandSpy.mock.calls[0]![0] as {
+        cmd: string;
+        resolvedToken: string | null;
+      };
+      expect(firstCallParams.cmd).toContain('git clone');
+      expect(firstCallParams.cmd).not.toContain('gh repo clone');
+      expect(firstCallParams.cmd).toContain('[clone-heartbeat]');
+      expect(firstCallParams.resolvedToken).toBeNull();
+    });
+
+    it('should retry with git clone when authenticated clone fails', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(undefined);
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValueOnce({
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Repository not granted to installation',
+          execPath: '/runtime-workspace/test-thread-123',
+        })
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      expect(execGhCommandSpy).toHaveBeenCalledTimes(2);
+
+      const firstCallParams = execGhCommandSpy.mock.calls[0]![0] as {
+        cmd: string;
+        resolvedToken: string | null;
+      };
+      expect(firstCallParams.cmd).toContain(' clone --progress ');
+      expect(firstCallParams.cmd).toContain('http.extraHeader');
+      expect(firstCallParams.cmd).toContain('[clone-heartbeat]');
+      expect(firstCallParams.resolvedToken).toBe('ghp_test_token');
+
+      const secondCallParams = execGhCommandSpy.mock.calls[1]![0] as {
+        cmd: string;
+        resolvedToken: string | null;
+      };
+      expect(secondCallParams.cmd).toContain('git clone');
+      expect(secondCallParams.cmd).not.toContain('gh repo clone');
+      expect(secondCallParams.cmd).toContain('[clone-heartbeat]');
+      expect(secondCallParams.resolvedToken).toBeNull();
     });
   });
 });

@@ -140,6 +140,22 @@ describe('DaytonaRuntime', () => {
       });
     }
 
+    function mockStreamingLogsWithoutSnapshots() {
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+          _onStderr?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({});
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+    }
+
     beforeEach(() => {
       vi.useFakeTimers();
     });
@@ -470,6 +486,22 @@ describe('DaytonaRuntime', () => {
   });
 
   describe('async session exec — timeout and abort scenarios', () => {
+    function mockStreamingLogsWithoutSnapshots() {
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+          _onStderr?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({});
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+    }
+
     beforeEach(() => {
       vi.useFakeTimers();
       mockSandbox.process.createSession.mockResolvedValue(undefined);
@@ -507,9 +539,7 @@ describe('DaytonaRuntime', () => {
         cmdId: 'cmd-2',
       });
       // Log stream never calls callbacks (no output)
-      mockSandbox.process.getSessionCommandLogs.mockReturnValue(
-        new Promise(() => {}),
-      );
+      mockStreamingLogsWithoutSnapshots();
       // Command never completes
       mockSandbox.process.getSessionCommand.mockResolvedValue({
         id: 'cmd-2',
@@ -546,6 +576,9 @@ describe('DaytonaRuntime', () => {
           _cmdId: string,
           onStdout: (chunk: string) => void,
         ) => {
+          if (!onStdout) {
+            return Promise.resolve({});
+          }
           const outputInterval = setInterval(() => {
             onStdout('output chunk\n');
           }, 5000);
@@ -591,6 +624,9 @@ describe('DaytonaRuntime', () => {
           _cmdId: string,
           onStdout: (chunk: string) => void,
         ) => {
+          if (!onStdout) {
+            return Promise.resolve({});
+          }
           const outputInterval = setInterval(() => {
             onStdout('keep alive\n');
           }, 3000);
@@ -622,9 +658,7 @@ describe('DaytonaRuntime', () => {
       mockSandbox.process.executeSessionCommand.mockResolvedValue({
         cmdId: 'cmd-5',
       });
-      mockSandbox.process.getSessionCommandLogs.mockReturnValue(
-        new Promise(() => {}),
-      );
+      mockStreamingLogsWithoutSnapshots();
       mockSandbox.process.getSessionCommand.mockResolvedValue({
         id: 'cmd-5',
         command: 'test',
@@ -660,9 +694,12 @@ describe('DaytonaRuntime', () => {
       mockSandbox.process.getSessionCommandLogs.mockImplementation(
         (
           _sessionId: string,
-          _cmdId: string,
-          onStdout: (chunk: string) => void,
-        ) => {
+        _cmdId: string,
+        onStdout: (chunk: string) => void,
+      ) => {
+          if (!onStdout) {
+            return Promise.resolve({ stdout: 'partial output\n', stderr: '' });
+          }
           // Emit output immediately so stdoutChunks has content
           onStdout('partial output\n');
           return new Promise<void>(() => {}).catch(() => {});
@@ -798,9 +835,7 @@ describe('DaytonaRuntime', () => {
         cmdId: 'cmd-8',
       });
       // No output produced
-      mockSandbox.process.getSessionCommandLogs.mockReturnValue(
-        new Promise(() => {}),
-      );
+      mockStreamingLogsWithoutSnapshots();
       // Command never completes
       mockSandbox.process.getSessionCommand.mockResolvedValue({
         id: 'cmd-8',

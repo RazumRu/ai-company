@@ -1,11 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  DefaultLogger,
-  ForbiddenException,
-} from '@packages/common';
+import { BadRequestException, DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
 import { GitHubAppService } from './github-app.service';
 
 // Mock jsonwebtoken
@@ -33,9 +30,8 @@ const mockCreateInstallationAccessToken = vi.fn();
 const mockGetInstallation = vi.fn();
 const mockGetAuthenticated = vi.fn();
 const mockListInstallationsForAuthenticatedUser = vi.fn();
-const mockListInstallations = vi.fn();
-const mockListForAuthenticatedUser = vi.fn();
-const mockGetAuthenticatedUser = vi.fn();
+const mockGetOrgInstallation = vi.fn();
+const mockGetUserInstallation = vi.fn();
 
 vi.mock('@octokit/rest', () => {
   class MockOctokit {
@@ -45,25 +41,22 @@ vi.mock('@octokit/rest', () => {
       getAuthenticated: mockGetAuthenticated,
       listInstallationsForAuthenticatedUser:
         mockListInstallationsForAuthenticatedUser,
-      listInstallations: mockListInstallations,
+      getOrgInstallation: mockGetOrgInstallation,
+      getUserInstallation: mockGetUserInstallation,
     };
 
-    orgs = {
-      listForAuthenticatedUser: mockListForAuthenticatedUser,
-    };
-
-    users = {
-      getAuthenticated: mockGetAuthenticatedUser,
-    };
   }
   return { Octokit: MockOctokit };
 });
+
+const mockDaoGetAll = vi.fn();
 
 describe('GitHubAppService', () => {
   let service: GitHubAppService;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockDaoGetAll.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -75,6 +68,12 @@ describe('GitHubAppService', () => {
             warn: vi.fn(),
             error: vi.fn(),
             debug: vi.fn(),
+          },
+        },
+        {
+          provide: GitProviderConnectionDao,
+          useValue: {
+            getAll: mockDaoGetAll,
           },
         },
       ],
@@ -208,7 +207,6 @@ describe('GitHubAppService', () => {
         id: 200,
         account: { login: 'user-two', type: 'User' },
       });
-      expect(mockListInstallations).not.toHaveBeenCalled();
     });
 
     it('should return empty array when user-scoped returns empty and no hint is provided', async () => {
@@ -220,9 +218,6 @@ describe('GitHubAppService', () => {
         await service.exchangeCodeAndGetInstallations('test-code');
 
       expect(result).toEqual([]);
-      expect(mockListInstallations).not.toHaveBeenCalled();
-      expect(mockListForAuthenticatedUser).not.toHaveBeenCalled();
-      expect(mockGetAuthenticatedUser).not.toHaveBeenCalled();
     });
 
     it('should throw GITHUB_APP_LIST_INSTALLATIONS_FAILED when user-scoped throws an error', async () => {
@@ -233,8 +228,6 @@ describe('GitHubAppService', () => {
       await expect(
         service.exchangeCodeAndGetInstallations('test-code'),
       ).rejects.toThrow(BadRequestException);
-
-      expect(mockListInstallations).not.toHaveBeenCalled();
     });
 
     it('should throw GITHUB_OAUTH_TOKEN_EXCHANGE_FAILED when token exchange returns error', async () => {
@@ -247,89 +240,130 @@ describe('GitHubAppService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should use installationId hint when user-scoped returns empty', async () => {
+    it('should fall back to targeted lookup when user-scoped returns empty', async () => {
       mockListInstallationsForAuthenticatedUser.mockResolvedValue({
         data: { installations: [] },
       });
-      mockListForAuthenticatedUser.mockResolvedValue({
-        data: [{ login: 'my-org' }],
-      });
-      mockGetAuthenticatedUser.mockResolvedValue({
-        data: { login: 'my-user' },
-      });
-      mockGetInstallation.mockResolvedValue({
+      mockDaoGetAll.mockResolvedValue([
+        {
+          id: 'conn-1',
+          accountLogin: 'my-org',
+          metadata: { accountType: 'Organization', installationId: 111 },
+          isActive: false,
+        },
+        {
+          id: 'conn-2',
+          accountLogin: 'my-user',
+          metadata: { accountType: 'User', installationId: 222 },
+          isActive: true,
+        },
+      ]);
+      mockGetOrgInstallation.mockResolvedValue({
         data: {
-          id: 55555,
+          id: 111,
+          account: { login: 'my-org', type: 'Organization' },
+        },
+      });
+      mockGetUserInstallation.mockResolvedValue({
+        data: {
+          id: 222,
+          account: { login: 'my-user', type: 'User' },
+        },
+      });
+
+      const result = await service.exchangeCodeAndGetInstallations(
+        'test-code',
+        'user-123',
+      );
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 111,
+        account: { login: 'my-org', type: 'Organization' },
+      });
+      expect(result[1]).toEqual({
+        id: 222,
+        account: { login: 'my-user', type: 'User' },
+      });
+      expect(mockGetOrgInstallation).toHaveBeenCalledWith({ org: 'my-org' });
+      expect(mockGetUserInstallation).toHaveBeenCalledWith({
+        username: 'my-user',
+      });
+    });
+
+    it('should handle 404 gracefully in targeted lookup when app is uninstalled', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockDaoGetAll.mockResolvedValue([
+        {
+          id: 'conn-1',
+          accountLogin: 'removed-org',
+          metadata: { accountType: 'Organization', installationId: 333 },
+          isActive: false,
+        },
+      ]);
+      mockGetOrgInstallation.mockRejectedValue(
+        Object.assign(new Error('Not Found'), { status: 404 }),
+      );
+
+      const result = await service.exchangeCodeAndGetInstallations(
+        'test-code',
+        'user-123',
+      );
+
+      expect(result).toEqual([]);
+      expect(mockGetOrgInstallation).toHaveBeenCalledWith({
+        org: 'removed-org',
+      });
+    });
+
+    it('should return empty when all fallbacks are exhausted', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockDaoGetAll.mockResolvedValue([]);
+
+      const result = await service.exchangeCodeAndGetInstallations(
+        'test-code',
+        'user-123',
+      );
+
+      expect(result).toEqual([]);
+    });
+
+    it('should deduplicate logins in targeted lookup', async () => {
+      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
+        data: { installations: [] },
+      });
+      mockDaoGetAll.mockResolvedValue([
+        {
+          id: 'conn-1',
+          accountLogin: 'my-org',
+          metadata: { accountType: 'Organization', installationId: 111 },
+          isActive: true,
+        },
+        {
+          id: 'conn-2',
+          accountLogin: 'my-org',
+          metadata: { accountType: 'Organization', installationId: 111 },
+          isActive: false,
+        },
+      ]);
+      mockGetOrgInstallation.mockResolvedValue({
+        data: {
+          id: 111,
           account: { login: 'my-org', type: 'Organization' },
         },
       });
 
       const result = await service.exchangeCodeAndGetInstallations(
         'test-code',
-        55555,
+        'user-123',
       );
 
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual({
-        id: 55555,
-        account: { login: 'my-org', type: 'Organization' },
-      });
-      expect(mockListInstallations).not.toHaveBeenCalled();
-    });
-
-    it('should throw ForbiddenException when hinted installation does not match user access', async () => {
-      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
-        data: { installations: [] },
-      });
-      mockListForAuthenticatedUser.mockResolvedValue({ data: [] });
-      mockGetAuthenticatedUser.mockResolvedValue({
-        data: { login: 'my-user' },
-      });
-      mockGetInstallation.mockResolvedValue({
-        data: {
-          id: 99999,
-          account: { login: 'foreign-org', type: 'Organization' },
-        },
-      });
-
-      await expect(
-        service.exchangeCodeAndGetInstallations('test-code', 99999),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should not use installationId hint when user-scoped list returns results', async () => {
-      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
-        data: {
-          installations: [
-            {
-              id: 100,
-              account: { login: 'org-one', type: 'Organization' },
-            },
-          ],
-        },
-      });
-
-      const result = await service.exchangeCodeAndGetInstallations(
-        'test-code',
-        99999,
-      );
-
-      expect(result).toHaveLength(1);
-      expect(result[0]!.id).toBe(100);
-      expect(mockGetInstallation).not.toHaveBeenCalled();
-    });
-
-    it('should return empty array when hint is not provided and user-scoped returns empty', async () => {
-      mockListInstallationsForAuthenticatedUser.mockResolvedValue({
-        data: { installations: [] },
-      });
-
-      const result =
-        await service.exchangeCodeAndGetInstallations('test-code');
-
-      expect(result).toEqual([]);
-      expect(mockGetInstallation).not.toHaveBeenCalled();
-      expect(mockListInstallations).not.toHaveBeenCalled();
+      expect(mockGetOrgInstallation).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -409,6 +443,12 @@ describe('GitHubAppService (unconfigured)', () => {
             warn: vi.fn(),
             error: vi.fn(),
             debug: vi.fn(),
+          },
+        },
+        {
+          provide: GitProviderConnectionDao,
+          useValue: {
+            getAll: vi.fn().mockResolvedValue([]),
           },
         },
       ],

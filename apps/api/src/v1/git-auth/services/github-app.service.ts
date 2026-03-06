@@ -1,13 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Octokit } from '@octokit/rest';
-import {
-  BadRequestException,
-  DefaultLogger,
-  ForbiddenException,
-} from '@packages/common';
+import { BadRequestException, DefaultLogger } from '@packages/common';
 import jwt from 'jsonwebtoken';
 
 import { environment } from '../../../environments';
+import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
+import { GitProvider } from '../types/git-provider.enum';
 
 const TOKEN_CACHE_TTL_MS = 55 * 60 * 1000; // 55 minutes (tokens last ~1 hour)
 const JWT_EXPIRY_SECONDS = 10 * 60; // 10 minutes
@@ -17,12 +15,20 @@ interface CachedToken {
   expiresAt: number;
 }
 
+interface MappedInstallation {
+  id: number;
+  account: { login: string; type: string };
+}
+
 @Injectable()
 export class GitHubAppService {
   private readonly tokenCache = new Map<number, CachedToken>();
   private appSlug: string | null = null;
 
-  constructor(private readonly logger: DefaultLogger) {}
+  constructor(
+    private readonly logger: DefaultLogger,
+    private readonly gitProviderConnectionDao: GitProviderConnectionDao,
+  ) {}
 
   isConfigured(): boolean {
     return (
@@ -87,7 +93,7 @@ export class GitHubAppService {
 
   async getInstallation(
     installationId: number,
-  ): Promise<{ id: number; account: { login: string; type: string } }> {
+  ): Promise<MappedInstallation> {
     this.assertConfigured();
 
     const appJwt = this.generateJwt();
@@ -125,14 +131,15 @@ export class GitHubAppService {
    * Exchange an OAuth authorization code for a user access token,
    * then return the user's installations of this GitHub App.
    *
-   * When `installationIdHint` is provided and the user-scoped list is empty,
-   * fetches that specific installation via the app JWT and verifies the user has access
-   * (user login or org membership must match the installation's account login).
+   * Fallback chain when the user-scoped list is empty:
+   * 1. If `userId` provided: look up previously-linked logins from the DB
+   *    and query GitHub for each via targeted API calls
+   * 2. Return `[]`
    */
   async exchangeCodeAndGetInstallations(
     code: string,
-    installationIdHint?: number,
-  ): Promise<{ id: number; account: { login: string; type: string } }[]> {
+    userId?: string,
+  ): Promise<MappedInstallation[]> {
     const clientId = environment.githubAppClientId;
     const clientSecret = environment.githubAppClientSecret;
 
@@ -175,10 +182,7 @@ export class GitHubAppService {
     // Get user's installations for this app
     const userOctokit = new Octokit({ auth: tokenData.access_token });
 
-    let userInstallations: {
-      id: number;
-      account: { login: string; type: string };
-    }[] = [];
+    let userInstallations: MappedInstallation[] = [];
 
     try {
       const response =
@@ -200,10 +204,13 @@ export class GitHubAppService {
       return userInstallations;
     }
 
-    // If an installationId hint was provided, verify the user has access to it
-    if (installationIdHint !== undefined) {
-      const allowedLogins = await this.resolveAllowedLogins(userOctokit);
-      return this.verifyHintedInstallation(installationIdHint, allowedLogins);
+    // Fallback: targeted lookup by previously-linked logins
+    if (userId) {
+      const knownInstallations =
+        await this.findInstallationsByKnownLogins(userId);
+      if (knownInstallations.length > 0) {
+        return knownInstallations;
+      }
     }
 
     return [];
@@ -230,80 +237,105 @@ export class GitHubAppService {
   }
 
   /**
-   * Resolve the set of GitHub logins (lowercase) that the authenticated user
-   * is allowed to access — their own login plus all org memberships.
+   * Look up a single installation by account login using the app JWT.
+   * Returns null if the app is not installed for that account (404).
    */
-  private async resolveAllowedLogins(
-    userOctokit: Octokit,
-  ): Promise<Set<string>> {
-    const [userOrgsResponse, authenticatedUserResponse] = await Promise.all([
-      userOctokit.orgs.listForAuthenticatedUser(),
-      userOctokit.users.getAuthenticated(),
-    ]);
+  private async findInstallationForLogin(
+    login: string,
+    accountType: string,
+  ): Promise<MappedInstallation | null> {
+    try {
+      const appJwt = this.generateJwt();
+      const octokit = new Octokit({ auth: appJwt });
 
-    const userLogin = authenticatedUserResponse.data.login;
-    const userOrgs = userOrgsResponse.data.map((org) => org.login);
-    this.logger.log(`Authenticated user: ${userLogin}`);
-    this.logger.log(`User orgs: ${userOrgs.join(', ') || '(none)'}`);
+      const response =
+        accountType === 'Organization'
+          ? await octokit.apps.getOrgInstallation({ org: login })
+          : await octokit.apps.getUserInstallation({ username: login });
 
-    const allowedLogins = new Set(
-      userOrgs.map((login) => login.toLowerCase()),
-    );
-    allowedLogins.add(userLogin.toLowerCase());
-    this.logger.log(`Allowed logins: ${[...allowedLogins].join(', ')}`);
-
-    return allowedLogins;
+      const account = response.data.account;
+      return {
+        id: response.data.id,
+        account: {
+          login:
+            account && 'login' in account
+              ? (account.login ?? '')
+              : '',
+          type:
+            account && 'type' in account
+              ? (account.type ?? '')
+              : '',
+        },
+      };
+    } catch (error: unknown) {
+      const status = error instanceof Object && 'status' in error ? (error as { status: number }).status : undefined;
+      if (status !== 404) {
+        this.logger.warn(
+          `Unexpected error looking up installation for ${login}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return null;
+    }
   }
 
   /**
-   * Verify a specific installation ID hint by fetching it via app JWT and
-   * checking the account login against the user's allowed logins.
+   * Query previously-linked logins from the DB and check whether the GitHub App
+   * is still installed for each one via targeted API calls.
    */
-  private async verifyHintedInstallation(
-    installationId: number,
-    allowedLogins: Set<string>,
-  ): Promise<{ id: number; account: { login: string; type: string } }[]> {
-    this.logger.log(
-      `Using provided installationId hint: ${installationId}`,
-    );
+  private async findInstallationsByKnownLogins(
+    userId: string,
+  ): Promise<MappedInstallation[]> {
+    const connections = await this.gitProviderConnectionDao.getAll({
+      userId,
+      provider: GitProvider.GitHub,
+    });
 
-    try {
-      const installation = await this.getInstallation(installationId);
-      const installationLogin = installation.account.login.toLowerCase();
-
-      this.logger.log(
-        `Hinted installation ${installationId} belongs to account: ${installation.account.login}`,
-      );
-
-      if (!allowedLogins.has(installationLogin)) {
-        this.logger.warn(
-          `User does not have access to installation ${installationId} (account: ${installation.account.login}). Allowed logins: ${[...allowedLogins].join(', ')}`,
-        );
-        throw new ForbiddenException(
-          'INSTALLATION_ACCESS_DENIED',
-        );
-      }
-
-      this.logger.log(
-        `Verified user access to hinted installation ${installationId} (account: ${installation.account.login})`,
-      );
-
-      return [installation];
-    } catch (error) {
-      if (error instanceof ForbiddenException) {
-        throw error;
-      }
-      this.logger.error(
-        `Failed to verify hinted installation ${installationId}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    if (connections.length === 0) {
       return [];
     }
+
+    // Deduplicate by accountLogin
+    const uniqueLogins = new Map<
+      string,
+      { login: string; accountType: string }
+    >();
+    for (const conn of connections) {
+      if (!uniqueLogins.has(conn.accountLogin)) {
+        uniqueLogins.set(conn.accountLogin, {
+          login: conn.accountLogin,
+          accountType: (conn.metadata['accountType'] as string) || 'User',
+        });
+      }
+    }
+
+    this.logger.log(
+      `Targeted lookup for ${uniqueLogins.size} known login(s): ${[...uniqueLogins.keys()].join(', ')}`,
+    );
+
+    const results = await Promise.allSettled(
+      [...uniqueLogins.values()].map(({ login, accountType }) =>
+        this.findInstallationForLogin(login, accountType),
+      ),
+    );
+
+    const installations: MappedInstallation[] = [];
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value !== null) {
+        installations.push(result.value);
+      }
+    }
+
+    this.logger.log(
+      `Targeted lookup found ${installations.length} active installation(s)`,
+    );
+
+    return installations;
   }
 
   private mapInstallation(inst: {
     id: number;
     account?: Record<string, unknown> | null;
-  }): { id: number; account: { login: string; type: string } } {
+  }): MappedInstallation {
     const account = inst.account;
     return {
       id: inst.id,

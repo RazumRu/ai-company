@@ -389,12 +389,43 @@ export class DaytonaRuntime extends BaseRuntime {
     const hardMs = Math.min(params.timeoutMs ?? HARD_TIMEOUT_MS, HARD_TIMEOUT_MS);
     const startAt = Date.now();
     let lastOutputAt = Date.now();
-    const stdoutChunks: string[] = [];
-    const stderrChunks: string[] = [];
+    let stdout = '';
+    let stderr = '';
+    let observedStdoutLength = 0;
+    let observedStderrLength = 0;
     let streamActive = true;
+    let pollInFlight = false;
 
     return new Promise<RuntimeExecResult>((resolve) => {
       let settled = false;
+
+      const syncLogs = async () => {
+        try {
+          const logs = (await this.sandbox!.process.getSessionCommandLogs(
+            sessionId,
+            cmdId,
+          )) as { stdout?: string; stderr?: string };
+
+          const nextStdout = logs.stdout ?? '';
+          const nextStderr = logs.stderr ?? '';
+          const stdoutGrew = nextStdout.length > observedStdoutLength;
+          const stderrGrew = nextStderr.length > observedStderrLength;
+
+          if (stdoutGrew) {
+            stdout = nextStdout;
+            observedStdoutLength = nextStdout.length;
+          }
+          if (stderrGrew) {
+            stderr = nextStderr;
+            observedStderrLength = nextStderr.length;
+          }
+          if (stdoutGrew || stderrGrew) {
+            lastOutputAt = Date.now();
+          }
+        } catch {
+          // Snapshot fetch is best-effort; streaming callbacks or later polls may still succeed.
+        }
+      };
 
       const settle = (result: RuntimeExecResult) => {
         if (settled) return;
@@ -424,12 +455,14 @@ export class DaytonaRuntime extends BaseRuntime {
           cmdId,
           (chunk: string) => {
             if (!streamActive) return;
-            stdoutChunks.push(chunk);
+            stdout += chunk;
+            observedStdoutLength = stdout.length;
             lastOutputAt = Date.now();
           },
           (chunk: string) => {
             if (!streamActive) return;
-            stderrChunks.push(chunk);
+            stderr += chunk;
+            observedStderrLength = stderr.length;
             lastOutputAt = Date.now();
           },
         )
@@ -443,21 +476,7 @@ export class DaytonaRuntime extends BaseRuntime {
             );
             if (typeof cmd.exitCode === 'number') {
               const finalExitCode = cmd.exitCode;
-              let stdout = stdoutChunks.join('');
-              let stderr = stderrChunks.join('');
-              try {
-                // Safety net: fetch complete logs one more time in case any chunks
-                // were not yet delivered to the streaming callbacks by the time the
-                // stream promise resolved (mirrors the same fetch in the polling path).
-                const logs = (await this.sandbox!.process.getSessionCommandLogs(
-                  sessionId,
-                  cmdId,
-                )) as { stdout?: string; stderr?: string };
-                if (logs.stdout) stdout = logs.stdout;
-                if (logs.stderr) stderr = logs.stderr;
-              } catch {
-                // Fallback to whatever the stream collected
-              }
+              await syncLogs();
               settle({
                 exitCode: finalExitCode,
                 stdout,
@@ -471,11 +490,11 @@ export class DaytonaRuntime extends BaseRuntime {
             // cmdId not found — command completed and was already cleaned up by Daytona
           }
           // Exit code not retrievable. Infer: non-empty stderr → failure (exit 1).
-          const exitCode = stderrChunks.length > 0 ? 1 : 0;
+          const exitCode = stderr.length > 0 ? 1 : 0;
           settle({
             exitCode,
-            stdout: stdoutChunks.join(''),
-            stderr: stderrChunks.join(''),
+            stdout,
+            stderr,
             fail: exitCode !== 0,
             execPath: fullWorkdir,
           });
@@ -485,66 +504,62 @@ export class DaytonaRuntime extends BaseRuntime {
         });
 
       const check = setInterval(() => {
+        if (pollInFlight || settled) {
+          return;
+        }
+        pollInFlight = true;
+
         // Abort signal — synchronous check at the top of each tick
-        if (params.signal?.aborted) {
-          settleWithRecreate({
-            exitCode: 124,
-            stdout: stdoutChunks.join(''),
-            stderr: 'Aborted',
-            fail: true,
-            execPath: fullWorkdir,
-          });
-          return;
-        }
+        void (async () => {
+          try {
+            if (params.signal?.aborted) {
+              settleWithRecreate({
+                exitCode: 124,
+                stdout,
+                stderr: 'Aborted',
+                fail: true,
+                execPath: fullWorkdir,
+              });
+              return;
+            }
 
-        const now = Date.now();
+            await syncLogs();
 
-        // Idle timeout — no output for IDLE_TIMEOUT_MS
-        if (now - lastOutputAt >= IDLE_TIMEOUT_MS) {
-          settleWithRecreate({
-            exitCode: 124,
-            stdout: stdoutChunks.join(''),
-            stderr: `Idle timeout: no output for ${IDLE_TIMEOUT_MS / 1000}s`,
-            fail: true,
-            execPath: fullWorkdir,
-          });
-          return;
-        }
+            const now = Date.now();
 
-        // Hard timeout — wall-clock limit exceeded
-        if (now - startAt >= hardMs) {
-          settleWithRecreate({
-            exitCode: 124,
-            stdout: stdoutChunks.join(''),
-            stderr: `Hard timeout: command exceeded ${hardMs / 1000}s`,
-            fail: true,
-            execPath: fullWorkdir,
-          });
-          return;
-        }
+            // Idle timeout — no output for IDLE_TIMEOUT_MS
+            if (now - lastOutputAt >= IDLE_TIMEOUT_MS) {
+              settleWithRecreate({
+                exitCode: 124,
+                stdout,
+                stderr: `Idle timeout: no output for ${IDLE_TIMEOUT_MS / 1000}s`,
+                fail: true,
+                execPath: fullWorkdir,
+              });
+              return;
+            }
 
-        // Poll command status — async, errors caught silently
-        this.sandbox!.process.getSessionCommand(sessionId, cmdId)
-          .then(async (cmd) => {
+            // Hard timeout — wall-clock limit exceeded
+            if (now - startAt >= hardMs) {
+              settleWithRecreate({
+                exitCode: 124,
+                stdout,
+                stderr: `Hard timeout: command exceeded ${hardMs / 1000}s`,
+                fail: true,
+                execPath: fullWorkdir,
+              });
+              return;
+            }
+
+            const cmd = await this.sandbox!.process.getSessionCommand(
+              sessionId,
+              cmdId,
+            );
             if (typeof cmd.exitCode === 'number') {
               const finalExitCode = cmd.exitCode;
               clearInterval(check);
               streamActive = false;
-
-              // Fetch complete logs synchronously to avoid race with streaming callbacks.
-              // The streaming getSessionCommandLogs may not have delivered all chunks yet.
-              let stdout = stdoutChunks.join('');
-              let stderr = stderrChunks.join('');
-              try {
-                const logs = await this.sandbox!.process.getSessionCommandLogs(
-                  sessionId,
-                  cmdId,
-                ) as { stdout?: string; stderr?: string };
-                if (logs.stdout) stdout = logs.stdout;
-                if (logs.stderr) stderr = logs.stderr;
-              } catch {
-                // Fallback to whatever the stream collected
-              }
+              await syncLogs();
 
               settle({
                 exitCode: finalExitCode,
@@ -554,10 +569,12 @@ export class DaytonaRuntime extends BaseRuntime {
                 execPath: fullWorkdir,
               });
             }
-          })
-          .catch(() => {
+          } catch {
             // Transient poll failures should not crash the loop — polling continues.
-          });
+          } finally {
+            pollInFlight = false;
+          }
+        })();
       }, 2000);
     });
   }

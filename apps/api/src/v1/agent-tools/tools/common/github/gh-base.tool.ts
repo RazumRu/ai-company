@@ -46,7 +46,7 @@ export abstract class GhBaseTool<
   }
 
   protected async execGhCommand(
-    params: { cmd: string[] | string; owner?: string },
+    params: { cmd: string[] | string; owner?: string; resolvedToken?: string | null },
     config: GhBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
@@ -54,13 +54,29 @@ export abstract class GhBaseTool<
       const runtime = await config.runtimeProvider.provide(cfg);
 
       // Resolve a token for GH_TOKEN injection.
-      const env: Record<string, string> = { GIT_TERMINAL_PROMPT: '0' };
-      try {
-        const token = await this.resolveToken(config, params.owner);
-        env.GH_TOKEN = token;
-      } catch {
-        // No token available — GIT_TERMINAL_PROMPT=0 ensures git fails immediately
-        // rather than waiting for an interactive credential prompt.
+      // When `resolvedToken` is provided (even null meaning "no token"), use it
+      // directly to avoid a redundant resolveToken call. When it is undefined
+      // (not provided), fall back to the internal resolveToken call for
+      // backwards-compatible callers (e.g. detectDefaultBranch, findAgentInstructions).
+      const env: Record<string, string> = {
+        GIT_TERMINAL_PROMPT: '0',
+        GIT_ASKPASS: '/bin/false',
+        SSH_ASKPASS: '/bin/false',
+        GH_PROMPT_DISABLED: '1',
+        GCM_INTERACTIVE: 'never',
+      };
+      if (params.resolvedToken !== undefined) {
+        if (params.resolvedToken !== null) {
+          env.GH_TOKEN = params.resolvedToken;
+        }
+        // null means "no token" — GH_TOKEN is intentionally omitted.
+      } else {
+        try {
+          const token = await this.resolveToken(config, params.owner);
+          env.GH_TOKEN = token;
+        } catch {
+          // No token available — plain git/find/cat commands work fine without GH_TOKEN.
+        }
       }
 
       const res = await execRuntimeWithContext(
