@@ -1,5 +1,6 @@
 import type { ToolRunnableConfig } from '@langchain/core/tools';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { EventEmitter } from 'events';
@@ -9,10 +10,12 @@ import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import type { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
 import { RuntimeStartParams } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { DaytonaRuntime } from '../../runtime/services/daytona-runtime';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
 import { IMcpServerConfig, McpStatus } from '../agent-mcp.types';
 import { BaseMcpTool } from './base-mcp-tool';
+import { DaytonaExecTransport } from './daytona-exec-transport';
 import { DockerExecTransport } from './docker-exec-transport';
 
 export type McpInitializeEvent = {
@@ -145,14 +148,31 @@ export abstract class BaseMcp<TConfig = unknown> {
       await this.ensureDockerDaemonReady(runtime);
     }
 
-    // Initialize transport using DockerRuntime.execStream
-    const transport = new DockerExecTransport(
-      () => runtime,
-      mcpConfig.command,
-      mcpConfig.args,
-      mcpConfig.env || {},
-      this.logger,
-    );
+    // Initialize transport based on runtime type
+    let transport: Transport;
+    if (runtime instanceof DaytonaRuntime) {
+      const sandbox = runtime.getSandbox();
+      if (!sandbox) {
+        throw new Error(
+          'Daytona runtime not started — cannot create MCP transport',
+        );
+      }
+      transport = new DaytonaExecTransport(
+        sandbox,
+        mcpConfig.command,
+        mcpConfig.args,
+        mcpConfig.env || {},
+        this.logger,
+      );
+    } else {
+      transport = new DockerExecTransport(
+        () => runtime,
+        mcpConfig.command,
+        mcpConfig.args,
+        mcpConfig.env || {},
+        this.logger,
+      );
+    }
 
     const client = new Client(
       {
@@ -280,7 +300,7 @@ export abstract class BaseMcp<TConfig = unknown> {
    */
   private async connectWithTimeout(
     client: Client,
-    transport: DockerExecTransport,
+    transport: Transport,
     timeoutMs: number,
   ): Promise<void> {
     let timer: ReturnType<typeof setTimeout> | undefined;

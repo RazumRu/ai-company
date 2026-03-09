@@ -1,6 +1,7 @@
 import { Duplex, PassThrough } from 'node:stream';
 
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { DefaultLogger } from '@packages/common';
 
 import { BaseRuntime } from '../../runtime/services/base-runtime';
@@ -21,7 +22,7 @@ export class DockerExecTransport implements Transport {
   private isConnected = false;
   onclose?: () => void;
   onerror?: (error: Error) => void;
-  onmessage?: (message: unknown) => void;
+  onmessage?: (message: JSONRPCMessage) => void;
 
   private appendStderrTail(chunk: Buffer, maxBytes = 64 * 1024): void {
     const next = chunk.toString('utf8');
@@ -90,7 +91,7 @@ export class DockerExecTransport implements Transport {
       for (const line of lines) {
         if (line.trim()) {
           try {
-            const message = JSON.parse(line) as unknown;
+            const message = JSON.parse(line) as JSONRPCMessage;
             this.sawAnyMessage = true;
             if (this.onmessage) {
               this.onmessage(message);
@@ -130,7 +131,7 @@ export class DockerExecTransport implements Transport {
     this.isConnected = true;
   }
 
-  public send(message: unknown): Promise<void> {
+  public send(message: JSONRPCMessage): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.isConnected || !this.stdin) {
         reject(new Error('Transport not connected'));

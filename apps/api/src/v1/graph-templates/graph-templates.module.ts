@@ -17,6 +17,7 @@ import { TemplateRegistry } from './services/template-registry';
 import { TemplatesService } from './services/templates.service';
 import { SimpleAgentTemplate } from './templates/agents/simple-agent.template';
 import { NodeBaseTemplate } from './templates/base-node.template';
+import { CustomMcpTemplate } from './templates/mcp/custom-mcp.template';
 import { FilesystemMcpTemplate } from './templates/mcp/filesystem-mcp.template';
 import { JiraMcpTemplate } from './templates/mcp/jira-mcp.template';
 import { PlaywrightMcpTemplate } from './templates/mcp/playwright-mcp.template';
@@ -60,6 +61,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     FilesToolTemplate,
     SubagentsToolTemplate,
     // --- mcp ---
+    CustomMcpTemplate,
     FilesystemMcpTemplate,
     JiraMcpTemplate,
     PlaywrightMcpTemplate,

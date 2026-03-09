@@ -5,6 +5,7 @@ import type { DaytonaConfig } from '@daytonaio/sdk';
 import { Daytona, Sandbox } from '@daytonaio/sdk';
 
 import { environment } from '../../../environments';
+import { buildEnvPrefix } from '../runtime.utils';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
@@ -85,6 +86,14 @@ export class DaytonaRuntime extends BaseRuntime {
     } catch {
       // Sandbox not found or already deleted — nothing to do
     }
+  }
+
+  /**
+   * Returns the underlying Daytona Sandbox instance, if started.
+   * Used by DaytonaExecTransport for MCP session-based communication.
+   */
+  public getSandbox(): Sandbox | null {
+    return this.sandbox;
   }
 
   async start(params?: RuntimeStartParams): Promise<void> {
@@ -377,7 +386,7 @@ export class DaytonaRuntime extends BaseRuntime {
     }
 
     // Build env prefix same as Docker runtime
-    const envPrefix = this.buildEnvPrefix(params.env);
+    const envPrefix = buildEnvPrefix(params.env);
     const script = `${envPrefix}${cmdString || ':'}`;
 
     // Launch command asynchronously so we can detect hangs
@@ -624,22 +633,6 @@ export class DaytonaRuntime extends BaseRuntime {
           reject(error);
         });
     });
-  }
-
-  private buildEnvPrefix(env?: Record<string, string>) {
-    if (!env || !Object.keys(env).length) {
-      return '';
-    }
-
-    const safeKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
-    return `${Object.entries(env)
-      .filter(([k]) => safeKeyPattern.test(k))
-      .map(([k, v]) => `export ${k}=${this.shellEscape(v)}`)
-      .join('; ')}; `;
-  }
-
-  private shellEscape(value: string) {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
   }
 
   public override async execStream(

@@ -5,6 +5,7 @@ import { BadRequestException } from '@packages/common';
 import Docker from 'dockerode';
 
 import { environment } from '../../../environments';
+import { buildEnvPrefix } from '../runtime.utils';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
@@ -184,22 +185,6 @@ export class DockerRuntime extends BaseRuntime {
 
   private prepareEnv(env?: Record<string, string>) {
     return env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : undefined;
-  }
-
-  private shellEscape(value: string) {
-    return `'${value.replace(/'/g, `'\\''`)}'`;
-  }
-
-  private buildEnvPrefix(env?: Record<string, string>) {
-    if (!env || !Object.keys(env).length) {
-      return '';
-    }
-
-    // Export environment variables so they persist for child processes
-    // This ensures tools like pnpm/vitest inherit color-disabling flags
-    return `${Object.entries(env)
-      .map(([k, v]) => `export ${k}=${this.shellEscape(v)}`)
-      .join('; ')}; `;
   }
 
   private async ensureSession(
@@ -973,7 +958,7 @@ export class DockerRuntime extends BaseRuntime {
   ): Promise<RuntimeExecResult> {
     const sessionId = params.sessionId as string;
     const session = await this.ensureSession(sessionId, workdir, env);
-    const envPrefix = this.buildEnvPrefix(params.env);
+    const envPrefix = buildEnvPrefix(params.env);
     let userCmd = Array.isArray(params.cmd)
       ? params.cmd.join(' && ')
       : params.cmd;
