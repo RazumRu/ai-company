@@ -1,17 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotFoundException } from '@packages/common';
 import { TypeormService } from '@packages/typeorm';
 import type { FastifyRequest } from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { GitRepositoriesDao } from '../../git-repositories/dao/git-repositories.dao';
-import { GraphDao } from '../../graphs/dao/graph.dao';
-import { KnowledgeDocDao } from '../../knowledge/dao/knowledge-doc.dao';
 import { ProjectsDao } from '../dao/projects.dao';
 import { ProjectsStatsDao } from '../dao/projects-stats.dao';
 import { CreateProjectDto, UpdateProjectDto } from '../dto/projects.dto';
 import { ProjectEntity } from '../entity/project.entity';
+import {
+  PROJECT_DELETED_EVENT,
+  ProjectDeletedEvent,
+} from '../projects.events';
 import { ProjectsService } from './projects.service';
 
 describe('ProjectsService', () => {
@@ -19,9 +21,7 @@ describe('ProjectsService', () => {
   let projectsDao: ProjectsDao;
   let projectsStatsDao: ProjectsStatsDao;
   let typeorm: TypeormService;
-  let graphDao: GraphDao;
-  let knowledgeDocDao: KnowledgeDocDao;
-  let gitRepositoriesDao: GitRepositoriesDao;
+  let eventEmitter: EventEmitter2;
 
   const mockUserId = 'user-123';
   const mockProjectId = 'project-456';
@@ -73,21 +73,9 @@ describe('ProjectsService', () => {
           },
         },
         {
-          provide: GraphDao,
+          provide: EventEmitter2,
           useValue: {
-            delete: vi.fn().mockResolvedValue(undefined),
-          },
-        },
-        {
-          provide: KnowledgeDocDao,
-          useValue: {
-            delete: vi.fn().mockResolvedValue(undefined),
-          },
-        },
-        {
-          provide: GitRepositoriesDao,
-          useValue: {
-            delete: vi.fn().mockResolvedValue(undefined),
+            emitAsync: vi.fn().mockResolvedValue([]),
           },
         },
       ],
@@ -97,9 +85,7 @@ describe('ProjectsService', () => {
     projectsDao = module.get<ProjectsDao>(ProjectsDao);
     projectsStatsDao = module.get<ProjectsStatsDao>(ProjectsStatsDao);
     typeorm = module.get<TypeormService>(TypeormService);
-    graphDao = module.get<GraphDao>(GraphDao);
-    knowledgeDocDao = module.get<KnowledgeDocDao>(KnowledgeDocDao);
-    gitRepositoriesDao = module.get<GitRepositoriesDao>(GitRepositoriesDao);
+    eventEmitter = module.get<EventEmitter2>(EventEmitter2);
 
     vi.mocked(typeorm.trx).mockImplementation(async (cb) => cb({} as never));
   });
@@ -161,7 +147,6 @@ describe('ProjectsService', () => {
     });
 
     it('should throw NotFoundException when the project belongs to a different user', async () => {
-      // getOne filters by createdBy, so null means not found / wrong owner
       vi.mocked(projectsDao.getOne).mockResolvedValue(null);
 
       await expect(
@@ -265,15 +250,16 @@ describe('ProjectsService', () => {
   });
 
   describe('delete', () => {
-    it('should cascade delete children via DAOs and soft-delete the project', async () => {
+    it('should emit PROJECT_DELETED_EVENT and soft-delete the project', async () => {
       const entity = createMockProjectEntity();
       vi.mocked(projectsDao.getOne).mockResolvedValue(entity);
 
       await service.delete(mockCtx, mockProjectId);
 
-      expect(graphDao.delete).toHaveBeenCalledWith({ projectId: mockProjectId, createdBy: mockUserId });
-      expect(knowledgeDocDao.delete).toHaveBeenCalledWith({ projectId: mockProjectId, createdBy: mockUserId });
-      expect(gitRepositoriesDao.delete).toHaveBeenCalledWith({ projectId: mockProjectId, createdBy: mockUserId });
+      expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+        PROJECT_DELETED_EVENT,
+        expect.objectContaining({ projectId: mockProjectId, userId: mockUserId }),
+      );
       expect(projectsDao.deleteById).toHaveBeenCalledWith(mockProjectId);
     });
 
@@ -284,7 +270,7 @@ describe('ProjectsService', () => {
         NotFoundException,
       );
 
-      expect(graphDao.delete).not.toHaveBeenCalled();
+      expect(eventEmitter.emitAsync).not.toHaveBeenCalled();
       expect(projectsDao.deleteById).not.toHaveBeenCalled();
     });
   });

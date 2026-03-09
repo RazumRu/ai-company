@@ -1,5 +1,6 @@
 import { HumanMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   BadRequestException,
   DefaultLogger,
@@ -16,7 +17,6 @@ import { TemplateRegistry } from '../../graph-templates/services/template-regist
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
-import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
@@ -41,6 +41,7 @@ import {
   extractNodeDisplayNamesFromMetadata,
   extractTriggerNodesFromSchema,
 } from '../graphs.utils';
+import { GRAPH_DELETED_EVENT, GraphDeletedEvent } from '../graphs.events';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -55,7 +56,7 @@ export class GraphsService {
     private readonly typeorm: TypeormService,
     private readonly notificationsService: NotificationsService,
     private readonly threadsDao: ThreadsDao,
-    private readonly messagesDao: MessagesDao,
+    private readonly eventEmitter: EventEmitter2,
     private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
     private readonly templateRegistry: TemplateRegistry,
@@ -401,13 +402,10 @@ export class GraphsService {
       await this.destroy(ctx, id);
     }
 
-    // Cascade soft-delete: messages → threads → graph
-    const threads = await this.threadsDao.getAll({ graphId: id });
-    const threadIds = threads.map((t) => t.id);
-    if (threadIds.length > 0) {
-      await this.messagesDao.delete({ threadIds });
-      await this.threadsDao.delete({ graphId: id });
-    }
+    await this.eventEmitter.emitAsync(
+      GRAPH_DELETED_EVENT,
+      { graphId: id, userId } satisfies GraphDeletedEvent,
+    );
 
     await this.graphDao.deleteById(id);
   }

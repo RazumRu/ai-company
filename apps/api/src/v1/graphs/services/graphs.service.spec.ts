@@ -1,5 +1,6 @@
 import type { BaseMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   BadRequestException,
   DefaultLogger,
@@ -14,7 +15,6 @@ import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
-import { MessagesDao } from '../../threads/dao/messages.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
@@ -36,6 +36,10 @@ import {
   NodeKind,
 } from '../graphs.types';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import {
+  GRAPH_DELETED_EVENT,
+  GraphDeletedEvent,
+} from '../graphs.events';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -55,7 +59,7 @@ describe('GraphsService', () => {
   let notificationsService: NotificationsService;
   let graphRevisionService: GraphRevisionService;
   let threadsDao: ThreadsDao;
-  let messagesDao: MessagesDao;
+  let eventEmitter: EventEmitter2;
   let logger: DefaultLogger;
   let projectsDao: ProjectsDao;
 
@@ -214,9 +218,9 @@ describe('GraphsService', () => {
           },
         },
         {
-          provide: MessagesDao,
+          provide: EventEmitter2,
           useValue: {
-            delete: vi.fn(),
+            emitAsync: vi.fn().mockResolvedValue([]),
           },
         },
         {
@@ -303,7 +307,7 @@ describe('GraphsService', () => {
     graphRevisionService =
       module.get<GraphRevisionService>(GraphRevisionService);
     threadsDao = module.get<ThreadsDao>(ThreadsDao);
-    messagesDao = module.get<MessagesDao>(MessagesDao);
+    eventEmitter = module.get<EventEmitter2>(EventEmitter2);
     logger = module.get<DefaultLogger>(DefaultLogger);
     projectsDao = module.get<ProjectsDao>(ProjectsDao);
     vi.mocked(threadsDao.getOne).mockResolvedValue(null);
@@ -313,7 +317,6 @@ describe('GraphsService', () => {
     vi.mocked(threadsDao.deleteById).mockResolvedValue(undefined);
     vi.mocked(threadsDao.delete).mockResolvedValue(undefined as any);
     vi.mocked(threadsDao.countByGraphIds).mockResolvedValue(new Map());
-    vi.mocked(messagesDao.delete).mockResolvedValue(undefined as any);
     vi.mocked(graphRegistry.getStatus).mockReturnValue(undefined);
     vi.mocked(notificationsService.emit).mockResolvedValue(void 0 as any);
     vi.mocked(graphRevisionService.queueRevision).mockResolvedValue({
@@ -1257,22 +1260,18 @@ describe('GraphsService', () => {
       expect(graphRegistry.destroy).not.toHaveBeenCalled();
     });
 
-    it('should cascade soft-delete threads and messages in batch', async () => {
+    it('should emit GRAPH_DELETED_EVENT before deleting the graph', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Created });
-      const thread1 = { id: 'thread-1', graphId: mockGraphId } as any;
-      const thread2 = { id: 'thread-2', graphId: mockGraphId } as any;
 
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
-      vi.mocked(threadsDao.getAll).mockResolvedValue([thread1, thread2]);
       vi.mocked(graphDao.deleteById).mockResolvedValue(undefined);
 
       await service.delete(mockCtx, mockGraphId);
 
-      expect(threadsDao.getAll).toHaveBeenCalledWith({ graphId: mockGraphId });
-      expect(messagesDao.delete).toHaveBeenCalledWith({
-        threadIds: ['thread-1', 'thread-2'],
-      });
-      expect(threadsDao.delete).toHaveBeenCalledWith({ graphId: mockGraphId });
+      expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+        GRAPH_DELETED_EVENT,
+        expect.objectContaining({ graphId: mockGraphId, userId: mockUserId }),
+      );
       expect(graphDao.deleteById).toHaveBeenCalledWith(mockGraphId);
     });
 

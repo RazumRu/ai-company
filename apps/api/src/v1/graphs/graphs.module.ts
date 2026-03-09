@@ -9,6 +9,7 @@ import { GraphTemplatesModule } from '../graph-templates/graph-templates.module'
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { ThreadsModule } from '../threads/threads.module';
+import { GraphsListener } from './graphs.listener';
 import { GraphRevisionsController } from './controllers/graph-revisions.controller';
 import { GraphsController } from './controllers/graphs.controller';
 import { GraphDao } from './dao/graph.dao';
@@ -31,9 +32,9 @@ import { MessageTransformerService } from './services/message-transformer.servic
     registerEntities([GraphEntity, GraphRevisionEntity]),
     forwardRef(() => GraphTemplatesModule),
     NotificationsModule,
-    forwardRef(() => AgentsModule),
+    AgentsModule,
     ThreadsModule,
-    forwardRef(() => ProjectsModule),
+    ProjectsModule,
   ],
   controllers: [GraphsController, GraphRevisionsController],
   providers: [
@@ -49,6 +50,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     MessageTransformerService,
     GraphStateManager,
     GraphStateFactory,
+    GraphsListener,
   ],
   exports: [
     GraphDao,

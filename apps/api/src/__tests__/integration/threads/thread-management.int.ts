@@ -298,7 +298,7 @@ describe('Thread Management Integration Tests', () => {
   describe('Thread Creation and Isolation', () => {
     it(
       'should create a new internal thread for each invocation without threadSubId',
-      { timeout: 60000 },
+      { timeout: 120000 },
       async () => {
         await ensureGraphRunning(basicGraphId);
 

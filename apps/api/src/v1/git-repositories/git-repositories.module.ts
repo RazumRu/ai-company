@@ -1,4 +1,4 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { registerEntities } from '@packages/typeorm';
 
 import { GitAuthModule } from '../git-auth/git-auth.module';
@@ -15,6 +15,7 @@ import { RepoIndexEntity } from './entity/repo-index.entity';
 import { GitRepositoriesService } from './services/git-repositories.service';
 import { RepoIndexService } from './services/repo-index.service';
 import { RepoIndexQueueService } from './services/repo-index-queue.service';
+import { GitRepositoriesListener } from './git-repositories.listener';
 import { RepoIndexerService } from './services/repo-indexer.service';
 
 @Module({
@@ -24,7 +25,7 @@ import { RepoIndexerService } from './services/repo-indexer.service';
     QdrantModule,
     LitellmModule,
     OpenaiModule,
-    forwardRef(() => ProjectsModule),
+    ProjectsModule,
     GitAuthModule,
   ],
   controllers: [GitRepositoriesController],
@@ -35,6 +36,7 @@ import { RepoIndexerService } from './services/repo-indexer.service';
     RepoIndexerService,
     RepoIndexQueueService,
     RepoIndexService,
+    GitRepositoriesListener,
   ],
   exports: [
     GitRepositoriesService,

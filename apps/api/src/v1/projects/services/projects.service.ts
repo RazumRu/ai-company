@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotFoundException } from '@packages/common';
 import { TypeormService } from '@packages/typeorm';
 import { EntityManager } from 'typeorm';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { GitRepositoriesDao } from '../../git-repositories/dao/git-repositories.dao';
-import { GraphDao } from '../../graphs/dao/graph.dao';
-import { KnowledgeDocDao } from '../../knowledge/dao/knowledge-doc.dao';
 import { ProjectsDao } from '../dao/projects.dao';
 import { ProjectsStatsDao } from '../dao/projects-stats.dao';
 import {
@@ -15,6 +13,10 @@ import {
   UpdateProjectDto,
 } from '../dto/projects.dto';
 import { ProjectEntity } from '../entity/project.entity';
+import {
+  PROJECT_DELETED_EVENT,
+  ProjectDeletedEvent,
+} from '../projects.events';
 
 @Injectable()
 export class ProjectsService {
@@ -22,9 +24,7 @@ export class ProjectsService {
     private readonly projectsDao: ProjectsDao,
     private readonly projectsStatsDao: ProjectsStatsDao,
     private readonly typeorm: TypeormService,
-    private readonly graphDao: GraphDao,
-    private readonly knowledgeDocDao: KnowledgeDocDao,
-    private readonly gitRepositoriesDao: GitRepositoriesDao,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   private prepareResponse(
@@ -130,12 +130,10 @@ export class ProjectsService {
       throw new NotFoundException('PROJECT_NOT_FOUND');
     }
 
-    // Cascade soft-delete children via their DAOs directly.
-    // Including createdBy provides defense-in-depth: only rows owned by this
-    // user are deleted, even though ownership was already verified above.
-    await this.graphDao.delete({ projectId: id, createdBy: userId });
-    await this.knowledgeDocDao.delete({ projectId: id, createdBy: userId });
-    await this.gitRepositoriesDao.delete({ projectId: id, createdBy: userId });
+    await this.eventEmitter.emitAsync(
+      PROJECT_DELETED_EVENT,
+      { projectId: id, userId } satisfies ProjectDeletedEvent,
+    );
 
     await this.projectsDao.deleteById(id);
   }
