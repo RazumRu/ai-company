@@ -134,35 +134,69 @@ export class DaytonaRuntime extends BaseRuntime {
       }
     }
 
+    const commonParams = {
+      name: sandboxName,
+      envVars: params?.env,
+      labels: params?.labels,
+      // Disable auto-stop so long-running sandbox stays alive
+      autoStopInterval: 0,
+    };
+
     try {
-      const commonParams = {
-        name: sandboxName,
-        envVars: params?.env,
-        labels: params?.labels,
-        // Disable auto-stop so long-running sandbox stays alive
-        autoStopInterval: 0,
-      };
-
-      let sandbox: Sandbox;
-      if (snapshotOrImage) {
-        // Use `image` — Daytona automatically builds a snapshot from the
-        // Docker image on first use and caches it in the transient registry.
-        // Subsequent sandbox creations reuse the cached snapshot.
-        // Note: we intentionally omit `onSnapshotCreateLogs` because the
-        // build-logs URL requires a correctly configured PROXY_TEMPLATE_URL.
-        // The SDK still waits for the sandbox to reach `started` state.
-        sandbox = await this.daytona.create(
-          { ...commonParams, image: snapshotOrImage },
-          { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
+      this.sandbox = await this.createSandbox(
+        commonParams,
+        snapshotOrImage,
+      );
+    } catch (error) {
+      // If the cached snapshot image was lost (e.g. runner DinD wiped after
+      // recreate), Daytona returns "pull access denied" because the built
+      // snapshot no longer exists in the runner's local registry.
+      // Invalidate the stale snapshot and retry once so it rebuilds fresh.
+      if (snapshotOrImage && this.isStaleSnapshotError(error)) {
+        this.logger?.warn(
+          `[DaytonaRuntime] Sandbox creation failed with stale snapshot error. ` +
+            `Invalidating cached snapshot for "${snapshotOrImage}" and retrying…`,
         );
+
+        await this.invalidateStaleSnapshot(snapshotOrImage);
+
+        // Clean up the failed sandbox so the retry can reuse the same name
+        try {
+          const failed = await this.daytona!.findOne({
+            idOrName: sandboxName,
+          });
+          if (failed) {
+            await this.daytona!.delete(failed).catch((e) => {
+              this.logger?.warn(
+                `[DaytonaRuntime] Failed to delete failed sandbox "${sandboxName}": ${
+                  e instanceof Error ? e.message : String(e)
+                }`,
+              );
+            });
+          }
+        } catch {
+          // Not found — already cleaned up
+        }
+
+        try {
+          this.sandbox = await this.createSandbox(
+            commonParams,
+            snapshotOrImage,
+          );
+        } catch (retryError) {
+          this.emit({
+            type: 'start',
+            data: { params: params || {}, error: retryError },
+          });
+          throw retryError;
+        }
       } else {
-        sandbox = await this.daytona.create(commonParams, {
-          timeout: SANDBOX_CREATE_TIMEOUT_SECONDS,
-        });
+        this.emit({ type: 'start', data: { params: params || {}, error } });
+        throw error;
       }
+    }
 
-      this.sandbox = sandbox;
-
+    try {
       if (params?.initScript) {
         await this.runInitScript(
           params.initScript,
@@ -586,6 +620,67 @@ export class DaytonaRuntime extends BaseRuntime {
         })();
       }, 2000);
     });
+  }
+
+  private async createSandbox(
+    commonParams: {
+      name: string;
+      envVars?: Record<string, string>;
+      labels?: Record<string, string>;
+      autoStopInterval: number;
+    },
+    snapshotOrImage: string,
+  ): Promise<Sandbox> {
+    if (snapshotOrImage) {
+      // Use `image` — Daytona automatically builds a snapshot from the
+      // Docker image on first use and caches it in the transient registry.
+      // Subsequent sandbox creations reuse the cached snapshot.
+      return this.daytona!.create(
+        { ...commonParams, image: snapshotOrImage },
+        { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
+      );
+    }
+    return this.daytona!.create(commonParams, {
+      timeout: SANDBOX_CREATE_TIMEOUT_SECONDS,
+    });
+  }
+
+  /**
+   * Detects "pull access denied" errors that indicate a stale/missing
+   * snapshot image in the runner's local Docker registry.
+   */
+  private isStaleSnapshotError(error: unknown): boolean {
+    const msg =
+      error instanceof Error ? error.message : String(error);
+    return msg.includes('pull access denied');
+  }
+
+  /**
+   * Finds and deletes the cached Daytona snapshot built from the given image
+   * so that the next sandbox creation triggers a fresh snapshot build.
+   */
+  private async invalidateStaleSnapshot(imageName: string): Promise<void> {
+    try {
+      const { items } = await this.daytona!.snapshot.list(1, 100);
+      const stale = items.find((s) => s.imageName === imageName);
+      if (stale) {
+        this.logger?.log(
+          `[DaytonaRuntime] Deleting stale snapshot "${stale.name}" (id=${stale.id})`,
+        );
+        await this.daytona!.snapshot.delete(stale);
+      } else {
+        this.logger?.warn(
+          `[DaytonaRuntime] No cached snapshot found for image "${imageName}" — ` +
+            `retry will attempt to create from image directly`,
+        );
+      }
+    } catch (err) {
+      this.logger?.warn(
+        `[DaytonaRuntime] Failed to invalidate stale snapshot: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   private async recreateSession(sessionId: string): Promise<void> {
