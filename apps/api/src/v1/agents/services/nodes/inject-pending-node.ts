@@ -3,13 +3,14 @@ import { DefaultLogger } from '@packages/common';
 
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import {
+  BaseAgentConfigurable,
   BaseAgentState,
   BaseAgentStateChange,
   NewMessageMode,
 } from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
 import { GraphThreadState } from '../graph-thread-state';
-import { BaseAgentConfigurable, BaseNode } from './base-node';
+import { BaseNode } from './base-node';
 
 export class InjectPendingNode extends BaseNode<
   BaseAgentState,

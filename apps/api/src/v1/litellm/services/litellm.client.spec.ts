@@ -36,7 +36,7 @@ describe('LiteLlmClient', () => {
     vi.unstubAllGlobals();
   });
 
-  describe('request (via listModels)', () => {
+  describe('request (via fetchModelList)', () => {
     it('rejects with an error containing status code on non-ok response', async () => {
       stubFetch({
         ok: false,
@@ -45,7 +45,7 @@ describe('LiteLlmClient', () => {
         text: vi.fn().mockResolvedValue('upstream error details'),
       });
 
-      await expect(client.listModels()).rejects.toThrow(
+      await expect(client.fetchModelList()).rejects.toThrow(
         'LiteLLM request failed: 500 Internal Server Error - upstream error details',
       );
     });
@@ -58,7 +58,7 @@ describe('LiteLlmClient', () => {
         text: vi.fn().mockResolvedValue(''),
       });
 
-      await expect(client.listModels()).rejects.toThrow(
+      await expect(client.fetchModelList()).rejects.toThrow(
         'LiteLLM request failed: 502 Bad Gateway',
       );
     });
@@ -71,15 +71,15 @@ describe('LiteLlmClient', () => {
         text: vi.fn().mockRejectedValue(new Error('read failed')),
       });
 
-      await expect(client.listModels()).rejects.toThrow(
+      await expect(client.fetchModelList()).rejects.toThrow(
         'LiteLLM request failed: 503 Service Unavailable',
       );
     });
 
     it('returns parsed JSON data on successful response', async () => {
       const modelData = [
-        { id: 'gpt-4', object: 'model', created: 1000, owned_by: 'openai' },
-        { id: 'claude-3', object: 'model', created: 2000, owned_by: 'anthropic' },
+        { model_name: 'gpt-4', litellm_params: { model: 'openai/gpt-4' }, model_info: { key: 'gpt-4' } },
+        { model_name: 'claude-3', litellm_params: { model: 'anthropic/claude-3' }, model_info: { key: 'claude-3' } },
       ];
 
       stubFetch({
@@ -89,7 +89,7 @@ describe('LiteLlmClient', () => {
         json: vi.fn().mockResolvedValue({ data: modelData }),
       });
 
-      const result = await client.listModels();
+      const result = await client.fetchModelList();
 
       expect(result).toEqual(modelData);
     });
@@ -100,11 +100,11 @@ describe('LiteLlmClient', () => {
         json: vi.fn().mockResolvedValue({ data: [] }),
       });
 
-      await client.listModels();
+      await client.fetchModelList();
 
       expect(fetchMock).toHaveBeenCalledOnce();
       const call = fetchMock.mock.calls[0]!;
-      expect(call[0]).toBe('http://litellm:4000/v1/models');
+      expect(call[0]).toBe('http://litellm:4000/v1/model/info');
       expect(call[1]).toBeDefined();
       expect((call[1] as RequestInit).headers).toEqual(
         expect.objectContaining({
@@ -119,7 +119,7 @@ describe('LiteLlmClient', () => {
         json: vi.fn().mockResolvedValue({ data: [] }),
       });
 
-      await client.listModels();
+      await client.fetchModelList();
 
       const call = fetchMock.mock.calls[0]!;
       expect((call[1] as RequestInit).signal).toBeDefined();

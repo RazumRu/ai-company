@@ -26,6 +26,7 @@ import { ProjectEntity } from '../../v1/projects/entity/project.entity';
 import { RuntimeInstanceEntity } from '../../v1/runtime/entity/runtime-instance.entity';
 import { MessageEntity } from '../../v1/threads/entity/message.entity';
 import { ThreadEntity } from '../../v1/threads/entity/thread.entity';
+import { UserPreferenceEntity } from '../../v1/user-preferences/entities/user-preference.entity';
 
 export const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 export const TEST_ORG_ID = '00000000-0000-0000-0000-000000000001';
@@ -88,6 +89,7 @@ export const createTestModule = async (
           GitRepositoryEntity,
           GitProviderConnectionEntity,
           RepoIndexEntity,
+          UserPreferenceEntity,
         ],
       }),
     ),

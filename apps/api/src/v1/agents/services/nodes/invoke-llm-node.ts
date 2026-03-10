@@ -13,7 +13,11 @@ import { DefaultLogger } from '@packages/common';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { UsageMetadata } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
-import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
+import {
+  BaseAgentConfigurable,
+  BaseAgentState,
+  BaseAgentStateChange,
+} from '../../agents.types';
 import {
   buildReasoningMessage,
   convertChunkToMessage,
@@ -21,7 +25,7 @@ import {
   stripProxyPrefix,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
-import { BaseAgentConfigurable, BaseNode } from './base-node';
+import { BaseNode } from './base-node';
 
 type ToolWithTitle = DynamicStructuredTool & {
   __titleFromArgs?: (args: unknown) => string | undefined;

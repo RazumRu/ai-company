@@ -4,6 +4,8 @@ import type {
   MessageTokenUsage,
   RequestTokenUsage,
 } from '../litellm/litellm.types';
+import type { ModelPreferences } from '../user-preferences/user-preferences.types';
+import type { BaseAgent } from './services/agents/base-agent';
 
 /**
  * Message metadata stored in `BaseMessage.additional_kwargs`.
@@ -130,3 +132,23 @@ export enum ReasoningEffort {
   Medium = 'medium',
   High = 'high',
 }
+
+export type LLMRequestContext = {
+  models?: ModelPreferences;
+};
+
+export type BaseAgentConfigurable = {
+  thread_id?: string;
+  caller_agent?: BaseAgent<unknown>;
+  graph_id?: string;
+  node_id?: string;
+  checkpoint_ns?: string;
+  parent_thread_id?: string;
+  source?: string;
+  async?: boolean;
+  run_id?: string;
+  graph_created_by?: string;
+  graph_project_id?: string;
+  llmRequestContext?: LLMRequestContext;
+  [key: string]: unknown;
+};

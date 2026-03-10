@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { LLMRequestContext } from '../agents/agents.types';
 import type { GraphStateManager } from './services/graph-state.manager';
 
 export enum NodeKind {
@@ -87,6 +88,7 @@ export interface GraphNodeStateSnapshot {
 }
 
 export interface CompiledGraph {
+  metadata: GraphMetadataSchemaType;
   nodes: Map<string, CompiledGraphNode>;
   edges: {
     from: string;
@@ -132,6 +134,7 @@ export const GraphMetadataSchema = z.object({
   temporary: z.boolean().optional(),
   graph_created_by: z.string(),
   graph_project_id: z.string(),
+  llmRequestContext: z.custom<LLMRequestContext>().optional(),
 });
 
 // Complete graph schema

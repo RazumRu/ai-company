@@ -4,7 +4,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { environment } from '../../../../environments';
-import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import type { BaseAgentConfigurable } from '../../../agents/agents.types';
 import { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
@@ -230,6 +230,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     stderr: string,
     exitCode: number,
     title: string,
+    model?: string,
   ): Promise<ToolInvokeResult<ShellToolOutput>> {
     try {
       const { focusResult, usage } = await this.extractFocusedOutput(
@@ -237,6 +238,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         stdout,
         stderr,
         exitCode,
+        model,
       );
 
       return {
@@ -268,8 +270,9 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     stdout: string,
     stderr: string,
     exitCode: number,
+    model?: string,
   ): Promise<{ focusResult: string; usage?: RequestTokenUsage }> {
-    const modelName = this.llmModelsService.getKnowledgeSearchModel();
+    const modelName = this.llmModelsService.getKnowledgeSearchModel(model);
     const supportsResponsesApi =
       await this.litellmService.supportsResponsesApi(modelName);
 
@@ -357,6 +360,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     };
 
     const title = this.generateTitle(data, config);
+    const miniModel = cfg.configurable?.llmRequestContext?.models?.llmMiniModel;
 
     try {
       const mergedEnv = {
@@ -403,6 +407,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           trimOutput(stderr),
           res.exitCode,
           title,
+          miniModel,
         );
       }
 
@@ -428,6 +433,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           trimOutput(errorMessage),
           1,
           title,
+          miniModel,
         );
       }
 

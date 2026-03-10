@@ -1,3 +1,4 @@
+import type { LLMRequestContext } from '../agents/agents.types';
 import { LlmModelsService } from '../litellm/services/llm-models.service';
 
 /** Logical tool set identifiers available to subagent definitions. */
@@ -18,6 +19,8 @@ export interface SubagentModelContext {
   parentModel: string;
   /** Service for resolving model names with offline fallback logic. */
   llmModelsService: LlmModelsService;
+  /** Pre-resolved model override context for the graph owner. */
+  modelOverrideContext?: LLMRequestContext;
 }
 
 /** Context passed to the systemPrompt builder at runtime. */
@@ -38,7 +41,7 @@ export interface SubagentDefinition {
   /** Logical tool IDs this subagent has access to. */
   toolIds: SubagentToolId[];
   /** Resolves the model name at runtime. Receives parent agent model and LlmModelsService. */
-  model: (ctx: SubagentModelContext) => string;
+  model: (ctx: SubagentModelContext) => string | Promise<string>;
   /** Maximum LLM iterations before the subagent is force-stopped. */
   maxIterations: number;
   /** Max context window tokens. Omit for no limit. */

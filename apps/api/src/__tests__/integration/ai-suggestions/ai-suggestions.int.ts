@@ -226,6 +226,13 @@ describe('AiSuggestionsService (integration)', () => {
       };
 
       graphRegistry.register(graph.id, {
+        metadata: {
+          graphId: graph.id,
+          version: '1.0.0',
+          graph_created_by: TEST_USER_ID,
+          graph_project_id: serviceTestProjectId,
+          llmRequestContext: { models: undefined },
+        },
         nodes: new Map([
           [
             'agent-1',

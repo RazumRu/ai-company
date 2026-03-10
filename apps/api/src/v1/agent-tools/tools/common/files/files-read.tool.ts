@@ -7,7 +7,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { environment } from '../../../../../environments';
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { shQuote } from '../../../../utils/shell.utils';
 import {

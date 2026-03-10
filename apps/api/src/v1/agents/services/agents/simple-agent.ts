@@ -28,8 +28,10 @@ import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import {
+  BaseAgentConfigurable,
   BaseAgentState,
   BaseAgentStateChange,
+  LLMRequestContext,
   NewMessageMode,
   ReasoningEffort,
 } from '../../agents.types';
@@ -39,7 +41,6 @@ import {
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { GraphThreadState } from '../graph-thread-state';
-import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InjectPendingNode } from '../nodes/inject-pending-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { SummarizeNode } from '../nodes/summarize-node';
@@ -129,9 +130,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       // ---- summarize ----
       const summarizeNode = new SummarizeNode(
         this.litellmService,
-        (currentContext?: number) =>
+        (currentContext?: number, llmRequestContext?: LLMRequestContext) =>
           this.buildLLM(
-            this.llmModelsService.getSummarizeModel(currentContext),
+            this.llmModelsService.getSummarizeModel(
+              currentContext,
+              llmRequestContext?.models?.llmMiniModel,
+            ),
           ),
         {
           maxTokens: config.summarizeMaxTokens || 272000,

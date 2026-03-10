@@ -5,6 +5,8 @@ import { z } from 'zod';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NodeBaseTemplate } from '../../graph-templates/templates/base-node.template';
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { GraphEntity } from '../entity/graph.entity';
 import { GraphSchemaType, GraphStatus, NodeKind } from '../graphs.types';
 import { GraphCompiler } from './graph-compiler';
@@ -136,6 +138,18 @@ describe('GraphCompiler', () => {
           provide: GraphStateFactory,
           useValue: {
             create: vi.fn().mockReturnValue(mockGraphStateManager),
+          },
+        },
+        {
+          provide: LlmModelsService,
+          useValue: {
+            buildLLMRequestContext: vi.fn().mockResolvedValue({ models: undefined }),
+          },
+        },
+        {
+          provide: ProjectsDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue({ settings: {} }),
           },
         },
       ],

@@ -46,7 +46,7 @@ const mockLitellmService = {
 };
 
 const mockLlmModelsService = {
-  getKnowledgeEmbeddingModel: vi.fn(() => 'text-embedding-3-small'),
+  getKnowledgeEmbeddingModel: vi.fn().mockReturnValue('text-embedding-3-small'),
 };
 
 const mockLogger = {

@@ -11,7 +11,7 @@ import {
   SubAgent,
   SubagentRunResult,
 } from '../../../../agents/services/agents/sub-agent';
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';
@@ -365,9 +365,11 @@ export class SubagentsRunTaskTool extends BaseTool<
     }
 
     const parentModel = this.getParentAgentModel(runnableConfig);
-    const model = definition.model({
+    const modelOverrideContext = runnableConfig.configurable?.llmRequestContext;
+    const model = await definition.model({
       parentModel,
       llmModelsService: this.llmModelsService,
+      modelOverrideContext,
     });
 
     // Build prompt context with workspace information

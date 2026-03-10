@@ -4,6 +4,7 @@ import { AgentsModule } from '../agents/agents.module';
 import { GraphsModule } from '../graphs/graphs.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ProjectsModule } from '../projects/projects.module';
 import { ThreadsModule } from '../threads/threads.module';
 import { SocketGateway } from './gateways/socket.gateway';
 import { AgentInvokeNotificationHandler } from './services/event-handlers/agent-invoke-notification-handler';
@@ -21,6 +22,7 @@ import { NotificationHandler } from './services/notification-handler.service';
     ThreadsModule,
     AgentsModule,
     LitellmModule,
+    ProjectsModule,
   ],
   providers: [
     SimpleEnrichmentHandler,

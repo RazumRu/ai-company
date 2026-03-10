@@ -9,12 +9,14 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { environment } from '../../../environments';
 import { BaseMcp } from '../../../v1/agent-mcp/services/base-mcp';
 import type { BuiltAgentTool } from '../../../v1/agent-tools/tools/base-tool';
-import { ReasoningEffort } from '../../../v1/agents/agents.types';
+import {
+  BaseAgentConfigurable,
+  ReasoningEffort,
+} from '../../../v1/agents/agents.types';
 import {
   SimpleAgent,
   SimpleAgentSchemaType,
 } from '../../../v1/agents/services/agents/simple-agent';
-import type { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import {
   GraphNodeSchemaType,

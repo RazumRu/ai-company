@@ -10,7 +10,7 @@ import { FilesystemMcp } from '../../../v1/agent-mcp/services/mcp/filesystem-mcp
 import { JiraMcp } from '../../../v1/agent-mcp/services/mcp/jira-mcp';
 import { PlaywrightMcp } from '../../../v1/agent-mcp/services/mcp/playwright-mcp';
 import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
-import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../v1/agents/agents.types';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';

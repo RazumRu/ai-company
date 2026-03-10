@@ -9,10 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
-import { NewMessageMode, ReasoningEffort } from '../../agents.types';
+import {
+  BaseAgentConfigurable,
+  NewMessageMode,
+  ReasoningEffort,
+} from '../../agents.types';
 import { buildReasoningMessage } from '../../agents.utils';
 import { GraphThreadState, IGraphThreadStateData } from '../graph-thread-state';
-import { BaseAgentConfigurable } from '../nodes/base-node';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { AgentEventType } from './base-agent';
 import { SimpleAgent } from './simple-agent';

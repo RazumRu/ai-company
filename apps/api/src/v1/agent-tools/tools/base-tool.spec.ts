@@ -2,7 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../agents/agents.types';
 import { BaseTool, ToolInvokeResult } from './base-tool';
 
 // Create a concrete test implementation of BaseTool

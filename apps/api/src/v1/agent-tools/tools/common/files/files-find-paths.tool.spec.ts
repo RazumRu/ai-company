@@ -6,7 +6,7 @@ vi.mock('node:crypto', () => ({
   randomUUID: () => 'test-marker',
 }));
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { FilesBaseToolConfig } from './files-base.tool';
 import {
   FilesFindPathsTool,

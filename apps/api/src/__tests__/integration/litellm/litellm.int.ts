@@ -11,15 +11,6 @@ describe('LiteLLM (integration)', () => {
   let app: INestApplication;
   let modelsService: LitellmService;
 
-  const mockResponse = [
-    {
-      id: 'gpt-5.1',
-      object: 'model',
-      created: 1677610602,
-      owned_by: 'openai',
-    },
-  ];
-
   const mockModelInfo = (model: string): LiteLLMModelInfo => ({
     model_name: model,
     litellm_params: { model },
@@ -33,12 +24,26 @@ describe('LiteLLM (integration)', () => {
     },
   });
 
+  const mockModelList: LiteLLMModelInfo[] = [
+    {
+      model_name: 'gpt-5.1',
+      litellm_params: { model: 'openai/gpt-5.1' },
+      model_info: {
+        key: 'gpt-5.1',
+        input_cost_per_token: 0.00000175,
+        output_cost_per_token: 0.000014,
+        supports_native_streaming: true,
+        supports_function_calling: true,
+      },
+    },
+  ];
+
   beforeAll(async () => {
     app = await createTestModule(async (moduleBuilder) =>
       moduleBuilder
         .overrideProvider(LiteLlmClient)
         .useValue({
-          listModels: async () => mockResponse,
+          fetchModelList: async () => mockModelList,
           getModelInfo: async (model: string) => mockModelInfo(model),
         })
         .compile(),
@@ -70,7 +75,13 @@ describe('LiteLLM (integration)', () => {
 
   it('returns models from LiteLLM client', async () => {
     const result = await modelsService.listModels();
-    expect(result).toEqual([{ id: 'gpt-5.1', ownedBy: 'openai' }]);
+    expect(result).toEqual([
+      {
+        id: 'gpt-5.1',
+        ownedBy: 'openai/gpt-5.1',
+        supportsEmbedding: false,
+      },
+    ]);
   });
 
   it('returns cost rates for model', async () => {

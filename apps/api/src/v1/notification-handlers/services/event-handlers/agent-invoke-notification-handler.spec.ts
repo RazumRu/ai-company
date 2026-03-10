@@ -6,6 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphEntity } from '../../../graphs/entity/graph.entity';
 import { GraphStatus } from '../../../graphs/graphs.types';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
+import { LlmModelsService } from '../../../litellm/services/llm-models.service';
+import { ProjectsDao } from '../../../projects/dao/projects.dao';
 import {
   IAgentInvokeNotification,
   NotificationEvent,
@@ -149,8 +152,34 @@ describe('AgentInvokeNotificationHandler', () => {
           useValue: threadNameGenerator,
         },
         {
+          provide: LlmModelsService,
+          useValue: {
+            buildLLMRequestContext: vi.fn().mockResolvedValue({ models: undefined }),
+          },
+        },
+        {
+          provide: ProjectsDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue(null),
+          },
+        },
+        {
           provide: DefaultLogger,
           useValue: logger,
+        },
+        {
+          provide: GraphRegistry,
+          useValue: {
+            get: vi.fn().mockReturnValue({
+              metadata: {
+                graphId: mockGraphId,
+                version: '1.0.0',
+                graph_created_by: mockUserId,
+                graph_project_id: mockProjectId,
+                llmRequestContext: { models: undefined },
+              },
+            }),
+          },
         },
       ],
     }).compile();
@@ -529,7 +558,7 @@ describe('AgentInvokeNotificationHandler', () => {
       // Name generation triggered for root execution without name
       expect(
         threadNameGenerator.generateFromFirstUserMessage,
-      ).toHaveBeenCalledWith('Test message');
+      ).toHaveBeenCalledWith('Test message', undefined);
 
       // Name update emitted
       expect(notificationsService.emit).toHaveBeenCalledWith({

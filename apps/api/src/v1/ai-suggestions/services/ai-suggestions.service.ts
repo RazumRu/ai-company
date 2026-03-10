@@ -7,11 +7,10 @@ import {
   NotFoundException,
 } from '@packages/common';
 import { isPlainObject, isString } from 'lodash';
-
-import { AppContextStorage } from '../../../auth/app-context-storage';
 import type { UnknownRecord } from 'type-fest';
 import { z } from 'zod';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
@@ -239,7 +238,11 @@ export class AiSuggestionsService {
           userInput: payload.userInput,
         });
 
-    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const modelCtx = compiledGraph.metadata.llmRequestContext;
+    const modelName = this.resolveAiSuggestionsModel(
+      payload.model,
+      modelCtx?.models?.llmLargeModel,
+    );
     const supportsResponsesApi =
       await this.litellmService.supportsResponsesApi(modelName);
     const data: ResponseData | CompleteData = {
@@ -331,7 +334,11 @@ export class AiSuggestionsService {
           mcpInstructions,
         );
 
-    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const modelCtx = compiledGraph.metadata.llmRequestContext;
+    const modelName = this.resolveAiSuggestionsModel(
+      payload.model,
+      modelCtx?.models?.llmLargeModel,
+    );
     const supportsResponsesApi =
       await this.litellmService.supportsResponsesApi(modelName);
     const data: ResponseData | CompleteData = {
@@ -450,7 +457,11 @@ export class AiSuggestionsService {
       ),
     });
 
-    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const modelCtx = compiledGraph.metadata.llmRequestContext;
+    const modelName = this.resolveAiSuggestionsModel(
+      payload.model,
+      modelCtx?.models?.llmLargeModel,
+    );
     type GraphUpdates = {
       updates?: { nodeId?: string; instructions?: string }[];
     };
@@ -537,7 +548,13 @@ export class AiSuggestionsService {
       ? payload.userRequest.trim()
       : this.buildKnowledgeSuggestionPrompt(payload);
 
-    const modelName = this.resolveAiSuggestionsModel(payload.model);
+    const modelCtx = await this.llmModelsService.buildLLMRequestContext(
+      ctx.checkSub(),
+    );
+    const modelName = this.resolveAiSuggestionsModel(
+      payload.model,
+      modelCtx?.models?.llmLargeModel,
+    );
     const supportsResponsesApi =
       await this.litellmService.supportsResponsesApi(modelName);
     const knowledgeSchema = z.object({
@@ -1085,7 +1102,7 @@ export class AiSuggestionsService {
       'Do not delete, simplify, compress, paraphrase, "clean up", merge, reorder, or otherwise modify existing instructions by default.',
       'All current instructions must remain exactly as-is (wording + structure), unless the user explicitly asks to change/remove/simplify specific parts.',
       'Only add the minimal necessary additions to satisfy the user request, without altering unrelated content.',
-      'Tool and MCP instructions are provided ONLY in the <<<REFERENCE_ONLY_ALL_TOOLS>>> and <<<REFERENCE_ONLY_ALL_MCP>>> reference blocks. Agent <current_instructions> blocks contain only the agent\'s custom behavioral instructions.',
+      "Tool and MCP instructions are provided ONLY in the <<<REFERENCE_ONLY_ALL_TOOLS>>> and <<<REFERENCE_ONLY_ALL_MCP>>> reference blocks. Agent <current_instructions> blocks contain only the agent's custom behavioral instructions.",
       'Never include tool descriptions, tool usage guidelines, MCP instructions, or any content from the reference blocks in your output instructions.',
       'You may analyze reference block content to understand agent capabilities, but must not copy or paraphrase it into the updated instructions.',
       'Only modify content inside <current_instructions> tags. Do not add or remove anything outside these tags.',
@@ -1284,7 +1301,9 @@ export class AiSuggestionsService {
         const toolNames = connection?.toolNames ?? [];
         const mcpNames = connection?.mcpNames ?? [];
 
-        const strippedInstructions = this.stripInstructionExtras(agent.instructions);
+        const strippedInstructions = this.stripInstructionExtras(
+          agent.instructions,
+        );
         const instructionsBlock = strippedInstructions
           ? `<current_instructions>\n${strippedInstructions}\n</current_instructions>`
           : `<current_instructions>\nNo custom instructions configured.\n</current_instructions>`;
@@ -1383,7 +1402,12 @@ export class AiSuggestionsService {
     }
   }
 
-  private resolveAiSuggestionsModel(model?: string): string {
-    return model || this.llmModelsService.getAiSuggestionsDefaultModel();
+  private resolveAiSuggestionsModel(
+    model?: string,
+    llmLargeModel?: string,
+  ): string {
+    return (
+      model || this.llmModelsService.getAiSuggestionsDefaultModel(llmLargeModel)
+    );
   }
 }

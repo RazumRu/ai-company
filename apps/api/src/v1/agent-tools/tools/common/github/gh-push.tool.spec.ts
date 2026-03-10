@@ -2,7 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';
 import { GhBaseToolConfig } from './gh-base.tool';
 import { GhPushTool, GhPushToolSchemaType } from './gh-push.tool';

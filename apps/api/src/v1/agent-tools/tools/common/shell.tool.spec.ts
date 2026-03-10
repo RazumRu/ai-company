@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { environment } from '../../../../environments';
-import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../agents/agents.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../../openai/openai.service';

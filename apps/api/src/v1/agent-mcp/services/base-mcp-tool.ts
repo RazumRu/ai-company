@@ -10,7 +10,7 @@ import {
   JSONSchema,
   ToolInvokeResult,
 } from '../../agent-tools/tools/base-tool';
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../agents/agents.types';
 import { McpToolMetadata } from './base-mcp';
 
 type CallToolHandler = (

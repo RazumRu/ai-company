@@ -51,7 +51,7 @@ describe('AiSuggestionsService', () => {
     complete: OpenaiService['complete'];
     jsonRequest: OpenaiService['jsonRequest'];
   };
-  let llmModelsService: Pick<LlmModelsService, 'getAiSuggestionsDefaultModel'>;
+  let llmModelsService: Pick<LlmModelsService, 'getAiSuggestionsDefaultModel' | 'buildLLMRequestContext'>;
   let litellmService: Pick<LitellmService, 'supportsResponsesApi'>;
   let responseMock: ReturnType<typeof vi.fn> & OpenaiService['response'];
   let completeMock: ReturnType<typeof vi.fn> & OpenaiService['complete'];
@@ -87,6 +87,7 @@ describe('AiSuggestionsService', () => {
     };
     llmModelsService = {
       getAiSuggestionsDefaultModel: vi.fn().mockReturnValue('openai/gpt-5.2'),
+      buildLLMRequestContext: vi.fn().mockResolvedValue({ models: undefined }),
     };
     litellmService = {
       supportsResponsesApi: vi.fn().mockResolvedValue(true),
@@ -119,6 +120,7 @@ describe('AiSuggestionsService', () => {
     ({
       id: 'graph-1',
       name: 'Test Graph',
+      projectId: 'project-1',
       description: undefined,
       error: undefined,
       version: '1.0.0',
@@ -145,6 +147,13 @@ describe('AiSuggestionsService', () => {
 
   const buildCompiledGraph = (): CompiledGraph => {
     const compiled: CompiledGraph = {
+      metadata: {
+        graphId: 'graph-1',
+        version: '1.0.0',
+        graph_created_by: 'user-1',
+        graph_project_id: 'project-1',
+        llmRequestContext: { models: undefined },
+      },
       nodes: new Map(),
       edges: [{ from: 'agent-1', to: 'tool-1' }],
       state: {} as GraphStateManager,
@@ -194,6 +203,13 @@ describe('AiSuggestionsService', () => {
     });
 
     (graphRegistry.get as ReturnType<typeof vi.fn>).mockReturnValue({
+      metadata: {
+        graphId: 'graph-1',
+        version: '1.0.0',
+        graph_created_by: 'user-1',
+        graph_project_id: 'project-1',
+        llmRequestContext: { models: undefined },
+      },
       edges: graph.schema.edges as GraphEdgeSchemaType[],
     });
 

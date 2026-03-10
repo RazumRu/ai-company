@@ -3,6 +3,10 @@ import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
 import { GraphDao } from '../../../graphs/dao/graph.dao';
+import { GraphRegistry } from '../../../graphs/services/graph-registry';
+import { LlmModelsService } from '../../../litellm/services/llm-models.service';
+import { ProjectsDao } from '../../../projects/dao/projects.dao';
+
 import {
   IAgentInvokeNotification,
   NotificationEvent,
@@ -32,7 +36,10 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     private readonly notificationsService: NotificationsService,
     private readonly threadsService: ThreadsService,
     private readonly threadNameGenerator: ThreadNameGeneratorService,
+    private readonly llmModelsService: LlmModelsService,
     private readonly logger: DefaultLogger,
+    private readonly projectsDao: ProjectsDao,
+    private readonly graphRegistry: GraphRegistry,
   ) {
     super();
   }
@@ -104,7 +111,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
 
     // Generate thread name for root thread executions that don't have one yet.
     if (isRootThreadExecution && !thread.name) {
-      void this.generateAndEmitThreadName(event, externalThreadKey).catch(
+      void this.generateAndEmitThreadName(event, externalThreadKey, graph.createdBy, graph).catch(
         (err: unknown) => {
           const normalizedMessage =
             err instanceof Error ? err.message : String(err);
@@ -122,6 +129,8 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
   private async generateAndEmitThreadName(
     event: IAgentInvokeNotification,
     externalThreadKey: string,
+    userId: string,
+    graph: { projectId: string },
   ): Promise<void> {
     const firstHuman = event.data.messages.find(
       (m) => m instanceof HumanMessage,
@@ -136,8 +145,25 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     const userInput =
       typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent);
 
+    // Try compiled graph first (zero DB calls)
+    const compiledGraph = this.graphRegistry.get(event.graphId);
+    let modelCtx = compiledGraph?.metadata?.llmRequestContext;
+
+    // Fallback: graph not in registry (stopped between event and handler)
+    if (!modelCtx) {
+      const project = await this.projectsDao.getOne({
+        id: graph.projectId,
+        createdBy: userId,
+      });
+      modelCtx = await this.llmModelsService.buildLLMRequestContext(
+        userId,
+        project?.settings as Record<string, unknown> | undefined,
+      );
+    }
+
+    const model = modelCtx?.models?.llmMiniModel;
     const name =
-      await this.threadNameGenerator.generateFromFirstUserMessage(userInput);
+      await this.threadNameGenerator.generateFromFirstUserMessage(userInput, model);
 
     if (!name) {
       return;

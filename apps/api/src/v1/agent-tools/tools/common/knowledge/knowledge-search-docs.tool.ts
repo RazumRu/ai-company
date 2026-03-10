@@ -4,7 +4,10 @@ import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import type {
+  BaseAgentConfigurable,
+  LLMRequestContext,
+} from '../../../../agents/agents.types';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
 import { KnowledgeDocEntity } from '../../../../knowledge/entity/knowledge-doc.entity';
 import { normalizeFilterTags } from '../../../../knowledge/knowledge.utils';
@@ -146,7 +149,9 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       return { output: { documents: [] } };
     }
 
-    const selection = await this.selectRelevantDocs(normalizedTask, docs);
+    const modelCtx: LLMRequestContext | undefined =
+      runnableConfig.configurable?.llmRequestContext;
+    const selection = await this.selectRelevantDocs(normalizedTask, docs, modelCtx?.models?.llmMiniModel);
 
     const docByPublicId = new Map(docs.map((doc) => [doc.publicId, doc]));
     const documents = selection.ids
@@ -184,6 +189,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
   private async selectRelevantDocs(
     task: string,
     docs: KnowledgeDocEntity[],
+    model?: string,
   ): Promise<KnowledgeDocSelection> {
     const prompt = [
       'You select relevant knowledge documents for a query.',
@@ -202,7 +208,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
       ),
     ].join('\n');
 
-    const modelName = this.llmModelsService.getKnowledgeSearchModel();
+    const modelName = this.llmModelsService.getKnowledgeSearchModel(model);
     const response =
       await this.openaiService.jsonRequest<KnowledgeDocSelection>({
         model: modelName,

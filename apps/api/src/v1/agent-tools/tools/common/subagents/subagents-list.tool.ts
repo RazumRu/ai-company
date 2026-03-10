@@ -2,7 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { SubagentsService } from '../../../../subagents/subagents.service';
 import { BaseTool, ToolInvokeResult } from '../../base-tool';
 import { SubagentsToolGroupConfig } from './subagents.types';

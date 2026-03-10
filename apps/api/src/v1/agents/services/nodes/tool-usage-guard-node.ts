@@ -3,9 +3,13 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { DefaultLogger } from '@packages/common';
 
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
-import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
+import {
+  BaseAgentConfigurable,
+  BaseAgentState,
+  BaseAgentStateChange,
+} from '../../agents.types';
 import { updateMessagesListWithMetadata } from '../../agents.utils';
-import { BaseAgentConfigurable, BaseNode } from './base-node';
+import { BaseNode } from './base-node';
 
 type RestrictGetters = {
   getRestrictOutput: () => boolean;

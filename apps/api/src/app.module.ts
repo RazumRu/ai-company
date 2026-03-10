@@ -18,6 +18,7 @@ import { ProjectsModule } from './v1/projects/projects.module';
 import { RuntimeModule } from './v1/runtime/runtime.module';
 import { SystemModule } from './v1/system/system.module';
 import { ThreadsModule } from './v1/threads/threads.module';
+import { UserPreferencesModule } from './v1/user-preferences/user-preferences.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ThreadsModule } from './v1/threads/threads.module';
     ProjectsModule,
     SystemModule,
     ThreadsModule,
+    UserPreferencesModule,
   ],
   controllers: [],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

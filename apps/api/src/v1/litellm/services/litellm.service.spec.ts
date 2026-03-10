@@ -16,10 +16,14 @@ const buildModelInfo = (
   },
 });
 
-const createSvc = (modelInfo: LiteLLMModelInfo | null = null) => {
+const createSvc = (
+  modelInfo: LiteLLMModelInfo | null = null,
+  fetchModelList?: LiteLLMModelInfo[],
+) => {
   return new LitellmService({
     listModels: vi.fn(),
     getModelInfo: vi.fn().mockResolvedValue(modelInfo),
+    fetchModelList: vi.fn().mockResolvedValue(fetchModelList ?? []),
   } as unknown as never);
 };
 
@@ -254,6 +258,76 @@ describe('LitellmService', () => {
       const rates = await svc.getTokenCostRatesForModel('unknown-model');
 
       expect(rates).toBeNull();
+    });
+  });
+
+  describe('listModels', () => {
+    it('marks a model with no streaming and no function calling as embedding', async () => {
+      const embeddingModel: LiteLLMModelInfo = {
+        model_name: 'text-embedding-3-small',
+        litellm_params: { model: 'openai/text-embedding-3-small' },
+        model_info: {
+          key: 'text-embedding-3-small',
+          supports_native_streaming: false,
+          supports_function_calling: false,
+        },
+      };
+      const svc = createSvc(null, [embeddingModel]);
+
+      const result = await svc.listModels();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.supportsEmbedding).toBe(true);
+    });
+
+    it('marks a normal LLM model with streaming support as non-embedding', async () => {
+      const llmModel: LiteLLMModelInfo = {
+        model_name: 'gpt-4',
+        litellm_params: { model: 'openai/gpt-4' },
+        model_info: {
+          key: 'gpt-4',
+          supports_native_streaming: true,
+          supports_function_calling: true,
+        },
+      };
+      const svc = createSvc(null, [llmModel]);
+
+      const result = await svc.listModels();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.supportsEmbedding).toBe(false);
+    });
+
+    it('marks a model with function calling support as non-embedding', async () => {
+      const toolModel: LiteLLMModelInfo = {
+        model_name: 'claude-3',
+        litellm_params: { model: 'anthropic/claude-3' },
+        model_info: {
+          key: 'claude-3',
+          supports_native_streaming: false,
+          supports_function_calling: true,
+        },
+      };
+      const svc = createSvc(null, [toolModel]);
+
+      const result = await svc.listModels();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.supportsEmbedding).toBe(false);
+    });
+
+    it('returns false for supportsEmbedding when model_info is missing', async () => {
+      // Runtime responses may omit model_info even though the type requires it
+      const noInfoModel = {
+        model_name: 'unknown-model',
+        litellm_params: { model: 'unknown-model' },
+      } as LiteLLMModelInfo;
+      const svc = createSvc(null, [noInfoModel]);
+
+      const result = await svc.listModels();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.supportsEmbedding).toBe(false);
     });
   });
 

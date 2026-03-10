@@ -15,9 +15,11 @@ import { setTimeout } from 'timers/promises';
 import { EntityManager } from 'typeorm';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
-import { extractAgentsFromSchema } from '../graphs.utils';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
+import { extractAgentsFromSchema } from '../graphs.utils';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphRevisionDao, SearchTerms } from '../dao/graph-revision.dao';
 import {
@@ -33,6 +35,7 @@ import {
   CompiledGraph,
   CompiledGraphNode,
   GraphEdgeSchemaType,
+  GraphMetadataSchemaType,
   GraphNode,
   GraphNodeSchemaType,
   GraphRevisionStatus,
@@ -65,6 +68,8 @@ export class GraphRevisionService {
     private readonly graphRegistry: GraphRegistry,
     private readonly graphRevisionQueue: GraphRevisionQueueService,
     private readonly templateRegistry: TemplateRegistry,
+    private readonly llmModelsService: LlmModelsService,
+    private readonly projectsDao: ProjectsDao,
   ) {
     this.graphRevisionQueue.setProcessor(this.applyRevision.bind(this));
   }
@@ -785,6 +790,15 @@ export class GraphRevisionService {
   ): Promise<void> {
     // Read name/temporary from the graph entity (source of truth for sync fields)
     // rather than from the revision snapshot which may be stale.
+    const project = await this.projectsDao.getOne({
+      id: graph.projectId,
+      createdBy: graph.createdBy,
+    });
+    const llmRequestContext =
+      await this.llmModelsService.buildLLMRequestContext(
+        graph.createdBy,
+        project?.settings as Record<string, unknown> | undefined,
+      );
     const metadata = {
       graphId: graph.id,
       name: graph.name,
@@ -792,7 +806,10 @@ export class GraphRevisionService {
       temporary: graph.temporary,
       graph_created_by: graph.createdBy,
       graph_project_id: graph.projectId,
+      llmRequestContext,
     };
+
+    compiledGraph.metadata = metadata;
 
     const oldNodeIds = new Set(compiledGraph.nodes.keys());
     const newNodeIds = new Set(
@@ -923,14 +940,7 @@ export class GraphRevisionService {
     buildOrder: GraphNodeSchemaType[],
     compiledGraph: CompiledGraph,
     nodesToRebuild: Set<string>,
-    metadata: {
-      graphId: string;
-      name: string;
-      version: string;
-      temporary: boolean;
-      graph_created_by: string;
-      graph_project_id: string;
-    },
+    metadata: GraphMetadataSchemaType,
     edges: GraphEdgeSchemaType[],
     revisionContext?: { revisionId: string; toVersion: string },
   ): Promise<void> {

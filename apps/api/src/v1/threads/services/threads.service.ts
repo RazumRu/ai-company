@@ -377,6 +377,7 @@ export class ThreadsService {
     let toolsPriceDecimal = new Decimal(0);
     let totalRequests = 0;
     let userMessageCount = 0;
+    const modelsUsedSet = new Set<string>();
 
     // Accumulate message-based total to capture in-progress subagent costs.
     // Checkpoint-based totalUsage only includes subagent costs after the subagent completes
@@ -428,6 +429,14 @@ export class ThreadsService {
 
       const additionalKwargs = messageEntity.additionalKwargs;
       const isSubagentInternal = additionalKwargs?.__hideForLlm === true;
+
+      // Collect model name for the "models used" summary
+      if (isAiMessage) {
+        const model = additionalKwargs?.__model as string | undefined;
+        if (model) {
+          modelsUsedSet.add(model);
+        }
+      }
 
       // Count user messages
       if (isHumanMessage) {
@@ -674,6 +683,7 @@ export class ThreadsService {
       byTool,
       toolsAggregate,
       userMessageCount,
+      modelsUsed: Array.from(modelsUsedSet).sort(),
     };
   }
 

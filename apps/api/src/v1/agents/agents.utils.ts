@@ -11,8 +11,10 @@ import { RunnableConfig } from '@langchain/core/runnables';
 import { isPlainObject } from 'lodash';
 import type { UnknownRecord } from 'type-fest';
 
-import type { MessageAdditionalKwargs } from './agents.types';
-import { BaseAgentConfigurable } from './services/nodes/base-node';
+import type {
+  BaseAgentConfigurable,
+  MessageAdditionalKwargs,
+} from './agents.types';
 
 function getMessageKwargs(msg: BaseMessage): MessageAdditionalKwargs {
   const raw = msg.additional_kwargs as unknown;

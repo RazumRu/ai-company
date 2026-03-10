@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';
 import { shQuote } from '../../../../utils/shell.utils';
 import { execRuntimeWithContext } from '../../../agent-tools.utils';

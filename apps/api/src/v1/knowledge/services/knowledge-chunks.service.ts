@@ -73,12 +73,12 @@ export class KnowledgeChunksService {
     private readonly llmModelsService: LlmModelsService,
   ) {}
 
-  async embedTexts(texts: string[]): Promise<number[][]> {
+  async embedTexts(texts: string[], model?: string): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
     const result = await this.openaiService.embeddings({
-      model: this.llmModelsService.getKnowledgeEmbeddingModel(),
+      model: this.llmModelsService.getKnowledgeEmbeddingModel(model),
       input: texts,
     });
     return result.embeddings;

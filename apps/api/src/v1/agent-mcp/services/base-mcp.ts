@@ -7,7 +7,7 @@ import { EventEmitter } from 'events';
 import { z } from 'zod';
 
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
-import type { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import type { BaseAgentConfigurable } from '../../agents/agents.types';
 import { RuntimeStartParams } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { DaytonaRuntime } from '../../runtime/services/daytona-runtime';

@@ -78,6 +78,7 @@ describe('GraphRestorationService', () => {
   };
 
   const mockCompiledGraph = {
+    metadata: { graphId: 'graph-1', version: '1.0.0', graph_created_by: 'user-1', graph_project_id: 'project-1' },
     nodes: new Map(),
     edges: [],
     destroy: vi.fn(),

@@ -14,9 +14,11 @@ import { FilesReadTool } from '../../../v1/agent-tools/tools/common/files/files-
 import { FilesSearchTextTool } from '../../../v1/agent-tools/tools/common/files/files-search-text.tool';
 import { FilesWriteFileTool } from '../../../v1/agent-tools/tools/common/files/files-write-file.tool';
 import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
-import { ReasoningEffort } from '../../../v1/agents/agents.types';
+import {
+  BaseAgentConfigurable,
+  ReasoningEffort,
+} from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
-import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';

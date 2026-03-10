@@ -6,6 +6,7 @@ import { registerEntities } from '@packages/typeorm';
 import { environment } from '../../environments';
 import { AgentsModule } from '../agents/agents.module';
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
+import { LitellmModule } from '../litellm/litellm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { ThreadsModule } from '../threads/threads.module';
@@ -31,6 +32,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
   imports: [
     registerEntities([GraphEntity, GraphRevisionEntity]),
     forwardRef(() => GraphTemplatesModule),
+    LitellmModule,
     NotificationsModule,
     AgentsModule,
     ThreadsModule,

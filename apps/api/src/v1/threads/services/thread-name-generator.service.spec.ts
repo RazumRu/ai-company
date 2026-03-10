@@ -196,7 +196,7 @@ describe('ThreadNameGeneratorService', () => {
     });
 
     it('should log error when outer try-catch catches an unexpected error', async () => {
-      // Force an error that bypasses the inner .catch
+      // Force a sync throw that gets caught by the outer try-catch
       llmModelsService.getThreadNameModel.mockImplementation(() => {
         throw new Error('Unexpected model error');
       });

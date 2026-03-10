@@ -14,14 +14,19 @@ import {
   UsageMetadata,
 } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
-import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
+import {
+  BaseAgentConfigurable,
+  BaseAgentState,
+  BaseAgentStateChange,
+  LLMRequestContext,
+} from '../../agents.types';
 import {
   extractTextFromResponseContent,
   filterMessagesForLlm,
   markMessageHideForLlm,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
-import { BaseAgentConfigurable, BaseNode } from './base-node';
+import { BaseNode } from './base-node';
 
 type SummarizeOpts = {
   keepTokens: number;
@@ -40,7 +45,7 @@ export class SummarizeNode extends BaseNode<
 > {
   constructor(
     private readonly litellmService: LitellmService,
-    private llmResolver: (currentContext?: number) => ChatOpenAI,
+    private llmResolver: (currentContext?: number, llmRequestContext?: LLMRequestContext) => ChatOpenAI,
     private opts: SummarizeOpts,
     private readonly logger?: DefaultLogger,
   ) {
@@ -138,10 +143,12 @@ export class SummarizeNode extends BaseNode<
 
     // Step 6: Update summary using delta-folding
     // Pass previous summary as TEXT, not as message
+    const llmRequestContext = cfg.configurable?.llmRequestContext;
     const summaryData = await this.fold(
       state.summary,
       messagesForSummarize,
       state.currentContext,
+      llmRequestContext,
     );
 
     // Step 7: Write back state atomically
@@ -483,11 +490,12 @@ export class SummarizeNode extends BaseNode<
     previousSummaryText: string | undefined,
     newMessages: BaseMessage[],
     currentContext?: number,
+    llmRequestContext?: LLMRequestContext,
   ): Promise<{
     summary: string;
     usage: RequestTokenUsage | null;
   }> {
-    const llm = this.llmResolver(currentContext);
+    const llm = this.llmResolver(currentContext, llmRequestContext);
     const sys = new SystemMessage(
       this.opts.systemNote ||
         'You update a running summary of a conversation. Keep key facts, goals, decisions, constraints, names, deadlines, and follow-ups. Be concise; use compact sentences; omit chit-chat.',

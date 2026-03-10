@@ -4,7 +4,7 @@ import { BadRequestException, DefaultLogger } from '@packages/common';
 import { EventEmitter } from 'events';
 
 import { AgentOutput } from '../../agents/services/agents/base-agent';
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../agents/agents.types';
 import { GraphExecutionMetadata } from '../../graphs/graphs.types';
 import { TriggerEvent, TriggerStatus } from '../agent-triggers.types';
 

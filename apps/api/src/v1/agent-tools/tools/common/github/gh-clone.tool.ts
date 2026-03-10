@@ -7,7 +7,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { environment } from '../../../../../environments';
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../../git-repositories/git-repositories.types';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';

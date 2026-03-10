@@ -20,6 +20,7 @@ export class ThreadNameGeneratorService {
 
   async generateFromFirstUserMessage(
     userInput: string,
+    model?: string,
   ): Promise<string | undefined> {
     const normalized = userInput.replace(/\s+/g, ' ').trim();
     if (!normalized.length) {
@@ -31,7 +32,7 @@ export class ThreadNameGeneratorService {
     try {
       const llmTimeoutMs = 30000;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const modelName = this.llmModelsService.getThreadNameModel();
+      const modelName = this.llmModelsService.getThreadNameModel(model);
       const llmContentOrEmptyPromise = this.openaiService
         .jsonRequest<ThreadTitleResponse>({
           model: modelName,

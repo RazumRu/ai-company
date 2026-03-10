@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { DefaultLogger } from '@packages/common';
 
 import { environment } from '../../../environments';
+import type { LLMRequestContext } from '../../agents/agents.types';
+import { UserPreferencesService } from '../../user-preferences/services/user-preferences.service';
+import type { ModelPreferences } from '../../user-preferences/user-preferences.types';
 import { LitellmService } from './litellm.service';
 
 @Injectable()
@@ -11,17 +15,61 @@ export class LlmModelsService {
     high: { effort: 'high' as const },
   };
 
-  constructor(private readonly litellmService: LitellmService) {}
+  constructor(
+    private readonly litellmService: LitellmService,
+    private readonly userPreferencesService: UserPreferencesService,
+    private readonly logger: DefaultLogger,
+  ) {}
+
+  /**
+   * Builds a pre-resolved LLMRequestContext by fetching user preferences
+   * and merging with project settings. Call this ONCE per request, then pass
+   * the result to sync model-resolution methods.
+   *
+   * Priority: project-level overrides > user-level overrides > env defaults.
+   */
+  async buildLLMRequestContext(
+    userId?: string,
+    projectSettings?: Record<string, unknown>,
+  ): Promise<LLMRequestContext> {
+    let models: ModelPreferences = {};
+
+    // User-level overrides (lower priority)
+    if (userId) {
+      try {
+        const userModels =
+          await this.userPreferencesService.getModelOverridesForUser(userId);
+        if (userModels) {
+          models = { ...userModels };
+        }
+      } catch (err) {
+        this.logger.error(
+          err instanceof Error ? err : new Error(String(err)),
+          'Failed to resolve user model overrides',
+        );
+      }
+    }
+
+    // Project-level overrides (higher priority — overwrites user)
+    const projectModels = projectSettings?.['models'] as
+      | ModelPreferences
+      | undefined;
+    if (projectModels) {
+      for (const [key, value] of Object.entries(projectModels)) {
+        if (value != null) {
+          (models as Record<string, string>)[key] = value;
+        }
+      }
+    }
+
+    return {
+      models: Object.keys(models).length > 0 ? models : undefined,
+    };
+  }
 
   private offlineCodingFallback(model: string): string {
     return environment.llmUseOfflineModel
       ? environment.llmOfflineCodingModel
-      : model;
-  }
-
-  private offlineCodingMiniFallback(model: string): string {
-    return environment.llmUseOfflineModel
-      ? environment.llmOfflineCodingMiniModel
       : model;
   }
 
@@ -63,56 +111,85 @@ export class LlmModelsService {
    * @param currentContext - Current token count of the conversation. When above
    *   the threshold (LLM_SUMMARIZE_ONLINE_THRESHOLD, default 30000), the online
    *   model is used regardless of the offline mode setting.
+   * @param model - Optional model override from LLMRequestContext.
    */
-  getSummarizeModel(currentContext?: number): string {
+  getSummarizeModel(currentContext?: number, model?: string): string {
     if (
       environment.llmUseOfflineModel &&
       currentContext !== undefined &&
       currentContext > environment.llmSummarizeOnlineThreshold
     ) {
-      return environment.llmMiniModel;
+      return model ?? environment.llmMiniModel;
     }
-    return this.offlineMiniFallback(environment.llmMiniModel);
+    return model ?? this.offlineMiniFallback(environment.llmMiniModel);
   }
 
-  getAiSuggestionsDefaultModel(): string {
-    return environment.llmLargeModel;
+  getAiSuggestionsDefaultModel(model?: string): string {
+    return model ?? environment.llmLargeModel;
   }
 
-  getThreadNameModel(): string {
-    return this.offlineMiniFallback(environment.llmMiniModel);
+  getThreadNameModel(model?: string): string {
+    return model ?? this.offlineMiniFallback(environment.llmMiniModel);
   }
 
-  async getKnowledgeMetadataParams(): Promise<{
+  async getKnowledgeMetadataParams(model?: string): Promise<{
     model: string;
     reasoning?: { effort: 'low' | 'medium' | 'high' };
   }> {
+    const resolvedModel =
+      model ?? this.offlineMiniFallback(environment.llmMiniModel);
     return this.buildResponseParams(
-      this.offlineMiniFallback(environment.llmMiniModel),
+      resolvedModel,
       LlmModelsService.DEFAULT_REASONING.medium,
     );
   }
 
-  getKnowledgeEmbeddingModel(): string {
-    return this.offlineEmbeddingFallback(environment.llmEmbeddingModel);
+  getKnowledgeEmbeddingModel(model?: string): string {
+    return (
+      model ?? this.offlineEmbeddingFallback(environment.llmEmbeddingModel)
+    );
   }
 
-  getKnowledgeSearchModel(): string {
-    return this.offlineMiniFallback(environment.llmMiniModel);
+  getKnowledgeSearchModel(model?: string): string {
+    return model ?? this.offlineMiniFallback(environment.llmMiniModel);
   }
 
-  getSubagentFastModel(): string {
-    return this.offlineCodingFallback(environment.llmMiniCodeModel);
+  getSubagentFastModel(model?: string): string {
+    return model ?? this.offlineCodingFallback(environment.llmMiniCodeModel);
   }
 
   /**
    * Returns the model used by the explorer subagent.
-   * Always uses the online mini model — explorer subagents need hosted-quality
+   * Always uses the online mini model -- explorer subagents need hosted-quality
    * responses even when the main agent is in offline mode.
    */
-  getSubagentExplorerModel(): string {
+  getSubagentExplorerModel(model?: string): string {
     return (
-      environment.llmCodeExplorerSubagentModel || environment.llmMiniCodeModel
+      model ??
+      (environment.llmCodeExplorerSubagentModel || environment.llmMiniCodeModel)
     );
+  }
+
+  getLargeCodeModel(model?: string): string {
+    return model ?? this.offlineCodingFallback(environment.llmLargeCodeModel);
+  }
+
+  getModelDefaults(): {
+    llmLargeModel: string;
+    llmLargeCodeModel: string;
+    llmMiniCodeModel: string;
+    llmCodeExplorerSubagentModel: string;
+    llmMiniModel: string;
+    llmEmbeddingModel: string;
+  } {
+    return {
+      llmLargeModel: environment.llmLargeModel,
+      llmLargeCodeModel: environment.llmLargeCodeModel,
+      llmMiniCodeModel: environment.llmMiniCodeModel,
+      llmCodeExplorerSubagentModel:
+        environment.llmCodeExplorerSubagentModel || environment.llmMiniCodeModel,
+      llmMiniModel: environment.llmMiniModel,
+      llmEmbeddingModel: environment.llmEmbeddingModel,
+    };
   }
 }

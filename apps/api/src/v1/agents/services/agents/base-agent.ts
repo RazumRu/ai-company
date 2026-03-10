@@ -13,11 +13,11 @@ import { environment } from '../../../../environments';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import { RequestTokenUsage } from '../../../litellm/litellm.types';
 import {
+  BaseAgentConfigurable,
   BaseAgentState,
   BaseAgentStateChange,
   BaseAgentStateMessagesUpdateValue,
 } from '../../agents.types';
-import { BaseAgentConfigurable } from '../nodes/base-node';
 import { ReasoningAwareChatCompletions } from '../reasoning-chat-completions';
 
 export type AgentOutput = {

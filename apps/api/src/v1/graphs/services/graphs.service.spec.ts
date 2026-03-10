@@ -165,6 +165,12 @@ describe('GraphsService', () => {
     } as unknown as CompiledGraph['state'];
 
     return {
+      metadata: {
+        graphId: mockGraphId,
+        version: '1.0.0',
+        graph_created_by: mockUserId,
+        graph_project_id: 'project-123',
+      },
       nodes,
       edges: [],
       state,

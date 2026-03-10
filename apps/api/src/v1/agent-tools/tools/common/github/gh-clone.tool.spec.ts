@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { GitRepositoriesDao } from '../../../../git-repositories/dao/git-repositories.dao';
 import { GitRepositoryEntity } from '../../../../git-repositories/entity/git-repository.entity';
 import { BaseRuntime } from '../../../../runtime/services/base-runtime';

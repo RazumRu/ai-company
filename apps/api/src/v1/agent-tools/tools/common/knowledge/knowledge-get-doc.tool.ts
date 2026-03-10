@@ -4,7 +4,7 @@ import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { KnowledgeDocDao } from '../../../../knowledge/dao/knowledge-doc.dao';
 import { normalizeFilterTags } from '../../../../knowledge/knowledge.utils';
 import {

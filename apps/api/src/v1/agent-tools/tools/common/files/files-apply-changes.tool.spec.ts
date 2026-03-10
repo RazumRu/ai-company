@@ -1,7 +1,7 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import {
   FilesApplyChangesTool,
   FilesApplyChangesToolSchema,

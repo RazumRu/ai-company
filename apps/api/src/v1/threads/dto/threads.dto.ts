@@ -95,6 +95,11 @@ export const ThreadUsageStatisticsSchema = z.object({
   userMessageCount: z
     .number()
     .describe('Number of user (human) messages in the thread'),
+  modelsUsed: z
+    .array(z.string())
+    .describe(
+      'Distinct LLM model identifiers used across all messages in the thread',
+    ),
 });
 
 export const ThreadAgentSchema = z.object({

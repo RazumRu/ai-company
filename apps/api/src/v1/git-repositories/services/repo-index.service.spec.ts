@@ -79,8 +79,8 @@ const mockRepoIndexQueueService = {
 };
 
 const mockLlmModelsService = {
-  getKnowledgeEmbeddingModel: vi.fn(() => 'text-embedding-3-small'),
-  getKnowledgeSearchModel: vi.fn(() => 'gpt-5-mini'),
+  getKnowledgeEmbeddingModel: vi.fn().mockReturnValue('text-embedding-3-small'),
+  getKnowledgeSearchModel: vi.fn().mockReturnValue('gpt-5-mini'),
 };
 
 const mockOpenaiService = {};

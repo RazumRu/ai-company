@@ -13,7 +13,7 @@ import { v5 as uuidv5 } from 'uuid';
 import { z } from 'zod';
 
 import { environment } from '../../../../../environments';
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { RepoIndexService } from '../../../../git-repositories/services/repo-index.service';
 import {
   RepoExecFn,

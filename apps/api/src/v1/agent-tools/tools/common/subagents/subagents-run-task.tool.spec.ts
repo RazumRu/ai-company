@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import type { AgentEventType } from '../../../../agents/services/agents/base-agent';
 import { SubagentRunResult } from '../../../../agents/services/agents/sub-agent';
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { SubagentsService } from '../../../../subagents/subagents.service';
 import { BuiltAgentTool, ToolInvokeResult } from '../../base-tool';

@@ -5,7 +5,7 @@ import { Injectable } from '@nestjs/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { shQuote } from '../../../../utils/shell.utils';
 import {
   ExtendedLangGraphRunnableConfig,

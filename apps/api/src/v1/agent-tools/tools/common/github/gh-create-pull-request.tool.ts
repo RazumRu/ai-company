@@ -5,7 +5,7 @@ import dedent from 'dedent';
 import { isPlainObject } from 'lodash';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,

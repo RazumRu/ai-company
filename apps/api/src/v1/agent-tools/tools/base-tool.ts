@@ -7,8 +7,10 @@ import {
 import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { ZodSchema } from 'zod';
 
-import type { MessageAdditionalKwargs } from '../../agents/agents.types';
-import { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import type {
+  BaseAgentConfigurable,
+  MessageAdditionalKwargs,
+} from '../../agents/agents.types';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
 import { zodToAjvSchema } from '../agent-tools.utils';
 

@@ -2,7 +2,7 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { BadRequestException } from '@packages/common';
 import { z, ZodSchema } from 'zod';
 
-import { BaseAgentConfigurable } from '../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../agents/agents.types';
 import { RuntimeExecParams } from '../runtime/runtime.types';
 import { BaseRuntime } from '../runtime/services/base-runtime';
 

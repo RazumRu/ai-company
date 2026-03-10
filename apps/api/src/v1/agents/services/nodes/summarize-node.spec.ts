@@ -10,8 +10,7 @@ import { MockedFunction } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { LitellmService } from '../../../litellm/services/litellm.service';
-import { BaseAgentState } from '../../agents.types';
-import { BaseAgentConfigurable } from './base-node';
+import { BaseAgentConfigurable, BaseAgentState } from '../../agents.types';
 import { SummarizeNode } from './summarize-node';
 
 vi.mock('@langchain/openai');
@@ -774,7 +773,7 @@ describe('SummarizeNode', () => {
 
       await nodeWithSpy.invoke(state, createMockConfig());
 
-      expect(resolverSpy).toHaveBeenCalledWith(45000);
+      expect(resolverSpy).toHaveBeenCalledWith(45000, undefined);
     });
 
     it('should return token usage deltas for accumulation (not reset existing stats)', async () => {

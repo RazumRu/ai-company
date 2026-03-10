@@ -31,19 +31,6 @@ export class LiteLlmClient {
     return response.json() as Promise<T>;
   }
 
-  async listModels() {
-    const response = await this.request<{
-      data: {
-        id: string;
-        object: string;
-        created: number;
-        owned_by: string;
-      }[];
-    }>('/v1/models');
-
-    return response.data;
-  }
-
   async getModelInfo(model: string): Promise<LiteLLMModelInfo | null> {
     const models = await this.fetchModelList();
     const match = models.find((m) => m.model_name === model);
@@ -58,7 +45,7 @@ export class LiteLlmClient {
    * Fetches the full model info list from LiteLLM, with in-memory caching
    * and in-flight deduplication to avoid redundant HTTP requests.
    */
-  private async fetchModelList(): Promise<LiteLLMModelInfo[]> {
+  async fetchModelList(): Promise<LiteLLMModelInfo[]> {
     const now = Date.now();
     if (this.modelListCache && this.modelListCache.expiresAt > now) {
       return this.modelListCache.data;

@@ -4,7 +4,7 @@ import dedent from 'dedent';
 import { isString } from 'lodash';
 
 import { environment } from '../../../environments';
-import type { BaseAgentConfigurable } from '../../agents/services/nodes/base-node';
+import type { BaseAgentConfigurable } from '../../agents/agents.types';
 import { ProvideRuntimeInstanceParams } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
 import type { ProvideRuntimeResult, RuntimeProvider } from './runtime-provider';

@@ -19,6 +19,7 @@ import { DefaultLogger } from '@packages/common';
 import { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import {
+  BaseAgentConfigurable,
   BaseAgentState,
   BaseAgentStateChange,
   SUBAGENT_THREAD_PREFIX,
@@ -28,7 +29,6 @@ import {
   extractTextFromResponseContent,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
-import { BaseAgentConfigurable } from '../nodes/base-node';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
 import { ToolExecutorNode } from '../nodes/tool-executor-node';
 import { AgentOutput, BaseAgent } from './base-agent';

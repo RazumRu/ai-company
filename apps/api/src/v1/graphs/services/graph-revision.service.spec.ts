@@ -14,8 +14,10 @@ import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphRevisionDao } from '../dao/graph-revision.dao';
 import { GraphEntity } from '../entity/graph.entity';
@@ -226,6 +228,18 @@ describe('GraphRevisionService', () => {
           useValue: {
             validateTemplateConfig: vi.fn(),
             getTemplate: vi.fn(),
+          },
+        },
+        {
+          provide: LlmModelsService,
+          useValue: {
+            buildLLMRequestContext: vi.fn().mockResolvedValue({ models: undefined }),
+          },
+        },
+        {
+          provide: ProjectsDao,
+          useValue: {
+            getOne: vi.fn().mockResolvedValue({ settings: {} }),
           },
         },
       ],
@@ -780,6 +794,7 @@ describe('GraphRevisionService', () => {
       });
 
       const mockCompiledGraph = {
+        metadata: { graphId: revision.graphId, version: '1.0.0', graph_created_by: 'user-123', graph_project_id: 'project-123' },
         nodes: new Map([
           [
             'node-1',
@@ -905,6 +920,7 @@ describe('GraphRevisionService', () => {
 
     it('should throw when graph stays in Compiling status beyond the timeout', async () => {
       const compiledGraph = {
+        metadata: { graphId: 'test', version: '1.0.0', graph_created_by: 'user', graph_project_id: 'project' },
         nodes: new Map(),
         edges: [],
         state: {
@@ -986,6 +1002,7 @@ describe('GraphRevisionService', () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Running });
 
       const compiledGraph = {
+        metadata: { graphId: revision.graphId, version: '1.0.0', graph_created_by: 'user', graph_project_id: 'project' },
         nodes: new Map(),
         edges: [],
         state: {
@@ -1063,6 +1080,7 @@ describe('GraphRevisionService', () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Running });
 
       const compiledGraph = {
+        metadata: { graphId: revision.graphId, version: '1.0.0', graph_created_by: 'user', graph_project_id: 'project' },
         nodes: new Map(),
         edges: [],
         state: {

@@ -53,12 +53,22 @@ export class LitellmService {
   }
 
   async listModels(): Promise<LiteLlmModelDto[]> {
-    const response = await this.liteLlmClient.listModels();
+    const models = await this.liteLlmClient.fetchModelList();
 
-    return response.map((m) => ({
-      id: m.id,
-      ownedBy: m.owned_by,
+    return models.map((m) => ({
+      id: m.model_name,
+      ownedBy: m.litellm_params?.model ?? m.model_name,
+      supportsEmbedding: this.isEmbeddingModel(m),
     }));
+  }
+
+  private isEmbeddingModel(m: LiteLLMModelInfo): boolean {
+    const info = m.model_info;
+    if (!info) return false;
+    return (
+      info.supports_native_streaming === false &&
+      info.supports_function_calling === false
+    );
   }
 
   async countTokens(model: string, content: unknown): Promise<number> {

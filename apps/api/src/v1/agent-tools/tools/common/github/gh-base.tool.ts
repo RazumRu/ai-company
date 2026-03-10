@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { Octokit } from '@octokit/rest';
 import { z } from 'zod';
 
-import { BaseAgentConfigurable } from '../../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';
 import { execRuntimeWithContext } from '../../../agent-tools.utils';
 import { BaseTool } from '../../base-tool';

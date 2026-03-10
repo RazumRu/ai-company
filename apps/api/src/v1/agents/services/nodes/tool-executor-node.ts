@@ -19,12 +19,16 @@ import {
 } from '../../../agent-tools/tools/base-tool';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
-import { BaseAgentState, BaseAgentStateChange } from '../../agents.types';
+import {
+  BaseAgentConfigurable,
+  BaseAgentState,
+  BaseAgentStateChange,
+} from '../../agents.types';
 import {
   stripProxyPrefix,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
-import { BaseAgentConfigurable, BaseNode } from './base-node';
+import { BaseNode } from './base-node';
 
 /**
  * Number of consecutive all-error tool batches with the same error message

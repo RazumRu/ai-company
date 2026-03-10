@@ -11,7 +11,7 @@ import { AgentInfo } from '../../../agent-tools/tools/common/communication/commu
 import { extractExploredFilesFromMessages } from '../../../agents/agents.utils';
 import { AgentOutput } from '../../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
-import { BaseAgentConfigurable } from '../../../agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../agents/agents.types';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { parseStructuredContent } from '../../../graphs/graphs.utils';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';

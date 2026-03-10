@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { ShellTool } from '../../../v1/agent-tools/tools/common/shell.tool';
-import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../v1/agents/agents.types';
 import { LitellmService } from '../../../v1/litellm/services/litellm.service';
 import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
 import { OpenaiService } from '../../../v1/openai/openai.service';

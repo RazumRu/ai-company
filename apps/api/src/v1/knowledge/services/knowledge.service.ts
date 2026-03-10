@@ -70,15 +70,20 @@ export class KnowledgeService {
       throw new NotFoundException('PROJECT_NOT_FOUND');
     }
 
-    const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
+    const modelCtx = await this.llmModelsService.buildLLMRequestContext(
+      userId,
+      project.settings as Record<string, unknown> | undefined,
+    );
+    const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(modelCtx?.models?.llmEmbeddingModel);
     const [summary, plan] = await Promise.all([
-      this.generateSummary(content),
+      this.generateSummary(content, modelCtx?.models?.llmMiniModel),
       this.knowledgeChunksService.generateChunkPlan(content),
     ]);
     const tags = normalizeTags(dto.tags ?? [], MAX_TAGS);
     const chunks = this.knowledgeChunksService.materializeChunks(content, plan);
     const embeddings = await this.knowledgeChunksService.embedTexts(
       chunks.map((c) => c.text),
+      embeddingModel,
     );
 
     const doc = await this.typeorm.trx(async (entityManager: EntityManager) => {
@@ -129,9 +134,17 @@ export class KnowledgeService {
     let embeddings: number[][] = [];
 
     if (dto.content) {
-      const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
+      const project = await this.projectsDao.getOne({
+        id: existing.projectId,
+        createdBy: userId,
+      });
+      const modelCtx = await this.llmModelsService.buildLLMRequestContext(
+        userId,
+        project?.settings as Record<string, unknown> | undefined,
+      );
+      const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(modelCtx?.models?.llmEmbeddingModel);
       const [summary, plan] = await Promise.all([
-        this.generateSummary(dto.content),
+        this.generateSummary(dto.content, modelCtx?.models?.llmMiniModel),
         this.knowledgeChunksService.generateChunkPlan(dto.content),
       ]);
       updateData.summary = summary;
@@ -139,6 +152,7 @@ export class KnowledgeService {
       chunks = this.knowledgeChunksService.materializeChunks(dto.content, plan);
       embeddings = await this.knowledgeChunksService.embedTexts(
         chunks.map((c) => c.text),
+        embeddingModel,
       );
     }
 
@@ -246,7 +260,10 @@ export class KnowledgeService {
     };
   }
 
-  private async generateSummary(content: string): Promise<string> {
+  private async generateSummary(
+    content: string,
+    model?: string,
+  ): Promise<string> {
     const prompt = [
       'You generate summaries for internal knowledge base documents.',
       'Return ONLY JSON with key: summary.',
@@ -258,7 +275,7 @@ export class KnowledgeService {
     ].join('\n');
 
     const modelParams =
-      await this.llmModelsService.getKnowledgeMetadataParams();
+      await this.llmModelsService.getKnowledgeMetadataParams(model);
     const modelName =
       typeof modelParams.model === 'string'
         ? modelParams.model

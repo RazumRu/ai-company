@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { FilesCodebaseSearchTool } from '../../../v1/agent-tools/tools/common/files/files-codebase-search.tool';
-import { BaseAgentConfigurable } from '../../../v1/agents/services/nodes/base-node';
+import { BaseAgentConfigurable } from '../../../v1/agents/agents.types';
 import { RepoIndexDao } from '../../../v1/git-repositories/dao/repo-index.dao';
 import { GitRepositoryProvider } from '../../../v1/git-repositories/git-repositories.types';
 import { RepoIndexerService } from '../../../v1/git-repositories/services/repo-indexer.service';

@@ -3,6 +3,8 @@ import { BadRequestException, DefaultLogger } from '@packages/common';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NodeConnection } from '../../graph-templates/templates/base-node.template';
+import { LlmModelsService } from '../../litellm/services/llm-models.service';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { GraphEntity } from '../entity/graph.entity';
 import {
   CompiledGraph,
@@ -26,6 +28,8 @@ export class GraphCompiler {
     private readonly logger: DefaultLogger,
     private readonly graphStateFactory: GraphStateFactory,
     private readonly graphRegistry: GraphRegistry,
+    private readonly llmModelsService: LlmModelsService,
+    private readonly projectsDao: ProjectsDao,
   ) {}
 
   validateSchema(schema: GraphSchemaType): void {
@@ -190,6 +194,18 @@ export class GraphCompiler {
     additionalMetadata?: Partial<GraphMetadataSchemaType>,
   ): Promise<CompiledGraph> {
     const schema = entity.schema;
+
+    // Build LLMRequestContext once at compile time so all nodes/tools share it
+    const project = await this.projectsDao.getOne({
+      id: entity.projectId,
+      createdBy: entity.createdBy,
+    });
+    const llmRequestContext =
+      await this.llmModelsService.buildLLMRequestContext(
+        entity.createdBy,
+        project?.settings as Record<string, unknown> | undefined,
+      );
+
     const metadata: GraphMetadataSchemaType = {
       name: entity.name,
       version: entity.version,
@@ -197,6 +213,7 @@ export class GraphCompiler {
       temporary: entity.temporary,
       graph_created_by: entity.createdBy,
       graph_project_id: entity.projectId,
+      llmRequestContext,
       ...(additionalMetadata || {}),
     };
 
@@ -210,6 +227,7 @@ export class GraphCompiler {
       const edges = schema.edges || [];
 
       const compiledGraph: CompiledGraph = {
+        metadata,
         nodes: compiledNodes,
         edges,
         state: stateManager,
