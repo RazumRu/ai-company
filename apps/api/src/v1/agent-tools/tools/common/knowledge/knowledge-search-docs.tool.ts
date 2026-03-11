@@ -146,7 +146,13 @@ export class KnowledgeSearchDocsTool extends BaseTool<
     });
 
     if (docs.length === 0) {
-      return { output: { documents: [] } };
+      return {
+        output: {
+          documents: [],
+          comment:
+            'No knowledge documents have been added to this project. The knowledge base is empty — do not retry with a different query.',
+        },
+      };
     }
 
     const modelCtx: LLMRequestContext | undefined =
