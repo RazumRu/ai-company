@@ -27,6 +27,10 @@ export const RuntimeInstanceSchema = z.object({
     .nativeEnum(RuntimeInstanceStatus)
     .describe('Runtime instance status'),
   containerName: z.string().describe('Container name'),
+  image: z
+    .string()
+    .optional()
+    .describe('Container image used to start the runtime (if available)'),
   lastUsedAt: z.iso.datetime().describe('Last used timestamp'),
   createdAt: z.iso.datetime().describe('Creation timestamp'),
   updatedAt: z.iso.datetime().describe('Last update timestamp'),

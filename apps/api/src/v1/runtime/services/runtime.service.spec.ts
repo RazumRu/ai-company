@@ -6,7 +6,11 @@ import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
-import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
+import {
+  RuntimeInstanceStatus,
+  RuntimeStartParams,
+  RuntimeType,
+} from '../runtime.types';
 import { RuntimeService } from './runtime.service';
 
 describe('RuntimeService', () => {
@@ -45,6 +49,7 @@ describe('RuntimeService', () => {
       type: RuntimeType.Docker,
       status: RuntimeInstanceStatus.Running,
       containerName: 'test-container-123',
+      config: { image: 'razumru/geniro-runtime:latest' },
       lastUsedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -100,6 +105,7 @@ describe('RuntimeService', () => {
         type: RuntimeType.Docker,
         status: RuntimeInstanceStatus.Running,
         containerName: 'test-container-123',
+        image: 'razumru/geniro-runtime:latest',
         lastUsedAt: now.toISOString(),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
@@ -112,10 +118,39 @@ describe('RuntimeService', () => {
         type: RuntimeType.Daytona,
         status: RuntimeInstanceStatus.Starting,
         containerName: 'test-container-456',
+        image: 'razumru/geniro-runtime:latest',
         lastUsedAt: now.toISOString(),
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
       });
+    });
+
+    it('maps image: undefined when config has no image field', async () => {
+      threadsDao.getOne.mockResolvedValue(mockThread);
+
+      const noImageInstance = createMockInstance({
+        config: { image: undefined } as RuntimeStartParams,
+      });
+      runtimeInstanceDao.getAll.mockResolvedValue([noImageInstance]);
+
+      const result = await service.getRuntimesForThread(mockCtx, { threadId });
+
+      expect(result[0]!.image).toBeUndefined();
+    });
+
+    it('maps image: undefined for Daytona runtime with no image', async () => {
+      threadsDao.getOne.mockResolvedValue(mockThread);
+
+      const daytonaInstance = createMockInstance({
+        type: RuntimeType.Daytona,
+        config: { image: undefined } as RuntimeStartParams,
+      });
+      runtimeInstanceDao.getAll.mockResolvedValue([daytonaInstance]);
+
+      const result = await service.getRuntimesForThread(mockCtx, { threadId });
+
+      expect(result[0]!.image).toBeUndefined();
+      expect(result[0]!.type).toBe('Daytona');
     });
 
     it('passes status filter to DAO when provided', async () => {

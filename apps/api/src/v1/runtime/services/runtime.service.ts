@@ -46,6 +46,7 @@ export class RuntimeService {
       type: instance.type,
       status: instance.status,
       containerName: instance.containerName,
+      image: instance.config?.image,
       lastUsedAt: instance.lastUsedAt.toISOString(),
       createdAt: instance.createdAt.toISOString(),
       updatedAt: instance.updatedAt.toISOString(),

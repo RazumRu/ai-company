@@ -131,7 +131,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
       containerName:
         overrides.containerName ??
         `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      config: {},
+      config: { image: 'test-image:latest' },
       temporary: false,
       lastUsedAt: new Date(),
     });
@@ -162,6 +162,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
         nodeId: 'node-1',
         type: RuntimeType.Docker,
         status: RuntimeInstanceStatus.Running,
+        image: 'test-image:latest',
       }),
     );
     expect(result[0]!.createdAt).toBeDefined();
