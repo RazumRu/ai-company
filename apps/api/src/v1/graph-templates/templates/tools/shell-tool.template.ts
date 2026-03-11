@@ -144,6 +144,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
                     env,
                   },
                   cfg,
+                  { useSession: true },
                 );
                 if (result.fail) {
                   throw new Error(

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
+import { environment } from '../../../environments';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
 import { GetRuntimesQueryDto, RuntimeInstanceDto } from '../dto/runtime.dto';
@@ -46,7 +47,7 @@ export class RuntimeService {
       type: instance.type,
       status: instance.status,
       containerName: instance.containerName,
-      image: instance.config?.image,
+      image: instance.config?.image || environment.dockerRuntimeImage,
       lastUsedAt: instance.lastUsedAt.toISOString(),
       createdAt: instance.createdAt.toISOString(),
       updatedAt: instance.updatedAt.toISOString(),

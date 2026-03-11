@@ -11,18 +11,25 @@ import { BaseRuntime } from '../runtime/services/base-runtime';
 // Here we only pass around "JSON schema-like" objects.
 type JSONSchema = Record<string, unknown>;
 
+export interface ExecRuntimeOptions {
+  /**
+   * When true, the command runs inside a persistent shell session keyed by
+   * the thread id so that cwd / env changes persist across calls.
+   * Only the `shell` tool should set this to true — all other tools
+   * (gh_*, files_*, subagents, etc.) should use one-shot execution to
+   * avoid broken-pipe errors when multiple tools run in parallel.
+   *
+   * @default false
+   */
+  useSession?: boolean;
+}
+
 export const execRuntimeWithContext = async (
   runtime: BaseRuntime,
   params: RuntimeExecParams,
   cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+  options?: ExecRuntimeOptions,
 ) => {
-  if (!runtime) {
-    throw new BadRequestException(
-      undefined,
-      'Runtime is required for ShellTool',
-    );
-  }
-
   /**
    * Tools need a stable per-execution key for persistent shell sessions
    * so cwd/env can persist within the same thread.
@@ -39,15 +46,14 @@ export const execRuntimeWithContext = async (
     );
   }
 
-  const sessionId = threadIdFromCfg;
+  const useSession = options?.useSession ?? false;
 
   return runtime.exec({
     ...params,
-    sessionId,
+    ...(useSession ? { sessionId: threadIdFromCfg } : {}),
     signal: cfg.signal,
-    cwd: params.cwd, // Pass through cwd if provided
     metadata: {
-      ...(threadIdFromCfg ? { threadId: threadIdFromCfg } : {}),
+      threadId: threadIdFromCfg,
       ...(cfg.configurable?.run_id ? { runId: cfg.configurable.run_id } : {}),
       ...(cfg.configurable?.parent_thread_id
         ? { parentThreadId: cfg.configurable.parent_thread_id }

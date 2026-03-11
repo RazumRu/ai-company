@@ -60,19 +60,30 @@ describe('DaytonaRuntime', () => {
   });
 
   describe('exec()', () => {
-    it('routes through executeCommand on sandbox', async () => {
-      mockSandbox.process.executeCommand.mockResolvedValue({
+    it('routes through temporary session for one-shot execution', async () => {
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
         exitCode: 0,
-        result: 'hello',
+        stdout: 'hello',
+        stderr: '',
       });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
       const result = await runtime.exec({ cmd: 'echo hello' });
 
-      expect(mockSandbox.process.executeCommand).toHaveBeenCalledWith(
-        'echo hello',
+      expect(mockSandbox.process.createSession).toHaveBeenCalledWith(
+        expect.stringMatching(/^oneshot-/),
+      );
+      expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
+        expect.stringMatching(/^oneshot-/),
+        expect.objectContaining({
+          command: 'echo hello',
+          runAsync: false,
+        }),
         undefined,
-        undefined,
-        undefined,
+      );
+      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
+        expect.stringMatching(/^oneshot-/),
       );
       expect(result.fail).toBe(false);
       expect(result.exitCode).toBe(0);
@@ -80,40 +91,50 @@ describe('DaytonaRuntime', () => {
     });
 
     it('prepends cd command when cwd is provided', async () => {
-      mockSandbox.process.executeCommand.mockResolvedValue({
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
         exitCode: 0,
-        result: '/app/src',
+        stdout: '/app/src',
+        stderr: '',
       });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
       const result = await runtime.exec({
         cmd: 'pwd',
         cwd: '/app/src',
       });
 
-      expect(mockSandbox.process.executeCommand).toHaveBeenCalledWith(
-        expect.stringContaining('cd "/app/src"'),
-        undefined,
-        undefined,
+      expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
+        expect.stringMatching(/^oneshot-/),
+        expect.objectContaining({
+          command: expect.stringContaining('cd "/app/src"'),
+          runAsync: false,
+        }),
         undefined,
       );
       expect(result.fail).toBe(false);
     });
 
-    it('passes env to non-session executeCommand', async () => {
-      mockSandbox.process.executeCommand.mockResolvedValue({
+    it('passes env via buildEnvPrefix in one-shot execution', async () => {
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
         exitCode: 0,
-        result: 'ok',
+        stdout: 'ok',
+        stderr: '',
       });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
       const result = await runtime.exec({
         cmd: 'echo $FOO',
         env: { FOO: 'bar' },
       });
 
-      expect(mockSandbox.process.executeCommand).toHaveBeenCalledWith(
-        'echo $FOO',
-        undefined,
-        { FOO: 'bar' },
+      expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
+        expect.stringMatching(/^oneshot-/),
+        expect.objectContaining({
+          command: expect.stringContaining("export FOO='bar'"),
+          runAsync: false,
+        }),
         undefined,
       );
       expect(result.fail).toBe(false);
@@ -393,11 +414,17 @@ describe('DaytonaRuntime', () => {
     it('returns aborted result when signal fires during execution', async () => {
       const abortController = new AbortController();
 
-      // Make executeCommand hang until abort
-      mockSandbox.process.executeCommand.mockImplementation(
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+      // Make executeSessionCommand hang until abort
+      mockSandbox.process.executeSessionCommand.mockImplementation(
         () =>
           new Promise((resolve) => {
-            setTimeout(() => resolve({ exitCode: 0, result: 'done' }), 5000);
+            setTimeout(
+              () => resolve({ exitCode: 0, stdout: 'done', stderr: '' }),
+              5000,
+            );
           }),
       );
 

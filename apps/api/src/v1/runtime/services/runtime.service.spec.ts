@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mock } from 'vitest-mock-extended';
 
+vi.mock('../../../environments', () => ({
+  environment: {
+    dockerRuntimeImage: 'razumru/geniro-runtime:latest',
+  },
+}));
+
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
@@ -125,7 +131,7 @@ describe('RuntimeService', () => {
       });
     });
 
-    it('maps image: undefined when config has no image field', async () => {
+    it('falls back to environment.dockerRuntimeImage when config has no image', async () => {
       threadsDao.getOne.mockResolvedValue(mockThread);
 
       const noImageInstance = createMockInstance({
@@ -135,10 +141,10 @@ describe('RuntimeService', () => {
 
       const result = await service.getRuntimesForThread(mockCtx, { threadId });
 
-      expect(result[0]!.image).toBeUndefined();
+      expect(result[0]!.image).toBe('razumru/geniro-runtime:latest');
     });
 
-    it('maps image: undefined for Daytona runtime with no image', async () => {
+    it('falls back to environment.dockerRuntimeImage for Daytona runtime with no image', async () => {
       threadsDao.getOne.mockResolvedValue(mockThread);
 
       const daytonaInstance = createMockInstance({
@@ -149,7 +155,7 @@ describe('RuntimeService', () => {
 
       const result = await service.getRuntimesForThread(mockCtx, { threadId });
 
-      expect(result[0]!.image).toBeUndefined();
+      expect(result[0]!.image).toBe('razumru/geniro-runtime:latest');
       expect(result[0]!.type).toBe('Daytona');
     });
 

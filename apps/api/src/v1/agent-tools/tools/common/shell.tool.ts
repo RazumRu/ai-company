@@ -380,6 +380,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           env: mergedEnv,
         },
         cfg,
+        { useSession: true },
       );
 
       let stderr = res.stderr;

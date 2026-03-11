@@ -390,23 +390,6 @@ describe('ShellTool', () => {
       );
     });
 
-    it('should return error when runtime is not provided', async () => {
-      vi.mocked(mockRuntimeThreadProvider.provide).mockResolvedValueOnce(
-        undefined as unknown as BaseRuntime,
-      );
-      const builtTool = tool.build({
-        runtimeProvider: mockRuntimeThreadProvider,
-      });
-
-      const { output: result } = await builtTool.invoke({
-        purpose: 'Testing error handling',
-        command: 'echo "hello"',
-      });
-
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain('Runtime is required for ShellTool');
-    });
-
     it('should handle runtime execution errors', async () => {
       const mockError = new Error('Runtime not started');
       mockRuntime.exec = vi.fn().mockRejectedValue(mockError);
@@ -1090,7 +1073,9 @@ describe('ShellTool', () => {
       );
 
       expect(mockRuntime.exec).toHaveBeenCalledWith(
-        expect.objectContaining({}),
+        expect.objectContaining({
+          env: {}, // empty when no resolveEnv or environmentVariables provided
+        }),
       );
     });
   });

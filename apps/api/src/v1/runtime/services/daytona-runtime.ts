@@ -296,7 +296,9 @@ export class DaytonaRuntime extends BaseRuntime {
       } catch (error) {
         // Session may be stuck after a timeout or network error.
         // Recreate it so subsequent commands on this session don't hang.
-        await this.recreateSession(params.sessionId);
+        // Store the promise so concurrent callers (execInSession) can await it.
+        this.sessionRecreatePromise = this.recreateSession(params.sessionId);
+        await this.sessionRecreatePromise;
 
         const err = error instanceof Error ? error.message : String(error);
         const result: RuntimeExecResult = {
@@ -314,57 +316,16 @@ export class DaytonaRuntime extends BaseRuntime {
       }
     }
 
-    // Non-session execution
+    // One-shot execution via a temporary session.
+    // Using executeSessionCommand instead of executeCommand gives proper
+    // stdout/stderr separation (executeCommand interleaves them into a
+    // single `result` string).
     try {
-      const timeoutSeconds = params.timeoutMs
-        ? Math.ceil(params.timeoutMs / 1000)
-        : 0;
-
-      const execPromise = this.sandbox.process.executeCommand(
-        cmdString,
-        undefined, // cwd handled by cd prefix
-        params.env,
-        timeoutSeconds || undefined,
-      );
-
-      // Race against abort signal if provided
-      const response = await this.raceWithAbort(execPromise, params.signal);
-
-      if (response === 'aborted') {
-        const result: RuntimeExecResult = {
-          exitCode: 124,
-          stdout: '',
-          stderr: 'Aborted',
-          fail: true,
-          execPath: fullWorkdir,
-        };
-        this.emit({
-          type: 'execEnd',
-          data: { execId, params, result },
-        });
-        return result;
-      }
-
-      const exitCode = response.exitCode;
-      const stdout = response.result ?? '';
-      // executeCommand returns a single `result` string with stdout and stderr
-      // interleaved. The SDK's ExecuteResponse type has no separate stderr field.
-      // Session-based execution (executeSessionCommand) does demux stdout/stderr.
-      const stderr = '';
-
-      const result: RuntimeExecResult = {
-        exitCode,
-        stdout,
-        stderr,
-        fail: exitCode !== 0,
-        execPath: fullWorkdir,
-      };
-
+      const result = await this.execOneShot(params, cmdString, fullWorkdir);
       this.emit({
         type: 'execEnd',
         data: { execId, params, result },
       });
-
       return result;
     } catch (error) {
       this.emit({
@@ -426,6 +387,9 @@ export class DaytonaRuntime extends BaseRuntime {
       { command: script, runAsync: true },
     );
 
+    // tailTimeoutMs is intentionally not used here. Daytona manages its own
+    // streaming lifecycle via getSessionCommandLogs callbacks, so tail timeouts
+    // (which apply to Docker stream inactivity) don't map onto this model.
     const hardMs = Math.min(
       params.timeoutMs ?? HARD_TIMEOUT_MS,
       HARD_TIMEOUT_MS,
@@ -635,6 +599,68 @@ export class DaytonaRuntime extends BaseRuntime {
         })();
       }, 2000);
     });
+  }
+
+  /**
+   * Execute a command in a temporary Daytona session (one-shot).
+   * Creates an ephemeral session, runs the command synchronously
+   * (`runAsync: false`), and deletes the session afterwards.
+   * Unlike `executeCommand`, this gives proper stdout/stderr separation.
+   */
+  private async execOneShot(
+    params: RuntimeExecParams,
+    cmdString: string,
+    fullWorkdir: string,
+  ): Promise<RuntimeExecResult> {
+    const tempSessionId = `oneshot-${randomUUID()}`;
+    const timeoutSeconds = params.timeoutMs
+      ? Math.ceil(params.timeoutMs / 1000)
+      : 0;
+
+    try {
+      await this.sandbox!.process.createSession(tempSessionId);
+
+      // Build env prefix for inline env injection
+      const envPrefix = buildEnvPrefix(params.env);
+      const script = `${envPrefix}${cmdString || ':'}`;
+
+      const execPromise = this.sandbox!.process.executeSessionCommand(
+        tempSessionId,
+        { command: script, runAsync: false },
+        timeoutSeconds || undefined,
+      );
+
+      const response = await this.raceWithAbort(execPromise, params.signal);
+
+      if (response === 'aborted') {
+        return {
+          exitCode: 124,
+          stdout: '',
+          stderr: 'Aborted',
+          fail: true,
+          execPath: fullWorkdir,
+        };
+      }
+
+      const exitCode = response.exitCode ?? 0;
+      const stdout = response.stdout ?? response.output ?? '';
+      const stderr = response.stderr ?? '';
+
+      return {
+        exitCode,
+        stdout,
+        stderr,
+        fail: exitCode !== 0,
+        execPath: fullWorkdir,
+      };
+    } finally {
+      // Always clean up the temporary session
+      try {
+        await this.sandbox!.process.deleteSession(tempSessionId);
+      } catch {
+        // Session may already be gone
+      }
+    }
   }
 
   private async createSandbox(
