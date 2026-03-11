@@ -62,7 +62,7 @@ ENV PATH="/opt/py/bin:${PATH}"
 
 RUN mkdir -m 0755 /nix \
   && mkdir -p /etc/nix \
-  && printf "build-users-group =\nexperimental-features = nix-command flakes\nsandbox = false\n" > /etc/nix/nix.conf \
+  && printf "build-users-group =\nexperimental-features = nix-command flakes\nsandbox = false\nfilter-syscalls = false\n" > /etc/nix/nix.conf \
   && NIX_INSTALLER_NO_MODIFY_PROFILE=1 \
   curl --proto '=https' --tlsv1.2 -fsSL https://nixos.org/nix/install \
   | sh -s -- --no-daemon --yes

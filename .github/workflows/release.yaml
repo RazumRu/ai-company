@@ -153,11 +153,16 @@ jobs:
           git fetch --tags --force --prune
 
           PATTERN="@${{ env.TAG_PREFIX }}/${{ env.APP_NAME }}@*"
-          LAST_TAG="$(git tag --merged HEAD --list "$PATTERN" | sort -V | tail -n 1)"
+          # The version job just created a new tag on HEAD, so LAST_TAG == HEAD.
+          # We need the PREVIOUS tag to detect changes introduced in this release.
+          TAGS="$(git tag --merged HEAD --list "$PATTERN" | sort -V)"
+          PREV_TAG="$(echo "$TAGS" | tail -n 2 | head -n 1)"
+          LAST_TAG="$(echo "$TAGS" | tail -n 1)"
 
-          if [[ -z "$LAST_TAG" ]]; then
+          if [[ -z "$LAST_TAG" ]] || [[ "$PREV_TAG" == "$LAST_TAG" ]]; then
+            # No previous tag to compare against — treat as changed
             echo "runtime_changed=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "$LAST_TAG"..HEAD -- apps/api/runtime.Dockerfile apps/api/scripts/ | grep -q .; then
+          elif git diff --name-only "$PREV_TAG".."$LAST_TAG" -- apps/api/runtime.Dockerfile apps/api/scripts/ | grep -q .; then
             echo "runtime_changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "runtime_changed=false" >> "$GITHUB_OUTPUT"
