@@ -69,7 +69,6 @@ export class MessageTransformerService {
           return {
             role: MessageRole.AI,
             content: contentStr,
-            rawContent: obj['content'],
             additionalKwargs,
             runId,
           };
@@ -114,7 +113,6 @@ export class MessageTransformerService {
         return {
           role: MessageRole.AI,
           content: contentStr,
-          rawContent: obj['content'],
           id: typeof obj['id'] === 'string' ? (obj['id'] as string) : undefined,
           additionalKwargs,
           runId,
@@ -131,7 +129,6 @@ export class MessageTransformerService {
         return {
           role: MessageRole.AI,
           content: contentStr,
-          rawContent: obj['content'],
           id: typeof obj['id'] === 'string' ? (obj['id'] as string) : undefined,
           toolCalls: toolCalls.length ? toolCalls : undefined,
           additionalKwargs,

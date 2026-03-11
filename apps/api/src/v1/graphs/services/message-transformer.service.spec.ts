@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   AIMessageDto,
+  ExecuteTriggerSchema,
   HumanMessageDto,
   ReasoningMessageDto,
   SystemMessageDto,
@@ -51,7 +52,6 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'ai',
         content: 'Please help the user with the deployment.',
-        rawContent: 'Please help the user with the deployment.',
         id: undefined,
         toolCalls: undefined,
         runId: 'run-1',
@@ -89,7 +89,6 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'ai',
         content: 'AI response',
-        rawContent: 'AI response',
         id: 'msg-123',
         toolCalls: undefined,
         additionalKwargs: undefined,
@@ -117,7 +116,6 @@ describe('MessageTransformerService', () => {
       expect(result).toEqual({
         role: 'ai',
         content: 'Calling tools',
-        rawContent: 'Calling tools',
         id: 'msg-456',
         toolCalls: [
           {
@@ -368,5 +366,30 @@ describe('MessageTransformerService', () => {
         expect(results[0].toolCalls[0]?.name).toBe('get_weather');
       }
     });
+  });
+});
+
+describe('ExecuteTriggerSchema unicode sanitization', () => {
+  const parse = (messages: string[]) =>
+    ExecuteTriggerSchema.parse({ messages });
+
+  it('should pass clean strings through unchanged', () => {
+    const result = parse(['Hello, world!']);
+    expect(result.messages).toEqual(['Hello, world!']);
+  });
+
+  it('should strip zero-width joiners and spaces', () => {
+    const result = parse(['How it works\u200D\u200C\u200B']);
+    expect(result.messages).toEqual(['How it works']);
+  });
+
+  it('should strip BOM character', () => {
+    const result = parse(['\uFEFFHello world']);
+    expect(result.messages).toEqual(['Hello world']);
+  });
+
+  it('should strip tag characters (U+E0000-U+E007F)', () => {
+    const result = parse(['test\u{E0001}\u{E007F}string']);
+    expect(result.messages).toEqual(['teststring']);
   });
 });

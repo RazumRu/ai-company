@@ -34,6 +34,10 @@ export type RuntimeInstanceDto = {
    */
   containerName: string;
   /**
+   * Container image used to start the runtime (if available)
+   */
+  image?: string;
+  /**
    * Last used timestamp
    */
   lastUsedAt: string;
@@ -266,6 +270,47 @@ export type LiteLlmModelDto = {
    * Owner of the model
    */
   ownedBy: string;
+  /**
+   * Whether this model supports embedding
+   */
+  supportsEmbedding: boolean;
+};
+
+export type ModelDefaultsDto = {
+  llmLargeModel: string;
+  llmLargeCodeModel: string;
+  llmMiniCodeModel: string;
+  llmCodeExplorerSubagentModel: string;
+  llmMiniModel: string;
+  llmEmbeddingModel: string;
+};
+
+export type UserPreferencesDto = {
+  id: string;
+  userId: string;
+  preferences: {
+    models?: {
+      llmLargeModel?: string | null;
+      llmLargeCodeModel?: string | null;
+      llmMiniCodeModel?: string | null;
+      llmCodeExplorerSubagentModel?: string | null;
+      llmMiniModel?: string | null;
+      llmEmbeddingModel?: string | null;
+    };
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpdateUserPreferencesDto = {
+  models?: {
+    llmLargeModel?: string | null;
+    llmLargeCodeModel?: string | null;
+    llmMiniCodeModel?: string | null;
+    llmCodeExplorerSubagentModel?: string | null;
+    llmMiniModel?: string | null;
+    llmEmbeddingModel?: string | null;
+  };
 };
 
 export type CreateProjectDto = {
@@ -302,6 +347,272 @@ export type UpdateProjectDto = {
   settings?: {
     [key: string]: unknown;
   };
+};
+
+export type SetupInfoResponseDto = {
+  /**
+   * URL to redirect the user to for GitHub App installation
+   */
+  installUrl: string;
+  /**
+   * URL to install the GitHub App on a new organization
+   */
+  newInstallationUrl: string;
+  /**
+   * Whether the GitHub App is fully configured
+   */
+  configured: boolean;
+  /**
+   * Path the user must set as "Setup URL" in their GitHub App settings (append to their domain)
+   */
+  callbackPath: string;
+  /**
+   * URL template for reconfiguring a GitHub App installation (replace {id} with the installation ID)
+   */
+  reconfigureUrlTemplate?: string;
+};
+
+export type OAuthLinkRequestDto = {
+  /**
+   * GitHub OAuth authorization code
+   */
+  code: string;
+  /**
+   * Optional GitHub App installation ID hint — used when the user was redirected from a GitHub App install flow
+   */
+  installationId?: number;
+};
+
+export type LinkInstallationResponseDto = {
+  /**
+   * Whether the installation was successfully linked
+   */
+  linked: boolean;
+  /**
+   * GitHub org/user login where the app is installed
+   */
+  accountLogin: string;
+  /**
+   * Account type: Organization or User
+   */
+  accountType: string;
+};
+
+export type ListInstallationsResponseDto = {
+  installations: Array<{
+    /**
+     * Installation record ID
+     */
+    id: string;
+    /**
+     * GitHub installation ID
+     */
+    installationId: number;
+    /**
+     * GitHub org/user login
+     */
+    accountLogin: string;
+    /**
+     * Account type: Organization or User
+     */
+    accountType: string;
+    /**
+     * Whether the installation is active
+     */
+    isActive: boolean;
+    createdAt: string;
+  }>;
+};
+
+export type UnlinkInstallationResponseDto = {
+  /**
+   * Whether the installation was successfully unlinked
+   */
+  unlinked: boolean;
+};
+
+export type KnowledgeDocCreateDto = {
+  /**
+   * Knowledge document title
+   */
+  title: string;
+  /**
+   * Raw knowledge document content
+   */
+  content: string;
+  /**
+   * Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.
+   */
+  politic?: string | null;
+  /**
+   * Optional tags to apply to the document
+   */
+  tags?: Array<string> | null;
+};
+
+export type KnowledgeDocDto = {
+  id: string;
+  publicId: number;
+  content: string;
+  title: string;
+  summary?: string | null;
+  politic?: string | null;
+  embeddingModel?: string | null;
+  tags: Array<string>;
+  /**
+   * Project this knowledge doc belongs to
+   */
+  projectId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KnowledgeDocUpdateDto = {
+  /**
+   * Knowledge document title
+   */
+  title?: string;
+  /**
+   * Raw knowledge document content
+   */
+  content?: string;
+  /**
+   * Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.
+   */
+  politic?: string | null;
+  /**
+   * Optional tags to apply to the document
+   */
+  tags?: Array<string> | null;
+};
+
+export type SuggestAgentInstructionsDto = {
+  /**
+   * User request describing how to adjust agent instructions
+   */
+  userRequest: string;
+  /**
+   * Optional thread id to continue a previous suggestion conversation
+   */
+  threadId?: string;
+  /**
+   * Optional LLM model to use for this suggestion
+   */
+  model?: string;
+};
+
+export type SuggestAgentInstructionsResponseDto = {
+  /**
+   * Updated agent instructions generated by the LLM
+   */
+  instructions: string;
+  /**
+   * Thread id used for this suggestion session
+   */
+  threadId: string;
+};
+
+export type SuggestGraphInstructionsDto = {
+  /**
+   * User request describing how to adjust agent instructions
+   */
+  userRequest: string;
+  /**
+   * Optional LLM model to use for this suggestion
+   */
+  model?: string;
+};
+
+export type SuggestGraphInstructionsResponseDto = {
+  /**
+   * Only agents with changed instructions are returned
+   */
+  updates: Array<{
+    /**
+     * Agent node id
+     */
+    nodeId: string;
+    /**
+     * Agent display name
+     */
+    name?: string;
+    /**
+     * Updated agent instructions generated by the LLM
+     */
+    instructions: string;
+  }>;
+};
+
+export type ThreadAnalysisRequestDto = {
+  /**
+   * Optional user-provided input to guide the analysis
+   */
+  userInput?: string;
+  /**
+   * Optional LLM conversation id to continue the existing suggestion thread
+   */
+  threadId?: string;
+  /**
+   * Optional LLM model to use for this analysis
+   */
+  model?: string;
+};
+
+export type ThreadAnalysisResponseDto = {
+  /**
+   * LLM-generated analysis and improvement suggestions
+   */
+  analysis: string;
+  /**
+   * Identifier of the LLM conversation used for the analysis
+   */
+  conversationId: string;
+};
+
+export type KnowledgeContentSuggestionRequestDto = {
+  /**
+   * User request describing knowledge content to create or improve
+   */
+  userRequest: string;
+  /**
+   * Optional existing knowledge document title
+   */
+  currentTitle?: string;
+  /**
+   * Optional existing knowledge document content
+   */
+  currentContent?: string;
+  /**
+   * Optional existing tags for the knowledge document
+   */
+  currentTags?: Array<string>;
+  /**
+   * Optional thread id to continue a previous suggestion conversation
+   */
+  threadId?: string;
+  /**
+   * Optional LLM model to use for this suggestion
+   */
+  model?: string;
+};
+
+export type KnowledgeContentSuggestionResponseDto = {
+  /**
+   * Suggested knowledge document title
+   */
+  title: string;
+  /**
+   * Suggested knowledge document content
+   */
+  content: string;
+  /**
+   * Suggested tags for the knowledge document
+   */
+  tags?: Array<string>;
+  /**
+   * Thread id used for this suggestion session
+   */
+  threadId: string;
 };
 
 export type CreateGraphDto = {
@@ -1099,135 +1410,6 @@ export type TemplateDto = {
   >;
 };
 
-export type SetupInfoResponseDto = {
-  /**
-   * URL to redirect the user to for GitHub App installation
-   */
-  installUrl: string;
-  /**
-   * URL to install the GitHub App on a new organization
-   */
-  newInstallationUrl: string;
-  /**
-   * Whether the GitHub App is fully configured
-   */
-  configured: boolean;
-  /**
-   * Path the user must set as "Setup URL" in their GitHub App settings (append to their domain)
-   */
-  callbackPath: string;
-};
-
-export type OAuthLinkRequestDto = {
-  /**
-   * GitHub OAuth authorization code
-   */
-  code: string;
-};
-
-export type LinkInstallationResponseDto = {
-  /**
-   * Whether the installation was successfully linked
-   */
-  linked: boolean;
-  /**
-   * GitHub org/user login where the app is installed
-   */
-  accountLogin: string;
-  /**
-   * Account type: Organization or User
-   */
-  accountType: string;
-};
-
-export type ListInstallationsResponseDto = {
-  installations: Array<{
-    /**
-     * Installation record ID
-     */
-    id: string;
-    /**
-     * GitHub installation ID
-     */
-    installationId: number;
-    /**
-     * GitHub org/user login
-     */
-    accountLogin: string;
-    /**
-     * Account type: Organization or User
-     */
-    accountType: string;
-    /**
-     * Whether the installation is active
-     */
-    isActive: boolean;
-    createdAt: string;
-  }>;
-};
-
-export type UnlinkInstallationResponseDto = {
-  /**
-   * Whether the installation was successfully unlinked
-   */
-  unlinked: boolean;
-};
-
-export type KnowledgeDocCreateDto = {
-  /**
-   * Knowledge document title
-   */
-  title: string;
-  /**
-   * Raw knowledge document content
-   */
-  content: string;
-  /**
-   * Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.
-   */
-  politic?: string | null;
-  /**
-   * Optional tags to apply to the document
-   */
-  tags?: Array<string> | null;
-};
-
-export type KnowledgeDocDto = {
-  id: string;
-  publicId: number;
-  content: string;
-  title: string;
-  summary?: string | null;
-  politic?: string | null;
-  embeddingModel?: string | null;
-  tags: Array<string>;
-  /**
-   * Project this knowledge doc belongs to
-   */
-  projectId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type KnowledgeDocUpdateDto = {
-  /**
-   * Knowledge document title
-   */
-  title?: string;
-  /**
-   * Raw knowledge document content
-   */
-  content?: string;
-  /**
-   * Optional LLM usage guidance for this document. If the politic instructs to fetch full content (e.g. "always fetch the full content instead of fetching only specific chunks"), full document retrieval is permitted.
-   */
-  politic?: string | null;
-  /**
-   * Optional tags to apply to the document
-   */
-  tags?: Array<string> | null;
-};
-
 export type ThreadDto = {
   /**
    * Thread ID
@@ -1329,10 +1511,6 @@ export type ThreadMessageDto = {
          * Run ID associated with this message
          */
         runId?: string | null;
-        /**
-         * Original raw content as received from the provider
-         */
-        rawContent?: unknown;
         /**
          * Tool calls in the message
          */
@@ -1662,6 +1840,10 @@ export type ThreadUsageStatisticsDto = {
    * Number of user (human) messages in the thread
    */
   userMessageCount: number;
+  /**
+   * Distinct LLM model identifiers used across all messages in the thread
+   */
+  modelsUsed: Array<string>;
 };
 
 export type SetThreadMetadataDto = {
@@ -1671,135 +1853,6 @@ export type SetThreadMetadataDto = {
   metadata: {
     [key: string]: unknown;
   };
-};
-
-export type SuggestAgentInstructionsDto = {
-  /**
-   * User request describing how to adjust agent instructions
-   */
-  userRequest: string;
-  /**
-   * Optional thread id to continue a previous suggestion conversation
-   */
-  threadId?: string;
-  /**
-   * Optional LLM model to use for this suggestion
-   */
-  model?: string;
-};
-
-export type SuggestAgentInstructionsResponseDto = {
-  /**
-   * Updated agent instructions generated by the LLM
-   */
-  instructions: string;
-  /**
-   * Thread id used for this suggestion session
-   */
-  threadId: string;
-};
-
-export type SuggestGraphInstructionsDto = {
-  /**
-   * User request describing how to adjust agent instructions
-   */
-  userRequest: string;
-  /**
-   * Optional LLM model to use for this suggestion
-   */
-  model?: string;
-};
-
-export type SuggestGraphInstructionsResponseDto = {
-  /**
-   * Only agents with changed instructions are returned
-   */
-  updates: Array<{
-    /**
-     * Agent node id
-     */
-    nodeId: string;
-    /**
-     * Agent display name
-     */
-    name?: string;
-    /**
-     * Updated agent instructions generated by the LLM
-     */
-    instructions: string;
-  }>;
-};
-
-export type ThreadAnalysisRequestDto = {
-  /**
-   * Optional user-provided input to guide the analysis
-   */
-  userInput?: string;
-  /**
-   * Optional LLM conversation id to continue the existing suggestion thread
-   */
-  threadId?: string;
-  /**
-   * Optional LLM model to use for this analysis
-   */
-  model?: string;
-};
-
-export type ThreadAnalysisResponseDto = {
-  /**
-   * LLM-generated analysis and improvement suggestions
-   */
-  analysis: string;
-  /**
-   * Identifier of the LLM conversation used for the analysis
-   */
-  conversationId: string;
-};
-
-export type KnowledgeContentSuggestionRequestDto = {
-  /**
-   * User request describing knowledge content to create or improve
-   */
-  userRequest: string;
-  /**
-   * Optional existing knowledge document title
-   */
-  currentTitle?: string;
-  /**
-   * Optional existing knowledge document content
-   */
-  currentContent?: string;
-  /**
-   * Optional existing tags for the knowledge document
-   */
-  currentTags?: Array<string>;
-  /**
-   * Optional thread id to continue a previous suggestion conversation
-   */
-  threadId?: string;
-  /**
-   * Optional LLM model to use for this suggestion
-   */
-  model?: string;
-};
-
-export type KnowledgeContentSuggestionResponseDto = {
-  /**
-   * Suggested knowledge document title
-   */
-  title: string;
-  /**
-   * Suggested knowledge document content
-   */
-  content: string;
-  /**
-   * Suggested tags for the knowledge document
-   */
-  tags?: Array<string>;
-  /**
-   * Thread id used for this suggestion session
-   */
-  threadId: string;
 };
 
 export type AnalyticsOverviewDto = {
@@ -1935,6 +1988,10 @@ export type GetRepositoriesData = {
      * Filter by host provider
      */
     provider?: 'GITHUB';
+    /**
+     * Filter by GitHub App installation ID
+     */
+    installationId?: number;
     /**
      * Maximum number of repositories to return
      */
@@ -2111,6 +2168,48 @@ export type ListModelsResponses = {
 
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
 
+export type GetModelDefaultsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/model-defaults';
+};
+
+export type GetModelDefaultsResponses = {
+  200: ModelDefaultsDto;
+};
+
+export type GetModelDefaultsResponse =
+  GetModelDefaultsResponses[keyof GetModelDefaultsResponses];
+
+export type GetPreferencesData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/user-preferences';
+};
+
+export type GetPreferencesResponses = {
+  200: UserPreferencesDto;
+};
+
+export type GetPreferencesResponse =
+  GetPreferencesResponses[keyof GetPreferencesResponses];
+
+export type UpdatePreferencesData = {
+  body: UpdateUserPreferencesDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/user-preferences';
+};
+
+export type UpdatePreferencesResponses = {
+  200: UserPreferencesDto;
+};
+
+export type UpdatePreferencesResponse =
+  UpdatePreferencesResponses[keyof UpdatePreferencesResponses];
+
 export type GetAllProjectsData = {
   body?: never;
   path?: never;
@@ -2186,6 +2285,225 @@ export type UpdateProjectResponses = {
 
 export type UpdateProjectResponse =
   UpdateProjectResponses[keyof UpdateProjectResponses];
+
+export type GetSetupInfoData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/git-auth/github/setup';
+};
+
+export type GetSetupInfoResponses = {
+  200: SetupInfoResponseDto;
+};
+
+export type GetSetupInfoResponse =
+  GetSetupInfoResponses[keyof GetSetupInfoResponses];
+
+export type LinkViaOAuthCodeData = {
+  body: OAuthLinkRequestDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/git-auth/github/oauth/link';
+};
+
+export type LinkViaOAuthCodeResponses = {
+  201: LinkInstallationResponseDto;
+};
+
+export type LinkViaOAuthCodeResponse =
+  LinkViaOAuthCodeResponses[keyof LinkViaOAuthCodeResponses];
+
+export type ListInstallationsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/git-auth/github/installations';
+};
+
+export type ListInstallationsResponses = {
+  200: ListInstallationsResponseDto;
+};
+
+export type ListInstallationsResponse =
+  ListInstallationsResponses[keyof ListInstallationsResponses];
+
+export type UnlinkInstallationData = {
+  body?: never;
+  path: {
+    installationId: string;
+  };
+  query?: never;
+  url: '/api/v1/git-auth/github/installations/{installationId}';
+};
+
+export type UnlinkInstallationResponses = {
+  200: UnlinkInstallationResponseDto;
+};
+
+export type UnlinkInstallationResponse =
+  UnlinkInstallationResponses[keyof UnlinkInstallationResponses];
+
+export type DisconnectAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/git-auth/github/disconnect';
+};
+
+export type DisconnectAllResponses = {
+  200: UnlinkInstallationResponseDto;
+};
+
+export type DisconnectAllResponse =
+  DisconnectAllResponses[keyof DisconnectAllResponses];
+
+export type ListDocsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    /**
+     * Filter by tags (match any)
+     */
+    tags?: Array<string>;
+    /**
+     * Search in title/summary/content
+     */
+    search?: string;
+    limit?: number;
+    offset?: number;
+  };
+  url: '/api/v1/knowledge-docs';
+};
+
+export type ListDocsResponses = {
+  200: {
+    [key: string]: unknown;
+  };
+};
+
+export type ListDocsResponse = ListDocsResponses[keyof ListDocsResponses];
+
+export type CreateDocData = {
+  body: KnowledgeDocCreateDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/knowledge-docs';
+};
+
+export type CreateDocResponses = {
+  201: KnowledgeDocDto;
+};
+
+export type CreateDocResponse = CreateDocResponses[keyof CreateDocResponses];
+
+export type DeleteDocData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/knowledge-docs/{id}';
+};
+
+export type DeleteDocResponses = {
+  204: void;
+};
+
+export type DeleteDocResponse = DeleteDocResponses[keyof DeleteDocResponses];
+
+export type GetDocData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/knowledge-docs/{id}';
+};
+
+export type GetDocResponses = {
+  200: KnowledgeDocDto;
+};
+
+export type GetDocResponse = GetDocResponses[keyof GetDocResponses];
+
+export type UpdateDocData = {
+  body: KnowledgeDocUpdateDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/knowledge-docs/{id}';
+};
+
+export type UpdateDocResponses = {
+  200: KnowledgeDocDto;
+};
+
+export type UpdateDocResponse = UpdateDocResponses[keyof UpdateDocResponses];
+
+export type SuggestAgentInstructionsData = {
+  body: SuggestAgentInstructionsDto;
+  path: {
+    graphId: string;
+    nodeId: string;
+  };
+  query?: never;
+  url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-instructions';
+};
+
+export type SuggestAgentInstructionsResponses = {
+  201: SuggestAgentInstructionsResponseDto;
+};
+
+export type SuggestAgentInstructionsResponse =
+  SuggestAgentInstructionsResponses[keyof SuggestAgentInstructionsResponses];
+
+export type SuggestGraphInstructionsData = {
+  body: SuggestGraphInstructionsDto;
+  path: {
+    graphId: string;
+  };
+  query?: never;
+  url: '/api/v1/graphs/{graphId}/suggest-instructions';
+};
+
+export type SuggestGraphInstructionsResponses = {
+  201: SuggestGraphInstructionsResponseDto;
+};
+
+export type SuggestGraphInstructionsResponse =
+  SuggestGraphInstructionsResponses[keyof SuggestGraphInstructionsResponses];
+
+export type AnalyzeThreadData = {
+  body: ThreadAnalysisRequestDto;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}/analyze';
+};
+
+export type AnalyzeThreadResponses = {
+  201: ThreadAnalysisResponseDto;
+};
+
+export type AnalyzeThreadResponse =
+  AnalyzeThreadResponses[keyof AnalyzeThreadResponses];
+
+export type SuggestKnowledgeContentData = {
+  body: KnowledgeContentSuggestionRequestDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/knowledge-docs/suggest';
+};
+
+export type SuggestKnowledgeContentResponses = {
+  201: KnowledgeContentSuggestionResponseDto;
+};
+
+export type SuggestKnowledgeContentResponse =
+  SuggestKnowledgeContentResponses[keyof SuggestKnowledgeContentResponses];
 
 export type GetAllGraphsData = {
   body?: never;
@@ -2404,164 +2722,6 @@ export type GetAllTemplatesResponses = {
 export type GetAllTemplatesResponse =
   GetAllTemplatesResponses[keyof GetAllTemplatesResponses];
 
-export type GetSetupInfoData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: '/api/v1/github-app/setup';
-};
-
-export type GetSetupInfoResponses = {
-  200: SetupInfoResponseDto;
-};
-
-export type GetSetupInfoResponse =
-  GetSetupInfoResponses[keyof GetSetupInfoResponses];
-
-export type LinkViaOAuthCodeData = {
-  body: OAuthLinkRequestDto;
-  path?: never;
-  query?: never;
-  url: '/api/v1/github-app/oauth/link';
-};
-
-export type LinkViaOAuthCodeResponses = {
-  201: LinkInstallationResponseDto;
-};
-
-export type LinkViaOAuthCodeResponse =
-  LinkViaOAuthCodeResponses[keyof LinkViaOAuthCodeResponses];
-
-export type LinkInstallationData = {
-  body?: never;
-  path: {
-    installationId: string;
-  };
-  query?: never;
-  url: '/api/v1/github-app/installations/{installationId}/link';
-};
-
-export type LinkInstallationResponses = {
-  201: LinkInstallationResponseDto;
-};
-
-export type LinkInstallationResponse =
-  LinkInstallationResponses[keyof LinkInstallationResponses];
-
-export type ListInstallationsData = {
-  body?: never;
-  path?: never;
-  query?: never;
-  url: '/api/v1/github-app/installations';
-};
-
-export type ListInstallationsResponses = {
-  200: ListInstallationsResponseDto;
-};
-
-export type ListInstallationsResponse =
-  ListInstallationsResponses[keyof ListInstallationsResponses];
-
-export type UnlinkInstallationData = {
-  body?: never;
-  path: {
-    installationId: string;
-  };
-  query?: never;
-  url: '/api/v1/github-app/installations/{installationId}';
-};
-
-export type UnlinkInstallationResponses = {
-  200: UnlinkInstallationResponseDto;
-};
-
-export type UnlinkInstallationResponse =
-  UnlinkInstallationResponses[keyof UnlinkInstallationResponses];
-
-export type ListDocsData = {
-  body?: never;
-  path?: never;
-  query?: {
-    /**
-     * Filter by tags (match any)
-     */
-    tags?: Array<string>;
-    /**
-     * Search in title/summary/content
-     */
-    search?: string;
-    limit?: number;
-    offset?: number;
-  };
-  url: '/api/v1/knowledge-docs';
-};
-
-export type ListDocsResponses = {
-  200: {
-    [key: string]: unknown;
-  };
-};
-
-export type ListDocsResponse = ListDocsResponses[keyof ListDocsResponses];
-
-export type CreateDocData = {
-  body: KnowledgeDocCreateDto;
-  path?: never;
-  query?: never;
-  url: '/api/v1/knowledge-docs';
-};
-
-export type CreateDocResponses = {
-  201: KnowledgeDocDto;
-};
-
-export type CreateDocResponse = CreateDocResponses[keyof CreateDocResponses];
-
-export type DeleteDocData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: '/api/v1/knowledge-docs/{id}';
-};
-
-export type DeleteDocResponses = {
-  204: void;
-};
-
-export type DeleteDocResponse = DeleteDocResponses[keyof DeleteDocResponses];
-
-export type GetDocData = {
-  body?: never;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: '/api/v1/knowledge-docs/{id}';
-};
-
-export type GetDocResponses = {
-  200: KnowledgeDocDto;
-};
-
-export type GetDocResponse = GetDocResponses[keyof GetDocResponses];
-
-export type UpdateDocData = {
-  body: KnowledgeDocUpdateDto;
-  path: {
-    id: string;
-  };
-  query?: never;
-  url: '/api/v1/knowledge-docs/{id}';
-};
-
-export type UpdateDocResponses = {
-  200: KnowledgeDocDto;
-};
-
-export type UpdateDocResponse = UpdateDocResponses[keyof UpdateDocResponses];
-
 export type GetThreadsData = {
   body?: never;
   path?: never;
@@ -2757,69 +2917,6 @@ export type StopThreadByExternalIdResponses = {
 
 export type StopThreadByExternalIdResponse =
   StopThreadByExternalIdResponses[keyof StopThreadByExternalIdResponses];
-
-export type SuggestAgentInstructionsData = {
-  body: SuggestAgentInstructionsDto;
-  path: {
-    graphId: string;
-    nodeId: string;
-  };
-  query?: never;
-  url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-instructions';
-};
-
-export type SuggestAgentInstructionsResponses = {
-  201: SuggestAgentInstructionsResponseDto;
-};
-
-export type SuggestAgentInstructionsResponse =
-  SuggestAgentInstructionsResponses[keyof SuggestAgentInstructionsResponses];
-
-export type SuggestGraphInstructionsData = {
-  body: SuggestGraphInstructionsDto;
-  path: {
-    graphId: string;
-  };
-  query?: never;
-  url: '/api/v1/graphs/{graphId}/suggest-instructions';
-};
-
-export type SuggestGraphInstructionsResponses = {
-  201: SuggestGraphInstructionsResponseDto;
-};
-
-export type SuggestGraphInstructionsResponse =
-  SuggestGraphInstructionsResponses[keyof SuggestGraphInstructionsResponses];
-
-export type AnalyzeThreadData = {
-  body: ThreadAnalysisRequestDto;
-  path: {
-    threadId: string;
-  };
-  query?: never;
-  url: '/api/v1/threads/{threadId}/analyze';
-};
-
-export type AnalyzeThreadResponses = {
-  201: ThreadAnalysisResponseDto;
-};
-
-export type AnalyzeThreadResponse =
-  AnalyzeThreadResponses[keyof AnalyzeThreadResponses];
-
-export type SuggestKnowledgeContentData = {
-  body: KnowledgeContentSuggestionRequestDto;
-  path?: never;
-  query?: never;
-  url: '/api/v1/knowledge-docs/suggest';
-};
-
-export type SuggestKnowledgeContentResponses = {
-  201: KnowledgeContentSuggestionResponseDto;
-};
-
-export type SuggestKnowledgeContentResponse =
-  SuggestKnowledgeContentResponses[keyof SuggestKnowledgeContentResponses];
 
 export type GetOverviewData = {
   body?: never;

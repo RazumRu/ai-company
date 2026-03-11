@@ -39,6 +39,9 @@ export const RuntimeInstanceDtoSchema = {
     containerName: {
       type: 'string',
     },
+    image: {
+      type: 'string',
+    },
     lastUsedAt: {
       type: 'string',
       format: 'date-time',
@@ -505,8 +508,224 @@ export const LiteLlmModelDtoSchema = {
     ownedBy: {
       type: 'string',
     },
+    supportsEmbedding: {
+      type: 'boolean',
+    },
   },
-  required: ['id', 'ownedBy'],
+  required: ['id', 'ownedBy', 'supportsEmbedding'],
+} as const;
+
+export const ModelDefaultsDtoSchema = {
+  type: 'object',
+  properties: {
+    llmLargeModel: {
+      type: 'string',
+    },
+    llmLargeCodeModel: {
+      type: 'string',
+    },
+    llmMiniCodeModel: {
+      type: 'string',
+    },
+    llmCodeExplorerSubagentModel: {
+      type: 'string',
+    },
+    llmMiniModel: {
+      type: 'string',
+    },
+    llmEmbeddingModel: {
+      type: 'string',
+    },
+  },
+  required: [
+    'llmLargeModel',
+    'llmLargeCodeModel',
+    'llmMiniCodeModel',
+    'llmCodeExplorerSubagentModel',
+    'llmMiniModel',
+    'llmEmbeddingModel',
+  ],
+} as const;
+
+export const UserPreferencesDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    userId: {
+      type: 'string',
+    },
+    preferences: {
+      type: 'object',
+      properties: {
+        models: {
+          type: 'object',
+          properties: {
+            llmLargeModel: {
+              anyOf: [
+                {
+                  type: 'string',
+                  maxLength: 200,
+                },
+                {
+                  type: 'null',
+                },
+              ],
+            },
+            llmLargeCodeModel: {
+              anyOf: [
+                {
+                  type: 'string',
+                  maxLength: 200,
+                },
+                {
+                  type: 'null',
+                },
+              ],
+            },
+            llmMiniCodeModel: {
+              anyOf: [
+                {
+                  type: 'string',
+                  maxLength: 200,
+                },
+                {
+                  type: 'null',
+                },
+              ],
+            },
+            llmCodeExplorerSubagentModel: {
+              anyOf: [
+                {
+                  type: 'string',
+                  maxLength: 200,
+                },
+                {
+                  type: 'null',
+                },
+              ],
+            },
+            llmMiniModel: {
+              anyOf: [
+                {
+                  type: 'string',
+                  maxLength: 200,
+                },
+                {
+                  type: 'null',
+                },
+              ],
+            },
+            llmEmbeddingModel: {
+              anyOf: [
+                {
+                  type: 'string',
+                  maxLength: 200,
+                },
+                {
+                  type: 'null',
+                },
+              ],
+            },
+          },
+        },
+      },
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+  },
+  required: ['id', 'userId', 'preferences', 'createdAt', 'updatedAt'],
+} as const;
+
+export const UpdateUserPreferencesDtoSchema = {
+  type: 'object',
+  properties: {
+    models: {
+      type: 'object',
+      properties: {
+        llmLargeModel: {
+          anyOf: [
+            {
+              type: 'string',
+              maxLength: 200,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        llmLargeCodeModel: {
+          anyOf: [
+            {
+              type: 'string',
+              maxLength: 200,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        llmMiniCodeModel: {
+          anyOf: [
+            {
+              type: 'string',
+              maxLength: 200,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        llmCodeExplorerSubagentModel: {
+          anyOf: [
+            {
+              type: 'string',
+              maxLength: 200,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        llmMiniModel: {
+          anyOf: [
+            {
+              type: 'string',
+              maxLength: 200,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        llmEmbeddingModel: {
+          anyOf: [
+            {
+              type: 'string',
+              maxLength: 200,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+      },
+    },
+  },
 } as const;
 
 export const CreateProjectDtoSchema = {
@@ -698,6 +917,457 @@ export const UpdateProjectDtoSchema = {
       additionalProperties: {},
     },
   },
+} as const;
+
+export const SetupInfoResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    installUrl: {
+      type: 'string',
+    },
+    newInstallationUrl: {
+      type: 'string',
+    },
+    configured: {
+      type: 'boolean',
+    },
+    callbackPath: {
+      type: 'string',
+    },
+    reconfigureUrlTemplate: {
+      type: 'string',
+    },
+  },
+  required: ['installUrl', 'newInstallationUrl', 'configured', 'callbackPath'],
+} as const;
+
+export const OAuthLinkRequestDtoSchema = {
+  type: 'object',
+  properties: {
+    code: {
+      type: 'string',
+      minLength: 1,
+    },
+    installationId: {
+      type: 'integer',
+      exclusiveMinimum: 0,
+      maximum: 9007199254740991,
+    },
+  },
+  required: ['code'],
+} as const;
+
+export const LinkInstallationResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    linked: {
+      type: 'boolean',
+    },
+    accountLogin: {
+      type: 'string',
+    },
+    accountType: {
+      type: 'string',
+    },
+  },
+  required: ['linked', 'accountLogin', 'accountType'],
+} as const;
+
+export const ListInstallationsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    installations: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            format: 'uuid',
+            pattern:
+              '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+          },
+          installationId: {
+            type: 'integer',
+            minimum: -9007199254740991,
+            maximum: 9007199254740991,
+          },
+          accountLogin: {
+            type: 'string',
+          },
+          accountType: {
+            type: 'string',
+          },
+          isActive: {
+            type: 'boolean',
+          },
+          createdAt: {
+            type: 'string',
+            format: 'date-time',
+            pattern:
+              '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+          },
+        },
+        required: [
+          'id',
+          'installationId',
+          'accountLogin',
+          'accountType',
+          'isActive',
+          'createdAt',
+        ],
+      },
+    },
+  },
+  required: ['installations'],
+} as const;
+
+export const UnlinkInstallationResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    unlinked: {
+      type: 'boolean',
+    },
+  },
+  required: ['unlinked'],
+} as const;
+
+export const KnowledgeDocCreateDtoSchema = {
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 500,
+    },
+    content: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 2000000,
+    },
+    politic: {
+      anyOf: [
+        {
+          type: 'string',
+          minLength: 1,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    tags: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+  },
+  required: ['title', 'content'],
+} as const;
+
+export const KnowledgeDocDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    publicId: {
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
+    },
+    content: {
+      type: 'string',
+    },
+    title: {
+      type: 'string',
+    },
+    summary: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    politic: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    embeddingModel: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
+    projectId: {
+      anyOf: [
+        {
+          type: 'string',
+          format: 'uuid',
+          pattern:
+            '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+  },
+  required: [
+    'id',
+    'publicId',
+    'content',
+    'title',
+    'tags',
+    'projectId',
+    'createdAt',
+    'updatedAt',
+  ],
+} as const;
+
+export const KnowledgeDocUpdateDtoSchema = {
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 500,
+    },
+    content: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 2000000,
+    },
+    politic: {
+      anyOf: [
+        {
+          type: 'string',
+          minLength: 1,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    tags: {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+  },
+} as const;
+
+export const SuggestAgentInstructionsDtoSchema = {
+  type: 'object',
+  properties: {
+    userRequest: {
+      type: 'string',
+      minLength: 1,
+    },
+    threadId: {
+      type: 'string',
+    },
+    model: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+  required: ['userRequest'],
+} as const;
+
+export const SuggestAgentInstructionsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    instructions: {
+      type: 'string',
+    },
+    threadId: {
+      type: 'string',
+    },
+  },
+  required: ['instructions', 'threadId'],
+} as const;
+
+export const SuggestGraphInstructionsDtoSchema = {
+  type: 'object',
+  properties: {
+    userRequest: {
+      type: 'string',
+      minLength: 1,
+    },
+    model: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+  required: ['userRequest'],
+} as const;
+
+export const SuggestGraphInstructionsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    updates: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          nodeId: {
+            type: 'string',
+            minLength: 1,
+          },
+          name: {
+            type: 'string',
+            minLength: 1,
+          },
+          instructions: {
+            type: 'string',
+            minLength: 1,
+          },
+        },
+        required: ['nodeId', 'instructions'],
+      },
+    },
+  },
+  required: ['updates'],
+} as const;
+
+export const ThreadAnalysisRequestDtoSchema = {
+  type: 'object',
+  properties: {
+    userInput: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 5000,
+    },
+    threadId: {
+      type: 'string',
+    },
+    model: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+} as const;
+
+export const ThreadAnalysisResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    analysis: {
+      type: 'string',
+    },
+    conversationId: {
+      type: 'string',
+    },
+  },
+  required: ['analysis', 'conversationId'],
+} as const;
+
+export const KnowledgeContentSuggestionRequestDtoSchema = {
+  type: 'object',
+  properties: {
+    userRequest: {
+      type: 'string',
+      minLength: 1,
+    },
+    currentTitle: {
+      type: 'string',
+    },
+    currentContent: {
+      type: 'string',
+    },
+    currentTags: {
+      type: 'array',
+      items: {
+        type: 'string',
+        minLength: 1,
+      },
+    },
+    threadId: {
+      type: 'string',
+    },
+    model: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+  required: ['userRequest'],
+} as const;
+
+export const KnowledgeContentSuggestionResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    title: {
+      type: 'string',
+      minLength: 1,
+    },
+    content: {
+      type: 'string',
+      minLength: 1,
+    },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'string',
+        minLength: 1,
+      },
+    },
+    threadId: {
+      type: 'string',
+    },
+  },
+  required: ['title', 'content', 'threadId'],
 } as const;
 
 export const CreateGraphDtoSchema = {
@@ -2301,288 +2971,6 @@ export const TemplateDtoSchema = {
   required: ['id', 'name', 'description', 'kind', 'schema'],
 } as const;
 
-export const SetupInfoResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    installUrl: {
-      type: 'string',
-    },
-    newInstallationUrl: {
-      type: 'string',
-    },
-    configured: {
-      type: 'boolean',
-    },
-    callbackPath: {
-      type: 'string',
-    },
-  },
-  required: ['installUrl', 'newInstallationUrl', 'configured', 'callbackPath'],
-} as const;
-
-export const OAuthLinkRequestDtoSchema = {
-  type: 'object',
-  properties: {
-    code: {
-      type: 'string',
-      minLength: 1,
-    },
-  },
-  required: ['code'],
-} as const;
-
-export const LinkInstallationResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    linked: {
-      type: 'boolean',
-    },
-    accountLogin: {
-      type: 'string',
-    },
-    accountType: {
-      type: 'string',
-    },
-  },
-  required: ['linked', 'accountLogin', 'accountType'],
-} as const;
-
-export const ListInstallationsResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    installations: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          id: {
-            type: 'string',
-            format: 'uuid',
-            pattern:
-              '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
-          },
-          installationId: {
-            type: 'integer',
-            minimum: -9007199254740991,
-            maximum: 9007199254740991,
-          },
-          accountLogin: {
-            type: 'string',
-          },
-          accountType: {
-            type: 'string',
-          },
-          isActive: {
-            type: 'boolean',
-          },
-          createdAt: {
-            type: 'string',
-            format: 'date-time',
-            pattern:
-              '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
-          },
-        },
-        required: [
-          'id',
-          'installationId',
-          'accountLogin',
-          'accountType',
-          'isActive',
-          'createdAt',
-        ],
-      },
-    },
-  },
-  required: ['installations'],
-} as const;
-
-export const UnlinkInstallationResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    unlinked: {
-      type: 'boolean',
-    },
-  },
-  required: ['unlinked'],
-} as const;
-
-export const KnowledgeDocCreateDtoSchema = {
-  type: 'object',
-  properties: {
-    title: {
-      type: 'string',
-      minLength: 1,
-      maxLength: 500,
-    },
-    content: {
-      type: 'string',
-      minLength: 1,
-      maxLength: 2000000,
-    },
-    politic: {
-      anyOf: [
-        {
-          type: 'string',
-          minLength: 1,
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-    tags: {
-      anyOf: [
-        {
-          type: 'array',
-          items: {
-            type: 'string',
-            minLength: 1,
-          },
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-  },
-  required: ['title', 'content'],
-} as const;
-
-export const KnowledgeDocDtoSchema = {
-  type: 'object',
-  properties: {
-    id: {
-      type: 'string',
-      format: 'uuid',
-      pattern:
-        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
-    },
-    publicId: {
-      type: 'integer',
-      minimum: -9007199254740991,
-      maximum: 9007199254740991,
-    },
-    content: {
-      type: 'string',
-    },
-    title: {
-      type: 'string',
-    },
-    summary: {
-      anyOf: [
-        {
-          type: 'string',
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-    politic: {
-      anyOf: [
-        {
-          type: 'string',
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-    embeddingModel: {
-      anyOf: [
-        {
-          type: 'string',
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-    tags: {
-      type: 'array',
-      items: {
-        type: 'string',
-      },
-    },
-    projectId: {
-      anyOf: [
-        {
-          type: 'string',
-          format: 'uuid',
-          pattern:
-            '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-    createdAt: {
-      type: 'string',
-      format: 'date-time',
-      pattern:
-        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
-    },
-    updatedAt: {
-      type: 'string',
-      format: 'date-time',
-      pattern:
-        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
-    },
-  },
-  required: [
-    'id',
-    'publicId',
-    'content',
-    'title',
-    'tags',
-    'projectId',
-    'createdAt',
-    'updatedAt',
-  ],
-} as const;
-
-export const KnowledgeDocUpdateDtoSchema = {
-  type: 'object',
-  properties: {
-    title: {
-      type: 'string',
-      minLength: 1,
-      maxLength: 500,
-    },
-    content: {
-      type: 'string',
-      minLength: 1,
-      maxLength: 2000000,
-    },
-    politic: {
-      anyOf: [
-        {
-          type: 'string',
-          minLength: 1,
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-    tags: {
-      anyOf: [
-        {
-          type: 'array',
-          items: {
-            type: 'string',
-            minLength: 1,
-          },
-        },
-        {
-          type: 'null',
-        },
-      ],
-    },
-  },
-} as const;
-
 export const ThreadDtoSchema = {
   type: 'object',
   properties: {
@@ -2788,7 +3176,6 @@ export const ThreadMessageDtoSchema = {
                 },
               ],
             },
-            rawContent: {},
             toolCalls: {
               type: 'array',
               items: {
@@ -3151,6 +3538,12 @@ export const ThreadUsageStatisticsDtoSchema = {
     userMessageCount: {
       type: 'number',
     },
+    modelsUsed: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
   },
   required: [
     'total',
@@ -3159,6 +3552,7 @@ export const ThreadUsageStatisticsDtoSchema = {
     'byTool',
     'toolsAggregate',
     'userMessageCount',
+    'modelsUsed',
   ],
 } as const;
 
@@ -3174,167 +3568,6 @@ export const SetThreadMetadataDtoSchema = {
     },
   },
   required: ['metadata'],
-} as const;
-
-export const SuggestAgentInstructionsDtoSchema = {
-  type: 'object',
-  properties: {
-    userRequest: {
-      type: 'string',
-      minLength: 1,
-    },
-    threadId: {
-      type: 'string',
-    },
-    model: {
-      type: 'string',
-      minLength: 1,
-    },
-  },
-  required: ['userRequest'],
-} as const;
-
-export const SuggestAgentInstructionsResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    instructions: {
-      type: 'string',
-    },
-    threadId: {
-      type: 'string',
-    },
-  },
-  required: ['instructions', 'threadId'],
-} as const;
-
-export const SuggestGraphInstructionsDtoSchema = {
-  type: 'object',
-  properties: {
-    userRequest: {
-      type: 'string',
-      minLength: 1,
-    },
-    model: {
-      type: 'string',
-      minLength: 1,
-    },
-  },
-  required: ['userRequest'],
-} as const;
-
-export const SuggestGraphInstructionsResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    updates: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          nodeId: {
-            type: 'string',
-            minLength: 1,
-          },
-          name: {
-            type: 'string',
-            minLength: 1,
-          },
-          instructions: {
-            type: 'string',
-            minLength: 1,
-          },
-        },
-        required: ['nodeId', 'instructions'],
-      },
-    },
-  },
-  required: ['updates'],
-} as const;
-
-export const ThreadAnalysisRequestDtoSchema = {
-  type: 'object',
-  properties: {
-    userInput: {
-      type: 'string',
-      minLength: 1,
-      maxLength: 5000,
-    },
-    threadId: {
-      type: 'string',
-    },
-    model: {
-      type: 'string',
-      minLength: 1,
-    },
-  },
-} as const;
-
-export const ThreadAnalysisResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    analysis: {
-      type: 'string',
-    },
-    conversationId: {
-      type: 'string',
-    },
-  },
-  required: ['analysis', 'conversationId'],
-} as const;
-
-export const KnowledgeContentSuggestionRequestDtoSchema = {
-  type: 'object',
-  properties: {
-    userRequest: {
-      type: 'string',
-      minLength: 1,
-    },
-    currentTitle: {
-      type: 'string',
-    },
-    currentContent: {
-      type: 'string',
-    },
-    currentTags: {
-      type: 'array',
-      items: {
-        type: 'string',
-        minLength: 1,
-      },
-    },
-    threadId: {
-      type: 'string',
-    },
-    model: {
-      type: 'string',
-      minLength: 1,
-    },
-  },
-  required: ['userRequest'],
-} as const;
-
-export const KnowledgeContentSuggestionResponseDtoSchema = {
-  type: 'object',
-  properties: {
-    title: {
-      type: 'string',
-      minLength: 1,
-    },
-    content: {
-      type: 'string',
-      minLength: 1,
-    },
-    tags: {
-      type: 'array',
-      items: {
-        type: 'string',
-        minLength: 1,
-      },
-    },
-    threadId: {
-      type: 'string',
-    },
-  },
-  required: ['title', 'content', 'threadId'],
 } as const;
 
 export const AnalyticsOverviewDtoSchema = {

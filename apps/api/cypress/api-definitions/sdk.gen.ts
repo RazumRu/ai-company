@@ -29,6 +29,8 @@ import type {
   DeleteThreadResponses,
   DestroyGraphData,
   DestroyGraphResponses,
+  DisconnectAllData,
+  DisconnectAllResponses,
   ExecuteTriggerData,
   ExecuteTriggerResponses,
   ExportThreadData,
@@ -57,8 +59,12 @@ import type {
   GetGraphRevisionsResponses,
   GetGraphsPreviewData,
   GetGraphsPreviewResponses,
+  GetModelDefaultsData,
+  GetModelDefaultsResponses,
   GetOverviewData,
   GetOverviewResponses,
+  GetPreferencesData,
+  GetPreferencesResponses,
   GetRepoIndexByRepositoryIdData,
   GetRepoIndexByRepositoryIdResponses,
   GetRepoIndexesData,
@@ -83,8 +89,6 @@ import type {
   GetThreadsResponses,
   GetThreadUsageStatisticsData,
   GetThreadUsageStatisticsResponses,
-  LinkInstallationData,
-  LinkInstallationResponses,
   LinkViaOAuthCodeData,
   LinkViaOAuthCodeResponses,
   ListDocsData,
@@ -119,6 +123,8 @@ import type {
   UpdateDocResponses,
   UpdateGraphData,
   UpdateGraphResponses,
+  UpdatePreferencesData,
+  UpdatePreferencesResponses,
   UpdateProjectData,
   UpdateProjectResponses,
   UpdateRepositoryData,
@@ -291,6 +297,49 @@ export const listModels = <ThrowOnError extends boolean = false>(
     ...options,
   });
 
+export const getModelDefaults = <ThrowOnError extends boolean = false>(
+  options?: Options<GetModelDefaultsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetModelDefaultsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/model-defaults',
+    ...options,
+  });
+
+export const getPreferences = <ThrowOnError extends boolean = false>(
+  options?: Options<GetPreferencesData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    GetPreferencesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/user-preferences',
+    ...options,
+  });
+
+export const updatePreferences = <ThrowOnError extends boolean = false>(
+  options: Options<UpdatePreferencesData, ThrowOnError>,
+) =>
+  (options.client ?? client).put<
+    UpdatePreferencesResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/user-preferences',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
 export const getAllProjects = <ThrowOnError extends boolean = false>(
   options?: Options<GetAllProjectsData, ThrowOnError>,
 ) =>
@@ -361,6 +410,194 @@ export const updateProject = <ThrowOnError extends boolean = false>(
       },
     },
   );
+
+export const getSetupInfo = <ThrowOnError extends boolean = false>(
+  options?: Options<GetSetupInfoData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetSetupInfoResponses, unknown, ThrowOnError>(
+    {
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/git-auth/github/setup',
+      ...options,
+    },
+  );
+
+export const linkViaOAuthCode = <ThrowOnError extends boolean = false>(
+  options: Options<LinkViaOAuthCodeData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    LinkViaOAuthCodeResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-auth/github/oauth/link',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const listInstallations = <ThrowOnError extends boolean = false>(
+  options?: Options<ListInstallationsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    ListInstallationsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-auth/github/installations',
+    ...options,
+  });
+
+export const unlinkInstallation = <ThrowOnError extends boolean = false>(
+  options: Options<UnlinkInstallationData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<
+    UnlinkInstallationResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-auth/github/installations/{installationId}',
+    ...options,
+  });
+
+export const disconnectAll = <ThrowOnError extends boolean = false>(
+  options?: Options<DisconnectAllData, ThrowOnError>,
+) =>
+  (options?.client ?? client).delete<
+    DisconnectAllResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/git-auth/github/disconnect',
+    ...options,
+  });
+
+export const listDocs = <ThrowOnError extends boolean = false>(
+  options?: Options<ListDocsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<ListDocsResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs',
+    ...options,
+  });
+
+export const createDoc = <ThrowOnError extends boolean = false>(
+  options: Options<CreateDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<CreateDocResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const deleteDoc = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<DeleteDocResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/{id}',
+    ...options,
+  });
+
+export const getDoc = <ThrowOnError extends boolean = false>(
+  options: Options<GetDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<GetDocResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/{id}',
+    ...options,
+  });
+
+export const updateDoc = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateDocData, ThrowOnError>,
+) =>
+  (options.client ?? client).put<UpdateDocResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/{id}',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const suggestAgentInstructions = <ThrowOnError extends boolean = false>(
+  options: Options<SuggestAgentInstructionsData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    SuggestAgentInstructionsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-instructions',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const suggestGraphInstructions = <ThrowOnError extends boolean = false>(
+  options: Options<SuggestGraphInstructionsData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    SuggestGraphInstructionsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/graphs/{graphId}/suggest-instructions',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const analyzeThread = <ThrowOnError extends boolean = false>(
+  options: Options<AnalyzeThreadData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    AnalyzeThreadResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/{threadId}/analyze',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const suggestKnowledgeContent = <ThrowOnError extends boolean = false>(
+  options: Options<SuggestKnowledgeContentData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    SuggestKnowledgeContentResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/knowledge-docs/suggest',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
 
 export const getAllGraphs = <ThrowOnError extends boolean = false>(
   options?: Options<GetAllGraphsData, ThrowOnError>,
@@ -525,126 +762,6 @@ export const getAllTemplates = <ThrowOnError extends boolean = false>(
     ...options,
   });
 
-export const getSetupInfo = <ThrowOnError extends boolean = false>(
-  options?: Options<GetSetupInfoData, ThrowOnError>,
-) =>
-  (options?.client ?? client).get<GetSetupInfoResponses, unknown, ThrowOnError>(
-    {
-      security: [{ scheme: 'bearer', type: 'http' }],
-      url: '/api/v1/github-app/setup',
-      ...options,
-    },
-  );
-
-export const linkViaOAuthCode = <ThrowOnError extends boolean = false>(
-  options: Options<LinkViaOAuthCodeData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    LinkViaOAuthCodeResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/github-app/oauth/link',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-export const linkInstallation = <ThrowOnError extends boolean = false>(
-  options: Options<LinkInstallationData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    LinkInstallationResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/github-app/installations/{installationId}/link',
-    ...options,
-  });
-
-export const listInstallations = <ThrowOnError extends boolean = false>(
-  options?: Options<ListInstallationsData, ThrowOnError>,
-) =>
-  (options?.client ?? client).get<
-    ListInstallationsResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/github-app/installations',
-    ...options,
-  });
-
-export const unlinkInstallation = <ThrowOnError extends boolean = false>(
-  options: Options<UnlinkInstallationData, ThrowOnError>,
-) =>
-  (options.client ?? client).delete<
-    UnlinkInstallationResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/github-app/installations/{installationId}',
-    ...options,
-  });
-
-export const listDocs = <ThrowOnError extends boolean = false>(
-  options?: Options<ListDocsData, ThrowOnError>,
-) =>
-  (options?.client ?? client).get<ListDocsResponses, unknown, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/knowledge-docs',
-    ...options,
-  });
-
-export const createDoc = <ThrowOnError extends boolean = false>(
-  options: Options<CreateDocData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<CreateDocResponses, unknown, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/knowledge-docs',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-export const deleteDoc = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteDocData, ThrowOnError>,
-) =>
-  (options.client ?? client).delete<DeleteDocResponses, unknown, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/knowledge-docs/{id}',
-    ...options,
-  });
-
-export const getDoc = <ThrowOnError extends boolean = false>(
-  options: Options<GetDocData, ThrowOnError>,
-) =>
-  (options.client ?? client).get<GetDocResponses, unknown, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/knowledge-docs/{id}',
-    ...options,
-  });
-
-export const updateDoc = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateDocData, ThrowOnError>,
-) =>
-  (options.client ?? client).put<UpdateDocResponses, unknown, ThrowOnError>({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/knowledge-docs/{id}',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
 export const getThreads = <ThrowOnError extends boolean = false>(
   options?: Options<GetThreadsData, ThrowOnError>,
 ) =>
@@ -784,74 +901,6 @@ export const stopThreadByExternalId = <ThrowOnError extends boolean = false>(
     ...options,
   });
 
-export const suggestAgentInstructions = <ThrowOnError extends boolean = false>(
-  options: Options<SuggestAgentInstructionsData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    SuggestAgentInstructionsResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/graphs/{graphId}/nodes/{nodeId}/suggest-instructions',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-export const suggestGraphInstructions = <ThrowOnError extends boolean = false>(
-  options: Options<SuggestGraphInstructionsData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    SuggestGraphInstructionsResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/graphs/{graphId}/suggest-instructions',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-export const analyzeThread = <ThrowOnError extends boolean = false>(
-  options: Options<AnalyzeThreadData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    AnalyzeThreadResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/threads/{threadId}/analyze',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
-export const suggestKnowledgeContent = <ThrowOnError extends boolean = false>(
-  options: Options<SuggestKnowledgeContentData, ThrowOnError>,
-) =>
-  (options.client ?? client).post<
-    SuggestKnowledgeContentResponses,
-    unknown,
-    ThrowOnError
-  >({
-    security: [{ scheme: 'bearer', type: 'http' }],
-    url: '/api/v1/knowledge-docs/suggest',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  });
-
 export const getOverview = <ThrowOnError extends boolean = false>(
   options?: Options<GetOverviewData, ThrowOnError>,
 ) =>
@@ -879,6 +928,11 @@ export const getSettings = <ThrowOnError extends boolean = false>(
     ...options,
   });
 
+/**
+ * Public endpoint (no @OnlyForAuthorized) — intentionally unauthenticated.
+ * Returns OIDC provider config needed by the frontend before login.
+ * Only expose non-sensitive values here (provider type, issuer URL, client ID).
+ */
 export const getAuthConfig = <ThrowOnError extends boolean = false>(
   options?: Options<GetAuthConfigData, ThrowOnError>,
 ) =>

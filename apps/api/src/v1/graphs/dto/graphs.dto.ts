@@ -150,9 +150,20 @@ export const GraphEditableSchema = GraphSchema.omit({
   projectId: true,
 });
 
+/**
+ * Matches invisible unicode characters that should be stripped from user input.
+ * Uses \p{Default_Ignorable_Code_Point} (covers zero-width chars, tag chars,
+ * variation selectors, BOM, etc.) with set subtraction to preserve BiDi marks,
+ * soft hyphens, and Hangul fillers that have legitimate text uses.
+ */
+const INVISIBLE_RE =
+  /[\p{Default_Ignorable_Code_Point}--[\u00AD\u200E\u200F\u202A-\u202E\u2066-\u2069\u115F\u1160\u3164\uFFA0]]/gv;
+const stripInvisibleUnicode = (text: string): string =>
+  text.replace(INVISIBLE_RE, '');
+
 export const ExecuteTriggerSchema = z.object({
   messages: z
-    .array(z.string())
+    .array(z.string().transform(stripInvisibleUnicode))
     .min(1)
     .describe('Array of messages to send to the trigger'),
   threadSubId: z
@@ -222,10 +233,6 @@ export const AIMessageSchema = z.object({
     .optional()
     .nullable()
     .describe('Run ID associated with this message'),
-  rawContent: z
-    .unknown()
-    .optional()
-    .describe('Original raw content as received from the provider'),
   toolCalls: z
     .array(ToolCallSchema)
     .optional()
