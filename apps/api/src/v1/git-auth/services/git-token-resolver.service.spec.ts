@@ -6,8 +6,8 @@ import { GitHubAuthMethod } from '../../graph-resources/graph-resources.types';
 import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
 import { GitProviderConnectionEntity } from '../entity/git-provider-connection.entity';
 import { GitProvider } from '../types/git-provider.enum';
-import { GitHubAppService } from './github-app.service';
 import { GitTokenResolverService } from './git-token-resolver.service';
+import { GitHubAppService } from './github-app.service';
 
 describe('GitTokenResolverService', () => {
   let service: GitTokenResolverService;
@@ -138,7 +138,11 @@ describe('GitTokenResolverService', () => {
     it('should return null when no exact owner match exists without falling back', async () => {
       mockConnectionDao.getOne.mockResolvedValue(null);
 
-      const result = await service.resolveToken(GitProvider.GitHub, 'unknown-owner', 'user-1');
+      const result = await service.resolveToken(
+        GitProvider.GitHub,
+        'unknown-owner',
+        'user-1',
+      );
 
       expect(result).toBeNull();
       expect(mockConnectionDao.getOne).toHaveBeenCalledTimes(1);

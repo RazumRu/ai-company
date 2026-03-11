@@ -371,9 +371,7 @@ export class ToolExecutorNode extends BaseNode<
    * error message AND that message matches the previous batch, the counter
    * increments. Otherwise it resets.
    */
-  private updateCircuitBreaker(
-    results: { toolMessage?: ToolMessage }[],
-  ): void {
+  private updateCircuitBreaker(results: { toolMessage?: ToolMessage }[]): void {
     const toolMessages = results
       .map((r) => r.toolMessage)
       .filter((m): m is ToolMessage => m instanceof ToolMessage);

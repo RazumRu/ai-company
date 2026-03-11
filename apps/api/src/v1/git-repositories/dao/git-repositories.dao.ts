@@ -152,7 +152,7 @@ export class GitRepositoriesDao extends BaseDao<
 
   async restoreSoftDeleted(
     userId: string,
-    ownerRepoPairs: Array<{ owner: string; repo: string }>,
+    ownerRepoPairs: { owner: string; repo: string }[],
   ): Promise<void> {
     if (!ownerRepoPairs.length) return;
     const params: unknown[] = [userId];

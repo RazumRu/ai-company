@@ -9,8 +9,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommunicationToolGroup } from '../../../agent-tools/tools/common/communication/communication-tool-group';
-import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/agents.types';
+import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import {
   CompiledGraphNode,
   GraphNode,

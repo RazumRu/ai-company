@@ -242,16 +242,16 @@ describe('DaytonaRuntime', () => {
         await execPromise;
 
         // First executeSessionCommand call must be the workdir init (runAsync: false)
-        expect(mockSandbox.process.executeSessionCommand).toHaveBeenNthCalledWith(
-          1,
-          'sess-init-cwd',
-          {
-            command: 'mkdir -p /runtime-workspace && cd /runtime-workspace',
-            runAsync: false,
-          },
-        );
+        expect(
+          mockSandbox.process.executeSessionCommand,
+        ).toHaveBeenNthCalledWith(1, 'sess-init-cwd', {
+          command: 'mkdir -p /runtime-workspace && cd /runtime-workspace',
+          runAsync: false,
+        });
         // Second call is the actual user command (runAsync: true)
-        expect(mockSandbox.process.executeSessionCommand).toHaveBeenNthCalledWith(
+        expect(
+          mockSandbox.process.executeSessionCommand,
+        ).toHaveBeenNthCalledWith(
           2,
           'sess-init-cwd',
           expect.objectContaining({
@@ -277,14 +277,17 @@ describe('DaytonaRuntime', () => {
         // createSession called only once — session reused
         expect(mockSandbox.process.createSession).toHaveBeenCalledTimes(1);
         // init (1) + cmd1 (1) + cmd2 (1) = 3 total
-        expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledTimes(3);
-        // The init command was only sent once (the very first call)
-        const initCalls = mockSandbox.process.executeSessionCommand.mock.calls.filter(
-          (args: unknown[]) => {
-            const opts = args[1] as { command: string };
-            return opts.command.includes('mkdir -p /runtime-workspace');
-          },
+        expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledTimes(
+          3,
         );
+        // The init command was only sent once (the very first call)
+        const initCalls =
+          mockSandbox.process.executeSessionCommand.mock.calls.filter(
+            (args: unknown[]) => {
+              const opts = args[1] as { command: string };
+              return opts.command.includes('mkdir -p /runtime-workspace');
+            },
+          );
         expect(initCalls).toHaveLength(1);
       });
 
@@ -694,9 +697,9 @@ describe('DaytonaRuntime', () => {
       mockSandbox.process.getSessionCommandLogs.mockImplementation(
         (
           _sessionId: string,
-        _cmdId: string,
-        onStdout: (chunk: string) => void,
-      ) => {
+          _cmdId: string,
+          onStdout: (chunk: string) => void,
+        ) => {
           if (!onStdout) {
             return Promise.resolve({ stdout: 'partial output\n', stderr: '' });
           }
@@ -859,8 +862,7 @@ describe('DaytonaRuntime', () => {
     });
 
     it('scenario 9: fast-exit race — stream delivers stderr then getSessionCommand throws (already cleaned up)', async () => {
-      const stderrOutput =
-        'bash: cd: /nonexistent: No such file or directory';
+      const stderrOutput = 'bash: cd: /nonexistent: No such file or directory';
 
       mockSandbox.process.executeSessionCommand.mockResolvedValue({
         cmdId: 'cmd-9',
@@ -1223,7 +1225,10 @@ describe('RuntimeProvider failure handling', () => {
       expect(startingCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
-          data: expect.objectContaining({ status: 'Starting', runtimeId: 'instance-1' }),
+          data: expect.objectContaining({
+            status: 'Starting',
+            runtimeId: 'instance-1',
+          }),
         }),
       );
 
@@ -1259,7 +1264,10 @@ describe('RuntimeProvider failure handling', () => {
       expect(startingCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
-          data: expect.objectContaining({ status: 'Starting', runtimeId: 'instance-1' }),
+          data: expect.objectContaining({
+            status: 'Starting',
+            runtimeId: 'instance-1',
+          }),
         }),
       );
 
@@ -1267,7 +1275,10 @@ describe('RuntimeProvider failure handling', () => {
       expect(runningCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
-          data: expect.objectContaining({ status: 'Running', runtimeId: 'instance-1' }),
+          data: expect.objectContaining({
+            status: 'Running',
+            runtimeId: 'instance-1',
+          }),
         }),
       );
     });

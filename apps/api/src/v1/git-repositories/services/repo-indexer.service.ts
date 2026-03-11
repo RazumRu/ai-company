@@ -116,31 +116,86 @@ export class RepoIndexerService {
    */
   private static readonly BUILTIN_EXCLUDE_PATTERNS: string[] = [
     // Images
-    '*.png', '*.jpg', '*.jpeg', '*.gif', '*.bmp', '*.tiff', '*.tif',
-    '*.ico', '*.webp', '*.avif', '*.heic', '*.heif', '*.raw',
+    '*.png',
+    '*.jpg',
+    '*.jpeg',
+    '*.gif',
+    '*.bmp',
+    '*.tiff',
+    '*.tif',
+    '*.ico',
+    '*.webp',
+    '*.avif',
+    '*.heic',
+    '*.heif',
+    '*.raw',
     '*.svg',
     // Fonts
-    '*.ttf', '*.otf', '*.woff', '*.woff2', '*.eot',
+    '*.ttf',
+    '*.otf',
+    '*.woff',
+    '*.woff2',
+    '*.eot',
     // Audio / video
-    '*.mp3', '*.mp4', '*.wav', '*.ogg', '*.flac', '*.aac',
-    '*.avi', '*.mov', '*.mkv', '*.webm',
+    '*.mp3',
+    '*.mp4',
+    '*.wav',
+    '*.ogg',
+    '*.flac',
+    '*.aac',
+    '*.avi',
+    '*.mov',
+    '*.mkv',
+    '*.webm',
     // Archives
-    '*.zip', '*.tar', '*.gz', '*.bz2', '*.xz', '*.7z', '*.rar',
+    '*.zip',
+    '*.tar',
+    '*.gz',
+    '*.bz2',
+    '*.xz',
+    '*.7z',
+    '*.rar',
     // Compiled / binary
-    '*.exe', '*.dll', '*.so', '*.dylib', '*.bin', '*.obj', '*.o', '*.a',
-    '*.class', '*.pyc', '*.pyo', '*.pyd', '*.wasm',
+    '*.exe',
+    '*.dll',
+    '*.so',
+    '*.dylib',
+    '*.bin',
+    '*.obj',
+    '*.o',
+    '*.a',
+    '*.class',
+    '*.pyc',
+    '*.pyo',
+    '*.pyd',
+    '*.wasm',
     // PDF / office documents
-    '*.pdf', '*.doc', '*.docx', '*.xls', '*.xlsx', '*.ppt', '*.pptx',
+    '*.pdf',
+    '*.doc',
+    '*.docx',
+    '*.xls',
+    '*.xlsx',
+    '*.ppt',
+    '*.pptx',
     // Lock files
-    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
-    'composer.lock', 'Gemfile.lock', 'Cargo.lock', 'go.sum',
-    'poetry.lock', 'packages.lock.json',
+    'package-lock.json',
+    'yarn.lock',
+    'pnpm-lock.yaml',
+    'composer.lock',
+    'Gemfile.lock',
+    'Cargo.lock',
+    'go.sum',
+    'poetry.lock',
+    'packages.lock.json',
     // Minified bundles
-    '*.min.js', '*.min.css',
+    '*.min.js',
+    '*.min.css',
     // Source maps
     '*.map',
     // Database files
-    '*.sqlite', '*.sqlite3', '*.db',
+    '*.sqlite',
+    '*.sqlite3',
+    '*.db',
   ];
 
   /**
@@ -222,7 +277,10 @@ export class RepoIndexerService {
       }
     }
 
-    return Math.floor((totalBytes / RepoIndexerService.BYTES_PER_TOKEN_ESTIMATE) * this.getChunkOverlapFactor());
+    return Math.floor(
+      (totalBytes / RepoIndexerService.BYTES_PER_TOKEN_ESTIMATE) *
+        this.getChunkOverlapFactor(),
+    );
   }
 
   /**
@@ -338,7 +396,10 @@ export class RepoIndexerService {
       }
     }
 
-    return Math.floor((totalBytes / RepoIndexerService.BYTES_PER_TOKEN_ESTIMATE) * this.getChunkOverlapFactor());
+    return Math.floor(
+      (totalBytes / RepoIndexerService.BYTES_PER_TOKEN_ESTIMATE) *
+        this.getChunkOverlapFactor(),
+    );
   }
 
   async resolveCurrentCommit(

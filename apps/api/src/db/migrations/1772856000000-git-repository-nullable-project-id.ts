@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class GitRepositoryNullableProjectId1772856000000
-  implements MigrationInterface
-{
+export class GitRepositoryNullableProjectId1772856000000 implements MigrationInterface {
   name = 'GitRepositoryNullableProjectId1772856000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

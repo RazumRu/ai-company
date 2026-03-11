@@ -78,8 +78,16 @@ describe('LiteLlmClient', () => {
 
     it('returns parsed JSON data on successful response', async () => {
       const modelData = [
-        { model_name: 'gpt-4', litellm_params: { model: 'openai/gpt-4' }, model_info: { key: 'gpt-4' } },
-        { model_name: 'claude-3', litellm_params: { model: 'anthropic/claude-3' }, model_info: { key: 'claude-3' } },
+        {
+          model_name: 'gpt-4',
+          litellm_params: { model: 'openai/gpt-4' },
+          model_info: { key: 'gpt-4' },
+        },
+        {
+          model_name: 'claude-3',
+          litellm_params: { model: 'anthropic/claude-3' },
+          model_info: { key: 'claude-3' },
+        },
       ];
 
       stubFetch({

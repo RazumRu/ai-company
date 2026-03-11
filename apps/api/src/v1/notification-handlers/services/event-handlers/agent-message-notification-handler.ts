@@ -44,7 +44,10 @@ export class AgentMessageNotificationHandler extends BaseNotificationHandler<IAg
   async handle(
     event: IAgentMessageNotification,
   ): Promise<IAgentMessageEnrichedNotification[]> {
-    const { ownerId, projectId } = await this.getGraphInfo(this.graphDao, event.graphId);
+    const { ownerId, projectId } = await this.getGraphInfo(
+      this.graphDao,
+      event.graphId,
+    );
     const out: IAgentMessageEnrichedNotification[] = [];
 
     const externalThreadKey = event.parentThreadId ?? event.threadId;

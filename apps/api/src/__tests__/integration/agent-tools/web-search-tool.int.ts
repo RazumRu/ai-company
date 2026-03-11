@@ -3,7 +3,6 @@ import type { FastifyRequest } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { MessageTransformerService } from '../../../v1/graphs/services/message-transformer.service';
@@ -17,7 +16,10 @@ import { createTestModule, TEST_USER_ID } from '../setup';
 
 const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
+const contextDataStorage = new AppContextStorage(
+  { sub: TEST_USER_ID },
+  EMPTY_REQUEST,
+);
 
 describe('Web search tool integration', () => {
   let messageTransformer: MessageTransformerService;

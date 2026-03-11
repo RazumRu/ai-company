@@ -2,9 +2,12 @@ import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import outdent from 'outdent';
 
+import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
+import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import {
   IShellResourceOutput,
   ResourceKind,
+  ResourceResolveContext,
 } from '../graph-resources.types';
 import { BaseResource } from './base-resource';
 
@@ -14,20 +17,53 @@ export interface GithubResourceConfig {
   auth?: boolean;
 }
 
-export type IGithubResourceOutput = IShellResourceOutput;
+export interface IGithubResourceOutput extends IShellResourceOutput {
+  resolveToken: (owner: string, userId?: string) => Promise<string | null>;
+}
 
 @Injectable({ scope: Scope.TRANSIENT })
 export class GithubResource extends BaseResource<
   GithubResourceConfig,
   IGithubResourceOutput
 > {
-  constructor(logger: DefaultLogger) {
+  constructor(
+    logger: DefaultLogger,
+    private readonly gitTokenResolverService: GitTokenResolverService,
+  ) {
     super(logger);
   }
 
   public async getData(
     config: GithubResourceConfig,
   ): Promise<IGithubResourceOutput> {
+    const resolveToken = async (
+      owner: string,
+      userId?: string,
+    ): Promise<string | null> => {
+      if (!userId) return null;
+      const resolved = await this.gitTokenResolverService.resolveToken(
+        GitProvider.GitHub,
+        owner,
+        userId,
+      );
+      return resolved?.token ?? null;
+    };
+
+    const resolveEnv = async (
+      ctx?: ResourceResolveContext,
+    ): Promise<Record<string, string>> => {
+      const userId =
+        ctx?.configurable?.thread_created_by ??
+        ctx?.configurable?.graph_created_by;
+      if (!userId) return {};
+      const resolved =
+        await this.gitTokenResolverService.resolveDefaultToken(userId);
+      if (resolved?.token) {
+        return { GH_TOKEN: resolved.token };
+      }
+      return {};
+    };
+
     return {
       information: outdent`
         Purpose: Work with GitHub from shell via gh CLI (repos, branches, PRs, issues, workflows).
@@ -42,6 +78,7 @@ export class GithubResource extends BaseResource<
           gh api --help
       `,
       kind: ResourceKind.Shell,
+      resolveToken,
       data: {
         initScriptTimeout: 300000,
         initScript: [
@@ -56,7 +93,7 @@ export class GithubResource extends BaseResource<
           `git config --global user.name "${config.name || 'Geniro Bot'}"`,
           `git config --global user.email "${config.email || 'bot@geniro.io'}"`,
         ].join(' && '),
-        env: {},
+        resolveEnv,
       },
     };
   }

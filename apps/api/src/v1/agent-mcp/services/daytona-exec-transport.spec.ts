@@ -1,6 +1,6 @@
-import { DefaultLogger } from '@packages/common';
 import { Sandbox } from '@daytonaio/sdk';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { DefaultLogger } from '@packages/common';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DaytonaExecTransport } from './daytona-exec-transport';
 
@@ -26,9 +26,7 @@ function createMockSandbox() {
   const process = {
     createSession: vi.fn().mockResolvedValue(undefined),
     deleteSession: vi.fn().mockResolvedValue(undefined),
-    executeSessionCommand: vi
-      .fn()
-      .mockResolvedValue({ cmdId: 'cmd-001' }),
+    executeSessionCommand: vi.fn().mockResolvedValue({ cmdId: 'cmd-001' }),
     getSessionCommandLogs: vi.fn(
       (
         _sessionId: string,
@@ -98,12 +96,17 @@ describe('DaytonaExecTransport', () => {
   it('send() calls sendSessionCommandInput with serialized JSON + newline', async () => {
     await transport.start();
 
-    const message = { jsonrpc: '2.0' as const, id: 1, method: 'test', params: {} };
+    const message = {
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'test',
+      params: {},
+    };
     await transport.send(message);
 
     expect(mock.process.sendSessionCommandInput).toHaveBeenCalledTimes(1);
-    const [sessionId, cmdId, data] =
-      mock.process.sendSessionCommandInput.mock.calls[0] as [string, string, string];
+    const [sessionId, cmdId, data] = mock.process.sendSessionCommandInput.mock
+      .calls[0] as [string, string, string];
     expect(sessionId).toMatch(/^mcp-/);
     expect(cmdId).toBe('cmd-001');
     expect(data).toBe(JSON.stringify(message) + '\n');
@@ -153,7 +156,12 @@ describe('DaytonaExecTransport', () => {
   });
 
   it('send() rejects when not connected', async () => {
-    const message = { jsonrpc: '2.0' as const, id: 1, method: 'test', params: {} };
+    const message = {
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'test',
+      params: {},
+    };
     await expect(transport.send(message)).rejects.toThrow(
       'Transport not connected',
     );
@@ -185,7 +193,9 @@ describe('DaytonaExecTransport', () => {
     await transport.start();
 
     mock.writeStdout('not-json\n');
-    mock.writeStdout(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }) + '\n');
+    mock.writeStdout(
+      JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }) + '\n',
+    );
 
     expect(received).toHaveLength(1);
     expect(received[0]).toEqual({ jsonrpc: '2.0', id: 1, result: {} });
@@ -201,7 +211,12 @@ describe('DaytonaExecTransport', () => {
 
     await transport.start();
 
-    const message = { jsonrpc: '2.0' as const, id: 1, method: 'test', params: {} };
+    const message = {
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'test',
+      params: {},
+    };
     await expect(transport.send(message)).rejects.toThrow('Connection lost');
 
     expect(onerror).toHaveBeenCalledTimes(1);
@@ -217,11 +232,20 @@ describe('DaytonaExecTransport', () => {
     await transport.start();
 
     // Send a message — this registers it for echo filtering
-    const outgoing = { jsonrpc: '2.0' as const, id: 1, method: 'initialize', params: {} };
+    const outgoing = {
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'initialize',
+      params: {},
+    };
     await transport.send(outgoing);
 
     // Daytona echoes the sent message back on stdout, followed by the real response
-    const serverResponse = { jsonrpc: '2.0', id: 1, result: { capabilities: {} } };
+    const serverResponse = {
+      jsonrpc: '2.0',
+      id: 1,
+      result: { capabilities: {} },
+    };
     mock.writeStdout(
       JSON.stringify(outgoing) + '\n' + JSON.stringify(serverResponse) + '\n',
     );
@@ -239,14 +263,19 @@ describe('DaytonaExecTransport', () => {
     // First two calls fail with "input.pipe not found", third succeeds
     mock.process.sendSessionCommandInput
       .mockRejectedValueOnce(
-        new Error('failed to open input pipe: open /root/.daytona/sessions/mcp-xxx/cmd-001/input.pipe: no such file or directory'),
+        new Error(
+          'failed to open input pipe: open /root/.daytona/sessions/mcp-xxx/cmd-001/input.pipe: no such file or directory',
+        ),
       )
-      .mockRejectedValueOnce(
-        new Error('input.pipe: no such file or directory'),
-      )
+      .mockRejectedValueOnce(new Error('input.pipe: no such file or directory'))
       .mockResolvedValueOnce(undefined);
 
-    const message = { jsonrpc: '2.0' as const, id: 1, method: 'test', params: {} };
+    const message = {
+      jsonrpc: '2.0' as const,
+      id: 1,
+      method: 'test',
+      params: {},
+    };
     const sendPromise = transport.send(message);
 
     // Advance through the retry delays

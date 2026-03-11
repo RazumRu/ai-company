@@ -148,6 +148,7 @@ export type BaseAgentConfigurable = {
   async?: boolean;
   run_id?: string;
   graph_created_by?: string;
+  thread_created_by?: string;
   graph_project_id?: string;
   llmRequestContext?: LLMRequestContext;
   [key: string]: unknown;

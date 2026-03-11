@@ -2,9 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  ResourceKind,
-} from '../../../graph-resources/graph-resources.types';
+import { ResourceKind } from '../../../graph-resources/graph-resources.types';
 import {
   GithubResource,
   IGithubResourceOutput,
@@ -140,11 +138,14 @@ describe('GithubResourceTemplate', () => {
         auth: false,
       };
 
+      const mockResolveEnv = vi.fn().mockResolvedValue({});
+      const mockResolveToken = vi.fn().mockResolvedValue(null);
       const mockResourceOutput: IGithubResourceOutput = {
         information: 'GitHub resource information',
         kind: ResourceKind.Shell,
+        resolveToken: mockResolveToken,
         data: {
-          env: {},
+          resolveEnv: mockResolveEnv,
           initScript: ['echo "setup"'],
         },
       };
@@ -187,11 +188,14 @@ describe('GithubResourceTemplate', () => {
         auth: false,
       };
 
+      const mockResolveEnv2 = vi.fn().mockResolvedValue({});
+      const mockResolveToken2 = vi.fn().mockResolvedValue(null);
       const mockResourceOutput: IGithubResourceOutput = {
         information: 'GitHub resource information',
         kind: ResourceKind.Shell,
+        resolveToken: mockResolveToken2,
         data: {
-          env: {},
+          resolveEnv: mockResolveEnv2,
           initScript: ['echo "setup"'],
         },
       };

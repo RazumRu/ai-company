@@ -476,9 +476,7 @@ describe('QdrantService', () => {
         new Error('Collection my_col not found'),
       );
 
-      await expect(
-        service.deleteCollection('my_col'),
-      ).resolves.toBeUndefined();
+      await expect(service.deleteCollection('my_col')).resolves.toBeUndefined();
     });
 
     it('should rethrow non-"collection not found" errors', async () => {

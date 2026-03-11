@@ -5,10 +5,7 @@ import {
 } from '../../api-definitions';
 import { generateRandomUUID, reqHeaders } from '../common.helper';
 
-export const createProject = (
-  data: CreateProjectDto,
-  headers = reqHeaders,
-) =>
+export const createProject = (data: CreateProjectDto, headers = reqHeaders) =>
   cy.request<ProjectDto>({
     url: '/api/v1/projects',
     method: 'POST',

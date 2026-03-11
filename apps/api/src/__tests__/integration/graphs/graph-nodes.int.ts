@@ -1,16 +1,16 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AppContextStorage } from '../../../auth/app-context-storage';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import {
   GraphNodesQueryDto,
   GraphNodeWithStatusSchema,
 } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphNodeStatus, GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
@@ -19,8 +19,8 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule } from '../setup';
 
 type GraphNodeWithStatus = z.infer<typeof GraphNodeWithStatusSchema>;
 

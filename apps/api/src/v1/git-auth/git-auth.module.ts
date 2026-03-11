@@ -4,9 +4,9 @@ import { registerEntities } from '@packages/typeorm';
 import { GitHubAuthController } from './controllers/github-auth.controller';
 import { GitProviderConnectionDao } from './dao/git-provider-connection.dao';
 import { GitProviderConnectionEntity } from './entity/git-provider-connection.entity';
-import { GitHubAppProviderService } from './services/github-app-provider.service';
-import { GitHubAppService } from './services/github-app.service';
 import { GitTokenResolverService } from './services/git-token-resolver.service';
+import { GitHubAppService } from './services/github-app.service';
+import { GitHubAppProviderService } from './services/github-app-provider.service';
 
 @Module({
   imports: [registerEntities([GitProviderConnectionEntity])],

@@ -113,9 +113,12 @@ describe('Daytona Runtime E2E', () => {
         expect(triggerResponse.status).to.equal(201);
         const externalThreadId = triggerResponse.body.externalThreadId;
 
-        return waitForThreadStatus(externalThreadId, ['done', 'stopped'], 40, 5000).then(
-          () => getThreadByExternalId(externalThreadId),
-        );
+        return waitForThreadStatus(
+          externalThreadId,
+          ['done', 'stopped'],
+          40,
+          5000,
+        ).then(() => getThreadByExternalId(externalThreadId));
       })
       .then((threadResponse) => {
         expect(threadResponse.status).to.equal(200);
@@ -135,8 +138,10 @@ describe('Daytona Runtime E2E', () => {
             .content as Record<string, unknown>;
           return content.exitCode === 0;
         });
-        expect(successfulShellCall, 'expected at least one successful shell call').to
-          .exist;
+        expect(
+          successfulShellCall,
+          'expected at least one successful shell call',
+        ).to.exist;
       });
   });
 
@@ -152,9 +157,12 @@ describe('Daytona Runtime E2E', () => {
         expect(triggerResponse.status).to.equal(201);
         const externalThreadId = triggerResponse.body.externalThreadId;
 
-        return waitForThreadStatus(externalThreadId, ['done', 'stopped'], 40, 5000).then(
-          () => getThreadByExternalId(externalThreadId),
-        );
+        return waitForThreadStatus(
+          externalThreadId,
+          ['done', 'stopped'],
+          40,
+          5000,
+        ).then(() => getThreadByExternalId(externalThreadId));
       })
       .then((threadResponse) => {
         expect(threadResponse.status).to.equal(200);
@@ -174,8 +182,10 @@ describe('Daytona Runtime E2E', () => {
             .content as Record<string, unknown>;
           return content.exitCode === 0;
         });
-        expect(successfulShellCall, 'expected at least one successful shell call').to
-          .exist;
+        expect(
+          successfulShellCall,
+          'expected at least one successful shell call',
+        ).to.exist;
       });
   });
 });

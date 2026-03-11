@@ -1483,9 +1483,9 @@ describe('ThreadsService', () => {
     it('should throw NotFoundException when thread not found', async () => {
       vi.mocked(threadsDao.getOne).mockResolvedValue(null);
 
-      await expect(
-        service.stopThread(mockCtx, mockThreadId),
-      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+      await expect(service.stopThread(mockCtx, mockThreadId)).rejects.toThrow(
+        '[THREAD_NOT_FOUND] An exception has occurred',
+      );
 
       expect(graphsService.stopThreadExecution).not.toHaveBeenCalled();
     });
@@ -1498,7 +1498,9 @@ describe('ThreadsService', () => {
       return new Promise((resolve, reject) => {
         const chunks: Buffer[] = [];
         stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        stream.on('end', () =>
+          resolve(Buffer.concat(chunks).toString('utf-8')),
+        );
         stream.on('error', reject);
       });
     }
@@ -1741,7 +1743,9 @@ describe('ThreadsService', () => {
       expect(result).toBeInstanceOf(StreamableFile);
       expect(result.getHeaders()).toMatchObject({
         type: 'application/json',
-        disposition: expect.stringMatching(/^attachment; filename="thread-export-\d{4}-\d{2}-\d{2}\.json"$/),
+        disposition: expect.stringMatching(
+          /^attachment; filename="thread-export-\d{4}-\d{2}-\d{2}\.json"$/,
+        ),
       });
     });
   });

@@ -16,7 +16,10 @@ import { createTestModule, TEST_USER_ID } from '../setup';
 const EMPTY_REQUEST = { headers: {} } as unknown as FastifyRequest;
 
 const ctx = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
-const otherCtx = new AppContextStorage({ sub: '00000000-0000-0000-0000-000000000099' }, EMPTY_REQUEST);
+const otherCtx = new AppContextStorage(
+  { sub: '00000000-0000-0000-0000-000000000099' },
+  EMPTY_REQUEST,
+);
 
 describe('ProjectsService (integration)', () => {
   let app: INestApplication;
@@ -139,7 +142,10 @@ describe('ProjectsService (integration)', () => {
 
   describe('getAll', () => {
     it('should return only projects belonging to the current user', async () => {
-      const p1 = await projectsService.create(ctx, { name: 'User Project 1', settings: {} });
+      const p1 = await projectsService.create(ctx, {
+        name: 'User Project 1',
+        settings: {},
+      });
       registerProject(p1.id);
 
       // Create a project under the other user context — should not appear in ctx's list
@@ -157,7 +163,10 @@ describe('ProjectsService (integration)', () => {
     });
 
     it('should return an empty array when user has no projects', async () => {
-      const emptyCtx = new AppContextStorage({ sub: '00000000-0000-0000-0000-000000000098' }, EMPTY_REQUEST);
+      const emptyCtx = new AppContextStorage(
+        { sub: '00000000-0000-0000-0000-000000000098' },
+        EMPTY_REQUEST,
+      );
       const results = await projectsService.getAll(emptyCtx);
       expect(results).toEqual([]);
     });
@@ -396,9 +405,7 @@ describe('ProjectsService (integration)', () => {
       await projectsService.delete(ctx, created.id);
 
       // After deletion, findById should throw
-      await expect(
-        projectsService.findById(ctx, created.id),
-      ).rejects.toSatisfy(
+      await expect(projectsService.findById(ctx, created.id)).rejects.toSatisfy(
         (err: unknown) =>
           err instanceof BaseException && err.errorCode === 'PROJECT_NOT_FOUND',
       );
@@ -434,7 +441,10 @@ describe('ProjectsService (integration)', () => {
       expect(afterDelete).toBeNull();
 
       // Confirm deletedAt is set on the soft-deleted row
-      const withDeleted = await graphDao.getOne({ id: graph.id, withDeleted: true });
+      const withDeleted = await graphDao.getOne({
+        id: graph.id,
+        withDeleted: true,
+      });
       expect(withDeleted).not.toBeNull();
       expect(withDeleted!.deletedAt).not.toBeNull();
 

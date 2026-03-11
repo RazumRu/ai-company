@@ -5,14 +5,14 @@ import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
+import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
+import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { shQuote } from '../../utils/shell.utils';
-import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
-import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
@@ -291,9 +291,7 @@ export class RepoIndexService implements OnModuleInit {
           !deletedCollections.has(index.qdrantCollection)
         ) {
           try {
-            await this.qdrantService.deleteCollection(
-              index.qdrantCollection,
-            );
+            await this.qdrantService.deleteCollection(index.qdrantCollection);
             deletedCollections.add(index.qdrantCollection);
           } catch (err) {
             this.logger.warn(

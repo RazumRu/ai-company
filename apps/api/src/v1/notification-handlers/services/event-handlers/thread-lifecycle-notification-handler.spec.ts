@@ -83,7 +83,9 @@ describe('ThreadLifecycleNotificationHandler', () => {
     threadsServiceMock = {
       prepareThreadResponse: vi
         .fn<(entity: ThreadEntity) => Promise<ThreadDto>>()
-        .mockImplementation(async (entity: ThreadEntity) => toThreadDto(entity)),
+        .mockImplementation(async (entity: ThreadEntity) =>
+          toThreadDto(entity),
+        ),
     };
 
     const module: TestingModule = await Test.createTestingModule({

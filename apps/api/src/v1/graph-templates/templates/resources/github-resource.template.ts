@@ -2,9 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { z } from 'zod';
 
-import {
-  ResourceKind,
-} from '../../../graph-resources/graph-resources.types';
+import { ResourceKind } from '../../../graph-resources/graph-resources.types';
 import {
   GithubResource,
   IGithubResourceOutput,
@@ -62,16 +60,20 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
     let resourceService: GithubResource;
 
     return {
-      provide: async (params: GraphNode<GithubResourceTemplateSchemaType>) => {
+      provide: async (_params: GraphNode<GithubResourceTemplateSchemaType>) => {
         resourceService = await this.createNewInstance(
           this.moduleRef,
           GithubResource,
         );
         // Setup must happen in configure(). Provide must be side-effect free.
+        // Placeholder — configure() replaces these with real implementations.
+        const noopResolveEnv = async () => ({});
+        const noopResolveToken = async () => null;
         return {
           information: '',
           kind: ResourceKind.Shell,
-          data: {},
+          resolveToken: noopResolveToken,
+          data: { resolveEnv: noopResolveEnv },
         } satisfies IGithubResourceOutput;
       },
       configure: async (
@@ -82,7 +84,7 @@ export class GithubResourceTemplate extends ResourceNodeBaseTemplate<
           throw new Error('RESOURCE_SERVICE_NOT_INITIALIZED');
         }
 
-        const config = params.config;
+        const config = { ...params.config };
         if (resourceService.setup) {
           await resourceService.setup(config);
         }

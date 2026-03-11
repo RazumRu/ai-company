@@ -143,7 +143,9 @@ describe('GraphCompiler', () => {
         {
           provide: LlmModelsService,
           useValue: {
-            buildLLMRequestContext: vi.fn().mockResolvedValue({ models: undefined }),
+            buildLLMRequestContext: vi
+              .fn()
+              .mockResolvedValue({ models: undefined }),
           },
         },
         {

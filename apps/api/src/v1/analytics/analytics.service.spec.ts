@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { AppContextStorage } from '../../auth/app-context-storage';
 import { mock } from 'vitest-mock-extended';
 
+import { AppContextStorage } from '../../auth/app-context-storage';
 import { AnalyticsDao } from './analytics.dao';
 import { AnalyticsService } from './analytics.service';
 import type { ByGraphRawRow, TokenAggregateRawRow } from './dto/analytics.dto';

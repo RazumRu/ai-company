@@ -7,11 +7,11 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { environment } from '../../../../../environments';
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import {
   SubAgent,
   SubagentRunResult,
 } from '../../../../agents/services/agents/sub-agent';
-import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { BASE_RUNTIME_WORKDIR } from '../../../../runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../../../runtime/services/runtime-thread-provider';

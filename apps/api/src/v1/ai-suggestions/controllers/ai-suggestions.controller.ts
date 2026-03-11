@@ -4,7 +4,6 @@ import { Throttle } from '@nestjs/throttler';
 import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-
 import {
   KnowledgeContentSuggestionRequestDto,
   KnowledgeContentSuggestionResponseDto,

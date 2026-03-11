@@ -152,8 +152,12 @@ export const SyncRepositoriesResponseSchema = z.object({
   removed: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
 });
-export type SyncRepositoriesResponse = z.infer<typeof SyncRepositoriesResponseSchema>;
-export class SyncRepositoriesResponseDto extends createZodDto(SyncRepositoriesResponseSchema) {}
+export type SyncRepositoriesResponse = z.infer<
+  typeof SyncRepositoriesResponseSchema
+>;
+export class SyncRepositoriesResponseDto extends createZodDto(
+  SyncRepositoriesResponseSchema,
+) {}
 
 // Type exports
 export type GitRepository = z.infer<typeof GitRepositorySchema>;

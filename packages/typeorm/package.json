@@ -38,7 +38,7 @@
   },
   "scripts": {
     "lint:fix": "pnpm run lint --fix",
-    "lint": "pnpm eslint \"./src/**/*.ts\"",
+    "lint": "pnpm eslint src",
     "build": "tsc -p tsconfig.build.json",
     "prebuild": "rm -rf ./dist || true",
     "test": "vitest run --passWithNoTests",

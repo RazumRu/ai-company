@@ -105,9 +105,7 @@ export class CustomMcpTemplate extends McpNodeBaseTemplate<
         });
 
         if (!runtimeNodeId) {
-          throw new Error(
-            'Custom MCP requires a Runtime node connection',
-          );
+          throw new Error('Custom MCP requires a Runtime node connection');
         }
 
         await instance.cleanup().catch(() => {});

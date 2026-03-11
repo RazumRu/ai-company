@@ -7,12 +7,15 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { GitHubAppProviderService } from '../../git-auth/services/github-app-provider.service';
 import { GitHubAppService } from '../../git-auth/services/github-app.service';
+import { GitHubAppProviderService } from '../../git-auth/services/github-app-provider.service';
 import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
-import { GitRepositoriesDao, GithubSyncRepo } from '../dao/git-repositories.dao';
+import {
+  GithubSyncRepo,
+  GitRepositoriesDao,
+} from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { GetRepositoriesQueryDto } from '../dto/git-repositories.dto';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
@@ -39,10 +42,9 @@ describe('GitRepositoriesService', () => {
   const mockUserId = 'user-123';
   const mockProjectId = '11111111-1111-1111-1111-111111111111';
   const mockRepositoryId = 'repo-456';
-  const mockCtx = new AppContextStorage(
-    { sub: mockUserId },
-    { headers: { 'x-project-id': mockProjectId } } as unknown as import('fastify').FastifyRequest,
-  );
+  const mockCtx = new AppContextStorage({ sub: mockUserId }, {
+    headers: { 'x-project-id': mockProjectId },
+  } as unknown as import('fastify').FastifyRequest);
 
   const createMockRepositoryEntity = (
     overrides: Partial<GitRepositoryEntity> = {},
@@ -131,7 +133,9 @@ describe('GitRepositoriesService', () => {
         {
           provide: ProjectsDao,
           useValue: {
-            getOne: vi.fn().mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
+            getOne: vi
+              .fn()
+              .mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
           },
         },
         {
@@ -159,7 +163,9 @@ describe('GitRepositoriesService', () => {
     );
     repoIndexerService = module.get<RepoIndexerService>(RepoIndexerService);
     qdrantService = module.get<QdrantService>(QdrantService);
-    gitHubAppProviderService = module.get<GitHubAppProviderService>(GitHubAppProviderService);
+    gitHubAppProviderService = module.get<GitHubAppProviderService>(
+      GitHubAppProviderService,
+    );
     gitHubAppService = module.get<GitHubAppService>(GitHubAppService);
     logger = module.get<DefaultLogger>(DefaultLogger);
   });
@@ -292,7 +298,6 @@ describe('GitRepositoriesService', () => {
         }),
       );
     });
-
   });
 
   describe('getRepositoryById', () => {
@@ -391,9 +396,21 @@ describe('GitRepositoriesService', () => {
     it('should call removeJob for each repo index', async () => {
       const mockRepository = createMockRepositoryEntity();
       const mockIndexes = [
-        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: 'col-a' },
-        { id: 'index-2', repositoryId: mockRepositoryId, qdrantCollection: 'col-b' },
-        { id: 'index-3', repositoryId: mockRepositoryId, qdrantCollection: 'col-c' },
+        {
+          id: 'index-1',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: 'col-a',
+        },
+        {
+          id: 'index-2',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: 'col-b',
+        },
+        {
+          id: 'index-3',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: 'col-c',
+        },
       ];
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
@@ -413,8 +430,16 @@ describe('GitRepositoriesService', () => {
       const mockRepository = createMockRepositoryEntity();
       const sharedCollection = 'codebase_shared_1536';
       const mockIndexes = [
-        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: sharedCollection },
-        { id: 'index-2', repositoryId: mockRepositoryId, qdrantCollection: sharedCollection },
+        {
+          id: 'index-1',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: sharedCollection,
+        },
+        {
+          id: 'index-2',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: sharedCollection,
+        },
       ];
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
@@ -425,14 +450,24 @@ describe('GitRepositoriesService', () => {
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
       expect(qdrantService.deleteCollection).toHaveBeenCalledTimes(1);
-      expect(qdrantService.deleteCollection).toHaveBeenCalledWith(sharedCollection);
+      expect(qdrantService.deleteCollection).toHaveBeenCalledWith(
+        sharedCollection,
+      );
     });
 
     it('should call deleteCollection for each distinct collection name', async () => {
       const mockRepository = createMockRepositoryEntity();
       const mockIndexes = [
-        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: 'col-alpha' },
-        { id: 'index-2', repositoryId: mockRepositoryId, qdrantCollection: 'col-beta' },
+        {
+          id: 'index-1',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: 'col-alpha',
+        },
+        {
+          id: 'index-2',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: 'col-beta',
+        },
       ];
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
@@ -450,7 +485,11 @@ describe('GitRepositoriesService', () => {
     it('should perform cleanup before deleteById (call ordering)', async () => {
       const mockRepository = createMockRepositoryEntity();
       const mockIndexes = [
-        { id: 'index-1', repositoryId: mockRepositoryId, qdrantCollection: 'col-a' },
+        {
+          id: 'index-1',
+          repositoryId: mockRepositoryId,
+          qdrantCollection: 'col-a',
+        },
       ];
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
@@ -460,9 +499,12 @@ describe('GitRepositoriesService', () => {
 
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
-      const removeJobOrder = vi.mocked(repoIndexQueueService.removeJob).mock.invocationCallOrder[0]!;
-      const deleteCollectionOrder = vi.mocked(qdrantService.deleteCollection).mock.invocationCallOrder[0]!;
-      const deleteByIdOrder = vi.mocked(dao.deleteById).mock.invocationCallOrder[0]!;
+      const removeJobOrder = vi.mocked(repoIndexQueueService.removeJob).mock
+        .invocationCallOrder[0]!;
+      const deleteCollectionOrder = vi.mocked(qdrantService.deleteCollection)
+        .mock.invocationCallOrder[0]!;
+      const deleteByIdOrder = vi.mocked(dao.deleteById).mock
+        .invocationCallOrder[0]!;
 
       expect(removeJobOrder).toBeLessThan(deleteByIdOrder);
       expect(deleteCollectionOrder).toBeLessThan(deleteByIdOrder);
@@ -604,21 +646,33 @@ describe('GitRepositoriesService', () => {
 
   describe('deleteRepositoriesByInstallationIds', () => {
     it('should return 0 when installationIds is empty', async () => {
-      const result = await service.deleteRepositoriesByInstallationIds(mockUserId, []);
+      const result = await service.deleteRepositoriesByInstallationIds(
+        mockUserId,
+        [],
+      );
 
       expect(result).toBe(0);
       expect(dao.getAll).not.toHaveBeenCalled();
     });
 
     it('should delete all repos matching the given installation IDs', async () => {
-      const repo1 = createMockRepositoryEntity({ id: 'repo-1', installationId: 100 } as Partial<GitRepositoryEntity>);
-      const repo2 = createMockRepositoryEntity({ id: 'repo-2', installationId: 200 } as Partial<GitRepositoryEntity>);
+      const repo1 = createMockRepositoryEntity({
+        id: 'repo-1',
+        installationId: 100,
+      } as Partial<GitRepositoryEntity>);
+      const repo2 = createMockRepositoryEntity({
+        id: 'repo-2',
+        installationId: 200,
+      } as Partial<GitRepositoryEntity>);
 
       vi.spyOn(dao, 'getAll').mockResolvedValue([repo1, repo2]);
       vi.spyOn(repoIndexDao, 'getAll').mockResolvedValue([]);
       vi.spyOn(dao, 'deleteById').mockResolvedValue(undefined);
 
-      const result = await service.deleteRepositoriesByInstallationIds(mockUserId, [100, 200]);
+      const result = await service.deleteRepositoriesByInstallationIds(
+        mockUserId,
+        [100, 200],
+      );
 
       expect(dao.getAll).toHaveBeenCalledWith({
         createdBy: mockUserId,
@@ -631,7 +685,10 @@ describe('GitRepositoriesService', () => {
     });
 
     it('should cleanup Qdrant collections and BullMQ jobs before deleting', async () => {
-      const repo = createMockRepositoryEntity({ id: 'repo-1', installationId: 100 } as Partial<GitRepositoryEntity>);
+      const repo = createMockRepositoryEntity({
+        id: 'repo-1',
+        installationId: 100,
+      } as Partial<GitRepositoryEntity>);
       const mockIndex = {
         id: 'index-1',
         repositoryId: 'repo-1',
@@ -647,14 +704,19 @@ describe('GitRepositoriesService', () => {
 
       expect(repoIndexQueueService.removeJob).toHaveBeenCalledWith('index-1');
       expect(qdrantService.deleteCollection).toHaveBeenCalledWith('col-test');
-      expect(repoIndexDao.delete).toHaveBeenCalledWith({ repositoryId: 'repo-1' });
+      expect(repoIndexDao.delete).toHaveBeenCalledWith({
+        repositoryId: 'repo-1',
+      });
       expect(dao.deleteById).toHaveBeenCalledWith('repo-1');
     });
 
     it('should return 0 when no repos match the installation IDs', async () => {
       vi.spyOn(dao, 'getAll').mockResolvedValue([]);
 
-      const result = await service.deleteRepositoriesByInstallationIds(mockUserId, [999]);
+      const result = await service.deleteRepositoriesByInstallationIds(
+        mockUserId,
+        [999],
+      );
 
       expect(result).toBe(0);
       expect(dao.deleteById).not.toHaveBeenCalled();
@@ -682,7 +744,10 @@ describe('GitRepositoriesService', () => {
     };
 
     it('returns zeros when no active installations exist', async () => {
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([]);
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([]);
 
       const result = await service.syncRepositories(mockCtx);
 
@@ -693,17 +758,25 @@ describe('GitRepositoriesService', () => {
     it('throws BadRequestException when GitHub App is not configured', async () => {
       vi.spyOn(gitHubAppProviderService, 'isConfigured').mockReturnValue(false);
 
-      await expect(service.syncRepositories(mockCtx)).rejects.toThrow('GITHUB_APP_NOT_CONFIGURED');
+      await expect(service.syncRepositories(mockCtx)).rejects.toThrow(
+        'GITHUB_APP_NOT_CONFIGURED',
+      );
     });
 
     it('throws BadRequestException when sync is already in progress for the same user', async () => {
       // Access private field via type assertion to simulate in-progress sync
-      (service as unknown as { syncInProgress: Set<string> }).syncInProgress.add(mockUserId);
+      (
+        service as unknown as { syncInProgress: Set<string> }
+      ).syncInProgress.add(mockUserId);
 
       try {
-        await expect(service.syncRepositories(mockCtx)).rejects.toThrow('SYNC_ALREADY_IN_PROGRESS');
+        await expect(service.syncRepositories(mockCtx)).rejects.toThrow(
+          'SYNC_ALREADY_IN_PROGRESS',
+        );
       } finally {
-        (service as unknown as { syncInProgress: Set<string> }).syncInProgress.delete(mockUserId);
+        (
+          service as unknown as { syncInProgress: Set<string> }
+        ).syncInProgress.delete(mockUserId);
       }
     });
 
@@ -715,8 +788,13 @@ describe('GitRepositoriesService', () => {
         installationId: 12345,
       } as Partial<GitRepositoryEntity>);
 
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([mockInstallation as any]);
-      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
+        'ghs_token123',
+      );
       vi.spyOn(global, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
@@ -742,8 +820,13 @@ describe('GitRepositoriesService', () => {
         installationId: null,
       } as Partial<GitRepositoryEntity>);
 
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([mockInstallation as any]);
-      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
+        'ghs_token123',
+      );
       vi.spyOn(global, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
@@ -768,21 +851,32 @@ describe('GitRepositoriesService', () => {
       } as Partial<GitRepositoryEntity>);
 
       const mockIndexes = [
-        { id: 'idx-1', repositoryId: 'revoked-repo-id', qdrantCollection: 'col-revoked' },
+        {
+          id: 'idx-1',
+          repositoryId: 'revoked-repo-id',
+          qdrantCollection: 'col-revoked',
+        },
       ];
 
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([{
-        id: 'install-uuid-1',
-        userId: mockUserId,
-        provider: 'github',
-        isActive: true,
-        accountLogin: 'octocat',
-        metadata: { installationId: 12345, accountType: 'User' },
-        createdAt: new Date('2024-01-01T00:00:00Z'),
-        updatedAt: new Date('2024-01-01T00:00:00Z'),
-        deletedAt: null,
-      } as any]);
-      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([
+        {
+          id: 'install-uuid-1',
+          userId: mockUserId,
+          provider: 'github',
+          isActive: true,
+          accountLogin: 'octocat',
+          metadata: { installationId: 12345, accountType: 'User' },
+          createdAt: new Date('2024-01-01T00:00:00Z'),
+          updatedAt: new Date('2024-01-01T00:00:00Z'),
+          deletedAt: null,
+        } as any,
+      ]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
+        'ghs_token123',
+      );
       vi.spyOn(global, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
@@ -799,20 +893,28 @@ describe('GitRepositoriesService', () => {
 
       // Verify cleanup was called
       expect(repoIndexQueueService.removeJob).toHaveBeenCalledWith('idx-1');
-      expect(qdrantService.deleteCollection).toHaveBeenCalledWith('col-revoked');
+      expect(qdrantService.deleteCollection).toHaveBeenCalledWith(
+        'col-revoked',
+      );
       expect(dao.deleteById).toHaveBeenCalledWith('revoked-repo-id');
 
       // Verify ordering: cleanup before delete
-      const removeJobOrder = vi.mocked(repoIndexQueueService.removeJob).mock.invocationCallOrder[0]!;
-      const deleteCollectionOrder = vi.mocked(qdrantService.deleteCollection).mock.invocationCallOrder[0]!;
-      const deleteByIdOrder = vi.mocked(dao.deleteById).mock.invocationCallOrder[0]!;
+      const removeJobOrder = vi.mocked(repoIndexQueueService.removeJob).mock
+        .invocationCallOrder[0]!;
+      const deleteCollectionOrder = vi.mocked(qdrantService.deleteCollection)
+        .mock.invocationCallOrder[0]!;
+      const deleteByIdOrder = vi.mocked(dao.deleteById).mock
+        .invocationCallOrder[0]!;
 
       expect(removeJobOrder).toBeLessThan(deleteByIdOrder);
       expect(deleteCollectionOrder).toBeLessThan(deleteByIdOrder);
     });
 
     it('auto-deactivates installation when getInstallationToken fails during sync', async () => {
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([mockInstallation as any]);
       vi.spyOn(gitHubAppService, 'getInstallationToken').mockRejectedValue(
         new Error('Bad credentials'),
       );
@@ -821,10 +923,9 @@ describe('GitRepositoriesService', () => {
 
       const result = await service.syncRepositories(mockCtx);
 
-      expect(gitHubAppProviderService.deactivateByInstallationId).toHaveBeenCalledWith(
-        mockUserId,
-        12345,
-      );
+      expect(
+        gitHubAppProviderService.deactivateByInstallationId,
+      ).toHaveBeenCalledWith(mockUserId, 12345);
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining('auto-deactivating'),
       );
@@ -843,7 +944,10 @@ describe('GitRepositoriesService', () => {
         metadata: { installationId: 12345, accountType: 'User' },
       };
 
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([
         deadInstallation as any,
         healthyInstallation as any,
       ]);
@@ -863,18 +967,18 @@ describe('GitRepositoriesService', () => {
 
       const result = await service.syncRepositories(mockCtx);
 
-      expect(gitHubAppProviderService.deactivateByInstallationId).toHaveBeenCalledWith(
-        mockUserId,
-        99999,
-      );
+      expect(
+        gitHubAppProviderService.deactivateByInstallationId,
+      ).toHaveBeenCalledWith(mockUserId, 99999);
       expect(dao.upsertGithubSyncRepos).toHaveBeenCalledTimes(1);
       expect(result).toEqual({ synced: 1, removed: 0, total: 1 });
     });
 
     it('auto-deactivates installation when repository listing returns not found during sync', async () => {
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
-        mockInstallation as any,
-      ]);
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([mockInstallation as any]);
       vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
         'ghs_token123',
       );
@@ -909,7 +1013,10 @@ describe('GitRepositoriesService', () => {
         metadata: { installationId: 12345, accountType: 'User' },
       };
 
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([
         deadInstallation as any,
         healthyInstallation as any,
       ]);
@@ -925,7 +1032,10 @@ describe('GitRepositoriesService', () => {
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
-          json: async () => ({ total_count: 1, repositories: [mockGithubRepo] }),
+          json: async () => ({
+            total_count: 1,
+            repositories: [mockGithubRepo],
+          }),
           headers: { get: () => null },
         } as unknown as Response);
       vi.spyOn(dao, 'upsertGithubSyncRepos').mockResolvedValue(undefined);
@@ -943,16 +1053,20 @@ describe('GitRepositoriesService', () => {
     });
 
     it('throws when GitHub rate limits repository listing', async () => {
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([
-        mockInstallation as any,
-      ]);
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([mockInstallation as any]);
       vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
         'ghs_token123',
       );
       vi.spyOn(global, 'fetch').mockResolvedValue({
         ok: false,
         status: 403,
-        headers: { get: (name: string) => (name === 'x-ratelimit-remaining' ? '0' : null) },
+        headers: {
+          get: (name: string) =>
+            name === 'x-ratelimit-remaining' ? '0' : null,
+        },
       } as unknown as Response);
 
       await expect(service.syncRepositories(mockCtx)).rejects.toThrow(
@@ -964,8 +1078,13 @@ describe('GitRepositoriesService', () => {
     });
 
     it('does not trigger indexing after successful sync', async () => {
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([mockInstallation as any]);
-      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([mockInstallation as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
+        'ghs_token123',
+      );
       vi.spyOn(global, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
@@ -983,31 +1102,78 @@ describe('GitRepositoriesService', () => {
     });
 
     it('aggregates repos from multiple installations into a single upsertMany call', async () => {
-      const installation1 = { ...mockInstallation, id: 'install-uuid-1', metadata: { installationId: 11111, accountType: 'User' } };
-      const installation2 = { ...mockInstallation, id: 'install-uuid-2', metadata: { installationId: 22222, accountType: 'User' } };
+      const installation1 = {
+        ...mockInstallation,
+        id: 'install-uuid-1',
+        metadata: { installationId: 11111, accountType: 'User' },
+      };
+      const installation2 = {
+        ...mockInstallation,
+        id: 'install-uuid-2',
+        metadata: { installationId: 22222, accountType: 'User' },
+      };
 
       const reposForInstallation1 = [
-        { owner: { login: 'org-a' }, name: 'repo-1', html_url: 'https://github.com/org-a/repo-1', default_branch: 'main' },
-        { owner: { login: 'org-a' }, name: 'repo-2', html_url: 'https://github.com/org-a/repo-2', default_branch: 'main' },
-        { owner: { login: 'org-a' }, name: 'repo-3', html_url: 'https://github.com/org-a/repo-3', default_branch: 'main' },
+        {
+          owner: { login: 'org-a' },
+          name: 'repo-1',
+          html_url: 'https://github.com/org-a/repo-1',
+          default_branch: 'main',
+        },
+        {
+          owner: { login: 'org-a' },
+          name: 'repo-2',
+          html_url: 'https://github.com/org-a/repo-2',
+          default_branch: 'main',
+        },
+        {
+          owner: { login: 'org-a' },
+          name: 'repo-3',
+          html_url: 'https://github.com/org-a/repo-3',
+          default_branch: 'main',
+        },
       ];
       const reposForInstallation2 = [
-        { owner: { login: 'org-b' }, name: 'repo-4', html_url: 'https://github.com/org-b/repo-4', default_branch: 'develop' },
-        { owner: { login: 'org-b' }, name: 'repo-5', html_url: 'https://github.com/org-b/repo-5', default_branch: 'develop' },
-        { owner: { login: 'org-b' }, name: 'repo-6', html_url: 'https://github.com/org-b/repo-6', default_branch: 'develop' },
+        {
+          owner: { login: 'org-b' },
+          name: 'repo-4',
+          html_url: 'https://github.com/org-b/repo-4',
+          default_branch: 'develop',
+        },
+        {
+          owner: { login: 'org-b' },
+          name: 'repo-5',
+          html_url: 'https://github.com/org-b/repo-5',
+          default_branch: 'develop',
+        },
+        {
+          owner: { login: 'org-b' },
+          name: 'repo-6',
+          html_url: 'https://github.com/org-b/repo-6',
+          default_branch: 'develop',
+        },
       ];
 
-      vi.spyOn(gitHubAppProviderService, 'getActiveInstallations').mockResolvedValue([installation1 as any, installation2 as any]);
-      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue('ghs_token123');
+      vi.spyOn(
+        gitHubAppProviderService,
+        'getActiveInstallations',
+      ).mockResolvedValue([installation1 as any, installation2 as any]);
+      vi.spyOn(gitHubAppService, 'getInstallationToken').mockResolvedValue(
+        'ghs_token123',
+      );
 
       let fetchCallCount = 0;
       vi.spyOn(global, 'fetch').mockImplementation(async () => {
         fetchCallCount++;
-        const repos = fetchCallCount === 1 ? reposForInstallation1 : reposForInstallation2;
+        const repos =
+          fetchCallCount === 1 ? reposForInstallation1 : reposForInstallation2;
         return {
           ok: true,
           status: 200,
-          json: async () => ({ total_count: repos.length, repositories: repos }),
+          json: async () => ({
+            total_count: repos.length,
+            repositories: repos,
+          }),
           headers: { get: () => null },
         } as unknown as Response;
       });
@@ -1028,12 +1194,24 @@ describe('GitRepositoriesService', () => {
       expect(installationIds.filter((id) => id === 11111)).toHaveLength(3);
       expect(installationIds.filter((id) => id === 22222)).toHaveLength(3);
 
-      const reposForInstall1 = upsertArgs.filter((r) => r.installationId === 11111);
-      expect(reposForInstall1.map((r) => r.repo).sort()).toEqual(['repo-1', 'repo-2', 'repo-3']);
+      const reposForInstall1 = upsertArgs.filter(
+        (r) => r.installationId === 11111,
+      );
+      expect(reposForInstall1.map((r) => r.repo).sort()).toEqual([
+        'repo-1',
+        'repo-2',
+        'repo-3',
+      ]);
       expect(reposForInstall1[0]!.owner).toBe('org-a');
 
-      const reposForInstall2 = upsertArgs.filter((r) => r.installationId === 22222);
-      expect(reposForInstall2.map((r) => r.repo).sort()).toEqual(['repo-4', 'repo-5', 'repo-6']);
+      const reposForInstall2 = upsertArgs.filter(
+        (r) => r.installationId === 22222,
+      );
+      expect(reposForInstall2.map((r) => r.repo).sort()).toEqual([
+        'repo-4',
+        'repo-5',
+        'repo-6',
+      ]);
       expect(reposForInstall2[0]!.owner).toBe('org-b');
 
       for (const entry of upsertArgs) {
@@ -1048,7 +1226,9 @@ describe('GitRepositoriesService', () => {
 
   describe('onInstallationUnlinked', () => {
     it('should call deleteRepositoriesByInstallationIds when INSTALLATION_UNLINKED_EVENT fires', async () => {
-      const spy = vi.spyOn(service, 'deleteRepositoriesByInstallationIds').mockResolvedValue(2);
+      const spy = vi
+        .spyOn(service, 'deleteRepositoriesByInstallationIds')
+        .mockResolvedValue(2);
       await service.onInstallationUnlinked({
         userId: 'mock-user-id',
         provider: GitProvider.GitHub,
@@ -1059,5 +1239,4 @@ describe('GitRepositoriesService', () => {
       expect(spy).toHaveBeenCalledWith('mock-user-id', [12345]);
     });
   });
-
 });

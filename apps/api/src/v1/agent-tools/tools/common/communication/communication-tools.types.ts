@@ -1,7 +1,7 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 
-import { AgentOutput } from '../../../../agents/services/agents/base-agent';
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
+import { AgentOutput } from '../../../../agents/services/agents/base-agent';
 
 export interface AgentInfo {
   name: string;

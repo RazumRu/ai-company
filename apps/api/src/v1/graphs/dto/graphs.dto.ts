@@ -66,7 +66,11 @@ export const GraphSchema = z.object({
     .describe(
       'If true, graph will be deleted instead of restored after server restart',
     ),
-  projectId: z.uuid().nullable().optional().describe('Project this graph belongs to'),
+  projectId: z
+    .uuid()
+    .nullable()
+    .optional()
+    .describe('Project this graph belongs to'),
 });
 
 export const TriggerNodeInfoSchema = z.object({

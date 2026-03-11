@@ -151,7 +151,11 @@ export class KnowledgeSearchDocsTool extends BaseTool<
 
     const modelCtx: LLMRequestContext | undefined =
       runnableConfig.configurable?.llmRequestContext;
-    const selection = await this.selectRelevantDocs(normalizedTask, docs, modelCtx?.models?.llmMiniModel);
+    const selection = await this.selectRelevantDocs(
+      normalizedTask,
+      docs,
+      modelCtx?.models?.llmMiniModel,
+    );
 
     const docByPublicId = new Map(docs.map((doc) => [doc.publicId, doc]));
     const documents = selection.ids

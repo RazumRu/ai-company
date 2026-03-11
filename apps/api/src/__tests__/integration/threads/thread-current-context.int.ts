@@ -1,14 +1,14 @@
 import { INestApplication } from '@nestjs/common';
-import { AppContextStorage } from '../../../auth/app-context-storage';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule } from '../setup';
 
 /**
  * Integration coverage for `tokenUsage.currentContext`.

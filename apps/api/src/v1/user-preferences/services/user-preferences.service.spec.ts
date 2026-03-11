@@ -8,10 +8,7 @@ import { UserPreferencesService } from './user-preferences.service';
 
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 const EMPTY_REQUEST = { headers: {} } as unknown as FastifyRequest;
-const ctx = new AppContextStorage(
-  { sub: TEST_USER_ID },
-  EMPTY_REQUEST,
-);
+const ctx = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
 
 const mockDao = {
   getOne: vi.fn(),

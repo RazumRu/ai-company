@@ -3,7 +3,6 @@ import type { FastifyRequest } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
@@ -19,9 +18,15 @@ import { createTestModule, TEST_USER_ID } from '../setup';
 
 const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
 
-const contextDataStorage = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
+const contextDataStorage = new AppContextStorage(
+  { sub: TEST_USER_ID },
+  EMPTY_REQUEST,
+);
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000099';
-const otherUserCtx = new AppContextStorage({ sub: OTHER_USER_ID }, EMPTY_REQUEST);
+const otherUserCtx = new AppContextStorage(
+  { sub: OTHER_USER_ID },
+  EMPTY_REQUEST,
+);
 
 describe('RuntimeService - getRuntimesForThread (integration)', () => {
   let app: INestApplication;
@@ -179,12 +184,22 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
     const graph = await createGraph('runtime-status-filter');
     const thread = await createThread(graph.id);
 
-    await createRuntimeInstance(graph.id, thread.externalThreadId, 'node-running', {
-      status: RuntimeInstanceStatus.Running,
-    });
-    await createRuntimeInstance(graph.id, thread.externalThreadId, 'node-stopped', {
-      status: RuntimeInstanceStatus.Stopped,
-    });
+    await createRuntimeInstance(
+      graph.id,
+      thread.externalThreadId,
+      'node-running',
+      {
+        status: RuntimeInstanceStatus.Running,
+      },
+    );
+    await createRuntimeInstance(
+      graph.id,
+      thread.externalThreadId,
+      'node-stopped',
+      {
+        status: RuntimeInstanceStatus.Stopped,
+      },
+    );
 
     const runningOnly = await runtimeService.getRuntimesForThread(
       contextDataStorage,

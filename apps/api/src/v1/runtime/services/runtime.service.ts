@@ -4,10 +4,7 @@ import { NotFoundException } from '@packages/common';
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
-import {
-  GetRuntimesQueryDto,
-  RuntimeInstanceDto,
-} from '../dto/runtime.dto';
+import { GetRuntimesQueryDto, RuntimeInstanceDto } from '../dto/runtime.dto';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
 
 @Injectable()

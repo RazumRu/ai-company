@@ -91,9 +91,7 @@ export class GitHubAppService {
     }
   }
 
-  async getInstallation(
-    installationId: number,
-  ): Promise<MappedInstallation> {
+  async getInstallation(installationId: number): Promise<MappedInstallation> {
     this.assertConfigured();
 
     const appJwt = this.generateJwt();
@@ -183,7 +181,7 @@ export class GitHubAppService {
     // Get user's installations for this app
     const userOctokit = new Octokit({ auth: tokenData.access_token });
 
-    let userInstallations: MappedInstallation[] = [];
+    let userInstallations: MappedInstallation[];
 
     try {
       const response =
@@ -268,18 +266,15 @@ export class GitHubAppService {
       return {
         id: response.data.id,
         account: {
-          login:
-            account && 'login' in account
-              ? (account.login ?? '')
-              : '',
-          type:
-            account && 'type' in account
-              ? (account.type ?? '')
-              : '',
+          login: account && 'login' in account ? (account.login ?? '') : '',
+          type: account && 'type' in account ? (account.type ?? '') : '',
         },
       };
     } catch (error: unknown) {
-      const status = error instanceof Object && 'status' in error ? (error as { status: number }).status : undefined;
+      const status =
+        error instanceof Object && 'status' in error
+          ? (error as { status: number }).status
+          : undefined;
       if (status !== 404) {
         this.logger.warn(
           `Unexpected error looking up installation for ${login}: ${error instanceof Error ? error.message : String(error)}`,

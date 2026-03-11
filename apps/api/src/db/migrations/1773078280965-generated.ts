@@ -1,10 +1,10 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class Generated1773078280965 implements MigrationInterface {
-    name = 'Generated1773078280965'
+  name = 'Generated1773078280965';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             CREATE TABLE "user_preference" (
                 "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
                 "userId" character varying NOT NULL,
@@ -14,18 +14,17 @@ export class Generated1773078280965 implements MigrationInterface {
                 CONSTRAINT "PK_0532217bd629d0ccf06499c5841" PRIMARY KEY ("id")
             )
         `);
-        await queryRunner.query(`
+    await queryRunner.query(`
             CREATE UNIQUE INDEX "IDX_5b141fbd1fef95a0540f7e7d1e" ON "user_preference" ("userId")
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             DROP INDEX "public"."IDX_5b141fbd1fef95a0540f7e7d1e"
         `);
-        await queryRunner.query(`
+    await queryRunner.query(`
             DROP TABLE "user_preference"
         `);
-    }
-
+  }
 }

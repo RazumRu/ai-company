@@ -24,7 +24,7 @@ import {
 
 const makeHandle = <TInstance>(
   instance: TInstance,
-): GraphNodeInstanceHandle<TInstance, any> => ({
+): GraphNodeInstanceHandle<TInstance, unknown> => ({
   provide: async () => instance,
   configure: async () => {},
   destroy: async () => {},
@@ -153,7 +153,7 @@ describe('ShellToolTemplate', () => {
       nodeId: 'tool-1',
       version: '1',
       graph_created_by: 'user-1',
-        graph_project_id: '11111111-1111-1111-1111-111111111111',
+      graph_project_id: '11111111-1111-1111-1111-111111111111',
     };
 
     let mockRuntime: { exec: ReturnType<typeof vi.fn> };
@@ -339,15 +339,16 @@ describe('ShellToolTemplate', () => {
 
     describe('resource integration', () => {
       const mockResourceId = 'res-1';
-      const mockResourceOutput: IShellResourceOutput = {
+      const mockResolveEnv = vi.fn().mockResolvedValue({ KEY: 'VALUE' });
+      const mockResourceOutput = {
         kind: ResourceKind.Shell,
         information: 'Resource info',
         data: {
-          env: { KEY: 'VALUE' },
+          resolveEnv: mockResolveEnv,
           initScript: 'echo init',
           initScriptTimeout: 5000,
         },
-      } as any;
+      } satisfies IShellResourceOutput;
 
       beforeEach(() => {
         vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
@@ -399,11 +400,9 @@ describe('ShellToolTemplate', () => {
           expect.objectContaining({
             runtimeProvider: mockRuntimeThreadProvider,
             resourcesInformation: expect.stringContaining('Resource info'),
+            resolveEnv: expect.any(Function),
           }),
         );
-        expect(mockRuntimeThreadProvider.addEnvVariables).toHaveBeenCalledWith({
-          KEY: 'VALUE',
-        });
       });
 
       it('should ignore non-resource nodes in resourceNodeIds', async () => {
@@ -521,10 +520,10 @@ describe('ShellToolTemplate', () => {
           kind: ResourceKind.Shell,
           information: 'Res 2 info',
           data: {
-            env: { KEY2: 'VALUE2' },
+            resolveEnv: vi.fn().mockResolvedValue({ KEY2: 'VALUE2' }),
             initScript: 'echo init2',
           },
-        } as any;
+        } satisfies IShellResourceOutput;
 
         vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
           (_gid, nodes, kind) => {

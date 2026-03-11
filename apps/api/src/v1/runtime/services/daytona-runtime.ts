@@ -5,12 +5,12 @@ import type { DaytonaConfig } from '@daytonaio/sdk';
 import { Daytona, Sandbox } from '@daytonaio/sdk';
 
 import { environment } from '../../../environments';
-import { buildEnvPrefix } from '../runtime.utils';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
   RuntimeStartParams,
 } from '../runtime.types';
+import { buildEnvPrefix } from '../runtime.utils';
 import { BaseRuntime } from './base-runtime';
 
 /** Configuration needed to connect to the Daytona API. */
@@ -143,10 +143,7 @@ export class DaytonaRuntime extends BaseRuntime {
     };
 
     try {
-      this.sandbox = await this.createSandbox(
-        commonParams,
-        snapshotOrImage,
-      );
+      this.sandbox = await this.createSandbox(commonParams, snapshotOrImage);
     } catch (error) {
       // If the cached snapshot image was lost (e.g. runner DinD wiped after
       // recreate), Daytona returns "pull access denied" because the built
@@ -429,7 +426,10 @@ export class DaytonaRuntime extends BaseRuntime {
       { command: script, runAsync: true },
     );
 
-    const hardMs = Math.min(params.timeoutMs ?? HARD_TIMEOUT_MS, HARD_TIMEOUT_MS);
+    const hardMs = Math.min(
+      params.timeoutMs ?? HARD_TIMEOUT_MS,
+      HARD_TIMEOUT_MS,
+    );
     const startAt = Date.now();
     let lastOutputAt = Date.now();
     let stdout = '';
@@ -492,23 +492,22 @@ export class DaytonaRuntime extends BaseRuntime {
       // when Daytona cleans up a fast-exiting cmdId, getSessionCommand() throws a 404 that
       // the polling catch block silently swallows, causing the loop to spin until hard timeout.
       // Resolving via stream completion avoids that race condition entirely.
-      void this.sandbox!.process
-        .getSessionCommandLogs(
-          sessionId,
-          cmdId,
-          (chunk: string) => {
-            if (!streamActive) return;
-            stdout += chunk;
-            observedStdoutLength = stdout.length;
-            lastOutputAt = Date.now();
-          },
-          (chunk: string) => {
-            if (!streamActive) return;
-            stderr += chunk;
-            observedStderrLength = stderr.length;
-            lastOutputAt = Date.now();
-          },
-        )
+      void this.sandbox!.process.getSessionCommandLogs(
+        sessionId,
+        cmdId,
+        (chunk: string) => {
+          if (!streamActive) return;
+          stdout += chunk;
+          observedStdoutLength = stdout.length;
+          lastOutputAt = Date.now();
+        },
+        (chunk: string) => {
+          if (!streamActive) return;
+          stderr += chunk;
+          observedStderrLength = stderr.length;
+          lastOutputAt = Date.now();
+        },
+      )
         .then(async () => {
           // Stream resolved → command finished. Do one final exit-code fetch.
           if (settled) return;
@@ -594,11 +593,29 @@ export class DaytonaRuntime extends BaseRuntime {
               return;
             }
 
-            const cmd = await this.sandbox!.process.getSessionCommand(
-              sessionId,
-              cmdId,
-            );
-            if (typeof cmd.exitCode === 'number') {
+            let cmd: { exitCode?: number } | undefined;
+            try {
+              cmd = await this.sandbox!.process.getSessionCommand(
+                sessionId,
+                cmdId,
+              );
+            } catch {
+              // getSessionCommand failed — the cmdId is no longer retrievable
+              // (e.g. Daytona cleaned it up after a fast exit). Treat as
+              // completion: collect whatever output we have and settle.
+              await syncLogs();
+              const exitCode = stderr.length > 0 ? 1 : 0;
+              settle({
+                exitCode,
+                stdout,
+                stderr,
+                fail: exitCode !== 0,
+                execPath: fullWorkdir,
+              });
+              return;
+            }
+
+            if (cmd && typeof cmd.exitCode === 'number') {
               const finalExitCode = cmd.exitCode;
               clearInterval(check);
               streamActive = false;
@@ -612,8 +629,6 @@ export class DaytonaRuntime extends BaseRuntime {
                 execPath: fullWorkdir,
               });
             }
-          } catch {
-            // Transient poll failures should not crash the loop — polling continues.
           } finally {
             pollInFlight = false;
           }
@@ -650,8 +665,7 @@ export class DaytonaRuntime extends BaseRuntime {
    * snapshot image in the runner's local Docker registry.
    */
   private isStaleSnapshotError(error: unknown): boolean {
-    const msg =
-      error instanceof Error ? error.message : String(error);
+    const msg = error instanceof Error ? error.message : String(error);
     return msg.includes('pull access denied');
   }
 

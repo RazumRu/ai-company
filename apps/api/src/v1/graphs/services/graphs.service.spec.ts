@@ -1,6 +1,6 @@
 import type { BaseMessage } from '@langchain/core/messages';
-import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   DefaultLogger,
@@ -13,11 +13,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
+import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStatus } from '../../threads/threads.types';
-import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
@@ -27,6 +28,7 @@ import {
   UpdateGraphDto,
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
+import { GRAPH_DELETED_EVENT, GraphDeletedEvent } from '../graphs.events';
 import {
   CompiledGraph,
   CompiledGraphNode,
@@ -35,11 +37,6 @@ import {
   MessageRole,
   NodeKind,
 } from '../graphs.types';
-import { TemplateRegistry } from '../../graph-templates/services/template-registry';
-import {
-  GRAPH_DELETED_EVENT,
-  GraphDeletedEvent,
-} from '../graphs.events';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -65,17 +62,15 @@ describe('GraphsService', () => {
 
   const mockUserId = 'user-123';
   const mockProjectId = '11111111-1111-1111-1111-111111111111';
-  const mockCtx = new AppContextStorage(
-    { sub: mockUserId },
-    { headers: { 'x-project-id': mockProjectId } } as unknown as import('fastify').FastifyRequest,
-  );
+  const mockCtx = new AppContextStorage({ sub: mockUserId }, {
+    headers: { 'x-project-id': mockProjectId },
+  } as unknown as import('fastify').FastifyRequest);
   const mockGraphId = 'graph-456';
 
   const makeCtxWithProject = (projectId: string) =>
-    new AppContextStorage(
-      { sub: mockUserId },
-      { headers: { 'x-project-id': projectId } } as unknown as import('fastify').FastifyRequest,
-    );
+    new AppContextStorage({ sub: mockUserId }, {
+      headers: { 'x-project-id': projectId },
+    } as unknown as import('fastify').FastifyRequest);
 
   const createMockGraphEntity = (
     overrides: Partial<GraphEntity> = {},
@@ -285,7 +280,9 @@ describe('GraphsService', () => {
         {
           provide: ProjectsDao,
           useValue: {
-            getOne: vi.fn().mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
+            getOne: vi
+              .fn()
+              .mockResolvedValue({ id: 'project-1', createdBy: mockUserId }),
           },
         },
         {
@@ -490,12 +487,16 @@ describe('GraphsService', () => {
 
     it('should extract agents from schema when template is a SimpleAgent', async () => {
       const templateRegistry = module.get<TemplateRegistry>(TemplateRegistry);
-      vi.mocked(templateRegistry.getTemplate).mockImplementation((id: string) => {
-        if (id === 'simple-agent') {
-          return { kind: NodeKind.SimpleAgent } as ReturnType<TemplateRegistry['getTemplate']>;
-        }
-        return undefined;
-      });
+      vi.mocked(templateRegistry.getTemplate).mockImplementation(
+        (id: string) => {
+          if (id === 'simple-agent') {
+            return { kind: NodeKind.SimpleAgent } as ReturnType<
+              TemplateRegistry['getTemplate']
+            >;
+          }
+          return undefined;
+        },
+      );
 
       const createData: CreateGraphDto = {
         name: 'Agent Graph',
@@ -526,7 +527,11 @@ describe('GraphsService', () => {
         status: GraphStatus.Created,
         createdBy: mockUserId,
         agents: [
-          { nodeId: 'agent-node-1', name: 'My Agent', description: 'Test desc' },
+          {
+            nodeId: 'agent-node-1',
+            name: 'My Agent',
+            description: 'Test desc',
+          },
         ],
       });
 
@@ -537,7 +542,11 @@ describe('GraphsService', () => {
       expect(graphDao.create).toHaveBeenCalledWith(
         expect.objectContaining({
           agents: [
-            { nodeId: 'agent-node-1', name: 'My Agent', description: 'Test desc' },
+            {
+              nodeId: 'agent-node-1',
+              name: 'My Agent',
+              description: 'Test desc',
+            },
           ],
         }),
         expect.any(Object),
@@ -687,12 +696,18 @@ describe('GraphsService', () => {
         createdBy: mockUserId,
       });
 
-      vi.mocked(projectsDao.getOne).mockResolvedValue({ id: projectUuid, createdBy: mockUserId } as any);
+      vi.mocked(projectsDao.getOne).mockResolvedValue({
+        id: projectUuid,
+        createdBy: mockUserId,
+      } as any);
       vi.mocked(graphDao.create).mockResolvedValue(expectedEntity);
 
       await service.create(ctxWithProject, createData);
 
-      expect(projectsDao.getOne).toHaveBeenCalledWith({ id: projectUuid, createdBy: mockUserId });
+      expect(projectsDao.getOne).toHaveBeenCalledWith({
+        id: projectUuid,
+        createdBy: mockUserId,
+      });
       expect(graphDao.create).toHaveBeenCalledWith(
         expect.objectContaining({ projectId: projectUuid }),
         expect.any(Object),
@@ -700,7 +715,9 @@ describe('GraphsService', () => {
     });
 
     it('should throw NotFoundException when ctx.projectId does not belong to user', async () => {
-      const ctxWithProject = makeCtxWithProject('22222222-2222-2222-2222-222222222222');
+      const ctxWithProject = makeCtxWithProject(
+        '22222222-2222-2222-2222-222222222222',
+      );
 
       const createData: CreateGraphDto = {
         name: 'Unauthorized Graph',
@@ -710,7 +727,9 @@ describe('GraphsService', () => {
 
       vi.mocked(projectsDao.getOne).mockResolvedValue(null);
 
-      await expect(service.create(ctxWithProject, createData)).rejects.toThrow(NotFoundException);
+      await expect(service.create(ctxWithProject, createData)).rejects.toThrow(
+        NotFoundException,
+      );
       expect(graphDao.create).not.toHaveBeenCalled();
     });
 
@@ -807,14 +826,18 @@ describe('GraphsService', () => {
     });
 
     it('should filter graphs by projectId when set in ctx', async () => {
-      const ctxWithProject = makeCtxWithProject('42424242-4242-4242-4242-424242424242');
+      const ctxWithProject = makeCtxWithProject(
+        '42424242-4242-4242-4242-424242424242',
+      );
 
       vi.mocked(graphDao.getAll).mockResolvedValue([]);
 
       await service.getAll(ctxWithProject);
 
       expect(graphDao.getAll).toHaveBeenCalledWith(
-        expect.objectContaining({ projectId: '42424242-4242-4242-4242-424242424242' }),
+        expect.objectContaining({
+          projectId: '42424242-4242-4242-4242-424242424242',
+        }),
       );
     });
   });
@@ -1852,7 +1875,13 @@ describe('GraphsService', () => {
       // Ensure invokeAgent was called with provided threadSubId
       expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
         [expect.objectContaining({ content: 'Async test message' })],
-        { configurable: { thread_id: customThreadId, async: true } },
+        {
+          configurable: {
+            thread_id: customThreadId,
+            async: true,
+            thread_created_by: mockUserId,
+          },
+        },
       );
     });
 
@@ -1916,7 +1945,13 @@ describe('GraphsService', () => {
 
       expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
         [expect.objectContaining({ content: 'Async test message' })],
-        { configurable: { thread_id: undefined, async: true } },
+        {
+          configurable: {
+            thread_id: undefined,
+            async: true,
+            thread_created_by: mockUserId,
+          },
+        },
       );
     });
     it('should execute trigger with custom threadId and return thread info', async () => {
@@ -1987,6 +2022,7 @@ describe('GraphsService', () => {
         {
           configurable: {
             thread_id: customThreadId,
+            thread_created_by: mockUserId,
           },
         },
       );
@@ -2062,6 +2098,7 @@ describe('GraphsService', () => {
         {
           configurable: {
             thread_id: undefined, // No threadId provided
+            thread_created_by: mockUserId,
           },
         },
       );

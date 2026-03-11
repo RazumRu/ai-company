@@ -34,7 +34,9 @@ describe('KnowledgeListener', () => {
   });
 
   it('propagates DAO errors', async () => {
-    vi.mocked(knowledgeDocDao.delete).mockRejectedValue(new Error('DB failure'));
+    vi.mocked(knowledgeDocDao.delete).mockRejectedValue(
+      new Error('DB failure'),
+    );
 
     await expect(
       listener.onProjectDeleted({ projectId: 'p-1', userId: 'u-1' }),

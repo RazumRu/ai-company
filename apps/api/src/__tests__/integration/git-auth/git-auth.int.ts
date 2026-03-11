@@ -4,11 +4,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { GitProviderConnectionDao } from '../../../v1/git-auth/dao/git-provider-connection.dao';
 import { GitProviderConnectionEntity } from '../../../v1/git-auth/entity/git-provider-connection.entity';
-import { GitHubAppProviderService } from '../../../v1/git-auth/services/github-app-provider.service';
-import { GitHubAppService } from '../../../v1/git-auth/services/github-app.service';
 import { GitTokenResolverService } from '../../../v1/git-auth/services/git-token-resolver.service';
+import { GitHubAppService } from '../../../v1/git-auth/services/github-app.service';
+import { GitHubAppProviderService } from '../../../v1/git-auth/services/github-app-provider.service';
 import { GitProvider } from '../../../v1/git-auth/types/git-provider.enum';
-
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 describe('Git Auth Integration Tests', () => {
@@ -22,7 +21,8 @@ describe('Git Auth Integration Tests', () => {
   const runId = `${Date.now()}`;
 
   /** Generate a unique accountLogin for this test run to avoid cross-run collisions. */
-  const uniqueLogin = (label: string) => `${label}-${runId}-${connectionCounter++}`;
+  const uniqueLogin = (label: string) =>
+    `${label}-${runId}-${connectionCounter++}`;
 
   beforeAll(async () => {
     app = await createTestModule();
@@ -323,9 +323,7 @@ describe('Git Auth Integration Tests', () => {
         metadata: { installationId: 800002, accountType: 'Organization' },
       });
 
-      const result = await gitHubAppProviderService.disconnectAll(
-        TEST_USER_ID,
-      );
+      const result = await gitHubAppProviderService.disconnectAll(TEST_USER_ID);
 
       expect(result).toEqual({ unlinked: true });
 

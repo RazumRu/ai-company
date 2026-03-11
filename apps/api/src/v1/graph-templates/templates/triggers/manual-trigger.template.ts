@@ -7,8 +7,8 @@ import { v4 } from 'uuid';
 import { z } from 'zod';
 
 import { ManualTrigger } from '../../../agent-triggers/services/manual-trigger';
-import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../agents/agents.types';
+import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RegisterTemplate } from '../../decorators/register-template.decorator';
@@ -108,6 +108,8 @@ export class ManualTriggerTemplate extends TriggerNodeBaseTemplate<
                 parent_thread_id: parentThreadId,
                 source: `${this.name} (${this.kind})`,
                 graph_created_by: metadata.graph_created_by,
+                thread_created_by:
+                  runnableConfig.configurable?.thread_created_by,
                 graph_project_id: metadata.graph_project_id,
                 llmRequestContext: metadata.llmRequestContext,
               },

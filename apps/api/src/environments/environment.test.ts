@@ -15,5 +15,4 @@ export const environment = () =>
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks_test',
     ),
-
   }) as const satisfies Record<string, string | number | boolean>;

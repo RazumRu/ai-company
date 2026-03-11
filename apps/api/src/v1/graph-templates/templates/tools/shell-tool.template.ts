@@ -9,6 +9,7 @@ import {
   IBaseResourceOutput,
   IShellResourceOutput,
   ResourceKind,
+  ResourceResolveContext,
 } from '../../../graph-resources/graph-resources.types';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
@@ -60,20 +61,13 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     super();
   }
 
-  private buildEmptyInstance(): {
-    tools: BuiltAgentTool[];
-    runtimeProvider?: RuntimeThreadProvider;
-  } {
-    return { tools: [] };
-  }
-
   public async create() {
     let executorNodeId: string | undefined;
 
     return {
       provide: async (
         _params: GraphNode<z.infer<typeof ShellToolTemplateSchema>>,
-      ) => this.buildEmptyInstance(),
+      ) => ({ tools: [] as BuiltAgentTool[] }),
       configure: async (
         params: GraphNode<z.infer<typeof ShellToolTemplateSchema>>,
         instance: {
@@ -117,12 +111,10 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
         );
 
         const {
-          env,
+          resolveEnvFns,
           information: resourcesInformation,
           initScripts,
         } = this.collectResourceData(resourceNodeIds, graphId);
-
-        runtimeNode.instance.addEnvVariables(env);
 
         const initScriptList = initScripts.flatMap((script) =>
           Array.isArray(script.cmd) ? script.cmd : [script.cmd],
@@ -133,10 +125,16 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
 
         executorNodeId = params.metadata.nodeId;
         if (initScriptList.length > 0) {
+          // resolveEnvFns is guaranteed non-empty here: init scripts only come
+          // from shell resources, and every shell resource also provides a
+          // resolveEnv function (see collectResourceData — both are pushed
+          // together). So mergeResolvedEnvs is always called with at least
+          // one function when initScriptList is non-empty.
           runtimeNode.instance.registerJob(
             executorNodeId,
             `shell-init:${executorNodeId}`,
             async (runtime, cfg) => {
+              const env = await this.mergeResolvedEnvs(resolveEnvFns, cfg);
               for (const script of initScriptList) {
                 const result = await execRuntimeWithContext(
                   runtime,
@@ -159,11 +157,18 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
         instance.runtimeProvider = runtimeNode.instance;
         instance.tools.length = 0;
 
+        // Combine all resource resolveEnv functions into one
+        const resolveEnv =
+          resolveEnvFns.length > 0
+            ? (ctx?: ResourceResolveContext) =>
+                this.mergeResolvedEnvs(resolveEnvFns, ctx)
+            : undefined;
+
         instance.tools.push(
           this.shellTool.build({
             runtimeProvider: runtimeNode.instance,
             resourcesInformation,
-            env,
+            resolveEnv,
           }),
         );
       },
@@ -179,15 +184,27 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     };
   }
 
+  private async mergeResolvedEnvs(
+    fns: ((ctx?: ResourceResolveContext) => Promise<Record<string, string>>)[],
+    ctx?: ResourceResolveContext,
+  ): Promise<Record<string, string>> {
+    const results = await Promise.all(fns.map((fn) => fn(ctx)));
+    return Object.assign({}, ...results) as Record<string, string>;
+  }
+
   private collectResourceData(
     resourceNodeIds: string[],
     graphId: string,
   ): {
-    env: Record<string, string>;
+    resolveEnvFns: ((
+      ctx?: ResourceResolveContext,
+    ) => Promise<Record<string, string>>)[];
     information: string;
     initScripts: { cmd: string[] | string; timeout?: number }[];
   } {
-    const envVars: Record<string, string> = {};
+    const resolveEnvFns: ((
+      ctx?: ResourceResolveContext,
+    ) => Promise<Record<string, string>>)[] = [];
     const informationParts: string[] = [];
     const initScripts: { cmd: string[] | string; timeout?: number }[] = [];
 
@@ -205,10 +222,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
 
         const resourceOutput = inst as IShellResourceOutput;
 
-        const resourceEnv = resourceOutput.data.env;
-        if (resourceEnv) {
-          Object.assign(envVars, resourceEnv);
-        }
+        resolveEnvFns.push(resourceOutput.data.resolveEnv);
 
         // Collect information
         if (resourceOutput.information) {
@@ -229,7 +243,7 @@ export class ShellToolTemplate extends ToolNodeBaseTemplate<
     }
 
     return {
-      env: envVars,
+      resolveEnvFns,
       information: informationParts.join('\n'),
       initScripts,
     };

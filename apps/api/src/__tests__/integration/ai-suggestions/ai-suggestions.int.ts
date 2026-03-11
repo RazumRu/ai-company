@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
-import { AppContextStorage } from '../../../auth/app-context-storage';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
 import { SuggestAgentInstructionsDto } from '../../../v1/ai-suggestions/dto/ai-suggestions.dto';
 import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
@@ -18,8 +18,8 @@ import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createMockGraphData } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 let app: INestApplication;
 let controller: AiSuggestionsController;

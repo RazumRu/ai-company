@@ -130,9 +130,7 @@ describe('Graph Preview Integration Tests', () => {
       );
       registerGraph(graph.id);
 
-      const previews = await graphsService.getGraphsPreview(
-        contextDataStorage,
-      );
+      const previews = await graphsService.getGraphsPreview(contextDataStorage);
 
       const preview = previews.find((p) => p.id === graph.id);
       expect(preview).toBeDefined();
@@ -180,9 +178,7 @@ describe('Graph Preview Integration Tests', () => {
       );
       registerGraph(graph.id);
 
-      const previews = await graphsService.getGraphsPreview(
-        contextDataStorage,
-      );
+      const previews = await graphsService.getGraphsPreview(contextDataStorage);
 
       const preview = previews.find((p) => p.id === graph.id);
       expect(preview).toBeDefined();

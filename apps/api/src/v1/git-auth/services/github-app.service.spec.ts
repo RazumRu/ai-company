@@ -47,7 +47,6 @@ vi.mock('@octokit/rest', () => {
     };
 
     request = mockOctokitRequest;
-
   }
   return { Octokit: MockOctokit };
 });
@@ -198,8 +197,7 @@ describe('GitHubAppService', () => {
         },
       });
 
-      const result =
-        await service.exchangeCodeAndGetInstallations('test-code');
+      const result = await service.exchangeCodeAndGetInstallations('test-code');
 
       expect(result).toHaveLength(2);
       expect(result[0]).toEqual({
@@ -217,8 +215,7 @@ describe('GitHubAppService', () => {
         data: { installations: [] },
       });
 
-      const result =
-        await service.exchangeCodeAndGetInstallations('test-code');
+      const result = await service.exchangeCodeAndGetInstallations('test-code');
 
       expect(result).toEqual([]);
     });
@@ -475,7 +472,6 @@ describe('GitHubAppService', () => {
       expect(mockCreateInstallationAccessToken).toHaveBeenCalledTimes(2);
     });
   });
-
 });
 
 describe('GitHubAppService (unconfigured)', () => {

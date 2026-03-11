@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-import { AppContextStorage } from '../../../auth/app-context-storage';
 import { mock } from 'vitest-mock-extended';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';

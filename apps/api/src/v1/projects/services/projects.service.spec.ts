@@ -1,5 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@packages/common';
 import { TypeormService } from '@packages/typeorm';
 import type { FastifyRequest } from 'fastify';
@@ -10,10 +10,7 @@ import { ProjectsDao } from '../dao/projects.dao';
 import { ProjectsStatsDao } from '../dao/projects-stats.dao';
 import { CreateProjectDto, UpdateProjectDto } from '../dto/projects.dto';
 import { ProjectEntity } from '../entity/project.entity';
-import {
-  PROJECT_DELETED_EVENT,
-  ProjectDeletedEvent,
-} from '../projects.events';
+import { PROJECT_DELETED_EVENT, ProjectDeletedEvent } from '../projects.events';
 import { ProjectsService } from './projects.service';
 
 describe('ProjectsService', () => {
@@ -25,10 +22,9 @@ describe('ProjectsService', () => {
 
   const mockUserId = 'user-123';
   const mockProjectId = 'project-456';
-  const mockCtx = new AppContextStorage(
-    { sub: mockUserId },
-    { headers: {} } as unknown as FastifyRequest,
-  );
+  const mockCtx = new AppContextStorage({ sub: mockUserId }, {
+    headers: {},
+  } as unknown as FastifyRequest);
 
   const createMockProjectEntity = (
     overrides: Partial<ProjectEntity> = {},
@@ -100,7 +96,10 @@ describe('ProjectsService', () => {
         settings: {},
       };
 
-      const entity = createMockProjectEntity({ name: 'My Project', description: 'Desc' });
+      const entity = createMockProjectEntity({
+        name: 'My Project',
+        description: 'Desc',
+      });
       vi.mocked(projectsDao.create).mockResolvedValue(entity);
 
       const result = await service.create(mockCtx, dto);
@@ -150,7 +149,12 @@ describe('ProjectsService', () => {
       vi.mocked(projectsDao.getOne).mockResolvedValue(null);
 
       await expect(
-        service.findById(new AppContextStorage({ sub: 'other-user' }, { headers: {} } as unknown as FastifyRequest), mockProjectId),
+        service.findById(
+          new AppContextStorage({ sub: 'other-user' }, {
+            headers: {},
+          } as unknown as FastifyRequest),
+          mockProjectId,
+        ),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -258,7 +262,10 @@ describe('ProjectsService', () => {
 
       expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
         PROJECT_DELETED_EVENT,
-        expect.objectContaining({ projectId: mockProjectId, userId: mockUserId }),
+        expect.objectContaining({
+          projectId: mockProjectId,
+          userId: mockUserId,
+        }),
       );
       expect(projectsDao.deleteById).toHaveBeenCalledWith(mockProjectId);
     });

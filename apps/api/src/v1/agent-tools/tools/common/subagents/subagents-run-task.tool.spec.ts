@@ -5,9 +5,9 @@ import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
+import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import type { AgentEventType } from '../../../../agents/services/agents/base-agent';
 import { SubagentRunResult } from '../../../../agents/services/agents/sub-agent';
-import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import { LlmModelsService } from '../../../../litellm/services/llm-models.service';
 import { SubagentsService } from '../../../../subagents/subagents.service';
 import { BuiltAgentTool, ToolInvokeResult } from '../../base-tool';

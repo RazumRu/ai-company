@@ -3,7 +3,11 @@ import { parse as parseYaml } from 'yaml';
 
 import { TemplateRegistry } from '../graph-templates/services/template-registry';
 import type { TriggerNodeInfoType } from './dto/graphs.dto';
-import { type GraphAgentInfo, type GraphSchemaType, NodeKind } from './graphs.types';
+import {
+  type GraphAgentInfo,
+  type GraphSchemaType,
+  NodeKind,
+} from './graphs.types';
 
 export const parseStructuredContent = (input: unknown): unknown => {
   if (typeof input === 'string') {
@@ -50,8 +54,12 @@ export function extractAgentsFromSchema(
   for (const node of schema.nodes) {
     const template = templateRegistry.getTemplate(node.template);
     if (template?.kind === NodeKind.SimpleAgent) {
-      const name = typeof node.config.name === 'string' ? node.config.name : undefined;
-      const description = typeof node.config.description === 'string' ? node.config.description : undefined;
+      const name =
+        typeof node.config.name === 'string' ? node.config.name : undefined;
+      const description =
+        typeof node.config.description === 'string'
+          ? node.config.description
+          : undefined;
       agents.push({
         nodeId: node.id,
         name: name ?? node.template,
@@ -67,7 +75,9 @@ export function extractTriggerNodesFromSchema(
   metadata: Record<string, unknown> | null | undefined,
   templateRegistry: TemplateRegistry,
 ): TriggerNodeInfoType[] {
-  const triggerTemplates = templateRegistry.getTemplatesByKind(NodeKind.Trigger);
+  const triggerTemplates = templateRegistry.getTemplatesByKind(
+    NodeKind.Trigger,
+  );
   const triggerTemplateIds = new Set(triggerTemplates.map((t) => t.id));
 
   const metadataNodes = extractMetadataNodes(metadata);
@@ -109,10 +119,15 @@ function extractMetadataNodes(
   if (!metadata || !Array.isArray(metadata.nodes)) return result;
 
   for (const node of metadata.nodes) {
-    if (!isObject(node) || typeof (node as Record<string, unknown>).id !== 'string') continue;
+    if (
+      !isObject(node) ||
+      typeof (node as Record<string, unknown>).id !== 'string'
+    )
+      continue;
     const nodeObj = node as Record<string, unknown>;
     const id = nodeObj.id as string;
-    const rawName = typeof nodeObj.name === 'string' ? nodeObj.name.trim() : undefined;
+    const rawName =
+      typeof nodeObj.name === 'string' ? nodeObj.name.trim() : undefined;
     result.set(id, { name: rawName || undefined });
   }
   return result;

@@ -18,10 +18,9 @@ export const buildTestContext = (
   if (projectId) {
     headers['x-project-id'] = projectId;
   }
-  return new AppContextStorage(
-    { sub: userId },
-    { headers } as unknown as FastifyRequest,
-  );
+  return new AppContextStorage({ sub: userId }, {
+    headers,
+  } as unknown as FastifyRequest);
 };
 
 /**

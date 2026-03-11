@@ -5,13 +5,12 @@ import { DefaultLogger } from '@packages/common';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
-import { ProjectsDao } from '../../../projects/dao/projects.dao';
-
 import {
   IAgentInvokeNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
+import { ProjectsDao } from '../../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadNameGeneratorService } from '../../../threads/services/thread-name-generator.service';
 import { ThreadsService } from '../../../threads/services/threads.service';
@@ -111,16 +110,19 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
 
     // Generate thread name for root thread executions that don't have one yet.
     if (isRootThreadExecution && !thread.name) {
-      void this.generateAndEmitThreadName(event, externalThreadKey, graph.createdBy, graph).catch(
-        (err: unknown) => {
-          const normalizedMessage =
-            err instanceof Error ? err.message : String(err);
-          this.logger.error(
-            err instanceof Error ? err : new Error(normalizedMessage),
-            `thread-name-generation.error: ${normalizedMessage}`,
-          );
-        },
-      );
+      void this.generateAndEmitThreadName(
+        event,
+        externalThreadKey,
+        graph.createdBy,
+        graph,
+      ).catch((err: unknown) => {
+        const normalizedMessage =
+          err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          err instanceof Error ? err : new Error(normalizedMessage),
+          `thread-name-generation.error: ${normalizedMessage}`,
+        );
+      });
     }
 
     return [];
@@ -162,8 +164,10 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     }
 
     const model = modelCtx?.models?.llmMiniModel;
-    const name =
-      await this.threadNameGenerator.generateFromFirstUserMessage(userInput, model);
+    const name = await this.threadNameGenerator.generateFromFirstUserMessage(
+      userInput,
+      model,
+    );
 
     if (!name) {
       return;

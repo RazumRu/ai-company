@@ -8,7 +8,11 @@ import {
 
 import { AuditEntity } from '../../../auth/audit.entity';
 import type { ThreadEntity } from '../../threads/entity/thread.entity';
-import { type GraphAgentInfo, type GraphSchemaType, GraphStatus } from '../graphs.types';
+import {
+  type GraphAgentInfo,
+  type GraphSchemaType,
+  GraphStatus,
+} from '../graphs.types';
 
 @Entity('graphs')
 export class GraphEntity extends AuditEntity {

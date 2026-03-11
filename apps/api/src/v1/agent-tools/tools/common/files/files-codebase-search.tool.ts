@@ -277,7 +277,8 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     // Resolve the checked-out branch (or fall back to remote default for detached HEAD)
     const branch = await this.resolveCurrentBranch(repoRoot, execFn);
 
-    const userId = cfg.configurable?.graph_created_by as string | undefined;
+    const userId = (cfg.configurable?.thread_created_by ??
+      cfg.configurable?.graph_created_by) as string | undefined;
 
     const indexResult = await this.repoIndexService.getOrInitIndexForRepo({
       repositoryId,

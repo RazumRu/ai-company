@@ -3,8 +3,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
 import { LiteLlmModelDto, ModelDefaultsDto } from '../dto/models.dto';
-import { LlmModelsService } from '../services/llm-models.service';
 import { LitellmService } from '../services/litellm.service';
+import { LlmModelsService } from '../services/llm-models.service';
 
 @Controller('litellm')
 @ApiTags('litellm')

@@ -304,7 +304,12 @@ describe('GraphRegistry', () => {
     it('should handle graph with no nodes', () => {
       const graphId = 'empty-graph';
       const emptyGraph: CompiledGraph = {
-        metadata: { graphId: graphId, version: '1.0.0', graph_created_by: 'test-user', graph_project_id: 'test-project' },
+        metadata: {
+          graphId: graphId,
+          version: '1.0.0',
+          graph_created_by: 'test-user',
+          graph_project_id: 'test-project',
+        },
         nodes: new Map(),
         edges: [],
         state: {
@@ -324,7 +329,12 @@ describe('GraphRegistry', () => {
       const graphId = 'single-node-graph';
       const onlyInstance = { agent: 'test-agent' };
       const singleNodeGraph: CompiledGraph = {
-        metadata: { graphId: graphId, version: '1.0.0', graph_created_by: 'test-user', graph_project_id: 'test-project' },
+        metadata: {
+          graphId: graphId,
+          version: '1.0.0',
+          graph_created_by: 'test-user',
+          graph_project_id: 'test-project',
+        },
         nodes: new Map([
           [
             'only-node',
@@ -455,7 +465,12 @@ describe('GraphRegistry', () => {
       const agentInstance = { agentName: 'test-agent' };
       const triggerInstance = { triggerType: 'manual' };
       const mixedGraph: CompiledGraph = {
-        metadata: { graphId: 'mixed-types', version: '1.0.0', graph_created_by: 'test-user', graph_project_id: 'test-project' },
+        metadata: {
+          graphId: 'mixed-types',
+          version: '1.0.0',
+          graph_created_by: 'test-user',
+          graph_project_id: 'test-project',
+        },
         nodes: new Map([
           [
             'runtime-node',
@@ -808,7 +823,12 @@ describe('GraphRegistry', () => {
       const agent2Instance = { agent: 'agent-2' };
       const tool1Instance = { tool: 'tool-1' };
       const complexGraph: CompiledGraph = {
-        metadata: { graphId: graphId, version: '1.0.0', graph_created_by: 'test-user', graph_project_id: 'test-project' },
+        metadata: {
+          graphId: graphId,
+          version: '1.0.0',
+          graph_created_by: 'test-user',
+          graph_project_id: 'test-project',
+        },
         nodes: new Map([
           [
             'agent-1',
@@ -928,7 +948,12 @@ describe('GraphRegistry', () => {
       const shell2Instance = { tool: 'shell-2' };
       const webSearchInstance = { tool: 'web-search-1' };
       const mixedGraph: CompiledGraph = {
-        metadata: { graphId: graphId, version: '1.0.0', graph_created_by: 'test-user', graph_project_id: 'test-project' },
+        metadata: {
+          graphId: graphId,
+          version: '1.0.0',
+          graph_created_by: 'test-user',
+          graph_project_id: 'test-project',
+        },
         nodes: new Map([
           [
             'shell-1',

@@ -8,12 +8,12 @@ import { GraphEntity } from '../../../graphs/entity/graph.entity';
 import { GraphStatus } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
-import { ProjectsDao } from '../../../projects/dao/projects.dao';
 import {
   IAgentInvokeNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
+import { ProjectsDao } from '../../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadNameGeneratorService } from '../../../threads/services/thread-name-generator.service';
@@ -110,7 +110,9 @@ describe('AgentInvokeNotificationHandler', () => {
 
   beforeEach(async () => {
     threadsServiceMock = {
-      prepareThreadResponse: vi.fn(async (thread: ThreadEntity) => buildThreadResponseDto(thread)),
+      prepareThreadResponse: vi.fn(async (thread: ThreadEntity) =>
+        buildThreadResponseDto(thread),
+      ),
     };
 
     threadNameGenerator = {
@@ -154,7 +156,9 @@ describe('AgentInvokeNotificationHandler', () => {
         {
           provide: LlmModelsService,
           useValue: {
-            buildLLMRequestContext: vi.fn().mockResolvedValue({ models: undefined }),
+            buildLLMRequestContext: vi
+              .fn()
+              .mockResolvedValue({ models: undefined }),
           },
         },
         {

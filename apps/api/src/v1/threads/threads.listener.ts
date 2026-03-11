@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DefaultLogger } from '@packages/common';
 
-import { GRAPH_DELETED_EVENT } from '../graphs/graphs.events';
 import type { GraphDeletedEvent } from '../graphs/graphs.events';
+import { GRAPH_DELETED_EVENT } from '../graphs/graphs.events';
 import { MessagesDao } from './dao/messages.dao';
 import { ThreadsDao } from './dao/threads.dao';
 

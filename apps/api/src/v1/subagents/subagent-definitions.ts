@@ -66,7 +66,10 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     - If you cannot fully complete the task, return what you found and clearly state what remains unknown.
   ` + buildWorkspaceContext(ctx),
     toolIds: [SubagentToolId.ShellReadOnly, SubagentToolId.FilesReadOnly],
-    model: (ctx) => ctx.llmModelsService.getSubagentExplorerModel(ctx.modelOverrideContext?.models?.llmCodeExplorerSubagentModel),
+    model: (ctx) =>
+      ctx.llmModelsService.getSubagentExplorerModel(
+        ctx.modelOverrideContext?.models?.llmCodeExplorerSubagentModel,
+      ),
     maxIterations: 1500,
     maxContextTokens: 200_000,
   },
@@ -97,7 +100,10 @@ export const SYSTEM_AGENTS: SubagentDefinition[] = [
     - If you cannot complete the task, explain what went wrong briefly.
   ` + buildWorkspaceContext(ctx),
     toolIds: [SubagentToolId.Shell, SubagentToolId.FilesFull],
-    model: (ctx) => ctx.llmModelsService.getSubagentFastModel(ctx.modelOverrideContext?.models?.llmMiniCodeModel),
+    model: (ctx) =>
+      ctx.llmModelsService.getSubagentFastModel(
+        ctx.modelOverrideContext?.models?.llmMiniCodeModel,
+      ),
     maxIterations: 500,
     maxContextTokens: 70_000,
   },

@@ -529,13 +529,13 @@ export class GhCreatePullRequestTool extends GhBaseTool<
   public async invoke(
     args: GhCreatePullRequestToolSchemaType,
     config: GhCreatePullRequestToolConfig,
-    _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<GhCreatePullRequestToolOutput>> {
     const validated = this.validate(args);
 
     let token: string;
     try {
-      token = await this.resolveToken(config, validated.owner);
+      token = await this.resolveToken(config, validated.owner, cfg);
     } catch {
       return {
         output: {

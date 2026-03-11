@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DefaultLogger } from '@packages/common';
 
-import { PROJECT_DELETED_EVENT } from '../projects/projects.events';
 import type { ProjectDeletedEvent } from '../projects/projects.events';
+import { PROJECT_DELETED_EVENT } from '../projects/projects.events';
 import { KnowledgeDocDao } from './dao/knowledge-doc.dao';
 
 @Injectable()

@@ -38,7 +38,10 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
   ): Promise<IThreadUpdateEnrichedNotification[]> {
     const { graphId, threadId, parentThreadId, data } = event;
 
-    const { ownerId, projectId } = await this.getGraphInfo(this.graphDao, graphId);
+    const { ownerId, projectId } = await this.getGraphInfo(
+      this.graphDao,
+      graphId,
+    );
 
     const externalThreadKey = parentThreadId ?? threadId;
 
@@ -77,7 +80,8 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       return [];
     }
 
-    const threadDto = await this.threadsService.prepareThreadResponse(updatedThread);
+    const threadDto =
+      await this.threadsService.prepareThreadResponse(updatedThread);
 
     return [
       {

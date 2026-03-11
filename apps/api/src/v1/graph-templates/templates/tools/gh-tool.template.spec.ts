@@ -4,7 +4,7 @@ import { NotFoundException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GhToolGroup } from '../../../agent-tools/tools/common/github/gh-tool-group';
-import { GitTokenResolverService } from '../../../git-auth/services/git-token-resolver.service';
+import { ResourceKind } from '../../../graph-resources/graph-resources.types';
 import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
 import {
   CompiledGraphNode,
@@ -19,7 +19,7 @@ import { GhToolTemplate, GhToolTemplateSchema } from './gh-tool.template';
 
 const makeHandle = <TInstance>(
   instance: TInstance,
-): GraphNodeInstanceHandle<TInstance, any> => ({
+): GraphNodeInstanceHandle<TInstance, unknown> => ({
   provide: async () => instance,
   configure: async () => {},
   destroy: async () => {},
@@ -73,13 +73,6 @@ describe('GhToolTemplate', () => {
         {
           provide: GraphRegistry,
           useValue: mockGraphRegistry,
-        },
-        {
-          provide: GitTokenResolverService,
-          useValue: {
-            resolveToken: vi.fn().mockResolvedValue(null),
-            resolveDefaultToken: vi.fn().mockResolvedValue(null),
-          },
         },
       ],
     }).compile();
@@ -164,7 +157,7 @@ describe('GhToolTemplate', () => {
       nodeId: 'tool-1',
       version: '1',
       graph_created_by: 'user-1',
-        graph_project_id: '11111111-1111-1111-1111-111111111111',
+      graph_project_id: '11111111-1111-1111-1111-111111111111',
     };
 
     let mockRuntime: { exec: ReturnType<typeof vi.fn> };
@@ -203,11 +196,13 @@ describe('GhToolTemplate', () => {
 
       mockResource = {
         information: 'Resource info',
+        kind: ResourceKind.Shell,
+        resolveToken: vi.fn().mockResolvedValue(null),
         data: {
-          env: {},
+          resolveEnv: vi.fn().mockResolvedValue({}),
           initScript: 'echo init',
         },
-      } as any;
+      } satisfies IGithubResourceOutput;
 
       vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
         (_gid, _nodes, kind) =>
@@ -272,7 +267,6 @@ describe('GhToolTemplate', () => {
           patToken: expect.anything(),
         }),
       );
-      expect(mockRuntimeThreadProvider.addEnvVariables).toHaveBeenCalledWith({});
       expect(instance.tools).toEqual(mockTools);
       expect(mockRuntimeThreadProvider.registerJob).toHaveBeenCalledWith(
         mockMetadata.nodeId,

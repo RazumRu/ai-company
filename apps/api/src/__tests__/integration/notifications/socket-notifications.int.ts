@@ -1,8 +1,6 @@
 import { AIMessageChunk } from '@langchain/core/messages';
 import { INestApplication } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-import { AppContextStorage } from '../../../auth/app-context-storage';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { io, Socket } from 'socket.io-client';
 import {
   afterAll,
@@ -14,6 +12,7 @@ import {
   vi,
 } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { buildReasoningMessage } from '../../../v1/agents/agents.utils';
 import {
@@ -42,6 +41,7 @@ import {
 } from '../../../v1/notifications/notifications.types';
 import { IAgentStateUpdateData } from '../../../v1/notifications/notifications.types';
 import { NotificationsService } from '../../../v1/notifications/services/notifications.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import {
   ThreadDto,
@@ -54,8 +54,8 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule, TEST_USER_ID } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 // Type aliases for socket notifications (using business logic interfaces)
 type MessageNotification = IEnrichedNotification<ThreadMessageDto>;

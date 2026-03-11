@@ -2,7 +2,6 @@ import { INestApplication } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-
 import { AnalyticsService } from '../../../v1/analytics/analytics.service';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
@@ -115,7 +114,8 @@ describe('Analytics (integration)', () => {
   describe('getOverview', () => {
     it('returns zero totals when user has no data', async () => {
       const isolatedUserId = '00000000-0000-0000-0000-000000000097';
-      const { projectId: isolatedProjectId, ctx: emptyCtx } = await createTestProject(app, isolatedUserId);
+      const { projectId: isolatedProjectId, ctx: emptyCtx } =
+        await createTestProject(app, isolatedUserId);
       try {
         const result = await analyticsService.getOverview(emptyCtx, {});
 
@@ -349,7 +349,10 @@ describe('Analytics (integration)', () => {
       return graph;
     };
 
-    const createThreadInProject = async (graphId: string, projectId: string) => {
+    const createThreadInProject = async (
+      graphId: string,
+      projectId: string,
+    ) => {
       const thread = await threadsDao.create({
         graphId,
         createdBy: TEST_USER_ID,
@@ -369,7 +372,10 @@ describe('Analytics (integration)', () => {
     };
 
     it('getOverview does not leak data across projects', async () => {
-      const graphA = await createGraphInProject('isolation-proj-A', testProjectId);
+      const graphA = await createGraphInProject(
+        'isolation-proj-A',
+        testProjectId,
+      );
       const threadA = await createThreadInProject(graphA.id, testProjectId);
       await createMessageWithUsage(threadA.id, threadA.externalThreadId, {
         inputTokens: 500,
@@ -387,7 +393,10 @@ describe('Analytics (integration)', () => {
     });
 
     it('getByGraph does not return graphs from other projects', async () => {
-      const graphA = await createGraphInProject('isolation-bygraph-A', testProjectId);
+      const graphA = await createGraphInProject(
+        'isolation-bygraph-A',
+        testProjectId,
+      );
       const threadA = await createThreadInProject(graphA.id, testProjectId);
       await createMessageWithUsage(threadA.id, threadA.externalThreadId, {
         inputTokens: 300,

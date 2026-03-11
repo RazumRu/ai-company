@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddFailedRuntimeInstanceStatus1771700000002
-  implements MigrationInterface
-{
+export class AddFailedRuntimeInstanceStatus1771700000002 implements MigrationInterface {
   name = 'AddFailedRuntimeInstanceStatus1771700000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

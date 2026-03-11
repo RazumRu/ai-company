@@ -7,9 +7,9 @@ import { ThreadEntity } from '../threads/entity/thread.entity';
 import { RuntimeController } from './controllers/runtime.controller';
 import { RuntimeInstanceDao } from './dao/runtime-instance.dao';
 import { RuntimeInstanceEntity } from './entity/runtime-instance.entity';
+import { RuntimeService } from './services/runtime.service';
 import { RuntimeCleanupService } from './services/runtime-cleanup.service';
 import { RuntimeProvider } from './services/runtime-provider';
-import { RuntimeService } from './services/runtime.service';
 
 @Module({
   imports: [

@@ -1192,7 +1192,9 @@ describe('ToolExecutorNode', () => {
       });
       mockState.messages = [aiMessage];
 
-      mockTool1.invoke = vi.fn().mockRejectedValue(new Error('Connection refused'));
+      mockTool1.invoke = vi
+        .fn()
+        .mockRejectedValue(new Error('Connection refused'));
       mockTool2.invoke = vi.fn().mockResolvedValue({ output: 'OK' });
 
       const result = await node.invoke(mockState, mockConfig);
@@ -1207,7 +1209,12 @@ describe('ToolExecutorNode', () => {
       // 3 consecutive batches with different error messages each time
       await invokeWithError(node, mockState, mockConfig, 'Error A');
       await invokeWithError(node, mockState, mockConfig, 'Error B');
-      const result = await invokeWithError(node, mockState, mockConfig, 'Error C');
+      const result = await invokeWithError(
+        node,
+        mockState,
+        mockConfig,
+        'Error C',
+      );
 
       const systemMessages = result.messages?.items?.filter(
         (m) => m instanceof SystemMessage,
@@ -1220,7 +1227,12 @@ describe('ToolExecutorNode', () => {
 
       await invokeWithError(node, mockState, mockConfig, errorMsg);
       await invokeWithError(node, mockState, mockConfig, errorMsg);
-      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(
+        node,
+        mockState,
+        mockConfig,
+        errorMsg,
+      );
 
       const systemMessages = result.messages?.items?.filter(
         (m) => m instanceof SystemMessage,
@@ -1238,7 +1250,12 @@ describe('ToolExecutorNode', () => {
 
       await invokeWithError(node, mockState, mockConfig, errorMsg);
       await invokeWithError(node, mockState, mockConfig, errorMsg);
-      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(
+        node,
+        mockState,
+        mockConfig,
+        errorMsg,
+      );
 
       const systemMessages = result.messages?.items?.filter(
         (m) => m instanceof SystemMessage,
@@ -1261,7 +1278,12 @@ describe('ToolExecutorNode', () => {
 
       // 2 more identical errors (count should be 2, not 4)
       await invokeWithError(node, mockState, mockConfig, errorMsg);
-      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(
+        node,
+        mockState,
+        mockConfig,
+        errorMsg,
+      );
 
       const systemMessages = result.messages?.items?.filter(
         (m) => m instanceof SystemMessage,
@@ -1274,14 +1296,21 @@ describe('ToolExecutorNode', () => {
 
       await invokeWithError(node, mockState, mockConfig, errorMsg);
       await invokeWithError(node, mockState, mockConfig, errorMsg);
-      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(
+        node,
+        mockState,
+        mockConfig,
+        errorMsg,
+      );
 
       const systemMessages = result.messages?.items?.filter(
         (m) => m instanceof SystemMessage,
       );
       expect(systemMessages).toHaveLength(1);
       expect(systemMessages![0]!.additional_kwargs?.__hideForUi).toBe(true);
-      expect(systemMessages![0]!.additional_kwargs?.__hideForSummary).toBe(true);
+      expect(systemMessages![0]!.additional_kwargs?.__hideForSummary).toBe(
+        true,
+      );
     });
 
     it('should continue injecting SystemMessage on subsequent error batches after threshold', async () => {
@@ -1292,7 +1321,12 @@ describe('ToolExecutorNode', () => {
       await invokeWithError(node, mockState, mockConfig, errorMsg); // triggers at 3
 
       // 4th error batch should also trigger (count is now 4 >= 3)
-      const result = await invokeWithError(node, mockState, mockConfig, errorMsg);
+      const result = await invokeWithError(
+        node,
+        mockState,
+        mockConfig,
+        errorMsg,
+      );
 
       const systemMessages = result.messages?.items?.filter(
         (m) => m instanceof SystemMessage,

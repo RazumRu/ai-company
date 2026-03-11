@@ -12,10 +12,10 @@ import { GitRepositoriesDao } from './dao/git-repositories.dao';
 import { RepoIndexDao } from './dao/repo-index.dao';
 import { GitRepositoryEntity } from './entity/git-repository.entity';
 import { RepoIndexEntity } from './entity/repo-index.entity';
+import { GitRepositoriesListener } from './git-repositories.listener';
 import { GitRepositoriesService } from './services/git-repositories.service';
 import { RepoIndexService } from './services/repo-index.service';
 import { RepoIndexQueueService } from './services/repo-index-queue.service';
-import { GitRepositoriesListener } from './git-repositories.listener';
 import { RepoIndexerService } from './services/repo-indexer.service';
 
 @Module({

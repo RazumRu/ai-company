@@ -1,6 +1,7 @@
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
@@ -10,7 +11,6 @@ import { GitRepositoriesDao } from '../dao/git-repositories.dao';
 import { RepoIndexDao } from '../dao/repo-index.dao';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
-import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
 import { RepoIndexService } from './repo-index.service';
 import { RepoIndexQueueService } from './repo-index-queue.service';
 import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
@@ -639,8 +639,9 @@ describe('RepoIndexService', () => {
       data: { repoIndexId: string; repoUrl: string; branch: string },
       signal?: AbortSignal,
     ) =>
-      (service as unknown as { processIndexJob: ProcessIndexJobFn })
-        .processIndexJob(data, signal);
+      (
+        service as unknown as { processIndexJob: ProcessIndexJobFn }
+      ).processIndexJob(data, signal);
 
     it('skips when entity is not found', async () => {
       mockRepoIndexDao.getOne.mockResolvedValue(null);

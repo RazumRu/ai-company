@@ -1,8 +1,8 @@
+import type { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ModelPreferences } from '../../user-preferences/user-preferences.types';
 import type { UserPreferencesService } from '../../user-preferences/services/user-preferences.service';
-import type { DefaultLogger } from '@packages/common';
+import type { ModelPreferences } from '../../user-preferences/user-preferences.types';
 import type { LitellmService } from './litellm.service';
 import { LlmModelsService } from './llm-models.service';
 
@@ -31,9 +31,9 @@ const createMockUserPreferencesService = (
 ) => {
   const getModelOverridesForUser = shouldThrow
     ? vi.fn().mockRejectedValue(new Error('DB connection failed'))
-    : vi.fn().mockResolvedValue(
-        overrides === null ? null : (overrides ?? null),
-      );
+    : vi
+        .fn()
+        .mockResolvedValue(overrides === null ? null : (overrides ?? null));
 
   return { getModelOverridesForUser } as unknown as UserPreferencesService;
 };

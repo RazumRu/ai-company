@@ -32,7 +32,10 @@ import { NotificationHandler } from '../services/notification-handler.service';
       const env = process.env.CORS_ALLOWED_ORIGINS?.trim();
       if (!env) return false;
       if (env === '*') return '*';
-      return env.split(',').map((o) => o.trim()).filter(Boolean);
+      return env
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean);
     })(),
     credentials: true,
   },

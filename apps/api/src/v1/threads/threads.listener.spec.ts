@@ -75,7 +75,9 @@ describe('ThreadsListener', () => {
 
   it('propagates DAO errors from messagesDao.delete', async () => {
     vi.mocked(threadsDao.getAll).mockResolvedValue([{ id: 't-1' }] as never);
-    vi.mocked(messagesDao.delete).mockRejectedValue(new Error('Messages DB failure'));
+    vi.mocked(messagesDao.delete).mockRejectedValue(
+      new Error('Messages DB failure'),
+    );
 
     await expect(
       listener.onGraphDeleted({ graphId: 'g-1', userId: 'u-1' }),
@@ -85,7 +87,9 @@ describe('ThreadsListener', () => {
   it('propagates DAO errors from threadsDao.delete', async () => {
     vi.mocked(threadsDao.getAll).mockResolvedValue([{ id: 't-1' }] as never);
     vi.mocked(messagesDao.delete).mockResolvedValue(undefined as never);
-    vi.mocked(threadsDao.delete).mockRejectedValue(new Error('Threads DB failure'));
+    vi.mocked(threadsDao.delete).mockRejectedValue(
+      new Error('Threads DB failure'),
+    );
 
     await expect(
       listener.onGraphDeleted({ graphId: 'g-1', userId: 'u-1' }),

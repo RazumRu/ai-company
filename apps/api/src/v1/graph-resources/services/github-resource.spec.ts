@@ -2,11 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
 import { GithubResource, GithubResourceConfig } from './github-resource';
 
 describe('GithubResource', () => {
   let githubResource: GithubResource;
   let mockLogger: DefaultLogger;
+  let mockGitTokenResolverService: GitTokenResolverService;
 
   beforeEach(async () => {
     mockLogger = {
@@ -17,12 +19,21 @@ describe('GithubResource', () => {
       verbose: vi.fn(),
     } as unknown as DefaultLogger;
 
+    mockGitTokenResolverService = {
+      resolveToken: vi.fn().mockResolvedValue(null),
+      resolveDefaultToken: vi.fn().mockResolvedValue(null),
+    } as unknown as GitTokenResolverService;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         GithubResource,
         {
           provide: DefaultLogger,
           useValue: mockLogger,
+        },
+        {
+          provide: GitTokenResolverService,
+          useValue: mockGitTokenResolverService,
         },
       ],
     }).compile();
@@ -50,7 +61,7 @@ describe('GithubResource', () => {
       expect(result.data.initScript).toContain(
         'gh config set git_protocol https',
       );
-      expect(result.data.env).toEqual({});
+      expect(result.data.resolveEnv).toBeTypeOf('function');
     });
 
     it('should configure git user name when name is provided', async () => {
@@ -221,14 +232,91 @@ describe('GithubResource', () => {
       );
     });
 
-    it('should return empty env object', async () => {
+    it('should return resolveEnv that resolves to empty object when no userId', async () => {
       const config: GithubResourceConfig = {
         auth: true,
       };
 
       const result = await githubResource.getData(config);
+      const env = await result.data.resolveEnv();
 
-      expect(result.data.env).toEqual({});
+      expect(env).toEqual({});
+    });
+
+    it('should return resolveEnv that resolves GH_TOKEN from context', async () => {
+      vi.mocked(
+        mockGitTokenResolverService.resolveDefaultToken,
+      ).mockResolvedValue({
+        token: 'ghs_test123',
+        source: 'github_app' as never,
+      });
+
+      const config: GithubResourceConfig = {
+        auth: true,
+      };
+
+      const result = await githubResource.getData(config);
+      const env = await result.data.resolveEnv({
+        configurable: { thread_created_by: 'user-1' },
+      });
+
+      expect(env).toEqual({ GH_TOKEN: 'ghs_test123' });
+      expect(
+        mockGitTokenResolverService.resolveDefaultToken,
+      ).toHaveBeenCalledWith('user-1');
+    });
+
+    it('should return resolveEnv that falls back to graph_created_by', async () => {
+      vi.mocked(
+        mockGitTokenResolverService.resolveDefaultToken,
+      ).mockResolvedValue({
+        token: 'ghs_fallback',
+        source: 'github_app' as never,
+      });
+
+      const config: GithubResourceConfig = { auth: true };
+
+      const result = await githubResource.getData(config);
+      const env = await result.data.resolveEnv({
+        configurable: { graph_created_by: 'graph-owner' },
+      });
+
+      expect(env).toEqual({ GH_TOKEN: 'ghs_fallback' });
+      expect(
+        mockGitTokenResolverService.resolveDefaultToken,
+      ).toHaveBeenCalledWith('graph-owner');
+    });
+
+    it('should return resolveToken that resolves token for owner', async () => {
+      vi.mocked(mockGitTokenResolverService.resolveToken).mockResolvedValue({
+        token: 'ghs_owner_token',
+        source: 'github_app' as never,
+      });
+
+      const config: GithubResourceConfig = {
+        auth: true,
+      };
+
+      const result = await githubResource.getData(config);
+      const token = await result.resolveToken('my-org', 'user-1');
+
+      expect(token).toBe('ghs_owner_token');
+      expect(mockGitTokenResolverService.resolveToken).toHaveBeenCalledWith(
+        'github',
+        'my-org',
+        'user-1',
+      );
+    });
+
+    it('should return null from resolveToken when no userId', async () => {
+      const config: GithubResourceConfig = {
+        auth: true,
+      };
+
+      const result = await githubResource.getData(config);
+      const token = await result.resolveToken('my-org');
+
+      expect(token).toBeNull();
     });
   });
 

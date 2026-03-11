@@ -187,7 +187,8 @@ export class LlmModelsService {
       llmLargeCodeModel: environment.llmLargeCodeModel,
       llmMiniCodeModel: environment.llmMiniCodeModel,
       llmCodeExplorerSubagentModel:
-        environment.llmCodeExplorerSubagentModel || environment.llmMiniCodeModel,
+        environment.llmCodeExplorerSubagentModel ||
+        environment.llmMiniCodeModel,
       llmMiniModel: environment.llmMiniModel,
       llmEmbeddingModel: environment.llmEmbeddingModel,
     };

@@ -8,7 +8,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "lint:fix": "pnpm run lint --fix",
-    "lint": "pnpm eslint \"src/**/*.{js,ts,tsx}\" \"cypress/**/*.{js,ts,tsx}\"",
+    "lint": "pnpm eslint src cypress",
     "build": "pnpm ts-patch install -s && tsc -p tsconfig.build.json",
     "build:tests": "tsc -p tsconfig.tests.json",
     "prebuild": "rm -rf ./dist || true",

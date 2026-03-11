@@ -13,15 +13,15 @@ import { GitRepositoryProvider } from '../../../v1/git-repositories/git-reposito
 import { RepoIndexerService } from '../../../v1/git-repositories/services/repo-indexer.service';
 import { LlmModelsService } from '../../../v1/litellm/services/llm-models.service';
 import { OpenaiService } from '../../../v1/openai/openai.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
 import { RuntimeType } from '../../../v1/runtime/runtime.types';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
-import { createTestModule } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule } from '../setup';
 
 const THREAD_ID = `codebase-search-int-${Date.now()}`;
 const RUNNABLE_CONFIG: ToolRunnableConfig<BaseAgentConfigurable> = {

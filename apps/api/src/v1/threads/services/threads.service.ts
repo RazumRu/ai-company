@@ -1,12 +1,10 @@
-import { PassThrough, Readable } from 'stream';
-
 import { Injectable, StreamableFile } from '@nestjs/common';
-import { JsonStreamStringify } from 'json-stream-stringify';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import Decimal from 'decimal.js';
+import { JsonStreamStringify } from 'json-stream-stringify';
+import { PassThrough, Readable } from 'stream';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageRole } from '../../graphs/graphs.types';
@@ -283,9 +281,7 @@ export class ThreadsService {
     });
   }
 
-  public async prepareThreadResponse(
-    entity: ThreadEntity,
-  ): Promise<ThreadDto> {
+  public async prepareThreadResponse(entity: ThreadEntity): Promise<ThreadDto> {
     return (await this.prepareThreadsResponse([entity]))[0]!;
   }
 

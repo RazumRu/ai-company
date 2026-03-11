@@ -8,8 +8,6 @@ import {
   GhToolGroup,
   GhToolType,
 } from '../../../agent-tools/tools/common/github/gh-tool-group';
-import { GitTokenResolverService } from '../../../git-auth/services/git-token-resolver.service';
-import { GitProvider } from '../../../git-auth/types/git-provider.enum';
 import { IGithubResourceOutput } from '../../../graph-resources/services/github-resource';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
@@ -71,7 +69,6 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
   constructor(
     private readonly ghToolGroup: GhToolGroup,
     private readonly graphRegistry: GraphRegistry,
-    private readonly gitTokenResolverService: GitTokenResolverService,
   ) {
     super();
   }
@@ -145,8 +142,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
 
         const initScript = ghResource.data.initScript;
         const initScriptTimeout = ghResource.data.initScriptTimeout;
-        const resourceEnv = ghResource.data.env ?? {};
-        runtimeNode.instance.addEnvVariables(resourceEnv);
+        const resolveEnv = ghResource.data.resolveEnv;
         const currentRuntimeParams = runtimeNode.instance.getParams();
         const baseTimeout =
           currentRuntimeParams.runtimeStartParams.initScriptTimeoutMs ?? 0;
@@ -164,6 +160,7 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
             executorNodeId,
             `gh-init:${executorNodeId}`,
             async (runtime, cfg) => {
+              const resourceEnv = await resolveEnv(cfg);
               for (const script of initScriptList) {
                 const result = await execRuntimeWithContext(
                   runtime,
@@ -192,26 +189,12 @@ export class GhToolTemplate extends ToolNodeBaseTemplate<
           ? parsedConfig.additionalLabels
           : undefined;
 
-        // Build a resolver callback so GitHub tools can obtain App tokens
-        const userId = params.metadata.graph_created_by;
-        const resolveTokenForOwner = userId
-          ? async (owner: string): Promise<string | null> => {
-              const resolved =
-                await this.gitTokenResolverService.resolveToken(
-                  GitProvider.GitHub,
-                  owner,
-                  userId,
-                );
-              return resolved?.token ?? null;
-            }
-          : undefined;
-
         const { tools: builtTools, instructions } = this.ghToolGroup.buildTools(
           {
             runtimeProvider: runtimeNode.instance,
             tools,
             additionalLabels,
-            resolveTokenForOwner,
+            resolveTokenForOwner: ghResource.resolveToken,
           },
         );
 

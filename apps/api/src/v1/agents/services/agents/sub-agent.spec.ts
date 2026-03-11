@@ -15,8 +15,8 @@ import { z } from 'zod';
 
 import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
 import { LitellmService } from '../../../litellm/services/litellm.service';
-import { filterMessagesForLlm } from '../../agents.utils';
 import { BaseAgentConfigurable } from '../../agents.types';
+import { filterMessagesForLlm } from '../../agents.utils';
 import { SubAgent, SubAgentSchemaType } from './sub-agent';
 
 const { mockLlmInvokeRef } = vi.hoisted(() => ({

@@ -6,8 +6,8 @@ import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
 import { GitProviderConnectionEntity } from '../entity/git-provider-connection.entity';
 import { GitProvider } from '../types/git-provider.enum';
 import { INSTALLATION_UNLINKED_EVENT } from '../types/installation-unlinked.event';
-import { GitHubAppProviderService } from './github-app-provider.service';
 import { GitHubAppService } from './github-app.service';
+import { GitHubAppProviderService } from './github-app-provider.service';
 
 vi.mock('../../../environments', () => ({
   environment: {
@@ -35,7 +35,10 @@ describe('GitHubAppProviderService', () => {
     create: ReturnType<typeof vi.fn>;
     updateById: ReturnType<typeof vi.fn>;
   };
-  let mockLogger: { log: ReturnType<typeof vi.fn>; warn: ReturnType<typeof vi.fn> };
+  let mockLogger: {
+    log: ReturnType<typeof vi.fn>;
+    warn: ReturnType<typeof vi.fn>;
+  };
   let mockEventEmitter: {
     emit: ReturnType<typeof vi.fn>;
   };
@@ -86,7 +89,8 @@ describe('GitHubAppProviderService', () => {
           'https://github.com/apps/my-github-app/installations/new',
         configured: true,
         callbackPath: '/github-app/callback',
-        reconfigureUrlTemplate: 'https://github.com/settings/installations/{id}',
+        reconfigureUrlTemplate:
+          'https://github.com/settings/installations/{id}',
       });
       expect(mockGitHubAppService.getAppSlug).toHaveBeenCalled();
     });

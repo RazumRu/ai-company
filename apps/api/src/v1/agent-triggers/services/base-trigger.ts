@@ -3,8 +3,8 @@ import { RunnableConfig } from '@langchain/core/runnables';
 import { BadRequestException, DefaultLogger } from '@packages/common';
 import { EventEmitter } from 'events';
 
-import { AgentOutput } from '../../agents/services/agents/base-agent';
 import { BaseAgentConfigurable } from '../../agents/agents.types';
+import { AgentOutput } from '../../agents/services/agents/base-agent';
 import { GraphExecutionMetadata } from '../../graphs/graphs.types';
 import { TriggerEvent, TriggerStatus } from '../agent-triggers.types';
 

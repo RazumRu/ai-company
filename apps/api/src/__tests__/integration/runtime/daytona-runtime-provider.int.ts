@@ -1,5 +1,5 @@
-import { INestApplication } from '@nestjs/common';
 import { Daytona } from '@daytonaio/sdk';
+import { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
@@ -88,21 +88,17 @@ describe('RuntimeProvider Daytona Integration', () => {
     },
   );
 
-  it(
-    'second provide() returns cached: true',
-    { timeout: 60_000 },
-    async () => {
-      const { cached } = await runtimeProvider.provide({
-        graphId: TEST_GRAPH_ID,
-        runtimeNodeId: TEST_NODE_ID,
-        threadId: TEST_THREAD_ID,
-        type: RuntimeType.Daytona,
-        runtimeStartParams: RUNTIME_START_PARAMS,
-      });
+  it('second provide() returns cached: true', { timeout: 60_000 }, async () => {
+    const { cached } = await runtimeProvider.provide({
+      graphId: TEST_GRAPH_ID,
+      runtimeNodeId: TEST_NODE_ID,
+      threadId: TEST_THREAD_ID,
+      type: RuntimeType.Daytona,
+      runtimeStartParams: RUNTIME_START_PARAMS,
+    });
 
-      expect(cached).toBe(true);
-    },
-  );
+    expect(cached).toBe(true);
+  });
 
   it(
     'cleanupRuntimesByNodeId removes DB row and deletes Daytona sandbox',
@@ -122,7 +118,10 @@ describe('RuntimeProvider Daytona Integration', () => {
       expect(dbRow).toBeNull();
 
       // Verify the Daytona sandbox is actually deleted
-      expect(containerName, 'containerName must be set by the provide() test').toBeTruthy();
+      expect(
+        containerName,
+        'containerName must be set by the provide() test',
+      ).toBeTruthy();
 
       const daytona = new Daytona({
         apiKey: environment.daytonaApiKey || undefined,

@@ -1,11 +1,10 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AppContextStorage } from '../../../auth/app-context-storage';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
 import { BaseMcp } from '../../../v1/agent-mcp/services/base-mcp';
 import type { BuiltAgentTool } from '../../../v1/agent-tools/tools/base-tool';
@@ -27,6 +26,7 @@ import { GraphCompiler } from '../../../v1/graphs/services/graph-compiler';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphRevisionService } from '../../../v1/graphs/services/graph-revision.service';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
@@ -37,8 +37,8 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule } from '../setup';
 
 const TEST_AGENT_NODE_ID = 'agent-1';
 

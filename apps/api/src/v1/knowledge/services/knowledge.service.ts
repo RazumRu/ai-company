@@ -74,7 +74,9 @@ export class KnowledgeService {
       userId,
       project.settings as Record<string, unknown> | undefined,
     );
-    const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(modelCtx?.models?.llmEmbeddingModel);
+    const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(
+      modelCtx?.models?.llmEmbeddingModel,
+    );
     const [summary, plan] = await Promise.all([
       this.generateSummary(content, modelCtx?.models?.llmMiniModel),
       this.knowledgeChunksService.generateChunkPlan(content),
@@ -142,7 +144,9 @@ export class KnowledgeService {
         userId,
         project?.settings as Record<string, unknown> | undefined,
       );
-      const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(modelCtx?.models?.llmEmbeddingModel);
+      const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(
+        modelCtx?.models?.llmEmbeddingModel,
+      );
       const [summary, plan] = await Promise.all([
         this.generateSummary(dto.content, modelCtx?.models?.llmMiniModel),
         this.knowledgeChunksService.generateChunkPlan(dto.content),

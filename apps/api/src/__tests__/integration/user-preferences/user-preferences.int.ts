@@ -12,10 +12,7 @@ const EMPTY_REQUEST = { headers: {} } as unknown as FastifyRequest;
 const OTHER_USER_ID = '00000000-0000-0000-0000-000000000099';
 
 const ctx = new AppContextStorage({ sub: TEST_USER_ID }, EMPTY_REQUEST);
-const otherCtx = new AppContextStorage(
-  { sub: OTHER_USER_ID },
-  EMPTY_REQUEST,
-);
+const otherCtx = new AppContextStorage({ sub: OTHER_USER_ID }, EMPTY_REQUEST);
 
 describe('UserPreferencesService (integration)', () => {
   let app: INestApplication;
@@ -113,8 +110,7 @@ describe('UserPreferencesService (integration)', () => {
 
   describe('getModelOverridesForUser', () => {
     it('should return null when no preference exists', async () => {
-      const result =
-        await service.getModelOverridesForUser(OTHER_USER_ID);
+      const result = await service.getModelOverridesForUser(OTHER_USER_ID);
 
       expect(result).toBeNull();
     });
@@ -126,8 +122,7 @@ describe('UserPreferencesService (integration)', () => {
         models: { llmEmbeddingModel: 'custom-embedding' },
       });
 
-      const result =
-        await service.getModelOverridesForUser(TEST_USER_ID);
+      const result = await service.getModelOverridesForUser(TEST_USER_ID);
 
       expect(result).toEqual({ llmEmbeddingModel: 'custom-embedding' });
     });

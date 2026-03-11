@@ -215,9 +215,7 @@ describe('extractTriggerNodesFromSchema', () => {
 
   it('should use metadata display name when available', () => {
     const schema: GraphSchemaType = {
-      nodes: [
-        { id: 'trigger-1', template: 'manual-trigger', config: {} },
-      ],
+      nodes: [{ id: 'trigger-1', template: 'manual-trigger', config: {} }],
       edges: [],
     };
     const metadata = {
@@ -235,9 +233,7 @@ describe('extractTriggerNodesFromSchema', () => {
 
   it('should fall back to template name when metadata has no name', () => {
     const schema: GraphSchemaType = {
-      nodes: [
-        { id: 'trigger-1', template: 'manual-trigger', config: {} },
-      ],
+      nodes: [{ id: 'trigger-1', template: 'manual-trigger', config: {} }],
       edges: [],
     };
     const metadata = {
@@ -254,9 +250,7 @@ describe('extractTriggerNodesFromSchema', () => {
 
   it('should return empty array when no trigger nodes exist', () => {
     const schema: GraphSchemaType = {
-      nodes: [
-        { id: 'agent-1', template: 'simple-agent', config: {} },
-      ],
+      nodes: [{ id: 'agent-1', template: 'simple-agent', config: {} }],
       edges: [],
     };
     const registry = createMockTemplateRegistry({

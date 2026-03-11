@@ -498,9 +498,9 @@ describe('CustomMcpTemplate', () => {
     });
 
     it('should throw when neither command nor serverUrl is provided', () => {
-      expect(() =>
-        customMcpInstance.getMcpConfig({}),
-      ).toThrow('Custom MCP requires either a command or a serverUrl');
+      expect(() => customMcpInstance.getMcpConfig({})).toThrow(
+        'Custom MCP requires either a command or a serverUrl',
+      );
     });
 
     it('should add --allow-http flag for http:// URLs', () => {

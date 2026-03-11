@@ -11,9 +11,9 @@ import { MessagesDao } from './dao/messages.dao';
 import { ThreadsDao } from './dao/threads.dao';
 import { MessageEntity } from './entity/message.entity';
 import { ThreadEntity } from './entity/thread.entity';
-import { ThreadsListener } from './threads.listener';
 import { ThreadNameGeneratorService } from './services/thread-name-generator.service';
 import { ThreadsService } from './services/threads.service';
+import { ThreadsListener } from './threads.listener';
 
 @Module({
   imports: [

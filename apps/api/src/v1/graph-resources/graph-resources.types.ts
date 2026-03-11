@@ -1,9 +1,15 @@
+import type { ToolRunnableConfig } from '@langchain/core/tools';
+
+import type { BaseAgentConfigurable } from '../agents/agents.types';
+
+export type ResourceResolveContext = ToolRunnableConfig<BaseAgentConfigurable>;
+
 export enum GitHubAuthMethod {
   GithubApp = 'github_app',
 }
 
 export interface ShellResourceData {
-  env?: Record<string, string>;
+  resolveEnv: (ctx?: ResourceResolveContext) => Promise<Record<string, string>>;
   initScript?: string[] | string;
   initScriptTimeout?: number;
 }

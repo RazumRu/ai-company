@@ -35,13 +35,13 @@ import {
 } from '../dto/graphs.dto';
 import { GraphEntity } from '../entity/graph.entity';
 import type { GraphRevisionConfig } from '../entity/graph-revision.entity';
+import { GRAPH_DELETED_EVENT, GraphDeletedEvent } from '../graphs.events';
 import { GraphStatus, NodeKind } from '../graphs.types';
 import {
   extractAgentsFromSchema,
   extractNodeDisplayNamesFromMetadata,
   extractTriggerNodesFromSchema,
 } from '../graphs.utils';
-import { GRAPH_DELETED_EVENT, GraphDeletedEvent } from '../graphs.events';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -95,7 +95,10 @@ export class GraphsService {
 
     return this.typeorm.trx(async (entityManager: EntityManager) => {
       const initialVersion = '1.0.0';
-      const agents = extractAgentsFromSchema(data.schema, this.templateRegistry);
+      const agents = extractAgentsFromSchema(
+        data.schema,
+        this.templateRegistry,
+      );
       const row = await this.graphDao.create(
         {
           ...data,
@@ -402,10 +405,10 @@ export class GraphsService {
       await this.destroy(ctx, id);
     }
 
-    await this.eventEmitter.emitAsync(
-      GRAPH_DELETED_EVENT,
-      { graphId: id, userId } satisfies GraphDeletedEvent,
-    );
+    await this.eventEmitter.emitAsync(GRAPH_DELETED_EVENT, {
+      graphId: id,
+      userId,
+    } satisfies GraphDeletedEvent);
 
     await this.graphDao.deleteById(id);
   }
@@ -710,6 +713,7 @@ export class GraphsService {
         thread_id: dto.threadSubId,
         async: dto.async,
         thread_metadata: dto.metadata,
+        thread_created_by: userId,
       },
     });
 

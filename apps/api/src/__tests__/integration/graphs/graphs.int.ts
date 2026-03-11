@@ -1,10 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { AppContextStorage } from '../../../auth/app-context-storage';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { cloneDeep } from 'lodash';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { EntityUUIDSchema } from '../../../utils/dto/misc.dto';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple-agent';
@@ -18,6 +17,7 @@ import {
 } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
@@ -25,8 +25,8 @@ import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule } from '../setup';
 
 const TEST_AGENT_NODE_ID = 'agent-1';
 const TEST_TRIGGER_NODE_ID = 'trigger-1';

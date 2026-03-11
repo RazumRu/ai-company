@@ -8,8 +8,8 @@ import {
 } from '@packages/common';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { GitHubAppProviderService } from '../../git-auth/services/github-app-provider.service';
 import { GitHubAppService } from '../../git-auth/services/github-app.service';
+import { GitHubAppProviderService } from '../../git-auth/services/github-app-provider.service';
 import type { InstallationUnlinkedEvent } from '../../git-auth/types/installation-unlinked.event';
 import { INSTALLATION_UNLINKED_EVENT } from '../../git-auth/types/installation-unlinked.event';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
@@ -29,7 +29,10 @@ import {
 } from '../dto/git-repositories.dto';
 import { GitRepositoryEntity } from '../entity/git-repository.entity';
 import { RepoIndexEntity } from '../entity/repo-index.entity';
-import { GitRepositoryProvider, RepoIndexStatus } from '../git-repositories.types';
+import {
+  GitRepositoryProvider,
+  RepoIndexStatus,
+} from '../git-repositories.types';
 import { RepoIndexQueueService } from './repo-index-queue.service';
 import { RepoIndexerService } from './repo-indexer.service';
 
@@ -52,7 +55,9 @@ export class GitRepositoriesService {
   // Internal event only — emitted by GitHubAppProviderService after verifying ownership.
   // The userId filter in deleteRepositoriesByInstallationIds is defense-in-depth.
   @OnEvent(INSTALLATION_UNLINKED_EVENT)
-  async onInstallationUnlinked(event: InstallationUnlinkedEvent): Promise<void> {
+  async onInstallationUnlinked(
+    event: InstallationUnlinkedEvent,
+  ): Promise<void> {
     await this.deleteRepositoriesByInstallationIds(
       event.userId,
       event.githubInstallationIds,
@@ -400,7 +405,9 @@ export class GitRepositoriesService {
     };
   }
 
-  async syncRepositories(ctx: AppContextStorage): Promise<SyncRepositoriesResponse> {
+  async syncRepositories(
+    ctx: AppContextStorage,
+  ): Promise<SyncRepositoriesResponse> {
     const userId = ctx.checkSub();
 
     if (!this.gitHubAppProviderService.isConfigured()) {
@@ -420,12 +427,17 @@ export class GitRepositoriesService {
   }
 
   private async performSync(userId: string): Promise<SyncRepositoriesResponse> {
-    const installations = await this.gitHubAppProviderService.getActiveInstallations(userId);
+    const installations =
+      await this.gitHubAppProviderService.getActiveInstallations(userId);
 
     this.logger.log(
-      `[git-sync] user=${userId} active_installations=${installations.length} installation_ids=${installations
-        .map((installation) => installation.metadata['installationId'] as number)
-        .join(',') || '(none)'}`,
+      `[git-sync] user=${userId} active_installations=${installations.length} installation_ids=${
+        installations
+          .map(
+            (installation) => installation.metadata['installationId'] as number,
+          )
+          .join(',') || '(none)'
+      }`,
     );
 
     if (installations.length === 0) {
@@ -436,22 +448,25 @@ export class GitRepositoriesService {
     }
 
     const syncedAt = new Date();
-    const allGithubRepos: Array<{
+    const allGithubRepos: {
       owner: string;
       repo: string;
       url: string;
       defaultBranch: string;
       installationId: number;
-    }> = [];
+    }[] = [];
 
     for (const installation of installations) {
-      const ghInstallationId = installation.metadata['installationId'] as number;
+      const ghInstallationId = installation.metadata[
+        'installationId'
+      ] as number;
       this.logger.log(
         `[git-sync] user=${userId} installation=${ghInstallationId} account=${installation.accountLogin} starting sync`,
       );
       let token: string;
       try {
-        token = await this.gitHubAppService.getInstallationToken(ghInstallationId);
+        token =
+          await this.gitHubAppService.getInstallationToken(ghInstallationId);
         this.logger.log(
           `[git-sync] user=${userId} installation=${ghInstallationId} token fetched successfully`,
         );
@@ -467,7 +482,7 @@ export class GitRepositoriesService {
       }
 
       let page = 1;
-      let totalCount = 0;
+      let totalCount: number;
       let installationAccessible = true;
 
       do {
@@ -486,7 +501,9 @@ export class GitRepositoriesService {
           `[git-sync] user=${userId} installation=${ghInstallationId} page=${page} github_status=${response.status}`,
         );
 
-        const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+        const rateLimitRemaining = response.headers.get(
+          'x-ratelimit-remaining',
+        );
         if (
           response.status === 429 ||
           (response.status === 403 && rateLimitRemaining === '0')
@@ -508,12 +525,12 @@ export class GitRepositoriesService {
 
         const data = (await response.json()) as {
           total_count: number;
-          repositories: Array<{
+          repositories: {
             owner: { login: string };
             name: string;
             html_url: string;
             default_branch: string | null;
-          }>;
+          }[];
         };
 
         totalCount = data.total_count;
@@ -570,8 +587,12 @@ export class GitRepositoriesService {
       hasInstallationId: true,
     });
 
-    const syncedKeys = new Set(allGithubRepos.map((r) => `${r.owner}/${r.repo}`));
-    const toRemove = existingRepos.filter((r) => !syncedKeys.has(`${r.owner}/${r.repo}`));
+    const syncedKeys = new Set(
+      allGithubRepos.map((r) => `${r.owner}/${r.repo}`),
+    );
+    const toRemove = existingRepos.filter(
+      (r) => !syncedKeys.has(`${r.owner}/${r.repo}`),
+    );
 
     for (const repo of toRemove) {
       await this.cleanupRepositoryResourcesById(repo.id);
@@ -619,7 +640,9 @@ export class GitRepositoriesService {
    * Remove all BullMQ jobs and Qdrant collections associated with a repository's indexes.
    * Called before deleting a repository to ensure external resources are cleaned up.
    */
-  private async cleanupRepositoryResourcesById(repositoryId: string): Promise<void> {
+  private async cleanupRepositoryResourcesById(
+    repositoryId: string,
+  ): Promise<void> {
     const repoIndexes = await this.repoIndexDao.getAll({ repositoryId });
 
     const collections = new Set<string>();
@@ -685,5 +708,4 @@ export class GitRepositoriesService {
       updatedAt: new Date(entity.updatedAt).toISOString(),
     };
   }
-
 }

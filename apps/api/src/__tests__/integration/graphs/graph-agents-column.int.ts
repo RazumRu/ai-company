@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
@@ -11,13 +12,12 @@ import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
-import { AppContextStorage } from '../../../auth/app-context-storage';
 import {
   createMockGraphData,
   waitForCondition,
 } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule } from '../setup';
 
 let contextDataStorage: AppContextStorage;
 

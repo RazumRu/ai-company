@@ -1,19 +1,19 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException, DefaultLogger } from '@packages/common';
-import { AppContextStorage } from '../../../auth/app-context-storage';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
 import { FilesystemMcp } from '../../../v1/agent-mcp/services/mcp/filesystem-mcp';
 import { JiraMcp } from '../../../v1/agent-mcp/services/mcp/jira-mcp';
 import { PlaywrightMcp } from '../../../v1/agent-mcp/services/mcp/playwright-mcp';
-import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
 import { BaseAgentConfigurable } from '../../../v1/agents/agents.types';
+import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import {
   RuntimeStartParams,
   RuntimeType,
@@ -23,8 +23,8 @@ import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 import { wait } from '../../test-utils';
 import { createMockGraphData } from '../helpers/graph-helpers';
-import { createTestModule } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule } from '../setup';
 
 const FULL_AGENT_NODE_ID = 'agent-1';
 const FULL_TRIGGER_NODE_ID = 'trigger-1';

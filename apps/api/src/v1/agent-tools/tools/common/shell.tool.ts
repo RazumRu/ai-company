@@ -25,7 +25,9 @@ import {
 export interface ShellToolOptions {
   runtimeProvider: RuntimeThreadProvider;
   resourcesInformation?: string;
-  env?: Record<string, string>;
+  resolveEnv?: (
+    ctx?: ToolRunnableConfig<BaseAgentConfigurable>,
+  ) => Promise<Record<string, string>>;
 }
 
 export const ShellToolSchema = z.object({
@@ -363,8 +365,9 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     const miniModel = cfg.configurable?.llmRequestContext?.models?.llmMiniModel;
 
     try {
+      const resolvedEnv = config.resolveEnv ? await config.resolveEnv(cfg) : {};
       const mergedEnv = {
-        ...(config.env || {}),
+        ...resolvedEnv,
         ...providedEnv,
       };
       const runtime = await config.runtimeProvider.provide(cfg);

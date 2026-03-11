@@ -19,7 +19,10 @@ export type GhBaseToolSchemaType = z.infer<typeof GhBaseToolSchema>;
 
 export type GhBaseToolConfig = {
   runtimeProvider: RuntimeThreadProvider;
-  resolveTokenForOwner?: (owner: string) => Promise<string | null>;
+  resolveTokenForOwner?: (
+    owner: string,
+    userId?: string,
+  ) => Promise<string | null>;
 };
 
 @Injectable()
@@ -35,9 +38,13 @@ export abstract class GhBaseTool<
   protected async resolveToken(
     config: GhBaseToolConfig,
     owner?: string,
+    cfg?: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<string> {
     if (owner && config.resolveTokenForOwner) {
-      const token = await config.resolveTokenForOwner(owner);
+      const userId =
+        cfg?.configurable?.thread_created_by ??
+        cfg?.configurable?.graph_created_by;
+      const token = await config.resolveTokenForOwner(owner, userId);
       if (token) return token;
     }
     throw new Error(
@@ -46,7 +53,11 @@ export abstract class GhBaseTool<
   }
 
   protected async execGhCommand(
-    params: { cmd: string[] | string; owner?: string; resolvedToken?: string | null },
+    params: {
+      cmd: string[] | string;
+      owner?: string;
+      resolvedToken?: string | null;
+    },
     config: GhBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ) {
@@ -72,7 +83,7 @@ export abstract class GhBaseTool<
         // null means "no token" — GH_TOKEN is intentionally omitted.
       } else {
         try {
-          const token = await this.resolveToken(config, params.owner);
+          const token = await this.resolveToken(config, params.owner, cfg);
           env.GH_TOKEN = token;
         } catch {
           // No token available — plain git/find/cat commands work fine without GH_TOKEN.

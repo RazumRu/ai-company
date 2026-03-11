@@ -1,7 +1,4 @@
-import {
-  buildAuthHeadersWithProject,
-  reqHeaders,
-} from '../common.helper';
+import { buildAuthHeadersWithProject, reqHeaders } from '../common.helper';
 import { createTestProject, deleteProject } from '../projects/projects.helper';
 import { graphCleanup } from './graph-cleanup.helper';
 import {

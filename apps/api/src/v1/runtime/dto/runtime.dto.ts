@@ -13,9 +13,15 @@ export const GetRuntimesQuerySchema = z.object({
 
 export const RuntimeInstanceSchema = z.object({
   id: z.string().uuid().describe('Runtime instance ID'),
-  graphId: z.string().uuid().nullable().describe('Graph ID (null for system operations)'),
+  graphId: z
+    .string()
+    .uuid()
+    .nullable()
+    .describe('Graph ID (null for system operations)'),
   nodeId: z.string().describe('Node ID'),
-  externalThreadId: z.string().describe('External thread ID (graphId:threadUUID)'),
+  externalThreadId: z
+    .string()
+    .describe('External thread ID (graphId:threadUUID)'),
   type: z.nativeEnum(RuntimeType).describe('Runtime type'),
   status: z
     .nativeEnum(RuntimeInstanceStatus)
@@ -26,9 +32,5 @@ export const RuntimeInstanceSchema = z.object({
   updatedAt: z.iso.datetime().describe('Last update timestamp'),
 });
 
-export class GetRuntimesQueryDto extends createZodDto(
-  GetRuntimesQuerySchema,
-) {}
-export class RuntimeInstanceDto extends createZodDto(
-  RuntimeInstanceSchema,
-) {}
+export class GetRuntimesQueryDto extends createZodDto(GetRuntimesQuerySchema) {}
+export class RuntimeInstanceDto extends createZodDto(RuntimeInstanceSchema) {}

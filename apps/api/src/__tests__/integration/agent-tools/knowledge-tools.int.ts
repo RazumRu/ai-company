@@ -1,10 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
-import { AppContextStorage } from '../../../auth/app-context-storage';
-import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
 import {
   KnowledgeGetChunksOutput,
@@ -15,9 +14,10 @@ import { KnowledgeSearchChunksTool } from '../../../v1/agent-tools/tools/common/
 import { KnowledgeSearchDocsTool } from '../../../v1/agent-tools/tools/common/knowledge/knowledge-search-docs.tool';
 import { KnowledgeDocDao } from '../../../v1/knowledge/dao/knowledge-doc.dao';
 import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.service';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
-import { createTestModule, TEST_USER_ID } from '../setup';
 import { createTestProject } from '../helpers/test-context';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 // Assigned in beforeAll once the test project is created.
 let contextDataStorage: AppContextStorage;

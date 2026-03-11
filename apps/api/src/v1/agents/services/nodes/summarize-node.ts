@@ -45,7 +45,10 @@ export class SummarizeNode extends BaseNode<
 > {
   constructor(
     private readonly litellmService: LitellmService,
-    private llmResolver: (currentContext?: number, llmRequestContext?: LLMRequestContext) => ChatOpenAI,
+    private llmResolver: (
+      currentContext?: number,
+      llmRequestContext?: LLMRequestContext,
+    ) => ChatOpenAI,
     private opts: SummarizeOpts,
     private readonly logger?: DefaultLogger,
   ) {

@@ -1,7 +1,6 @@
-import { PassThrough } from 'stream';
-
 import { INestApplication } from '@nestjs/common';
 import { NotFoundException } from '@packages/common';
+import { PassThrough } from 'stream';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -148,7 +147,9 @@ describe('Thread Export Integration Tests', () => {
     expect(exported.thread.name).toBe('Export Test Thread');
 
     expect(exported.messages).toHaveLength(3);
-    const roles = exported.messages.map((m: { message: { role: string } }) => m.message.role);
+    const roles = exported.messages.map(
+      (m: { message: { role: string } }) => m.message.role,
+    );
     expect(roles).toContain(MessageRole.Human);
     expect(roles).toContain(MessageRole.AI);
 

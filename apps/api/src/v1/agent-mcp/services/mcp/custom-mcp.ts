@@ -20,7 +20,10 @@ export class CustomMcp extends BaseMcp<CustomMcpConfig> {
 
   public getMcpConfig(config: CustomMcpConfig): IMcpServerConfig {
     if (config.command) {
-      const [command, ...args] = config.command.trim().split(/\s+/) as [string, ...string[]];
+      const [command, ...args] = config.command.trim().split(/\s+/) as [
+        string,
+        ...string[],
+      ];
       return {
         name: 'custom-mcp',
         command,
@@ -30,7 +33,13 @@ export class CustomMcp extends BaseMcp<CustomMcpConfig> {
     }
 
     if (config.serverUrl) {
-      const args = ['-y', 'mcp-remote', config.serverUrl, '--transport', 'http-first'];
+      const args = [
+        '-y',
+        'mcp-remote',
+        config.serverUrl,
+        '--transport',
+        'http-first',
+      ];
 
       if (config.serverUrl.startsWith('http://')) {
         args.push('--allow-http');
@@ -48,9 +57,7 @@ export class CustomMcp extends BaseMcp<CustomMcpConfig> {
       };
     }
 
-    throw new Error(
-      'Custom MCP requires either a command or a serverUrl',
-    );
+    throw new Error('Custom MCP requires either a command or a serverUrl');
   }
 
   public getDetailedInstructions(config: CustomMcpConfig): string {

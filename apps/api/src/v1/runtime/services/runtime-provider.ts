@@ -149,7 +149,14 @@ export class RuntimeProvider {
           });
 
           try {
-            this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, existing.id, 'Starting', type);
+            this.emitRuntimeStatus(
+              graphId,
+              threadId,
+              runtimeNodeId,
+              existing.id,
+              'Starting',
+              type,
+            );
             const runtime = await this.ensureRuntimeForRecord<T>(existing);
             if (existing.status !== RuntimeInstanceStatus.Running) {
               await this.runtimeInstanceDao.updateById(existing.id, {
@@ -157,12 +164,24 @@ export class RuntimeProvider {
               });
             }
 
-            this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, existing.id, 'Running', type);
+            this.emitRuntimeStatus(
+              graphId,
+              threadId,
+              runtimeNodeId,
+              existing.id,
+              'Running',
+              type,
+            );
             return { runtime, cached: true };
           } catch (error) {
             await this.cleanupFailedInstance(existing);
             this.emitRuntimeStatus(
-              graphId, threadId, runtimeNodeId, existing.id, 'Failed', type,
+              graphId,
+              threadId,
+              runtimeNodeId,
+              existing.id,
+              'Failed',
+              type,
               error instanceof Error ? error.message : String(error),
             );
             throw error;
@@ -185,7 +204,14 @@ export class RuntimeProvider {
       lastUsedAt: new Date(),
     });
 
-    this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, created.id, 'Starting', type);
+    this.emitRuntimeStatus(
+      graphId,
+      threadId,
+      runtimeNodeId,
+      created.id,
+      'Starting',
+      type,
+    );
 
     let runtime: T;
     try {
@@ -193,7 +219,12 @@ export class RuntimeProvider {
     } catch (error) {
       await this.cleanupFailedInstance(created);
       this.emitRuntimeStatus(
-        graphId, threadId, runtimeNodeId, created.id, 'Failed', type,
+        graphId,
+        threadId,
+        runtimeNodeId,
+        created.id,
+        'Failed',
+        type,
         error instanceof Error ? error.message : String(error),
       );
       throw error;
@@ -204,7 +235,14 @@ export class RuntimeProvider {
       lastUsedAt: new Date(),
     });
 
-    this.emitRuntimeStatus(graphId, threadId, runtimeNodeId, created.id, 'Running', type);
+    this.emitRuntimeStatus(
+      graphId,
+      threadId,
+      runtimeNodeId,
+      created.id,
+      'Running',
+      type,
+    );
     return { runtime, cached: false };
   }
 
@@ -214,8 +252,12 @@ export class RuntimeProvider {
     });
 
     this.emitRuntimeStatus(
-      instance.graphId, instance.threadId, instance.nodeId,
-      instance.id, 'Stopping', instance.type,
+      instance.graphId,
+      instance.threadId,
+      instance.nodeId,
+      instance.id,
+      'Stopping',
+      instance.type,
     );
 
     const runtime = this.runtimeInstances.get(instance.id);
@@ -246,8 +288,12 @@ export class RuntimeProvider {
     });
 
     this.emitRuntimeStatus(
-      instance.graphId, instance.threadId, instance.nodeId,
-      instance.id, 'Stopped', instance.type,
+      instance.graphId,
+      instance.threadId,
+      instance.nodeId,
+      instance.id,
+      'Stopped',
+      instance.type,
     );
   }
 

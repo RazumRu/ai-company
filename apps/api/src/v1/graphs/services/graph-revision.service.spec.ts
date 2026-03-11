@@ -5,14 +5,13 @@ import {
   NotFoundException,
 } from '@packages/common';
 import { TypeormService } from '@packages/typeorm';
-import type { FastifyRequest } from 'fastify';
-
-import { AppContextStorage } from '../../../auth/app-context-storage';
 import { compare } from 'fast-json-patch';
+import type { FastifyRequest } from 'fastify';
 import * as timers from 'timers/promises';
 import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
@@ -233,7 +232,9 @@ describe('GraphRevisionService', () => {
         {
           provide: LlmModelsService,
           useValue: {
-            buildLLMRequestContext: vi.fn().mockResolvedValue({ models: undefined }),
+            buildLLMRequestContext: vi
+              .fn()
+              .mockResolvedValue({ models: undefined }),
           },
         },
         {
@@ -794,7 +795,12 @@ describe('GraphRevisionService', () => {
       });
 
       const mockCompiledGraph = {
-        metadata: { graphId: revision.graphId, version: '1.0.0', graph_created_by: 'user-123', graph_project_id: 'project-123' },
+        metadata: {
+          graphId: revision.graphId,
+          version: '1.0.0',
+          graph_created_by: 'user-123',
+          graph_project_id: 'project-123',
+        },
         nodes: new Map([
           [
             'node-1',
@@ -920,7 +926,12 @@ describe('GraphRevisionService', () => {
 
     it('should throw when graph stays in Compiling status beyond the timeout', async () => {
       const compiledGraph = {
-        metadata: { graphId: 'test', version: '1.0.0', graph_created_by: 'user', graph_project_id: 'project' },
+        metadata: {
+          graphId: 'test',
+          version: '1.0.0',
+          graph_created_by: 'user',
+          graph_project_id: 'project',
+        },
         nodes: new Map(),
         edges: [],
         state: {
@@ -1002,7 +1013,12 @@ describe('GraphRevisionService', () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Running });
 
       const compiledGraph = {
-        metadata: { graphId: revision.graphId, version: '1.0.0', graph_created_by: 'user', graph_project_id: 'project' },
+        metadata: {
+          graphId: revision.graphId,
+          version: '1.0.0',
+          graph_created_by: 'user',
+          graph_project_id: 'project',
+        },
         nodes: new Map(),
         edges: [],
         state: {
@@ -1080,7 +1096,12 @@ describe('GraphRevisionService', () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Running });
 
       const compiledGraph = {
-        metadata: { graphId: revision.graphId, version: '1.0.0', graph_created_by: 'user', graph_project_id: 'project' },
+        metadata: {
+          graphId: revision.graphId,
+          version: '1.0.0',
+          graph_created_by: 'user',
+          graph_project_id: 'project',
+        },
         nodes: new Map(),
         edges: [],
         state: {

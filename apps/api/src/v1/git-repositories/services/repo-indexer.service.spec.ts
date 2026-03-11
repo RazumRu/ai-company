@@ -592,7 +592,9 @@ describe('RepoIndexerService', () => {
         execFn,
       );
       // Full repo: (2000 + 1000 + 600) / 4 * OVERLAP_FACTOR
-      expect(result).toBe(Math.floor(((2000 + 1000 + 600) / 3) * OVERLAP_FACTOR));
+      expect(result).toBe(
+        Math.floor(((2000 + 1000 + 600) / 3) * OVERLAP_FACTOR),
+      );
     });
 
     it('includes working tree changes in estimation', async () => {

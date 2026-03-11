@@ -129,5 +129,4 @@ export abstract class BaseRuntime {
   ): Record<string, unknown> | undefined {
     return undefined;
   }
-
 }

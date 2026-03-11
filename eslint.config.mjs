@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint';
 
 /** @type {import('eslint').Linter.FlatConfig[]} */
 const config = defineConfig([
-  globalIgnores(['**/*.gen.ts']),
+  globalIgnores(['**/*.gen.ts', '**/*.js', '**/*.mjs', '**/*.cjs']),
   { languageOptions: { globals: globals.node } },
   pluginJs.configs.recommended,
   // Base TypeScript rules (non-type-aware).
@@ -88,7 +88,7 @@ const config = defineConfig([
     },
   },
   {
-    files: ['**/*.spec.ts'],
+    files: ['**/*.spec.ts', '**/*.int.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },

@@ -1,15 +1,15 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddGraphAgentsColumn1772538380484 implements MigrationInterface {
-    name = 'AddGraphAgentsColumn1772538380484'
+  name = 'AddGraphAgentsColumn1772538380484';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             ALTER TABLE "graphs"
             ADD "agents" jsonb
         `);
 
-        await queryRunner.query(`
+    await queryRunner.query(`
             UPDATE "graphs"
             SET "agents" = (
                 SELECT COALESCE(jsonb_agg(
@@ -23,12 +23,11 @@ export class AddGraphAgentsColumn1772538380484 implements MigrationInterface {
                 WHERE node->>'template' = 'simple-agent'
             )
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
             ALTER TABLE "graphs" DROP COLUMN "agents"
         `);
-    }
-
+  }
 }

@@ -16,7 +16,9 @@ describe('FilesDirectoryTreeTool', () => {
   let mockConfig: FilesBaseToolConfig;
 
   beforeEach(async () => {
-    mockConfig = { runtimeProvider: { provide: vi.fn() } as unknown as RuntimeThreadProvider };
+    mockConfig = {
+      runtimeProvider: { provide: vi.fn() } as unknown as RuntimeThreadProvider,
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [FilesDirectoryTreeTool],

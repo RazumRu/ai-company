@@ -143,12 +143,7 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
 
   async getSchemaAndMetadata(
     graphIds: string[],
-  ): Promise<
-    Map<
-      string,
-      Pick<GraphEntity, 'schema' | 'metadata' | 'agents'>
-    >
-  > {
+  ): Promise<Map<string, Pick<GraphEntity, 'schema' | 'metadata' | 'agents'>>> {
     const result = new Map<
       string,
       Pick<GraphEntity, 'schema' | 'metadata' | 'agents'>

@@ -13,10 +13,7 @@ import {
   UpdateProjectDto,
 } from '../dto/projects.dto';
 import { ProjectEntity } from '../entity/project.entity';
-import {
-  PROJECT_DELETED_EVENT,
-  ProjectDeletedEvent,
-} from '../projects.events';
+import { PROJECT_DELETED_EVENT, ProjectDeletedEvent } from '../projects.events';
 
 @Injectable()
 export class ProjectsService {
@@ -130,10 +127,10 @@ export class ProjectsService {
       throw new NotFoundException('PROJECT_NOT_FOUND');
     }
 
-    await this.eventEmitter.emitAsync(
-      PROJECT_DELETED_EVENT,
-      { projectId: id, userId } satisfies ProjectDeletedEvent,
-    );
+    await this.eventEmitter.emitAsync(PROJECT_DELETED_EVENT, {
+      projectId: id,
+      userId,
+    } satisfies ProjectDeletedEvent);
 
     await this.projectsDao.deleteById(id);
   }

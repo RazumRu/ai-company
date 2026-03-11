@@ -54,30 +54,32 @@ describe('Git Repositories E2E', () => {
     };
 
     // Create a repository
-    createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
-      expect(createResponse.status).to.equal(201);
-      const id = createResponse.body.id;
+    createGitRepository(repositoryData, projectHeaders).then(
+      (createResponse) => {
+        expect(createResponse.status).to.equal(201);
+        const id = createResponse.body.id;
 
-      // Get by ID
-      getGitRepositoryById(id).then((getResponse) => {
-        expect(getResponse.status).to.equal(200);
-        expect(getResponse.body.owner).to.equal(repositoryData.owner);
-      });
+        // Get by ID
+        getGitRepositoryById(id).then((getResponse) => {
+          expect(getResponse.status).to.equal(200);
+          expect(getResponse.body.owner).to.equal(repositoryData.owner);
+        });
 
-      // Update
-      const updateData: UpdateRepositoryDto = {
-        url: 'https://github.com/octocat/Updated.git',
-      };
-      updateGitRepository(id, updateData).then((updateResponse) => {
-        expect(updateResponse.status).to.equal(200);
-        expect(updateResponse.body.url).to.equal(updateData.url);
-      });
+        // Update
+        const updateData: UpdateRepositoryDto = {
+          url: 'https://github.com/octocat/Updated.git',
+        };
+        updateGitRepository(id, updateData).then((updateResponse) => {
+          expect(updateResponse.status).to.equal(200);
+          expect(updateResponse.body.url).to.equal(updateData.url);
+        });
 
-      // Cleanup
-      deleteGitRepository(id).then((deleteResponse) => {
-        expect(deleteResponse.status).to.equal(200);
-      });
-    });
+        // Cleanup
+        deleteGitRepository(id).then((deleteResponse) => {
+          expect(deleteResponse.status).to.equal(200);
+        });
+      },
+    );
   });
 
   it('should return 404 for non-existent repository', () => {
@@ -126,18 +128,20 @@ describe('Git Repositories E2E', () => {
         provider: 'GITHUB',
       };
 
-      createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
-        expect(createResponse.status).to.equal(201);
-        const id = createResponse.body.id;
+      createGitRepository(repositoryData, projectHeaders).then(
+        (createResponse) => {
+          expect(createResponse.status).to.equal(201);
+          const id = createResponse.body.id;
 
-        getRepoIndexByRepositoryId(id).then((indexResponse) => {
-          expect(indexResponse.status).to.equal(200);
-          expect(indexResponse.body).to.be.null;
-        });
+          getRepoIndexByRepositoryId(id).then((indexResponse) => {
+            expect(indexResponse.status).to.equal(200);
+            expect(indexResponse.body).to.be.null;
+          });
 
-        // Cleanup
-        deleteGitRepository(id);
-      });
+          // Cleanup
+          deleteGitRepository(id);
+        },
+      );
     });
 
     it('should trigger reindexing for a repository', () => {
@@ -149,39 +153,41 @@ describe('Git Repositories E2E', () => {
         provider: 'GITHUB',
       };
 
-      createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
-        expect(createResponse.status).to.equal(201);
-        const repositoryId = createResponse.body.id;
+      createGitRepository(repositoryData, projectHeaders).then(
+        (createResponse) => {
+          expect(createResponse.status).to.equal(201);
+          const repositoryId = createResponse.body.id;
 
-        const reindexData: TriggerReindexDto = {
-          repositoryId,
-        };
-
-        triggerReindex(reindexData).then((reindexResponse) => {
-          expect(reindexResponse.status).to.equal(201);
-          expect(reindexResponse.body).to.have.property('repoIndex');
-          expect(reindexResponse.body).to.have.property('message');
-          expect(reindexResponse.body.repoIndex.repositoryId).to.equal(
+          const reindexData: TriggerReindexDto = {
             repositoryId,
-          );
-          expect(reindexResponse.body.repoIndex.status).to.be.oneOf([
-            'pending',
-            'in_progress',
-          ]);
-        });
+          };
 
-        // Verify index was created
-        getRepoIndexByRepositoryId(repositoryId).then((indexResponse) => {
-          expect(indexResponse.status).to.equal(200);
-          expect(indexResponse.body).to.not.be.null;
-          if (indexResponse.body) {
-            expect(indexResponse.body.repositoryId).to.equal(repositoryId);
-          }
-        });
+          triggerReindex(reindexData).then((reindexResponse) => {
+            expect(reindexResponse.status).to.equal(201);
+            expect(reindexResponse.body).to.have.property('repoIndex');
+            expect(reindexResponse.body).to.have.property('message');
+            expect(reindexResponse.body.repoIndex.repositoryId).to.equal(
+              repositoryId,
+            );
+            expect(reindexResponse.body.repoIndex.status).to.be.oneOf([
+              'pending',
+              'in_progress',
+            ]);
+          });
 
-        // Cleanup
-        deleteGitRepository(repositoryId);
-      });
+          // Verify index was created
+          getRepoIndexByRepositoryId(repositoryId).then((indexResponse) => {
+            expect(indexResponse.status).to.equal(200);
+            expect(indexResponse.body).to.not.be.null;
+            if (indexResponse.body) {
+              expect(indexResponse.body.repositoryId).to.equal(repositoryId);
+            }
+          });
+
+          // Cleanup
+          deleteGitRepository(repositoryId);
+        },
+      );
     });
 
     it('should prevent concurrent reindexing of the same repository', () => {
@@ -193,27 +199,29 @@ describe('Git Repositories E2E', () => {
         provider: 'GITHUB',
       };
 
-      createGitRepository(repositoryData, projectHeaders).then((createResponse) => {
-        expect(createResponse.status).to.equal(201);
-        const repositoryId = createResponse.body.id;
+      createGitRepository(repositoryData, projectHeaders).then(
+        (createResponse) => {
+          expect(createResponse.status).to.equal(201);
+          const repositoryId = createResponse.body.id;
 
-        const reindexData: TriggerReindexDto = {
-          repositoryId,
-        };
+          const reindexData: TriggerReindexDto = {
+            repositoryId,
+          };
 
-        // Trigger first reindex
-        triggerReindex(reindexData).then((firstReindexResponse) => {
-          expect(firstReindexResponse.status).to.equal(201);
+          // Trigger first reindex
+          triggerReindex(reindexData).then((firstReindexResponse) => {
+            expect(firstReindexResponse.status).to.equal(201);
 
-          // Try to trigger again immediately
-          triggerReindex(reindexData).then((secondReindexResponse) => {
-            expect(secondReindexResponse.status).to.equal(400);
+            // Try to trigger again immediately
+            triggerReindex(reindexData).then((secondReindexResponse) => {
+              expect(secondReindexResponse.status).to.equal(400);
+            });
           });
-        });
 
-        // Cleanup
-        deleteGitRepository(repositoryId);
-      });
+          // Cleanup
+          deleteGitRepository(repositoryId);
+        },
+      );
     });
 
     it('should filter indexes by repository ID', () => {

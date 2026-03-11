@@ -168,7 +168,9 @@ describe('GhCloneTool', () => {
       };
 
       vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
-      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(undefined);
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
 
       const execGhCommandSpy = vi
         .spyOn(tool as any, 'execGhCommand')

@@ -1,4 +1,8 @@
-import { buildAuthHeaders, generateRandomUUID, reqHeaders } from '../common.helper';
+import {
+  buildAuthHeaders,
+  generateRandomUUID,
+  reqHeaders,
+} from '../common.helper';
 import {
   createProject,
   createTestProject,
@@ -97,7 +101,7 @@ describe('Projects E2E', () => {
       });
     });
 
-    it('should return only the calling user\'s projects', () => {
+    it("should return only the calling user's projects", () => {
       const otherUserHeaders = buildAuthHeaders({
         userId: generateRandomUUID(),
       });
@@ -157,7 +161,7 @@ describe('Projects E2E', () => {
       });
     });
 
-    it('should return 404 for another user\'s project', () => {
+    it("should return 404 for another user's project", () => {
       const otherUserHeaders = buildAuthHeaders({
         userId: generateRandomUUID(),
       });
@@ -215,7 +219,7 @@ describe('Projects E2E', () => {
       });
     });
 
-    it('should return 404 when updating another user\'s project', () => {
+    it("should return 404 when updating another user's project", () => {
       const otherUserHeaders = buildAuthHeaders({
         userId: generateRandomUUID(),
       });
@@ -248,7 +252,7 @@ describe('Projects E2E', () => {
       });
     });
 
-    it('should return 404 when deleting another user\'s project', () => {
+    it("should return 404 when deleting another user's project", () => {
       const otherUserHeaders = buildAuthHeaders({
         userId: generateRandomUUID(),
       });

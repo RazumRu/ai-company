@@ -49,13 +49,15 @@ describe('Knowledge docs API', () => {
         expect(getResponse.body.id).to.eq(docId);
       });
 
-      listKnowledgeDocs({ search: 'Cypress' }, projectHeaders).then((listResponse) => {
-        expect(listResponse.status).to.eq(200);
-        const items = (
-          listResponse.body as unknown as { items: { id: string }[] }
-        ).items;
-        expect(items.some((doc) => doc.id === docId)).to.eq(true);
-      });
+      listKnowledgeDocs({ search: 'Cypress' }, projectHeaders).then(
+        (listResponse) => {
+          expect(listResponse.status).to.eq(200);
+          const items = (
+            listResponse.body as unknown as { items: { id: string }[] }
+          ).items;
+          expect(items.some((doc) => doc.id === docId)).to.eq(true);
+        },
+      );
 
       updateKnowledgeDoc(docId, {
         title: 'Updated Cypress Doc',

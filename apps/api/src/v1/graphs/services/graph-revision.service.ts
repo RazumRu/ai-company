@@ -5,8 +5,6 @@ import {
   NotFoundException,
 } from '@packages/common';
 import { AdditionalParams, TypeormService } from '@packages/typeorm';
-
-import { AppContextStorage } from '../../../auth/app-context-storage';
 import { UnrecoverableError } from 'bullmq';
 import { compare, type Operation } from 'fast-json-patch';
 import { isEqual } from 'lodash';
@@ -14,12 +12,12 @@ import { coerce, compare as compareSemver, inc } from 'semver';
 import { setTimeout } from 'timers/promises';
 import { EntityManager } from 'typeorm';
 
+import { AppContextStorage } from '../../../auth/app-context-storage';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
-import { extractAgentsFromSchema } from '../graphs.utils';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphRevisionDao, SearchTerms } from '../dao/graph-revision.dao';
 import {
@@ -43,6 +41,7 @@ import {
   GraphStatus,
   NodeKind,
 } from '../graphs.types';
+import { extractAgentsFromSchema } from '../graphs.utils';
 import { GraphCompiler } from './graph-compiler';
 import { GraphMergeService } from './graph-merge.service';
 import { GraphRegistry } from './graph-registry';

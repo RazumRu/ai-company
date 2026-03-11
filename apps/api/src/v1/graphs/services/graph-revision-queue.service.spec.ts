@@ -29,7 +29,9 @@ const mockLogger = {
   info: vi.fn(),
 };
 
-let capturedProcessor: ((job: { data: GraphRevisionJobData }) => Promise<void>) | undefined;
+let capturedProcessor:
+  | ((job: { data: GraphRevisionJobData }) => Promise<void>)
+  | undefined;
 
 vi.mock('bullmq', () => ({
   Queue: function Queue() {
@@ -81,7 +83,9 @@ describe('GraphRevisionQueueService', () => {
       expect(capturedProcessor).toBeDefined();
 
       await expect(
-        capturedProcessor!({ data: { revisionId: 'rev-1', graphId: 'graph-1' } }),
+        capturedProcessor!({
+          data: { revisionId: 'rev-1', graphId: 'graph-1' },
+        }),
       ).rejects.toThrow('Graph revision processor not set');
     });
 
@@ -113,7 +117,10 @@ describe('GraphRevisionQueueService', () => {
       expect(failedHandler).toBeDefined();
 
       const err = new Error('revision failed');
-      failedHandler({ id: 'job-1', data: { revisionId: 'r1', graphId: 'g1' } }, err);
+      failedHandler(
+        { id: 'job-1', data: { revisionId: 'r1', graphId: 'g1' } },
+        err,
+      );
 
       expect(mockLogger.error).toHaveBeenCalledWith(
         err,
@@ -156,9 +163,12 @@ describe('GraphRevisionQueueService', () => {
 
       await service.onModuleDestroy();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith('Failed to close BullMQ worker', {
-        error: 'worker close failed',
-      });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Failed to close BullMQ worker',
+        {
+          error: 'worker close failed',
+        },
+      );
       expect(mockQueue.close).toHaveBeenCalled();
       expect(mockRedis.quit).toHaveBeenCalledTimes(2);
     });
@@ -168,9 +178,12 @@ describe('GraphRevisionQueueService', () => {
 
       await service.onModuleDestroy();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith('Failed to close BullMQ queue', {
-        error: 'queue close failed',
-      });
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Failed to close BullMQ queue',
+        {
+          error: 'queue close failed',
+        },
+      );
       expect(mockRedis.quit).toHaveBeenCalledTimes(2);
     });
 
