@@ -266,14 +266,7 @@ describe('GithubResource', () => {
       ).toHaveBeenCalledWith('user-1');
     });
 
-    it('should return resolveEnv that falls back to graph_created_by', async () => {
-      vi.mocked(
-        mockGitTokenResolverService.resolveDefaultToken,
-      ).mockResolvedValue({
-        token: 'ghs_fallback',
-        source: 'github_app' as never,
-      });
-
+    it('should return resolveEnv that does NOT fall back to graph_created_by', async () => {
       const config: GithubResourceConfig = { auth: true };
 
       const result = await githubResource.getData(config);
@@ -281,10 +274,57 @@ describe('GithubResource', () => {
         configurable: { graph_created_by: 'graph-owner' },
       });
 
-      expect(env).toEqual({ GH_TOKEN: 'ghs_fallback' });
+      expect(env).toEqual({});
       expect(
         mockGitTokenResolverService.resolveDefaultToken,
-      ).toHaveBeenCalledWith('graph-owner');
+      ).not.toHaveBeenCalled();
+    });
+
+    it('resolveEnv does not return user-A token when called with user-B identity', async () => {
+      vi.mocked(
+        mockGitTokenResolverService.resolveDefaultToken,
+      ).mockImplementation(async (userId: string) => {
+        if (userId === 'user-a') {
+          return { token: 'ghs_user_a_token', source: 'github_app' as never };
+        }
+        return null;
+      });
+
+      const result = await githubResource.getData({ auth: true });
+
+      const env = await result.data.resolveEnv({
+        configurable: { thread_created_by: 'user-b' },
+      });
+
+      expect(env).toEqual({});
+      expect(
+        mockGitTokenResolverService.resolveDefaultToken,
+      ).toHaveBeenCalledWith('user-b');
+      expect(
+        mockGitTokenResolverService.resolveDefaultToken,
+      ).not.toHaveBeenCalledWith('user-a');
+    });
+
+    it('resolveToken does not return user-A token when called with user-B identity', async () => {
+      vi.mocked(mockGitTokenResolverService.resolveToken).mockImplementation(
+        async (_provider, _owner, userId: string) => {
+          if (userId === 'user-a') {
+            return { token: 'ghs_user_a_token', source: 'github_app' as never };
+          }
+          return null;
+        },
+      );
+
+      const result = await githubResource.getData({ auth: true });
+
+      const token = await result.resolveToken('some-org', 'user-b');
+
+      expect(token).toBeNull();
+      expect(mockGitTokenResolverService.resolveToken).toHaveBeenCalledWith(
+        'github',
+        'some-org',
+        'user-b',
+      );
     });
 
     it('should return resolveToken that resolves token for owner', async () => {

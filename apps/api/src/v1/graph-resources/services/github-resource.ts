@@ -52,9 +52,7 @@ export class GithubResource extends BaseResource<
     const resolveEnv = async (
       ctx?: ResourceResolveContext,
     ): Promise<Record<string, string>> => {
-      const userId =
-        ctx?.configurable?.thread_created_by ??
-        ctx?.configurable?.graph_created_by;
+      const userId = ctx?.configurable?.thread_created_by;
       if (!userId) return {};
       const resolved =
         await this.gitTokenResolverService.resolveDefaultToken(userId);

@@ -151,5 +151,8 @@ export type BaseAgentConfigurable = {
   thread_created_by?: string;
   graph_project_id?: string;
   llmRequestContext?: LLMRequestContext;
+  // SECURITY: This index signature is required by LangGraph's RunnableConfig
+  // constraint. Never spread HTTP request body fields into this type — always
+  // construct the configurable explicitly with server-side values only.
   [key: string]: unknown;
 };

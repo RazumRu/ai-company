@@ -71,7 +71,7 @@ describe('GhCloneTool', () => {
     const mockCfg: ToolRunnableConfig<BaseAgentConfigurable> = {
       configurable: {
         thread_id: 'test-thread-123',
-        graph_created_by: 'user-123',
+        thread_created_by: 'user-123',
         graph_project_id: 'project-456',
       },
     };

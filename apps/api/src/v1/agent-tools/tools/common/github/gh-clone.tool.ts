@@ -247,8 +247,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
 
     // Track the cloned repository with GitHub token and detected default branch
     // Only store PAT tokens (App tokens are short-lived and should not be persisted)
-    const userId = (cfg.configurable?.thread_created_by ??
-      cfg.configurable?.graph_created_by) as string | undefined;
+    const userId = cfg.configurable?.thread_created_by as string | undefined;
     const projectId = cfg.configurable?.graph_project_id as string | undefined;
     if (userId && projectId) {
       await this.upsertGitRepository(

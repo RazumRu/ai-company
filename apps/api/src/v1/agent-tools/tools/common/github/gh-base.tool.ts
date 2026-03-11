@@ -41,9 +41,7 @@ export abstract class GhBaseTool<
     cfg?: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<string> {
     if (owner && config.resolveTokenForOwner) {
-      const userId =
-        cfg?.configurable?.thread_created_by ??
-        cfg?.configurable?.graph_created_by;
+      const userId = cfg?.configurable?.thread_created_by;
       const token = await config.resolveTokenForOwner(owner, userId);
       if (token) return token;
     }
