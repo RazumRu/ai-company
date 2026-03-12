@@ -31,7 +31,7 @@ export const GhCreatePullRequestToolSchema = GhBaseToolSchema.extend({
     .string()
     .min(1)
     .describe(
-      "The source branch containing your changes. For same-repo PRs, use the branch name (e.g., 'feat/add-auth'). For cross-fork PRs, use 'owner:branch' format.",
+      "The source branch containing your changes (e.g., 'feat/add-auth'). For cross-fork PRs, use 'forkOwner:branch' format. Same-repo branches are automatically qualified as 'owner:branch' by the tool.",
     ),
   base: z
     .string()
@@ -339,11 +339,18 @@ export class GhCreatePullRequestTool extends GhBaseTool<
     client: ReturnType<GhCreatePullRequestTool['createClient']>,
     args: GhCreatePullRequestToolSchemaType,
   ): Promise<CreatedPullRequest> {
+    // Qualify head as "owner:branch" for same-repo PRs. GitHub resolves the
+    // qualified form immediately after a push, while the unqualified form may
+    // return 422 if the branch indexing hasn't completed yet.
+    const qualifiedHead = args.head.includes(':')
+      ? args.head
+      : `${args.owner}:${args.head}`;
+
     const res = await client.pulls.create({
       owner: args.owner,
       repo: args.repo,
       title: args.title,
-      head: args.head,
+      head: qualifiedHead,
       base: args.base,
       body: this.buildPullRequestBody(args) ?? undefined,
       draft: args.draft ?? undefined,
@@ -486,7 +493,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
       ### Inputs
       - \`owner\`, \`repo\`: Repository coordinates
       - \`title\`: PR title (required)
-      - \`head\`: Source branch (required). Same repo: \`branch-name\`; Fork: \`forkOwner:branch-name\`.
+      - \`head\`: Source branch (required). The tool auto-qualifies same-repo branches as \`owner:branch\`. For cross-fork PRs, use \`forkOwner:branch-name\`.
       - \`base\`: Target branch (required)
 
       ### Examples

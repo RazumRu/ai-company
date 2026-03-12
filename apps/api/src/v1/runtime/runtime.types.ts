@@ -36,6 +36,13 @@ export interface RuntimeExecParams {
    */
   sessionId?: string;
   timeoutMs?: number;
+  /**
+   * Maximum time (ms) to wait without any new stdout/stderr output before
+   * treating the command as stuck. Overrides the runtime's default idle
+   * timeout (typically 60 s). Useful for commands like `npm install` that
+   * can be silent for extended periods while downloading.
+   */
+  idleTimeoutMs?: number;
   tailTimeoutMs?: number;
   metadata?: GraphExecutionMetadata;
 }

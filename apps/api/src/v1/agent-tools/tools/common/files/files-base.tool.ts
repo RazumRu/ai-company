@@ -42,6 +42,7 @@ export abstract class FilesBaseTool<
     params: {
       cmd: string[] | string;
       timeoutMs?: number;
+      idleTimeoutMs?: number;
       tailTimeoutMs?: number;
     },
     config: FilesBaseToolConfig,
@@ -60,6 +61,7 @@ export abstract class FilesBaseTool<
         {
           cmd: cmdWrapped,
           timeoutMs: params.timeoutMs ?? 30_000,
+          idleTimeoutMs: params.idleTimeoutMs,
           tailTimeoutMs: params.tailTimeoutMs ?? 30_000,
         },
         cfg,

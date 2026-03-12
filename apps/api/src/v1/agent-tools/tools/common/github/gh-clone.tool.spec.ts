@@ -323,5 +323,152 @@ describe('GhCloneTool', () => {
       expect(cloneCmd).toContain('my-cool-repo-2024');
       expect(result.output.path).toContain('my-cool-repo-2024');
     });
+
+    // fetchDefaultBranchRef: when depth is set, invoke() must call execGhCommand
+    // an additional time with `git fetch --depth 1 origin <branch>` after the clone
+    // so that git knows the remote tracking ref for subsequent operations.
+    it('should call git fetch --depth 1 origin <branch> when depth is set and default branch is detected', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        depth: 1,
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      const allCmds = execGhCommandSpy.mock.calls.map(
+        (call) => (call[0] as { cmd: string }).cmd,
+      );
+      const fetchCall = allCmds.find(
+        (cmd) =>
+          cmd.includes('fetch') &&
+          cmd.includes('--depth') &&
+          cmd.includes('origin'),
+      );
+      expect(fetchCall).toBeDefined();
+      expect(fetchCall).toContain('--depth 1');
+      expect(fetchCall).toContain('origin');
+      expect(fetchCall).toContain('main');
+    });
+
+    it('should not call git fetch --depth when depth is not set', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      const allCmds = execGhCommandSpy.mock.calls.map(
+        (call) => (call[0] as { cmd: string }).cmd,
+      );
+      const fetchDepthCall = allCmds.find(
+        (cmd) =>
+          cmd.includes('fetch') &&
+          cmd.includes('--depth') &&
+          cmd.includes('origin'),
+      );
+      expect(fetchDepthCall).toBeUndefined();
+    });
+
+    // refspec fix: when depth is set, invoke() must reset remote.origin.fetch
+    // so that subsequent `git fetch origin <branch>` calls work correctly.
+    it('should reset remote.origin.fetch refspec when depth is set', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+        depth: 1,
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      const allCmds = execGhCommandSpy.mock.calls.map(
+        (call) => (call[0] as { cmd: string }).cmd,
+      );
+      const refspecCall = allCmds.find(
+        (cmd) =>
+          cmd.includes('git') &&
+          cmd.includes('config') &&
+          cmd.includes('remote.origin.fetch'),
+      );
+      expect(refspecCall).toBeDefined();
+      expect(refspecCall).toContain('+refs/heads/*:refs/remotes/origin/*');
+    });
+
+    it('should not reset remote.origin.fetch refspec when depth is not set', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      await tool.invoke(args, mockConfig, mockCfg);
+
+      const allCmds = execGhCommandSpy.mock.calls.map(
+        (call) => (call[0] as { cmd: string }).cmd,
+      );
+      const refspecCall = allCmds.find(
+        (cmd) =>
+          cmd.includes('git') &&
+          cmd.includes('config') &&
+          cmd.includes('remote.origin.fetch'),
+      );
+      expect(refspecCall).toBeUndefined();
+    });
   });
 });

@@ -839,10 +839,16 @@ export class RepoIndexService implements OnModuleInit {
       const cloneRes = await execFn({
         cmd: `git clone --depth ${GIT_CLONE_DEPTH} ${branchFlag}${shQuote(cloneUrl)} ${shQuote(REPO_CLONE_DIR)}`,
       });
+
       if (cloneRes.exitCode !== 0) {
-        throw new Error(
-          `git clone failed: ${RepoIndexService.sanitizeUrl(cloneRes.stderr)}`,
-        );
+        const sanitizedErr = RepoIndexService.sanitizeUrl(cloneRes.stderr);
+        // Provide a clear message when the branch doesn't exist on the remote
+        if (branch && sanitizedErr.includes('not found in upstream')) {
+          throw new Error(
+            `Branch '${branch}' not found on remote. If this is a local branch, push it first (git push origin ${branch}) before using codebase search.`,
+          );
+        }
+        throw new Error(`git clone failed: ${sanitizedErr}`);
       }
 
       if (signal?.aborted) {

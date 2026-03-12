@@ -698,8 +698,8 @@ describe('DaytonaRuntime', () => {
         sessionId: 'sess-idle',
       });
 
-      // Advance past the 60s idle timeout
-      await vi.advanceTimersByTimeAsync(62_000);
+      // Advance past the 300s idle timeout
+      await vi.advanceTimersByTimeAsync(302_000);
       const result = await execPromise;
 
       expect(result.exitCode).toBe(124);
@@ -924,7 +924,7 @@ describe('DaytonaRuntime', () => {
         cmdId: 'cmd-7',
       });
 
-      // Emit output every 30s to keep the idle timer fresh (well within the 60s idle limit)
+      // Emit output every 30s to keep the idle timer fresh (well within the 300s idle limit)
       // Handle both overloads: streaming (4 args) and synchronous fetch (2 args)
       mockSandbox.process.getSessionCommandLogs.mockImplementation(
         (
@@ -966,12 +966,12 @@ describe('DaytonaRuntime', () => {
         sessionId: 'sess-output',
       });
 
-      // Advance 120s — well past the 60s idle timeout threshold.
-      // Without periodic output resetting the idle timer, this would trigger idle timeout.
+      // Advance 120s — without periodic output resetting the idle timer,
+      // this would eventually trigger idle timeout (300s).
       await vi.advanceTimersByTimeAsync(120_000);
       const result = await execPromise;
 
-      // Command completes normally — proving output kept resetting the idle timer past 60s
+      // Command completes normally — proving output kept resetting the idle timer
       expect(result.exitCode).toBe(0);
       expect(result.fail).toBe(false);
     });
@@ -992,16 +992,153 @@ describe('DaytonaRuntime', () => {
       const execPromise = runtime.exec({
         cmd: 'test',
         sessionId: 'sess-idle-vs-hard',
-        timeoutMs: 120_000,
+        timeoutMs: 600_000,
       });
 
-      // Advance 62s — idle timeout (60s) should fire before hard timeout (120s)
-      await vi.advanceTimersByTimeAsync(62_000);
+      // Advance 302s — idle timeout (300s) should fire before hard timeout (600s)
+      await vi.advanceTimersByTimeAsync(302_000);
       const result = await execPromise;
 
       expect(result.exitCode).toBe(124);
       expect(result.stderr).toContain('Idle timeout');
       expect(result.stderr).not.toContain('Hard timeout');
+    });
+
+    it('scenario 9a: returns failure immediately when command exits instantly (no idle timeout)', async () => {
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'cmd-fast-fail',
+      });
+
+      // Streaming getSessionCommandLogs hangs forever; snapshot returns empty
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+
+      // getSessionCommand returns exitCode: 127 immediately
+      mockSandbox.process.getSessionCommand.mockResolvedValue({
+        exitCode: 127,
+        id: 'cmd-fast-fail',
+        command: 'bun install',
+      });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+      const execPromise = runtime.exec({
+        cmd: 'bun install',
+        sessionId: 'sess-fast-fail',
+        idleTimeoutMs: 15_000,
+      });
+
+      // Adaptive poll starts at 200ms — the exit code should be detected quickly
+      await vi.advanceTimersByTimeAsync(500);
+      const result = await execPromise;
+
+      expect(result.exitCode).toBe(127);
+      expect(result.fail).toBe(true);
+      expect(result.stderr).not.toContain('Idle timeout');
+    });
+
+    it('scenario 9b: returns failure when stream hangs and getSessionCommand delays exitCode', async () => {
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'cmd-delayed',
+      });
+
+      // Stream hangs; snapshot returns empty
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+
+      // First 2 polls: no exitCode. Third poll: exitCode 127.
+      let pollCount = 0;
+      mockSandbox.process.getSessionCommand.mockImplementation(() => {
+        pollCount++;
+        if (pollCount <= 2) {
+          return Promise.resolve({ id: 'cmd-delayed', command: 'bun install' });
+        }
+        return Promise.resolve({
+          exitCode: 127,
+          id: 'cmd-delayed',
+          command: 'bun install',
+        });
+      });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+      const execPromise = runtime.exec({
+        cmd: 'bun install',
+        sessionId: 'sess-delayed',
+        idleTimeoutMs: 15_000,
+      });
+
+      // Adaptive backoff: 200ms + 400ms + 800ms = 1400ms for 3 polls
+      await vi.advanceTimersByTimeAsync(5000);
+      const result = await execPromise;
+
+      expect(result.exitCode).toBe(127);
+      expect(result.fail).toBe(true);
+    });
+
+    it('scenario 9c: one-shot returns failure immediately when command exits instantly', async () => {
+      // One-shot path (no sessionId)
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'oneshot-fast-fail',
+      });
+
+      // Streaming hangs; snapshot returns empty
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+
+      // getSessionCommand returns exitCode: 127 immediately
+      mockSandbox.process.getSessionCommand.mockResolvedValue({
+        exitCode: 127,
+        id: 'oneshot-fast-fail',
+        command: 'bun install',
+      });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+      const execPromise = runtime.exec({
+        cmd: 'bun install',
+        idleTimeoutMs: 15_000,
+      });
+
+      // Adaptive poll at 200ms should catch it
+      await vi.advanceTimersByTimeAsync(500);
+      const result = await execPromise;
+
+      expect(result.exitCode).toBe(127);
+      expect(result.fail).toBe(true);
+      expect(result.stderr).not.toContain('Idle timeout');
+      // One-shot session should be cleaned up
+      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
+        expect.stringMatching(/^oneshot-/),
+      );
     });
 
     it('scenario 9: fast-exit race — stream delivers stderr then getSessionCommand throws (already cleaned up)', async () => {

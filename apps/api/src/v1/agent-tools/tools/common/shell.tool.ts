@@ -51,6 +51,15 @@ export const ShellToolSchema = z.object({
     .describe(
       'Maximum time to wait in milliseconds (default: 300000 = 5 minutes)',
     ),
+  idleTimeoutMs: z
+    .number()
+    .positive()
+    .nullable()
+    .optional()
+    .describe(
+      'Maximum time to wait without any new output before treating the command as stuck, in milliseconds (default: 300000 = 5 minutes). ' +
+        'Decrease for commands that should respond quickly (e.g., status checks). Increase further only for commands that can be silent for very long periods (e.g., large model downloads).',
+    ),
   tailTimeoutMs: z
     .number()
     .positive()
@@ -220,6 +229,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     exitCode: number,
     title: string,
     model?: string,
+    durationMs?: number,
   ): Promise<ToolInvokeResult<ShellToolOutput>> {
     try {
       const { focusResult, usage } = await this.extractFocusedOutput(
@@ -237,14 +247,14 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           stderr: '',
           focusResult,
         },
-        messageMetadata: { __title: title },
+        messageMetadata: { __title: title, __durationMs: durationMs },
         toolRequestUsage: usage,
       };
     } catch {
       // Extraction failed — fall back to raw output
       return {
         output: { exitCode, stdout, stderr },
-        messageMetadata: { __title: title },
+        messageMetadata: { __title: title, __durationMs: durationMs },
       };
     }
   }
@@ -329,6 +339,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
       purpose: _purpose,
       command,
       timeoutMs,
+      idleTimeoutMs,
       tailTimeoutMs,
       outputFocus,
     } = data;
@@ -351,6 +362,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     const title = this.generateTitle(data, config);
     const miniModel = cfg.configurable?.llmRequestContext?.models?.llmMiniModel;
 
+    const execStartMs = performance.now();
     try {
       const resolvedEnv = config.resolveEnv ? await config.resolveEnv(cfg) : {};
       const mergedEnv = {
@@ -363,12 +375,15 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         {
           cmd: command,
           timeoutMs: timeoutMs ?? undefined,
+          idleTimeoutMs: idleTimeoutMs ?? undefined,
           tailTimeoutMs: tailTimeoutMs ?? undefined,
           env: mergedEnv,
         },
         cfg,
         { useSession: true },
       );
+
+      const durationMs = Math.round(performance.now() - execStartMs);
 
       let stderr = res.stderr;
 
@@ -399,6 +414,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           res.exitCode,
           title,
           miniModel,
+          durationMs,
         );
       }
 
@@ -410,9 +426,12 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         },
         messageMetadata: {
           __title: title,
+          __durationMs: durationMs,
         },
       };
     } catch (error) {
+      const durationMs = Math.round(performance.now() - execStartMs);
+
       // Handle runtime errors by returning them in the expected RuntimeExecResult format
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -425,6 +444,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
           1,
           title,
           miniModel,
+          durationMs,
         );
       }
 
@@ -436,6 +456,7 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         },
         messageMetadata: {
           __title: title,
+          __durationMs: durationMs,
         },
       };
     }

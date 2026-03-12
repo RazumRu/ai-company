@@ -1050,6 +1050,113 @@ describe('ShellTool', () => {
     });
   });
 
+  describe('durationMs tracking', () => {
+    it('should include durationMs in messageMetadata on successful execution', async () => {
+      const mockExecResult = {
+        stdout: 'hello world',
+        stderr: '',
+        exitCode: 0,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { messageMetadata } = await builtTool.invoke(
+        {
+          purpose: 'Testing duration tracking',
+          command: 'echo "hello world"',
+        },
+        defaultCfg,
+      );
+
+      expect(messageMetadata?.__durationMs).toBeTypeOf('number');
+      expect(messageMetadata!.__durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should include durationMs in messageMetadata on runtime error', async () => {
+      mockRuntime.exec = vi
+        .fn()
+        .mockRejectedValue(new Error('Runtime not started'));
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { messageMetadata } = await builtTool.invoke(
+        {
+          purpose: 'Testing duration on error',
+          command: 'invalid-command',
+        },
+        defaultCfg,
+      );
+
+      expect(messageMetadata?.__durationMs).toBeTypeOf('number');
+      expect(messageMetadata!.__durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should include durationMs in messageMetadata when outputFocus is set', async () => {
+      const mockExecResult = {
+        stdout: 'PASS test1\nFAIL test2',
+        stderr: '',
+        exitCode: 1,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+      vi.mocked(mockOpenaiService.response).mockResolvedValueOnce({
+        content: 'FAIL test2',
+        conversationId: 'conv-1',
+        usage: { inputTokens: 50, outputTokens: 10, totalTokens: 60 },
+      });
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { messageMetadata } = await builtTool.invoke(
+        {
+          purpose: 'Run tests',
+          command: 'npm test',
+          outputFocus: 'only failing tests',
+        },
+        defaultCfg,
+      );
+
+      expect(messageMetadata?.__durationMs).toBeTypeOf('number');
+      expect(messageMetadata!.__durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should include durationMs in messageMetadata on timeout (exitCode 124)', async () => {
+      const mockExecResult = {
+        stdout: '',
+        stderr: '',
+        exitCode: 124,
+        timeout: 5000,
+      };
+      mockRuntime.exec = vi.fn().mockResolvedValue(mockExecResult);
+
+      const config: ShellToolOptions = {
+        runtimeProvider: mockRuntimeThreadProvider,
+      };
+      const builtTool = tool.build(config);
+
+      const { messageMetadata } = await builtTool.invoke(
+        {
+          purpose: 'Testing timeout duration',
+          command: 'sleep 999',
+          timeoutMs: 5000,
+        },
+        defaultCfg,
+      );
+
+      expect(messageMetadata?.__durationMs).toBeTypeOf('number');
+      expect(messageMetadata!.__durationMs).toBeGreaterThanOrEqual(0);
+    });
+  });
+
   describe('output env defaults', () => {
     it('should not add default env variables (now set in Dockerfile)', async () => {
       const mockExecResult = {

@@ -94,7 +94,7 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       Setting up new project to work on, getting repo code, starting work on specific branch.
 
       ### When NOT to Use
-      Repo already cloned → navigate to existing. Just viewing file → use GitHub API/web. Special credentials needed → configure first.
+      Repo already cloned in this conversation → navigate to existing path and pull latest changes. Just viewing file → use GitHub API/web. Special credentials needed → configure first.
 
       ### Examples
       **1. Shallow clone (large repos):**
@@ -126,6 +126,14 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       - **Forbidden patterns** — respect all "never do X" and "always do Y" rules.
       - **Testing conventions** — follow the repo's testing approach (specific test runners, file targeting rules, etc.).
       - When delegating to subagents, include the relevant instruction sections so subagents follow the same rules.
+
+      ### Re-using a Previously Cloned Repository
+      If you have already cloned this repository earlier in the current conversation, **do not clone it again**. Instead:
+      1. Navigate to the existing clone path (the \`path\` returned by your earlier \`gh_clone\` call)
+      2. Pull the latest changes: \`cd <path> && git fetch origin && git checkout <branch> && git pull origin <branch>\`
+      3. Continue working from the existing clone
+
+      Only re-clone if the previous clone path is no longer accessible (e.g., the runtime was recreated).
 
       Run files_find_paths to explore structure. Use shell for git commands.
     `;
@@ -223,8 +231,13 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     );
 
     if (res.exitCode !== 0 && resolvedToken) {
+      const cleanStderrForLog = (res.stderr || '')
+        .split('\n')
+        .filter((line) => !line.includes('[clone-heartbeat]'))
+        .join('\n')
+        .trim();
       this.logger.warn(
-        `Authenticated clone failed for ${args.owner}/${args.repo}, retrying anonymously: ${res.stderr || res.stdout || 'unknown error'}`,
+        `Authenticated clone failed for ${args.owner}/${args.repo}, retrying anonymously: ${cleanStderrForLog || res.stdout || 'unknown error'}`,
       );
 
       res = await this.execGhCommand(
@@ -239,9 +252,14 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     }
 
     if (res.exitCode !== 0) {
+      const cleanStderr = (res.stderr || '')
+        .split('\n')
+        .filter((line) => !line.includes('[clone-heartbeat]'))
+        .join('\n')
+        .trim();
       return {
         output: {
-          error: res.stderr || res.stdout || 'Failed to clone repository',
+          error: cleanStderr || res.stdout || 'Failed to clone repository',
         },
         messageMetadata,
       };
@@ -252,12 +270,49 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       ? args.workdir
       : path.join(BASE_RUNTIME_WORKDIR, this.sanitizeRepoName(args.repo));
 
+    // Fix refspec for shallow clones: --depth restricts fetch to only the
+    // cloned branch. Reset to allow fetching any branch.
+    if (args.depth) {
+      await this.execGhCommand(
+        {
+          cmd: `git -C ${shQuote(clonePath)} config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'`,
+          resolvedToken: null,
+        },
+        config,
+        cfg,
+      );
+    }
+
     // Detect the default branch from the freshly cloned repo
     const detectedDefaultBranch = await this.detectDefaultBranch(
       clonePath,
       config,
       cfg,
     );
+
+    // When a shallow clone was used, fetch the default branch ref so the
+    // reviewer agent can run `git diff origin/<defaultBranch>...HEAD`.
+    if (args.depth && detectedDefaultBranch) {
+      try {
+        const fetchRes = await this.execGhCommand(
+          {
+            cmd: `git -C ${shQuote(clonePath)} fetch --depth 1 origin ${shQuote(detectedDefaultBranch)}`,
+            resolvedToken,
+          },
+          config,
+          cfg,
+        );
+        if (fetchRes.exitCode !== 0) {
+          this.logger.warn(
+            `Failed to fetch default branch ref "${detectedDefaultBranch}": ${fetchRes.stderr || fetchRes.stdout}`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to fetch default branch ref: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
 
     // Track the cloned repository with GitHub token and detected default branch
     // Only store PAT tokens (App tokens are short-lived and should not be persisted)

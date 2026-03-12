@@ -21,6 +21,8 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
   __createdAt?: string;
   __model?: string;
   __title?: string;
+  /** Shell command execution duration in milliseconds. Set by ShellTool on the ToolMessage. */
+  __durationMs?: number;
   /**
    * When present on an AI message, indicates this message was generated in response
    * to one or more preceding tool results (tool roundtrip).
