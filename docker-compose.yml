@@ -134,6 +134,12 @@ services:
     networks:
       - daytona
       - geniro-infra
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3986/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,6 +164,7 @@ services:
       - OIDC_AUDIENCE=account
       - OIDC_CLIENT_ID=geniro
       # App config
+      - ENVIRONMENT=development
       - RUN_MIGRATIONS=true
       - NODE_ENV=development
       - DASHBOARD_URL=http://localhost:3986
@@ -222,6 +229,12 @@ services:
       - SANDBOX_START_TIMEOUT_SEC=120
       - RESOURCE_LIMITS_DISABLED=true
     entrypoint: ["/bin/sh", "/opt/entrypoint-wrapper.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     ports:
       - "8080:8080"
     volumes:

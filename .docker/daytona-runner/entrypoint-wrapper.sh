@@ -21,6 +21,10 @@ REAL_SOCK="/var/run/docker-real.sock"
 PROXY_SOCK="/var/run/docker.sock"
 PROXY_BIN="/opt/docker-socket-proxy"
 
+# 0. Clean up stale state from previous runs (prevents "process with PID X is still running" on restart)
+rm -f /var/run/docker.pid
+rm -f /var/run/docker.sock /var/run/docker-real.sock
+
 # 1. Start Docker daemon with Unix socket ONLY (no TCP, no TLS)
 #    Suppress TLS cert generation by clearing DOCKER_TLS_CERTDIR
 export DOCKER_TLS_CERTDIR=

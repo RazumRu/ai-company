@@ -209,5 +209,119 @@ describe('GhCloneTool', () => {
       expect(secondCallParams.cmd).toContain('[clone-heartbeat]');
       expect(secondCallParams.resolvedToken).toBeNull();
     });
+
+    it('should sanitize dots in repo name to hyphens in default clone path', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'fluxnow',
+        repo: 'fluxnow.dev',
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      const cloneCmd = (execGhCommandSpy.mock.calls[0]![0] as { cmd: string })
+        .cmd;
+      expect(cloneCmd).toContain('/runtime-workspace/fluxnow-dev');
+      expect(cloneCmd).not.toContain('/runtime-workspace/fluxnow.dev');
+      expect(result.output.path).toBe('/runtime-workspace/fluxnow-dev');
+    });
+
+    it('should use explicit workdir as-is without sanitization', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'fluxnow',
+        repo: 'fluxnow.dev',
+        workdir: '/runtime-workspace/my-custom-path',
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      const cloneCmd = (execGhCommandSpy.mock.calls[0]![0] as { cmd: string })
+        .cmd;
+      expect(cloneCmd).toContain('/runtime-workspace/my-custom-path');
+      expect(result.output.path).toBe('/runtime-workspace/my-custom-path');
+    });
+
+    it('should always include explicit destination in clone command for plain repo name', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'octocat',
+        repo: 'Hello-World',
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      const cloneCmd = (execGhCommandSpy.mock.calls[0]![0] as { cmd: string })
+        .cmd;
+      expect(cloneCmd).toContain('/runtime-workspace/Hello-World');
+      expect(result.output.path).toBe('/runtime-workspace/Hello-World');
+    });
+
+    it('should sanitize repo name with multiple special chars', async () => {
+      const args: GhCloneToolSchemaType = {
+        owner: 'org',
+        repo: 'my.cool+repo@2024',
+      };
+
+      vi.spyOn(tool as any, 'detectDefaultBranch').mockResolvedValue('main');
+      vi.spyOn(tool as any, 'findAgentInstructions').mockResolvedValue(
+        undefined,
+      );
+
+      const execGhCommandSpy = vi
+        .spyOn(tool as any, 'execGhCommand')
+        .mockResolvedValue({
+          exitCode: 0,
+          stdout: '',
+          stderr: '',
+          execPath: '/runtime-workspace/test-thread-123',
+        });
+
+      const result = await tool.invoke(args, mockConfig, mockCfg);
+
+      const cloneCmd = (execGhCommandSpy.mock.calls[0]![0] as { cmd: string })
+        .cmd;
+      expect(cloneCmd).toContain('my-cool-repo-2024');
+      expect(result.output.path).toContain('my-cool-repo-2024');
+    });
   });
 });

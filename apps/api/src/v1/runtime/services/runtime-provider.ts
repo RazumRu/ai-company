@@ -140,7 +140,7 @@ export class RuntimeProvider {
 
         if (configChanged) {
           await this.stopRuntime(existing);
-          await this.runtimeInstanceDao.deleteById(existing.id);
+          await this.runtimeInstanceDao.hardDeleteById(existing.id);
         } else {
           await this.runtimeInstanceDao.updateById(existing.id, {
             lastUsedAt: new Date(),

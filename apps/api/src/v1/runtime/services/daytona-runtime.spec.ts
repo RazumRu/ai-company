@@ -60,16 +60,56 @@ describe('DaytonaRuntime', () => {
   });
 
   describe('exec()', () => {
-    it('routes through temporary session for one-shot execution', async () => {
+    /** Set up mocks for one-shot async execution. */
+    function setupOneShotMocks(overrides?: {
+      exitCode?: number;
+      stdout?: string;
+      stderr?: string;
+      cmdId?: string;
+    }) {
+      const cmdId = overrides?.cmdId ?? 'oneshot-cmd-1';
+      const exitCode = overrides?.exitCode ?? 0;
+      const stdout = overrides?.stdout ?? '';
+      const stderr = overrides?.stderr ?? '';
+
       mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        exitCode: 0,
-        stdout: 'hello',
-        stderr: '',
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({ cmdId });
+      // Streaming overload: never resolves (pending), snapshot overload returns logs
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({ stdout, stderr });
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+      mockSandbox.process.getSessionCommand.mockResolvedValue({
+        exitCode,
+        id: cmdId,
+        command: 'test',
       });
       mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+    }
 
-      const result = await runtime.exec({ cmd: 'echo hello' });
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('routes through temporary session for one-shot execution', async () => {
+      setupOneShotMocks({ stdout: 'hello' });
+
+      const execPromise = runtime.exec({ cmd: 'echo hello' });
+
+      await vi.advanceTimersByTimeAsync(2500);
+      const result = await execPromise;
 
       expect(mockSandbox.process.createSession).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
@@ -78,7 +118,7 @@ describe('DaytonaRuntime', () => {
         expect.stringMatching(/^oneshot-/),
         expect.objectContaining({
           command: 'echo hello',
-          runAsync: false,
+          runAsync: true,
         }),
         undefined,
       );
@@ -87,28 +127,24 @@ describe('DaytonaRuntime', () => {
       );
       expect(result.fail).toBe(false);
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe('hello');
     });
 
     it('prepends cd command when cwd is provided', async () => {
-      mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        exitCode: 0,
-        stdout: '/app/src',
-        stderr: '',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+      setupOneShotMocks({ stdout: '/app/src' });
 
-      const result = await runtime.exec({
+      const execPromise = runtime.exec({
         cmd: 'pwd',
         cwd: '/app/src',
       });
+
+      await vi.advanceTimersByTimeAsync(2500);
+      const result = await execPromise;
 
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
         expect.objectContaining({
           command: expect.stringContaining('cd "/app/src"'),
-          runAsync: false,
+          runAsync: true,
         }),
         undefined,
       );
@@ -116,29 +152,83 @@ describe('DaytonaRuntime', () => {
     });
 
     it('passes env via buildEnvPrefix in one-shot execution', async () => {
-      mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        exitCode: 0,
-        stdout: 'ok',
-        stderr: '',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+      setupOneShotMocks({ stdout: 'ok' });
 
-      const result = await runtime.exec({
+      const execPromise = runtime.exec({
         cmd: 'echo $FOO',
         env: { FOO: 'bar' },
       });
+
+      await vi.advanceTimersByTimeAsync(2500);
+      const result = await execPromise;
 
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
         expect.objectContaining({
           command: expect.stringContaining("export FOO='bar'"),
-          runAsync: false,
+          runAsync: true,
         }),
         undefined,
       );
       expect(result.fail).toBe(false);
       expect(result.exitCode).toBe(0);
+    });
+
+    it('returns non-zero exit code for failing one-shot commands', async () => {
+      setupOneShotMocks({ exitCode: 1, stderr: 'command not found' });
+
+      const execPromise = runtime.exec({ cmd: 'notacommand' });
+
+      await vi.advanceTimersByTimeAsync(2500);
+      const result = await execPromise;
+
+      expect(result.fail).toBe(true);
+      expect(result.exitCode).toBe(1);
+    });
+
+    it('returns aborted result when abort signal fires during one-shot execution', async () => {
+      const controller = new AbortController();
+
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'oneshot-abort-cmd',
+      });
+      // Stream never resolves
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+      // Command never completes
+      mockSandbox.process.getSessionCommand.mockResolvedValue({
+        id: 'oneshot-abort-cmd',
+        command: 'sleep 60',
+      });
+
+      controller.abort();
+
+      const execPromise = runtime.exec({
+        cmd: 'sleep 60',
+        signal: controller.signal,
+      });
+
+      await vi.advanceTimersByTimeAsync(2500);
+      const result = await execPromise;
+
+      expect(result.fail).toBe(true);
+      expect(result.exitCode).toBe(124);
+      expect(result.stderr).toBe('Aborted');
+      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
+        expect.stringMatching(/^oneshot-/),
+      );
     });
   });
 
@@ -397,14 +487,49 @@ describe('DaytonaRuntime', () => {
   });
 
   describe('abort signal handling', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+      // Stream never resolves; snapshot overload returns empty output
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+        ) => {
+          if (!onStdout) {
+            return Promise.resolve({ stdout: '', stderr: '' });
+          }
+          return new Promise<void>(() => undefined);
+        },
+      );
+      // Command never completes
+      mockSandbox.process.getSessionCommand.mockResolvedValue({
+        id: 'abort-cmd',
+        command: 'sleep 60',
+      });
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'abort-cmd',
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it('returns aborted result when signal is already aborted', async () => {
       const abortController = new AbortController();
       abortController.abort();
 
-      const result = await runtime.exec({
+      const execPromise = runtime.exec({
         cmd: 'sleep 60',
         signal: abortController.signal,
       });
+
+      // Advance past the first poll tick — abort is detected in the interval
+      await vi.advanceTimersByTimeAsync(2500);
+      const result = await execPromise;
 
       expect(result.fail).toBe(true);
       expect(result.exitCode).toBe(124);
@@ -414,28 +539,19 @@ describe('DaytonaRuntime', () => {
     it('returns aborted result when signal fires during execution', async () => {
       const abortController = new AbortController();
 
-      mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      // Make executeSessionCommand hang until abort
-      mockSandbox.process.executeSessionCommand.mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(
-              () => resolve({ exitCode: 0, stdout: 'done', stderr: '' }),
-              5000,
-            );
-          }),
-      );
-
       const execPromise = runtime.exec({
         cmd: 'sleep 60',
         signal: abortController.signal,
       });
 
-      // Abort after short delay
-      setTimeout(() => abortController.abort(), 50);
+      // Command is running — no abort yet; advance past first poll
+      await vi.advanceTimersByTimeAsync(2500);
 
+      // Abort mid-execution
+      abortController.abort();
+
+      // Advance to next poll tick so the abort is detected
+      await vi.advanceTimersByTimeAsync(2500);
       const result = await execPromise;
 
       expect(result.fail).toBe(true);

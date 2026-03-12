@@ -137,27 +137,14 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
         - Or: use full absolute paths in all commands
 
       ### Common Mistake
-      ❌ \`npm install\` right after clone (still in ${BASE_RUNTIME_WORKDIR} - will fail!)
-      ✅ \`cd ${BASE_RUNTIME_WORKDIR}/my-repo && npm install\`
-      ✅ Or: run \`cd ${BASE_RUNTIME_WORKDIR}/my-repo\` first, then \`npm install\` in next command
+      ❌ Running build/test commands right after clone without \`cd\`-ing into the repo first
+      ✅ \`cd <clone-path>\` once after cloning, then run commands normally
 
       ### Session Persistence
-      - \`cd\` changes persist between shell calls within the same thread
-      - No need to repeat \`cd\` if already in correct directory
-      - Environment variables also persist
-      - **Track your current directory** — if a command fails with "No package.json found" or "ENOENT", you are likely in the wrong directory. Verify by running \`pwd\` before retrying.
-
-      **Example:**
-      \`\`\`bash
-      # First command: change directory
-      cd ${BASE_RUNTIME_WORKDIR}/myproject
-
-      # Second command: you're ALREADY in ${BASE_RUNTIME_WORKDIR}/myproject
-      npm install  # NO need for "cd && npm install"
-
-      # Third command: still in the same directory
-      npm test  # Still in ${BASE_RUNTIME_WORKDIR}/myproject
-      \`\`\`
+      - \`cd\` changes persist between shell calls within the same thread session
+      - Environment variables set with \`export\` also persist across calls
+      - After cloning a repository, \`cd\` into it once — you do NOT need to repeat \`cd <path> &&\` on every subsequent command
+      - **If any command fails with "No such file or directory", "ENOENT", or "No package.json found"**, run \`pwd\` to verify your working directory and \`cd\` again if needed
 
       ### Monorepo Commands — Root vs. Workspace
       In monorepo projects, some commands must run from the **repository root** (e.g., turbo scripts, workspace-level build/lint), while others run from a **specific workspace** directory. If a command fails with "No package.json found" errors, verify you are in the correct directory:

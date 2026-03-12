@@ -60,9 +60,16 @@ export type ToolInvokeResult<TResult> = {
   messageMetadata?: MessageAdditionalKwargs;
   /**
    * Optional tool-owned state update persisted into agent state by ToolExecutorNode.
-   * This is stored under `state.toolsMetadata[tool.name]`.
+   * Stored under `state.toolsMetadata[stateChangeKey ?? tool.name]`.
    */
   stateChange?: unknown;
+  /**
+   * Key under which to store stateChange in toolsMetadata.
+   * Defaults to the tool name. Use this when a tool needs to update
+   * another tool's metadata slot (e.g. communication_exec propagating
+   * the sub-agent's finish state).
+   */
+  stateChangeKey?: string;
   /**
    * Optional extra messages to append to the agent state.
    * These will be persisted alongside tool result messages.

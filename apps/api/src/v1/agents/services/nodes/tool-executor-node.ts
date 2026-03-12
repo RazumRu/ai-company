@@ -199,6 +199,7 @@ export class ToolExecutorNode extends BaseNode<
             output,
             messageMetadata,
             stateChange,
+            stateChangeKey,
             toolRequestUsage,
             additionalMessages: toolAdditionalMessages,
           } = toolInvokeResult;
@@ -219,6 +220,7 @@ export class ToolExecutorNode extends BaseNode<
               toolName: tc.name,
               toolMessage: makeMsg(`${trimmed}${suffix}`, messageMetadata),
               stateChange,
+              stateChangeKey,
               toolRequestUsage,
               additionalMessages:
                 additionalMessages.length > 0 ? additionalMessages : undefined,
@@ -229,6 +231,7 @@ export class ToolExecutorNode extends BaseNode<
             toolName: tc.name,
             toolMessage: makeMsg(content, messageMetadata),
             stateChange,
+            stateChangeKey,
             toolRequestUsage,
             additionalMessages:
               additionalMessages.length > 0 ? additionalMessages : undefined,
@@ -311,7 +314,8 @@ export class ToolExecutorNode extends BaseNode<
     const toolsMetadataUpdate = results.reduce(
       (acc, r) => {
         if (r.stateChange !== undefined) {
-          acc[r.toolName] = r.stateChange as Record<string, unknown>;
+          const key = r.stateChangeKey || r.toolName;
+          acc[key] = r.stateChange as Record<string, unknown>;
         }
         return acc;
       },

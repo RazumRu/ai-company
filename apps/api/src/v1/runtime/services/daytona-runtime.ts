@@ -603,9 +603,12 @@ export class DaytonaRuntime extends BaseRuntime {
 
   /**
    * Execute a command in a temporary Daytona session (one-shot).
-   * Creates an ephemeral session, runs the command synchronously
-   * (`runAsync: false`), and deletes the session afterwards.
-   * Unlike `executeCommand`, this gives proper stdout/stderr separation.
+   * Creates an ephemeral session, runs the command asynchronously
+   * (`runAsync: true`), polls for completion, and deletes the session afterwards.
+   *
+   * Using `runAsync: true` is required for long-running commands (e.g. git clone):
+   * `runAsync: false` blocks the HTTP connection for the entire command duration,
+   * which causes a timeout on Daytona's toolbox HTTP server before the command finishes.
    */
   private async execOneShot(
     params: RuntimeExecParams,
@@ -620,41 +623,208 @@ export class DaytonaRuntime extends BaseRuntime {
     try {
       await this.sandbox!.process.createSession(tempSessionId);
 
-      // Build env prefix for inline env injection
       const envPrefix = buildEnvPrefix(params.env);
       const script = `${envPrefix}${cmdString || ':'}`;
 
-      const execPromise = this.sandbox!.process.executeSessionCommand(
+      // Use runAsync: true — runAsync: false blocks the HTTP connection for the
+      // entire command duration, causing timeouts on long-running commands (e.g. git clone).
+      const { cmdId } = await this.sandbox!.process.executeSessionCommand(
         tempSessionId,
-        { command: script, runAsync: false },
+        { command: script, runAsync: true },
         timeoutSeconds || undefined,
       );
 
-      const response = await this.raceWithAbort(execPromise, params.signal);
+      const hardMs = Math.min(
+        params.timeoutMs ?? HARD_TIMEOUT_MS,
+        HARD_TIMEOUT_MS,
+      );
+      const startAt = Date.now();
+      // Initialise to now so commands that produce no early output (e.g. git clone)
+      // don't trigger the idle timeout before they have a chance to run.
+      let lastOutputAt = Date.now();
+      let stdout = '';
+      let stderr = '';
+      let observedStdoutLength = 0;
+      let observedStderrLength = 0;
+      let streamActive = true;
+      let pollInFlight = false;
 
-      if (response === 'aborted') {
-        return {
-          exitCode: 124,
-          stdout: '',
-          stderr: 'Aborted',
-          fail: true,
-          execPath: fullWorkdir,
+      // IMPORTANT: must use `await` here, NOT `return new Promise(...)`.
+      // If we `return` the Promise from inside a try/finally, the `finally`
+      // block fires as soon as the Promise object is constructed — before it
+      // resolves. That deletes the session while the command is still running,
+      // causing the polling loop to get 404s and infer exitCode=0 (false success).
+      // Using `await` ensures the `finally` block only runs after the Promise resolves.
+      const result = await new Promise<RuntimeExecResult>((resolve) => {
+        let settled = false;
+
+        const syncLogs = async () => {
+          try {
+            const logs = (await this.sandbox!.process.getSessionCommandLogs(
+              tempSessionId,
+              cmdId,
+            )) as { stdout?: string; stderr?: string };
+            const nextStdout = logs.stdout ?? '';
+            const nextStderr = logs.stderr ?? '';
+            const stdoutGrew = nextStdout.length > observedStdoutLength;
+            const stderrGrew = nextStderr.length > observedStderrLength;
+            if (stdoutGrew) {
+              stdout = nextStdout;
+              observedStdoutLength = nextStdout.length;
+            }
+            if (stderrGrew) {
+              stderr = nextStderr;
+              observedStderrLength = nextStderr.length;
+            }
+            if (stdoutGrew || stderrGrew) {
+              lastOutputAt = Date.now();
+            }
+          } catch {
+            // Best-effort
+          }
         };
-      }
 
-      const exitCode = response.exitCode ?? 0;
-      const stdout = response.stdout ?? response.output ?? '';
-      const stderr = response.stderr ?? '';
+        const settle = (result: RuntimeExecResult) => {
+          if (settled) return;
+          settled = true;
+          streamActive = false;
+          clearInterval(check);
+          resolve(result);
+        };
 
-      return {
-        exitCode,
-        stdout,
-        stderr,
-        fail: exitCode !== 0,
-        execPath: fullWorkdir,
-      };
+        void this.sandbox!.process.getSessionCommandLogs(
+          tempSessionId,
+          cmdId,
+          (chunk: string) => {
+            if (!streamActive) return;
+            stdout += chunk;
+            observedStdoutLength = stdout.length;
+            lastOutputAt = Date.now();
+          },
+          (chunk: string) => {
+            if (!streamActive) return;
+            stderr += chunk;
+            observedStderrLength = stderr.length;
+            lastOutputAt = Date.now();
+          },
+        )
+          .then(async () => {
+            if (settled) return;
+            try {
+              const cmd = await this.sandbox!.process.getSessionCommand(
+                tempSessionId,
+                cmdId,
+              );
+              if (typeof cmd.exitCode === 'number') {
+                await syncLogs();
+                settle({
+                  exitCode: cmd.exitCode,
+                  stdout,
+                  stderr,
+                  fail: cmd.exitCode !== 0,
+                  execPath: fullWorkdir,
+                });
+                return;
+              }
+            } catch {
+              // cmdId already cleaned up by Daytona
+            }
+            const exitCode = stderr.length > 0 ? 1 : 0;
+            settle({
+              exitCode,
+              stdout,
+              stderr,
+              fail: exitCode !== 0,
+              execPath: fullWorkdir,
+            });
+          })
+          .catch(() => {
+            // Stream error — polling will handle settlement
+          });
+
+        const check = setInterval(() => {
+          if (pollInFlight || settled) return;
+          pollInFlight = true;
+
+          void (async () => {
+            try {
+              if (params.signal?.aborted) {
+                settle({
+                  exitCode: 124,
+                  stdout,
+                  stderr: 'Aborted',
+                  fail: true,
+                  execPath: fullWorkdir,
+                });
+                return;
+              }
+
+              await syncLogs();
+              const now = Date.now();
+
+              if (now - lastOutputAt >= IDLE_TIMEOUT_MS) {
+                settle({
+                  exitCode: 124,
+                  stdout,
+                  stderr: `Idle timeout: no output for ${IDLE_TIMEOUT_MS / 1000}s`,
+                  fail: true,
+                  execPath: fullWorkdir,
+                });
+                return;
+              }
+
+              if (now - startAt >= hardMs) {
+                settle({
+                  exitCode: 124,
+                  stdout,
+                  stderr: `Hard timeout: command exceeded ${hardMs / 1000}s`,
+                  fail: true,
+                  execPath: fullWorkdir,
+                });
+                return;
+              }
+
+              let cmd: { exitCode?: number } | undefined;
+              try {
+                cmd = await this.sandbox!.process.getSessionCommand(
+                  tempSessionId,
+                  cmdId,
+                );
+              } catch {
+                // getSessionCommand failed — cmdId no longer retrievable (fast exit / Daytona cleanup)
+                await syncLogs();
+                const exitCode = stderr.length > 0 ? 1 : 0;
+                settle({
+                  exitCode,
+                  stdout,
+                  stderr,
+                  fail: exitCode !== 0,
+                  execPath: fullWorkdir,
+                });
+                return;
+              }
+
+              if (cmd && typeof cmd.exitCode === 'number') {
+                clearInterval(check);
+                streamActive = false;
+                await syncLogs();
+                settle({
+                  exitCode: cmd.exitCode,
+                  stdout,
+                  stderr,
+                  fail: cmd.exitCode !== 0,
+                  execPath: fullWorkdir,
+                });
+              }
+            } finally {
+              pollInFlight = false;
+            }
+          })();
+        }, 2000);
+      });
+
+      return result;
     } finally {
-      // Always clean up the temporary session
       try {
         await this.sandbox!.process.deleteSession(tempSessionId);
       } catch {
@@ -740,34 +910,6 @@ export class DaytonaRuntime extends BaseRuntime {
         }`,
       );
     }
-  }
-
-  private async raceWithAbort<T>(
-    promise: Promise<T>,
-    signal?: AbortSignal,
-  ): Promise<T | 'aborted'> {
-    if (!signal) {
-      return promise;
-    }
-
-    if (signal.aborted) {
-      return 'aborted';
-    }
-
-    return new Promise<T | 'aborted'>((resolve, reject) => {
-      const onAbort = () => resolve('aborted');
-      signal.addEventListener('abort', onAbort, { once: true });
-
-      promise
-        .then((value) => {
-          signal.removeEventListener('abort', onAbort);
-          resolve(value);
-        })
-        .catch((error) => {
-          signal.removeEventListener('abort', onAbort);
-          reject(error);
-        });
-    });
   }
 
   public override async execStream(

@@ -113,7 +113,13 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       \`\`\`
 
       ### After Cloning
-      Use returned path for all operations. **If agent instructions are returned, you MUST read them carefully and strictly follow all rules, conventions, and workflows they define for the entire duration of your work on this repository.** These instructions are authoritative — they dictate coding style, commit conventions, testing requirements, forbidden patterns, required commands, and any other project-specific rules.
+      The \`path\` field in the result is the exact absolute path where the repository was cloned. Use it for all subsequent operations.
+
+      **Working directory setup**: After cloning, \`cd\` into the cloned directory once using the shell tool. Shell sessions persist \`cd\` changes, so you do NOT need to prefix every subsequent command with \`cd <path> &&\`. Just \`cd\` once after cloning.
+
+      If any command fails with "No such file or directory" or "ENOENT", run \`pwd\` to verify your working directory and \`cd\` again if needed.
+
+      **If agent instructions are returned, you MUST read them carefully and strictly follow all rules, conventions, and workflows they define for the entire duration of your work on this repository.** These instructions are authoritative — they dictate coding style, commit conventions, testing requirements, forbidden patterns, required commands, and any other project-specific rules.
 
       **Specifically, extract and follow these from the instructions:**
       - **Build/test/lint commands** — use the exact commands specified in the instructions instead of guessing. If the instructions specify a mandatory pre-completion command (e.g., a full-check or validation script), you MUST run it before finishing.
@@ -129,6 +135,14 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
     return GhCloneToolSchema;
   }
 
+  /**
+   * Converts a repo name into a safe directory name.
+   * Replaces any character that is not alphanumeric, a hyphen, or an underscore with a hyphen.
+   */
+  private sanitizeRepoName(repo: string): string {
+    return repo.replace(/[^a-zA-Z0-9_-]/g, '-');
+  }
+
   private buildCloneInnerCommand(args: GhCloneToolSchemaType): string {
     const repoUrl = `https://github.com/${args.owner}/${args.repo}.git`;
     const cmd: string[] = ['git clone --progress'];
@@ -141,11 +155,11 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       cmd.push(`--depth ${args.depth}`);
     }
 
+    const destination =
+      args.workdir ??
+      path.join(BASE_RUNTIME_WORKDIR, this.sanitizeRepoName(args.repo));
     cmd.push(shQuote(repoUrl));
-
-    if (args.workdir) {
-      cmd.push(shQuote(args.workdir));
-    }
+    cmd.push(shQuote(destination));
 
     return cmd.join(' ');
   }
@@ -233,10 +247,10 @@ export class GhCloneTool extends GhBaseTool<GhCloneToolSchemaType> {
       };
     }
 
-    // Determine the clone path: use workdir if provided, otherwise default to execPath/repo
+    // Determine the clone path: use workdir if provided, otherwise default to BASE_RUNTIME_WORKDIR/sanitized-repo
     const clonePath = args.workdir
       ? args.workdir
-      : path.join(res.execPath || '', args.repo);
+      : path.join(BASE_RUNTIME_WORKDIR, this.sanitizeRepoName(args.repo));
 
     // Detect the default branch from the freshly cloned repo
     const detectedDefaultBranch = await this.detectDefaultBranch(
