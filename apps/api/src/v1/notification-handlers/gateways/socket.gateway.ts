@@ -204,7 +204,13 @@ export class SocketGateway
 
       return { success: true };
     } catch (err) {
-      this.logger.error(err as Error, 'Subscribe graph error');
+      if (err instanceof UnauthorizedException) {
+        this.logger.warn(
+          'Subscribe graph rejected: userId not yet set (transient reconnect race)',
+        );
+      } else {
+        this.logger.error(err as Error, 'Subscribe graph error');
+      }
       this.emitError(err as Error, client);
 
       return { success: false, error: (err as Error).message };

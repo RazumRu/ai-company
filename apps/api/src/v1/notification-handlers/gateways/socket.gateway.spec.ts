@@ -418,6 +418,10 @@ describe('SocketGateway', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('server_error', {
         message: 'Unauthorized',
       });
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Subscribe graph rejected: userId not yet set (transient reconnect race)',
+      );
+      expect(logger.error).not.toHaveBeenCalled();
     });
 
     it('should return error acknowledgment when graphId is missing', async () => {

@@ -61,6 +61,17 @@ describe('DaytonaRuntime Refactor — Live Verification', () => {
     expect(elapsed).toBeLessThan(4000);
   }, 10_000);
 
+  // 1b. Nonexistent command — must fail fast (no 5-min hang)
+  it('nonexistent command — fails fast with non-zero exit code', async () => {
+    const start = Date.now();
+    const result = await runtime.exec({ cmd: 'nonexistent_command_xyz' });
+    const elapsed = Date.now() - start;
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.fail).toBe(true);
+    expect(elapsed).toBeLessThan(2000);
+  }, 10_000);
+
   // 2. Long command
   it('long command — sleep 2 then echo', async () => {
     const result = await runtime.exec({ cmd: 'sleep 2 && echo "done"' });
@@ -80,10 +91,13 @@ describe('DaytonaRuntime Refactor — Live Verification', () => {
     expect(result.exitCode).toBe(124);
   }, 15_000);
 
-  // 4. Idle timeout
+  // 4. Idle timeout — requires sessionId to activate the streaming path
+  // (runAsync: true + awaitCommand), which is the only path that tracks
+  // output activity for idle timeout detection.
   it('idle timeout — sleep 120 with idleTimeoutMs: 2000', async () => {
     const result = await runtime.exec({
       cmd: 'sleep 120',
+      sessionId: `test-idle-${Date.now()}`,
       idleTimeoutMs: 2000,
     });
 

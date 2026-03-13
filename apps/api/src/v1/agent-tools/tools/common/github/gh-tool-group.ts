@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import dedent from 'dedent';
 
 import {
   BuiltAgentTool,
@@ -39,6 +40,39 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     private readonly ghCreatePullRequestTool: GhCreatePullRequestTool,
   ) {
     super();
+  }
+
+  public getDetailedInstructions(
+    _config: GhToolGroupConfig,
+    _lgConfig?: ExtendedLangGraphRunnableConfig,
+  ): string {
+    return dedent`
+      ## Git Workflow — Required Tool Order
+
+      Follow this exact sequence when delivering code via Git:
+
+      1. \`gh_clone\` → clone the repository
+      2. \`gh_branch\` → create and checkout a feature branch
+      3. Make changes with file tools
+      4. \`gh_commit\` → commit changes
+      5. \`gh_push\` → push the branch to remote
+      6. **Wait for \`gh_push\` result** — check that \`"success": true\`
+      7. \`gh_create_pull_request\` → open a PR (only after push succeeded)
+
+      ### ⚠️ CRITICAL — Sequential Dependency Rules
+
+      **\`gh_push\` and \`gh_create_pull_request\` must NEVER be called in the same parallel batch.**
+      These tools have a strict sequential dependency: the PR can only reference commits that exist on the remote.
+      If you call both in parallel, the PR may be created before the push completes — pointing to a branch with stale or missing commits.
+
+      **If \`gh_push\` returns \`"success": false\`:**
+      - Do NOT call \`gh_create_pull_request\`.
+      - Do NOT call \`finish\` or report the task as complete.
+      - Diagnose the push failure and attempt recovery (see \`gh_push\` instructions for details).
+      - Only after a successful push should you proceed to create a PR.
+
+      **A PR created from an unpushed branch is empty and useless** — it points to commits that don't exist on the remote. This is worse than no PR at all.
+    `;
   }
 
   protected buildToolsInternal(

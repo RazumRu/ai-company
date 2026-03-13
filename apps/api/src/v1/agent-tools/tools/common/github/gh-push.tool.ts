@@ -84,8 +84,24 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       {"path": "${BASE_RUNTIME_WORKDIR}/repo"}
       \`\`\`
 
-      ### Common Errors
-      "Pushing to the default branch is not allowed" → You are on the default branch. Create a feature branch first, then push it. "rejected - non-fast-forward" → Pull first. "Permission denied" → Check PAT token. "protected branch" → Create PR instead
+      ### Failure Handling — MANDATORY
+
+      **If this tool returns \`"success": false\`, you MUST stop and handle the error.**
+      Do NOT proceed to \`gh_create_pull_request\` or \`finish\` after a failed push.
+
+      **Non-fast-forward rejection** (\`! [rejected] ... (non-fast-forward)\`):
+      The remote branch tip is ahead of your local branch. Recovery steps:
+      1. Run via shell: \`git pull --rebase origin <branch-name>\`
+      2. Resolve any merge conflicts if they occur
+      3. Retry the push with \`gh_push\`
+
+      **Other common errors:**
+      - "Pushing to the default branch is not allowed" → Create a feature branch first, then push it.
+      - "Permission denied" / 401 / 403 → Authentication issue. Report the error — do not attempt to create a PR.
+      - "protected branch" → Create a PR instead of pushing directly.
+
+      ### ⚠️ NEVER call gh_push and gh_create_pull_request in the same parallel batch
+      These tools have a strict sequential dependency. Always wait for \`gh_push\` to return \`"success": true\` before calling \`gh_create_pull_request\`.
     `;
   }
 

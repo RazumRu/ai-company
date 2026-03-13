@@ -35,7 +35,10 @@ const IDLE_TIMEOUT_MS = 300_000;
 /** Absolute wall-clock limit; overridden by params.timeoutMs when provided. */
 const HARD_TIMEOUT_MS = 3_600_000;
 
-/** Fixed poll interval for the safety-net poller (ms). */
+/**
+ * Fixed poll interval for the safety-net poller (ms).
+ * Only used in the streaming (runAsync: true) path for idle-timeout-aware execution.
+ */
 const POLL_INTERVAL_MS = 200;
 
 /**
@@ -51,6 +54,14 @@ export class DaytonaRuntime extends BaseRuntime {
   private readonly snapshot: string;
   private readonly logger?: DaytonaRuntimeLogger;
   private readonly activeSessions = new Set<string>();
+
+  /**
+   * Per-session command queue. Daytona sessions are single-shell processes —
+   * sending two `runAsync: false` commands concurrently to the same session
+   * causes one to hang indefinitely (exit code file / response routing
+   * collision on the server side). This map serializes commands per session.
+   */
+  private readonly sessionQueue = new Map<string, Promise<unknown>>();
 
   constructor(
     config?: DaytonaRuntimeConfig,
@@ -197,6 +208,11 @@ export class DaytonaRuntime extends BaseRuntime {
     }
 
     try {
+      // Daytona overrides the image's ENTRYPOINT with its own agent process,
+      // so the image entrypoint (e.g. runtime-entrypoint.sh that starts dockerd)
+      // never runs. Detect and execute it automatically before user initScript.
+      await this.runImageEntrypoint(params?.env);
+
       if (params?.initScript) {
         await this.runInitScript(
           params.initScript,
@@ -236,6 +252,40 @@ export class DaytonaRuntime extends BaseRuntime {
     }
   }
 
+  /**
+   * If the sandbox image ships a runtime entrypoint script, execute it.
+   * Daytona replaces the image ENTRYPOINT with its own agent, so scripts
+   * like `runtime-entrypoint.sh` (which starts dockerd, etc.) never run
+   * automatically. This method detects and runs the entrypoint with a
+   * no-op argument so it initialises the environment and returns.
+   */
+  private async runImageEntrypoint(
+    env?: Record<string, string>,
+  ): Promise<void> {
+    const entrypoint = '/usr/local/bin/runtime-entrypoint.sh';
+
+    const check = await this.exec({
+      cmd: `test -x ${entrypoint} && echo exists`,
+      timeoutMs: 10_000,
+    });
+
+    if (check.fail || !check.stdout.includes('exists')) {
+      return;
+    }
+
+    const res = await this.exec({
+      cmd: `${entrypoint} true`,
+      env,
+      timeoutMs: 180_000,
+    });
+
+    if (res.fail) {
+      this.logger?.warn(
+        `[DaytonaRuntime] Image entrypoint failed (non-fatal): ${res.stderr || res.stdout}`,
+      );
+    }
+  }
+
   async stop(): Promise<void> {
     try {
       if (!this.sandbox || !this.daytona) {
@@ -267,7 +317,6 @@ export class DaytonaRuntime extends BaseRuntime {
     if (!this.sandbox) {
       throw new Error('Runtime not started');
     }
-
     const fullWorkdir = this.getWorkdir(params.cwd) || this.workdir;
     const execId = randomUUID();
 
@@ -351,6 +400,34 @@ export class DaytonaRuntime extends BaseRuntime {
     cmdString: string,
   ): Promise<RuntimeExecResult> {
     const sessionId = params.sessionId as string;
+
+    // Serialize commands on the same session. Daytona sessions are single-shell
+    // processes — concurrent `runAsync: false` calls cause one to hang forever.
+    const prev = this.sessionQueue.get(sessionId) ?? Promise.resolve();
+    const resultPromise = prev
+      .catch(() => {
+        /* ignore previous command errors — we still need to run ours */
+      })
+      .then(() => this.execInSessionInner(params, cmdString));
+
+    // Store the new tail of the queue (including this command)
+    this.sessionQueue.set(sessionId, resultPromise);
+
+    try {
+      return await resultPromise;
+    } finally {
+      // Clean up the queue entry if we're still the tail
+      if (this.sessionQueue.get(sessionId) === resultPromise) {
+        this.sessionQueue.delete(sessionId);
+      }
+    }
+  }
+
+  private async execInSessionInner(
+    params: RuntimeExecParams,
+    cmdString: string,
+  ): Promise<RuntimeExecResult> {
+    const sessionId = params.sessionId as string;
     const fullWorkdir = this.getWorkdir(params.cwd) || this.workdir;
 
     // Wait for any pending session recreation to finish before proceeding
@@ -380,19 +457,113 @@ export class DaytonaRuntime extends BaseRuntime {
       }
     }
 
-    // Build env prefix same as Docker runtime
+    // Build env prefix same as Docker runtime.
+    // Prefix with `set +eu` to reset shell options that a PREVIOUS session
+    // command may have left active. Daytona sessions are persistent shells —
+    // if a prior command ran `set -eu`, the `-e` flag causes the shell to
+    // EXIT when any subsequent command returns non-zero (e.g. `bun install`
+    // exits 127 when bun isn't installed). This kills the shell process and
+    // the Daytona toolbox's exit code polling hangs forever.
     const envPrefix = buildEnvPrefix(params.env);
-    const script = `${envPrefix}${cmdString || ':'}`;
+    const script = `set +eu 2>/dev/null; ${envPrefix}${cmdString || ':'}`;
 
-    // Launch command asynchronously so we can detect hangs
+    // When idleTimeoutMs is explicitly provided, use the streaming path
+    // (runAsync: true + awaitCommand) so we can detect "no output for N seconds".
+    // Otherwise, use the synchronous path (runAsync: false) which avoids the
+    // WebSocket deadlock for fast-exiting commands (e.g. `bun install` when
+    // bun is not installed exits 127 instantly but the WS stream never closes).
+    if (params.idleTimeoutMs !== undefined) {
+      return this.execInSessionStreaming(
+        sessionId,
+        script,
+        params,
+        fullWorkdir,
+      );
+    }
+
+    return this.execInSessionSync(sessionId, script, params, fullWorkdir);
+  }
+
+  /**
+   * Synchronous session execution using `runAsync: false`.
+   *
+   * The Daytona server blocks on the HTTP request, polls the exit code file
+   * internally every 50ms, and returns the response with exitCode + stdout +
+   * stderr when the command completes. No WebSocket involved.
+   */
+  private async execInSessionSync(
+    sessionId: string,
+    script: string,
+    params: RuntimeExecParams,
+    fullWorkdir: string,
+  ): Promise<RuntimeExecResult> {
+    const timeoutSecs = Math.ceil((params.timeoutMs ?? HARD_TIMEOUT_MS) / 1000);
+
+    // Check abort before starting
+    if (params.signal?.aborted) {
+      return {
+        exitCode: 124,
+        stdout: '',
+        stderr: 'Aborted',
+        fail: true,
+        execPath: fullWorkdir,
+      };
+    }
+
+    // Race the synchronous SDK call against an abort signal (if provided)
+    const execPromise = this.sandbox!.process.executeSessionCommand(
+      sessionId,
+      { command: script, runAsync: false },
+      timeoutSecs,
+    );
+
+    const result = await (params.signal
+      ? this.raceWithAbort(execPromise, params.signal)
+      : execPromise.then((r) => ({ aborted: false as const, response: r })));
+
+    if (result.aborted) {
+      this.sessionRecreatePromise = this.recreateSession(sessionId);
+      return {
+        exitCode: 124,
+        stdout: '',
+        stderr: 'Aborted',
+        fail: true,
+        execPath: fullWorkdir,
+      };
+    }
+
+    const { exitCode, stdout, stderr } = result.response as {
+      exitCode?: number;
+      stdout?: string;
+      stderr?: string;
+    };
+    const code = exitCode ?? (stderr ? 1 : 0);
+
+    return {
+      exitCode: code,
+      stdout: stdout ?? '',
+      stderr: stderr ?? '',
+      fail: code !== 0,
+      execPath: fullWorkdir,
+    };
+  }
+
+  /**
+   * Streaming session execution using `runAsync: true` + `awaitCommand`.
+   * Only used when `idleTimeoutMs` is explicitly provided, so idle timeout
+   * detection (based on streaming output activity) is possible.
+   */
+  private async execInSessionStreaming(
+    sessionId: string,
+    script: string,
+    params: RuntimeExecParams,
+    fullWorkdir: string,
+  ): Promise<RuntimeExecResult> {
     const { cmdId } = await this.sandbox!.process.executeSessionCommand(
       sessionId,
       { command: script, runAsync: true },
     );
 
-    // tailTimeoutMs is intentionally not used here. Daytona manages its own
-    // streaming lifecycle via getSessionCommandLogs callbacks, so tail timeouts
-    // (which apply to Docker stream inactivity) don't map onto this model.
     return this.awaitCommand({
       sessionId,
       cmdId,
@@ -408,13 +579,46 @@ export class DaytonaRuntime extends BaseRuntime {
   }
 
   /**
+   * Race an SDK promise against an AbortSignal. If the signal fires first,
+   * returns `{ aborted: true }`. Otherwise returns the SDK response.
+   * If the SDK promise rejects, the rejection propagates to the caller.
+   */
+  private raceWithAbort<T>(
+    promise: Promise<T>,
+    signal: AbortSignal,
+  ): Promise<{ aborted: true } | { aborted: false; response: T }> {
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        resolve({ aborted: true });
+      };
+
+      if (signal.aborted) {
+        resolve({ aborted: true });
+        return;
+      }
+
+      signal.addEventListener('abort', onAbort, { once: true });
+
+      promise
+        .then((response) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve({ aborted: false, response });
+        })
+        .catch((error) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        });
+    });
+  }
+
+  /**
    * Execute a command in a temporary Daytona session (one-shot).
-   * Creates an ephemeral session, runs the command asynchronously
-   * (`runAsync: true`), polls for completion, and deletes the session afterwards.
+   * Creates an ephemeral session, runs the command synchronously
+   * (`runAsync: false`), and deletes the session afterwards.
    *
-   * Using `runAsync: true` is required for long-running commands (e.g. git clone):
-   * `runAsync: false` blocks the HTTP connection for the entire command duration,
-   * which causes a timeout on Daytona's toolbox HTTP server before the command finishes.
+   * With `runAsync: false` the Daytona server blocks on the HTTP request,
+   * polls the exit code internally, and returns exitCode + stdout + stderr
+   * when the command completes. No WebSocket involved.
    */
   private async execOneShot(
     params: RuntimeExecParams,
@@ -422,9 +626,7 @@ export class DaytonaRuntime extends BaseRuntime {
     fullWorkdir: string,
   ): Promise<RuntimeExecResult> {
     const tempSessionId = `oneshot-${randomUUID()}`;
-    const timeoutSeconds = params.timeoutMs
-      ? Math.ceil(params.timeoutMs / 1000)
-      : 0;
+    const timeoutSecs = Math.ceil((params.timeoutMs ?? HARD_TIMEOUT_MS) / 1000);
 
     try {
       await this.sandbox!.process.createSession(tempSessionId);
@@ -432,28 +634,67 @@ export class DaytonaRuntime extends BaseRuntime {
       const envPrefix = buildEnvPrefix(params.env);
       const script = `${envPrefix}${cmdString || ':'}`;
 
-      // Use runAsync: true — runAsync: false blocks the HTTP connection for the
-      // entire command duration, causing timeouts on long-running commands (e.g. git clone).
-      const { cmdId } = await this.sandbox!.process.executeSessionCommand(
-        tempSessionId,
-        { command: script, runAsync: true },
-        timeoutSeconds || undefined,
-      );
+      // Check abort before starting
+      if (params.signal?.aborted) {
+        return {
+          exitCode: 124,
+          stdout: '',
+          stderr: 'Aborted',
+          fail: true,
+          execPath: fullWorkdir,
+        };
+      }
 
-      // IMPORTANT: must use `await` here, NOT `return this.awaitCommand(...)`.
-      // If we `return` the Promise from inside a try/finally, the `finally`
-      // block fires as soon as the Promise object is constructed — before it
-      // resolves. That deletes the session while the command is still running,
-      // causing the polling loop to get 404s and infer exitCode=0 (false success).
-      // Using `await` ensures the `finally` block only runs after the Promise resolves.
-      const result = await this.awaitCommand({
-        sessionId: tempSessionId,
-        cmdId,
-        params,
-        fullWorkdir,
-      });
+      let raceResult: { aborted: true } | { aborted: false; response: unknown };
+      try {
+        const execPromise = this.sandbox!.process.executeSessionCommand(
+          tempSessionId,
+          { command: script, runAsync: false },
+          timeoutSecs,
+        );
 
-      return result;
+        raceResult = params.signal
+          ? await this.raceWithAbort(execPromise, params.signal)
+          : {
+              aborted: false as const,
+              response: await execPromise,
+            };
+      } catch (error) {
+        // SDK error (timeout, network, etc.) — return as failed result
+        const msg = error instanceof Error ? error.message : String(error);
+        return {
+          exitCode: 124,
+          stdout: '',
+          stderr: msg,
+          fail: true,
+          execPath: fullWorkdir,
+        };
+      }
+
+      if (raceResult.aborted) {
+        return {
+          exitCode: 124,
+          stdout: '',
+          stderr: 'Aborted',
+          fail: true,
+          execPath: fullWorkdir,
+        };
+      }
+
+      const { exitCode, stdout, stderr } = raceResult.response as {
+        exitCode?: number;
+        stdout?: string;
+        stderr?: string;
+      };
+      const code = exitCode ?? (stderr ? 1 : 0);
+
+      return {
+        exitCode: code,
+        stdout: stdout ?? '',
+        stderr: stderr ?? '',
+        fail: code !== 0,
+        execPath: fullWorkdir,
+      };
     } finally {
       try {
         await this.sandbox!.process.deleteSession(tempSessionId);
@@ -464,8 +705,13 @@ export class DaytonaRuntime extends BaseRuntime {
   }
 
   /**
-   * Shared polling/streaming logic for awaiting a command that has already been
+   * Streaming polling logic for awaiting a command that has already been
    * submitted via `executeSessionCommand` with `runAsync: true`.
+   *
+   * Only used when idle timeout detection is needed (requires streaming output
+   * to track last-activity timestamps). Most exec calls now use the synchronous
+   * `runAsync: false` path which avoids the WebSocket deadlock for fast-exiting
+   * commands.
    *
    * Uses two completion signals racing against each other:
    * 1. **Stream** (`getSessionCommandLogs` WebSocket) — primary signal. When it
@@ -498,6 +744,7 @@ export class DaytonaRuntime extends BaseRuntime {
     return new Promise<RuntimeExecResult>((resolve) => {
       let settled = false;
       let pollInterval: ReturnType<typeof setInterval> | null = null;
+      let pollTick = 0;
 
       const fetchExitCode = async (): Promise<number> => {
         try {
@@ -558,9 +805,23 @@ export class DaytonaRuntime extends BaseRuntime {
           /* stream error on session kill — expected */
         });
 
-      // Poll: safety net for fast-exiting commands whose WebSocket close is delayed
+      // Poll: safety net for fast-exiting commands whose WebSocket close is delayed.
+      //
+      // The Daytona toolbox only sets exitCode on the Command object after the log
+      // stream WebSocket closes, but the follow=true WebSocket may never close for
+      // fast-exiting commands (e.g. exit 127 — command not found). This creates a
+      // deadlock: the WS waits for exitCode to be set, and exitCode is only set when
+      // the WS closes.
+      //
+      // The snapshot fallback breaks this deadlock: after SNAPSHOT_FALLBACK_AFTER_MS
+      // we periodically call the non-streaming log endpoint (plain HTTP GET). If it
+      // returns any output the command has already run and buffered its output, so we
+      // can merge the snapshot data into our accumulated output and settle immediately
+      // using the exit code from getSessionCommand (or infer from stderr).
       pollInterval = setInterval(() => {
         if (settled) return;
+
+        pollTick++;
 
         void (async () => {
           // Abort signal check
@@ -602,7 +863,7 @@ export class DaytonaRuntime extends BaseRuntime {
             return;
           }
 
-          // Check command status
+          // Check command status via the live command endpoint
           let cmd: { exitCode?: number } | undefined;
           try {
             cmd = await this.sandbox!.process.getSessionCommand(
@@ -630,6 +891,76 @@ export class DaytonaRuntime extends BaseRuntime {
               fail: cmd.exitCode !== 0,
               execPath: fullWorkdir,
             });
+            return;
+          }
+
+          // Snapshot fallback: if exitCode is still undefined after the grace period
+          // AND the WS stream has delivered zero output (indicating the WS is stuck
+          // open rather than still streaming), fetch the buffered log snapshot via
+          // plain HTTP GET (no streaming).
+          //
+          // When the Daytona toolbox keeps the follow=true WebSocket open indefinitely
+          // for fast-exiting commands (e.g. exit 127 — command not found), the WS
+          // delivers no data and never closes. The snapshot endpoint is a regular HTTP
+          // GET that returns buffered output immediately. Non-empty snapshot output
+          // means the command has already exited; settle using the snapshot data.
+          //
+          // The guard `stdout === '' && stderr === ''` ensures we only apply the
+          // fallback when the WS stream has not delivered any data — avoiding false
+          // positives for long-running commands that are actively streaming output.
+          // Snapshot fallback constants (inlined — only used in streaming path)
+          const SNAPSHOT_GRACE_MS = 1_000;
+          const SNAPSHOT_EVERY_N_TICKS = 10;
+
+          if (
+            !params.signal?.aborted &&
+            now - startAt >= SNAPSHOT_GRACE_MS &&
+            pollTick % SNAPSHOT_EVERY_N_TICKS === 0 &&
+            stdout === '' &&
+            stderr === ''
+          ) {
+            try {
+              const snapshot =
+                await this.sandbox!.process.getSessionCommandLogs(
+                  sessionId,
+                  cmdId,
+                );
+              const snapStdout = snapshot?.stdout ?? '';
+              const snapStderr = snapshot?.stderr ?? '';
+
+              // Non-empty snapshot means the command ran and buffered output → it exited
+              if (snapStdout || snapStderr) {
+                // Re-fetch exit code. When getSessionCommand still returns undefined
+                // (the server hasn't updated it yet), infer from the SNAPSHOT stderr
+                // rather than the WS-accumulated stderr (which may be empty because
+                // the WS was stuck open and never delivered any data).
+                let exitCode: number;
+                try {
+                  const cmd = await this.sandbox!.process.getSessionCommand(
+                    sessionId,
+                    cmdId,
+                  );
+                  exitCode =
+                    typeof cmd.exitCode === 'number'
+                      ? cmd.exitCode
+                      : snapStderr.length > 0
+                        ? 1
+                        : 0;
+                } catch {
+                  exitCode = snapStderr.length > 0 ? 1 : 0;
+                }
+                streamActive = false;
+                settle({
+                  exitCode,
+                  stdout: snapStdout,
+                  stderr: snapStderr,
+                  fail: exitCode !== 0,
+                  execPath: fullWorkdir,
+                });
+              }
+            } catch {
+              // Snapshot fetch failed — continue polling normally
+            }
           }
         })();
       }, POLL_INTERVAL_MS);

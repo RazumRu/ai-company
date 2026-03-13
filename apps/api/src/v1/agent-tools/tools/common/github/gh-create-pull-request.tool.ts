@@ -523,8 +523,14 @@ export class GhCreatePullRequestTool extends GhBaseTool<
       }
       \`\`\`
 
+      ### ⚠️ PREREQUISITE — Successful Push Required
+
+      **Only call this tool AFTER \`gh_push\` has returned \`"success": true\`.**
+      Never call \`gh_push\` and \`gh_create_pull_request\` in the same parallel tool batch.
+      If the push failed or hasn't been attempted, the PR will point to a branch with stale or missing commits — making it empty and useless.
+
       ### Troubleshooting
-      - 422 Validation Failed: typically means \`head\` or \`base\` is wrong (or the branch doesn't exist).
+      - 422 Validation Failed: typically means \`head\` or \`base\` is wrong, or the branch doesn't exist on the remote (push may have failed).
       - 401/403: check PAT scopes and repository access.
     `;
   }

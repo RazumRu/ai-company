@@ -61,56 +61,29 @@ describe('DaytonaRuntime', () => {
   });
 
   describe('exec()', () => {
-    /** Set up mocks for one-shot async execution. */
+    /** Set up mocks for one-shot synchronous execution (runAsync: false). */
     function setupOneShotMocks(overrides?: {
       exitCode?: number;
       stdout?: string;
       stderr?: string;
-      cmdId?: string;
     }) {
-      const cmdId = overrides?.cmdId ?? 'oneshot-cmd-1';
       const exitCode = overrides?.exitCode ?? 0;
       const stdout = overrides?.stdout ?? '';
       const stderr = overrides?.stderr ?? '';
 
       mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({ cmdId });
-      // Streaming overload: never resolves (pending), snapshot overload returns logs
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({ stdout, stderr });
-          }
-          return new Promise<void>(() => undefined);
-        },
-      );
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
         exitCode,
-        id: cmdId,
-        command: 'test',
+        stdout,
+        stderr,
       });
       mockSandbox.process.deleteSession.mockResolvedValue(undefined);
     }
 
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
     it('routes through temporary session for one-shot execution', async () => {
       setupOneShotMocks({ stdout: 'hello' });
 
-      const execPromise = runtime.exec({ cmd: 'echo hello' });
-
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
+      const result = await runtime.exec({ cmd: 'echo hello' });
 
       expect(mockSandbox.process.createSession).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
@@ -119,9 +92,9 @@ describe('DaytonaRuntime', () => {
         expect.stringMatching(/^oneshot-/),
         expect.objectContaining({
           command: 'echo hello',
-          runAsync: true,
+          runAsync: false,
         }),
-        undefined,
+        3600,
       );
       expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
@@ -133,21 +106,18 @@ describe('DaytonaRuntime', () => {
     it('prepends cd command when cwd is provided', async () => {
       setupOneShotMocks({ stdout: '/app/src' });
 
-      const execPromise = runtime.exec({
+      const result = await runtime.exec({
         cmd: 'pwd',
         cwd: '/app/src',
       });
-
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
 
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
         expect.objectContaining({
           command: expect.stringContaining("cd '/app/src'"),
-          runAsync: true,
+          runAsync: false,
         }),
-        undefined,
+        3600,
       );
       expect(result.fail).toBe(false);
     });
@@ -155,21 +125,18 @@ describe('DaytonaRuntime', () => {
     it('passes env via buildEnvPrefix in one-shot execution', async () => {
       setupOneShotMocks({ stdout: 'ok' });
 
-      const execPromise = runtime.exec({
+      const result = await runtime.exec({
         cmd: 'echo $FOO',
         env: { FOO: 'bar' },
       });
-
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
 
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
         expect.objectContaining({
           command: expect.stringContaining("export FOO='bar'"),
-          runAsync: true,
+          runAsync: false,
         }),
-        undefined,
+        3600,
       );
       expect(result.fail).toBe(false);
       expect(result.exitCode).toBe(0);
@@ -178,13 +145,36 @@ describe('DaytonaRuntime', () => {
     it('returns non-zero exit code for failing one-shot commands', async () => {
       setupOneShotMocks({ exitCode: 1, stderr: 'command not found' });
 
-      const execPromise = runtime.exec({ cmd: 'notacommand' });
-
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
+      const result = await runtime.exec({ cmd: 'notacommand' });
 
       expect(result.fail).toBe(true);
       expect(result.exitCode).toBe(1);
+    });
+
+    it('fast command — returns exit code immediately with runAsync: false', async () => {
+      setupOneShotMocks({ exitCode: 127, stderr: 'bun: not found' });
+
+      const result = await runtime.exec({ cmd: 'bun install' });
+
+      expect(result.fail).toBe(true);
+      expect(result.exitCode).toBe(127);
+      expect(result.stderr).toBe('bun: not found');
+      // No WS streaming involved
+      expect(mockSandbox.process.getSessionCommandLogs).not.toHaveBeenCalled();
+      expect(mockSandbox.process.getSessionCommand).not.toHaveBeenCalled();
+    });
+
+    it('command not found — returns exit code 127', async () => {
+      setupOneShotMocks({
+        exitCode: 127,
+        stderr: 'bash: nonexistent_cmd: command not found',
+      });
+
+      const result = await runtime.exec({ cmd: 'nonexistent_cmd' });
+
+      expect(result.exitCode).toBe(127);
+      expect(result.fail).toBe(true);
+      expect(result.stderr).toContain('command not found');
     });
 
     it('returns aborted result when abort signal fires during one-shot execution', async () => {
@@ -192,37 +182,17 @@ describe('DaytonaRuntime', () => {
 
       mockSandbox.process.createSession.mockResolvedValue(undefined);
       mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'oneshot-abort-cmd',
-      });
-      // Stream never resolves
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({ stdout: '', stderr: '' });
-          }
-          return new Promise<void>(() => undefined);
-        },
+      // SDK call that never resolves (simulating a long-running command)
+      mockSandbox.process.executeSessionCommand.mockReturnValue(
+        new Promise(() => undefined),
       );
-      // Command never completes
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'oneshot-abort-cmd',
-        command: 'sleep 60',
-      });
 
       controller.abort();
 
-      const execPromise = runtime.exec({
+      const result = await runtime.exec({
         cmd: 'sleep 60',
         signal: controller.signal,
       });
-
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
 
       expect(result.fail).toBe(true);
       expect(result.exitCode).toBe(124);
@@ -231,71 +201,82 @@ describe('DaytonaRuntime', () => {
         expect.stringMatching(/^oneshot-/),
       );
     });
+
+    it('timeout — returns exit code 124 when SDK throws on timeout', async () => {
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockRejectedValue(
+        new Error('Request timeout'),
+      );
+
+      const result = await runtime.exec({
+        cmd: 'sleep 999',
+        timeoutMs: 5_000,
+      });
+
+      expect(result.fail).toBe(true);
+      expect(result.exitCode).toBe(124);
+      expect(result.stderr).toContain('Request timeout');
+    });
   });
 
   describe('session-based exec()', () => {
-    /** Set up mocks for async session execution and advance the polling interval. */
-    function setupAsyncSessionMocks(overrides?: {
+    /**
+     * Set up mocks for synchronous session execution (runAsync: false).
+     * The second executeSessionCommand call (the user command) returns the result directly.
+     */
+    function setupSyncSessionMocks(overrides?: {
       exitCode?: number;
-      cmdId?: string;
+      stdout?: string;
+      stderr?: string;
     }) {
-      const cmdId = overrides?.cmdId ?? 'cmd-1';
       const exitCode = overrides?.exitCode ?? 0;
+      const stdout = overrides?.stdout ?? '';
+      const stderr = overrides?.stderr ?? '';
 
       mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({ cmdId });
-      mockSandbox.process.getSessionCommandLogs.mockResolvedValue(undefined);
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        exitCode,
-        id: cmdId,
-        command: 'test',
+      // First call: workdir init (runAsync: false) → void
+      // Subsequent calls: user command (runAsync: false) → result
+      let callCount = 0;
+      mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // Workdir init
+          return Promise.resolve({ exitCode: 0 });
+        }
+        return Promise.resolve({ exitCode, stdout, stderr });
       });
     }
 
-    beforeEach(() => {
-      vi.useFakeTimers();
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
     it('creates session on first call and routes through executeSessionCommand', async () => {
-      setupAsyncSessionMocks();
+      setupSyncSessionMocks();
 
-      const execPromise = runtime.exec({
+      const result = await runtime.exec({
         cmd: 'echo test',
         sessionId: 'sess-1',
       });
-
-      // Advance past the 2s polling interval
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
 
       expect(mockSandbox.process.createSession).toHaveBeenCalledWith('sess-1');
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         'sess-1',
         expect.objectContaining({
           command: expect.any(String),
-          runAsync: true,
+          runAsync: false,
         }),
+        3600,
       );
       expect(result.fail).toBe(false);
       expect(result.exitCode).toBe(0);
     });
 
     it('does not recreate session on subsequent calls', async () => {
-      setupAsyncSessionMocks();
+      setupSyncSessionMocks();
 
-      const p1 = runtime.exec({ cmd: 'echo 1', sessionId: 'sess-reuse' });
-      await vi.advanceTimersByTimeAsync(2500);
-      await p1;
+      await runtime.exec({ cmd: 'echo 1', sessionId: 'sess-reuse' });
 
-      setupAsyncSessionMocks();
+      setupSyncSessionMocks();
 
-      const p2 = runtime.exec({ cmd: 'echo 2', sessionId: 'sess-reuse' });
-      await vi.advanceTimersByTimeAsync(2500);
-      await p2;
+      await runtime.exec({ cmd: 'echo 2', sessionId: 'sess-reuse' });
 
       expect(mockSandbox.process.createSession).toHaveBeenCalledTimes(1);
       // init (once on first creation) + echo 1 + echo 2 = 3
@@ -305,37 +286,32 @@ describe('DaytonaRuntime', () => {
     });
 
     it('prepends cd command for cwd in session execution', async () => {
-      setupAsyncSessionMocks();
+      setupSyncSessionMocks();
 
-      const execPromise = runtime.exec({
+      await runtime.exec({
         cmd: 'ls',
         sessionId: 'sess-cwd',
         cwd: '/workspace',
       });
 
-      await vi.advanceTimersByTimeAsync(2500);
-      await execPromise;
-
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         'sess-cwd',
         expect.objectContaining({
           command: expect.stringContaining("cd '/workspace'"),
-          runAsync: true,
+          runAsync: false,
         }),
+        3600,
       );
     });
 
     describe('session workdir initialisation', () => {
       it('runs mkdir + cd to /runtime-workspace synchronously when session is created', async () => {
-        setupAsyncSessionMocks();
+        setupSyncSessionMocks();
 
-        const execPromise = runtime.exec({
+        await runtime.exec({
           cmd: 'echo test',
           sessionId: 'sess-init-cwd',
         });
-
-        await vi.advanceTimersByTimeAsync(2500);
-        await execPromise;
 
         // First executeSessionCommand call must be the workdir init (runAsync: false)
         expect(
@@ -344,31 +320,28 @@ describe('DaytonaRuntime', () => {
           command: 'mkdir -p /runtime-workspace && cd /runtime-workspace',
           runAsync: false,
         });
-        // Second call is the actual user command (runAsync: true)
+        // Second call is the actual user command (runAsync: false), prefixed with set +eu
         expect(
           mockSandbox.process.executeSessionCommand,
         ).toHaveBeenNthCalledWith(
           2,
           'sess-init-cwd',
           expect.objectContaining({
-            command: 'echo test',
-            runAsync: true,
+            command: expect.stringContaining('echo test'),
+            runAsync: false,
           }),
+          3600,
         );
       });
 
       it('does not re-initialise CWD on session reuse', async () => {
-        setupAsyncSessionMocks();
+        setupSyncSessionMocks();
 
-        const p1 = runtime.exec({ cmd: 'cmd1', sessionId: 'sess-init-reuse' });
-        await vi.advanceTimersByTimeAsync(2500);
-        await p1;
+        await runtime.exec({ cmd: 'cmd1', sessionId: 'sess-init-reuse' });
 
-        setupAsyncSessionMocks();
+        setupSyncSessionMocks();
 
-        const p2 = runtime.exec({ cmd: 'cmd2', sessionId: 'sess-init-reuse' });
-        await vi.advanceTimersByTimeAsync(2500);
-        await p2;
+        await runtime.exec({ cmd: 'cmd2', sessionId: 'sess-init-reuse' });
 
         // createSession called only once — session reused
         expect(mockSandbox.process.createSession).toHaveBeenCalledTimes(1);
@@ -397,23 +370,18 @@ describe('DaytonaRuntime', () => {
               // Init call fails
               return Promise.reject(new Error('init mkdir failed'));
             }
-            return Promise.resolve({ cmdId: 'cmd-fallback' });
+            return Promise.resolve({
+              exitCode: 0,
+              stdout: '',
+              stderr: '',
+            });
           },
         );
-        mockSandbox.process.getSessionCommandLogs.mockResolvedValue(undefined);
-        mockSandbox.process.getSessionCommand.mockResolvedValue({
-          exitCode: 0,
-          id: 'cmd-fallback',
-          command: 'test',
-        });
 
-        const execPromise = runtime.exec({
+        const result = await runtime.exec({
           cmd: 'test',
           sessionId: 'sess-init-fail',
         });
-
-        await vi.advanceTimersByTimeAsync(2500);
-        const result = await execPromise;
 
         // Command succeeds despite init failure
         expect(result.fail).toBe(false);
@@ -555,26 +523,21 @@ describe('DaytonaRuntime', () => {
 
   describe('stop()', () => {
     it('cleans up sandbox and sessions', async () => {
-      vi.useFakeTimers();
-
-      // Add a session via async exec
+      // Add a session via sync exec (runAsync: false)
+      let callCount = 0;
       mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-cleanup',
-      });
-      mockSandbox.process.getSessionCommandLogs.mockResolvedValue(undefined);
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        exitCode: 0,
-        id: 'cmd-cleanup',
-        command: 'echo 1',
+      mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({ exitCode: 0 });
+        }
+        return Promise.resolve({ exitCode: 0, stdout: '1', stderr: '' });
       });
 
-      const execPromise = runtime.exec({
+      await runtime.exec({
         cmd: 'echo 1',
         sessionId: 'sess-cleanup',
       });
-      await vi.advanceTimersByTimeAsync(2500);
-      await execPromise;
 
       // Set up daytona mock for delete
       const mockDaytona = { delete: vi.fn().mockResolvedValue(undefined) };
@@ -587,78 +550,51 @@ describe('DaytonaRuntime', () => {
         'sess-cleanup',
       );
       expect(mockDaytona.delete).toHaveBeenCalledWith(mockSandbox);
-
-      vi.useRealTimers();
     });
   });
 
   describe('abort signal handling', () => {
     beforeEach(() => {
-      vi.useFakeTimers();
       mockSandbox.process.createSession.mockResolvedValue(undefined);
       mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-      // Stream never resolves; snapshot overload returns empty output
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({ stdout: '', stderr: '' });
-          }
-          return new Promise<void>(() => undefined);
-        },
-      );
-      // Command never completes
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'abort-cmd',
-        command: 'sleep 60',
-      });
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'abort-cmd',
-      });
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it('returns aborted result when signal is already aborted', async () => {
+    it('returns aborted result when signal is already aborted (one-shot)', async () => {
       const abortController = new AbortController();
       abortController.abort();
 
-      const execPromise = runtime.exec({
+      // SDK should not even be called when already aborted
+      mockSandbox.process.executeSessionCommand.mockReturnValue(
+        new Promise(() => undefined),
+      );
+
+      const result = await runtime.exec({
         cmd: 'sleep 60',
         signal: abortController.signal,
       });
-
-      // Advance past the first poll tick — abort is detected in the interval
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
 
       expect(result.fail).toBe(true);
       expect(result.exitCode).toBe(124);
       expect(result.stderr).toBe('Aborted');
     });
 
-    it('returns aborted result when signal fires during execution', async () => {
+    it('returns aborted result when signal fires during execution (one-shot)', async () => {
       const abortController = new AbortController();
 
-      const execPromise = runtime.exec({
+      // SDK call never resolves — simulates a long-running command
+      mockSandbox.process.executeSessionCommand.mockReturnValue(
+        new Promise(() => undefined),
+      );
+
+      const resultPromise = runtime.exec({
         cmd: 'sleep 60',
         signal: abortController.signal,
       });
 
-      // Command is running — no abort yet; advance past first poll
-      await vi.advanceTimersByTimeAsync(2500);
-
       // Abort mid-execution
       abortController.abort();
 
-      // Advance to next poll tick so the abort is detected
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
+      const result = await resultPromise;
 
       expect(result.fail).toBe(true);
       expect(result.exitCode).toBe(124);
@@ -678,6 +614,15 @@ describe('DaytonaRuntime', () => {
       mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
       mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.delete.mockResolvedValue(undefined);
+      // runImageEntrypoint exec calls need session mocks.
+      // Return exitCode 1 so the entrypoint check sees "not found" and skips.
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        exitCode: 1,
+        stdout: '',
+        stderr: '',
+      });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
     });
 
     it('calls daytona.create() with correct params', async () => {
@@ -737,7 +682,7 @@ describe('DaytonaRuntime', () => {
     });
   });
 
-  describe('async session exec — timeout and abort scenarios', () => {
+  describe('session exec — timeout and abort scenarios', () => {
     function mockStreamingLogsWithoutSnapshots() {
       mockSandbox.process.getSessionCommandLogs.mockImplementation(
         (
@@ -755,625 +700,585 @@ describe('DaytonaRuntime', () => {
     }
 
     beforeEach(() => {
-      vi.useFakeTimers();
       mockSandbox.process.createSession.mockResolvedValue(undefined);
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
+    describe('sync path (runAsync: false — default, no idleTimeoutMs)', () => {
+      it('scenario 1: normal completion — returns exitCode directly', async () => {
+        let callCount = 0;
+        mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          return Promise.resolve({
+            exitCode: 0,
+            stdout: 'hello',
+            stderr: '',
+          });
+        });
+
+        const result = await runtime.exec({
+          cmd: 'echo hello',
+          sessionId: 'sess-normal',
+        });
+
+        expect(result.exitCode).toBe(0);
+        expect(result.fail).toBe(false);
+        expect(result.stdout).toBe('hello');
+        // No WS streaming used
+        expect(
+          mockSandbox.process.getSessionCommandLogs,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('scenario 3: SDK timeout — returns exit code 124 on timeout error', async () => {
+        let callCount = 0;
+        mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          return Promise.reject(new Error('Request timeout after 10s'));
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const result = await runtime.exec({
+          cmd: 'long-running',
+          sessionId: 'sess-hard',
+          timeoutMs: 10_000,
+        });
+
+        // exec() catches the error and returns 124
+        expect(result.exitCode).toBe(124);
+        expect(result.fail).toBe(true);
+        expect(result.stderr).toContain('Request timeout');
+      });
+
+      it('scenario 5: abort signal returns immediately when pre-aborted', async () => {
+        let callCount = 0;
+        mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          return new Promise(() => undefined); // never resolves
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const controller = new AbortController();
+        controller.abort();
+
+        const result = await runtime.exec({
+          cmd: 'test',
+          sessionId: 'sess-abort',
+          signal: controller.signal,
+        });
+
+        expect(result.exitCode).toBe(124);
+        expect(result.stderr).toBe('Aborted');
+        expect(result.fail).toBe(true);
+      });
+
+      it('scenario 5b: mid-execution abort terminates and returns aborted', async () => {
+        const controller = new AbortController();
+        let callCount = 0;
+
+        mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          // Long-running command — never resolves naturally
+          return new Promise(() => undefined);
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const resultPromise = runtime.exec({
+          cmd: 'test',
+          sessionId: 'sess-abort-mid',
+          signal: controller.signal,
+        });
+
+        // Fire abort mid-execution
+        controller.abort();
+
+        const result = await resultPromise;
+
+        expect(result.exitCode).toBe(124);
+        expect(result.stderr).toBe('Aborted');
+        expect(result.fail).toBe(true);
+        // Session recreation is initiated asynchronously (fire-and-forget)
+        // and will be awaited by the next execInSession call via sessionRecreatePromise.
+      });
+
+      it('fast command — bun install returns exit code 127 immediately', async () => {
+        let callCount = 0;
+        mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          return Promise.resolve({
+            exitCode: 127,
+            stdout: '',
+            stderr: 'bun: not found',
+          });
+        });
+
+        const start = Date.now();
+        const result = await runtime.exec({
+          cmd: 'bun install',
+          sessionId: 'sess-bun',
+        });
+        const elapsed = Date.now() - start;
+
+        expect(result.exitCode).toBe(127);
+        expect(result.fail).toBe(true);
+        expect(result.stderr).toBe('bun: not found');
+        // Must resolve quickly — the whole point of runAsync: false is no 5-min hang
+        expect(elapsed).toBeLessThan(2000);
+        // No WS streaming involved
+        expect(
+          mockSandbox.process.getSessionCommandLogs,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('passes correct timeout seconds to executeSessionCommand', async () => {
+        let callCount = 0;
+        mockSandbox.process.executeSessionCommand.mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+        });
+
+        await runtime.exec({
+          cmd: 'test',
+          sessionId: 'sess-timeout-val',
+          timeoutMs: 30_000,
+        });
+
+        // Second call (user command) should have timeout in seconds
+        expect(
+          mockSandbox.process.executeSessionCommand,
+        ).toHaveBeenNthCalledWith(
+          2,
+          'sess-timeout-val',
+          expect.objectContaining({
+            command: expect.stringContaining('test'),
+            runAsync: false,
+          }),
+          30,
+        );
+      });
     });
 
-    it('scenario 1: normal completion — getSessionCommand returns exitCode on first poll', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-1',
-      });
-      mockSandbox.process.getSessionCommandLogs.mockResolvedValue(undefined);
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        exitCode: 0,
-        id: 'cmd-1',
-        command: 'echo hello',
+    describe('streaming path (runAsync: true — when idleTimeoutMs is set)', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
       });
 
-      const execPromise = runtime.exec({
-        cmd: 'echo hello',
-        sessionId: 'sess-normal',
+      afterEach(() => {
+        vi.useRealTimers();
       });
 
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
+      it('scenario 2: idle timeout fires when no output is produced', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-2',
+        });
+        mockStreamingLogsWithoutSnapshots();
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
+          id: 'cmd-2',
+          command: 'hang',
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
-      expect(result.exitCode).toBe(0);
-      expect(result.fail).toBe(false);
-    });
+        const execPromise = runtime.exec({
+          cmd: 'hang',
+          sessionId: 'sess-idle',
+          idleTimeoutMs: 300_000,
+        });
 
-    it('scenario 2: idle timeout fires when no output is produced', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-2',
-      });
-      // Log stream never calls callbacks (no output)
-      mockStreamingLogsWithoutSnapshots();
-      // Command never completes
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'cmd-2',
-        command: 'hang',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+        await vi.advanceTimersByTimeAsync(302_000);
+        const result = await execPromise;
 
-      const execPromise = runtime.exec({
-        cmd: 'hang',
-        sessionId: 'sess-idle',
-      });
-
-      // Advance past the 300s idle timeout
-      await vi.advanceTimersByTimeAsync(302_000);
-      const result = await execPromise;
-
-      expect(result.exitCode).toBe(124);
-      expect(result.fail).toBe(true);
-      expect(result.stderr).toContain('Idle timeout');
-      // recreateSession calls deleteSession + createSession
-      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
-        'sess-idle',
-      );
-    });
-
-    it('scenario 3: hard timeout fires when output continues but command never completes', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-3',
-      });
-      // Simulate periodic output by calling onStdout via setInterval in mock
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({});
-          }
-          const outputInterval = setInterval(() => {
-            onStdout('output chunk\n');
-          }, 5000);
-          return new Promise<void>((_resolve, _reject) => {
-            // Never resolves; clean up the interval when the test ends
-            // (fake timers will handle this)
-            void outputInterval;
-          }).catch(() => {});
-        },
-      );
-      // Command never completes
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'cmd-3',
-        command: 'long-running',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const execPromise = runtime.exec({
-        cmd: 'long-running',
-        sessionId: 'sess-hard',
-        timeoutMs: 10_000,
+        expect(result.exitCode).toBe(124);
+        expect(result.fail).toBe(true);
+        expect(result.stderr).toContain('Idle timeout');
+        expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
+          'sess-idle',
+        );
       });
 
-      // Advance past the 10s hard timeout
-      await vi.advanceTimersByTimeAsync(12_000);
-      const result = await execPromise;
-
-      expect(result.exitCode).toBe(124);
-      expect(result.fail).toBe(true);
-      expect(result.stderr).toContain('Hard timeout');
-      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
-        'sess-hard',
-      );
-    });
-
-    it('scenario 4: explicit timeoutMs used as hard timeout — error message contains caller-provided value', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-4',
-      });
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({});
-          }
-          const outputInterval = setInterval(() => {
-            onStdout('keep alive\n');
-          }, 3000);
-          return new Promise<void>(() => {
-            void outputInterval;
-          }).catch(() => {});
-        },
-      );
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'cmd-4',
-        command: 'test',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        sessionId: 'sess-explicit',
-        timeoutMs: 10_000,
-      });
-
-      await vi.advanceTimersByTimeAsync(12_000);
-      const result = await execPromise;
-
-      expect(result.stderr).toContain('10s');
-      expect(result.stderr).not.toContain('3600s');
-    });
-
-    it('scenario 5: abort signal terminates polling', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-5',
-      });
-      mockStreamingLogsWithoutSnapshots();
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'cmd-5',
-        command: 'test',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const controller = new AbortController();
-      controller.abort();
-
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        sessionId: 'sess-abort',
-        signal: controller.signal,
-      });
-
-      // Advance past first polling tick
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
-
-      expect(result.exitCode).toBe(124);
-      expect(result.stderr).toBe('Aborted');
-      expect(result.fail).toBe(true);
-      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
-        'sess-abort',
-      );
-    });
-
-    it('scenario 5b: mid-poll abort terminates session and returns accumulated output', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-5b',
-      });
-      // Emit some output before abort so we can verify it's included
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({ stdout: 'partial output\n', stderr: '' });
-          }
-          // Emit output immediately so stdoutChunks has content
-          onStdout('partial output\n');
-          return new Promise<void>(() => {}).catch(() => {});
-        },
-      );
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'cmd-5b',
-        command: 'test',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const controller = new AbortController();
-
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        sessionId: 'sess-abort-mid',
-        signal: controller.signal,
-      });
-
-      // Advance past the first poll tick (2s) — exec is running normally
-      await vi.advanceTimersByTimeAsync(2500);
-
-      // Fire abort mid-execution
-      controller.abort();
-
-      // Advance to the next poll tick so the abort is detected
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
-
-      expect(result.exitCode).toBe(124);
-      expect(result.stderr).toBe('Aborted');
-      expect(result.fail).toBe(true);
-      expect(result.stdout).toContain('partial output');
-      // recreateSession calls deleteSession
-      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
-        'sess-abort-mid',
-      );
-    });
-
-    it('scenario 6: transient getSessionCommand failure — polling continues past error', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-6',
-      });
-      mockSandbox.process.getSessionCommandLogs.mockResolvedValue(undefined);
-
-      let callCount = 0;
-      mockSandbox.process.getSessionCommand.mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) {
-          return Promise.reject(new Error('Network blip'));
-        }
-        return Promise.resolve({
-          exitCode: 0,
-          id: 'cmd-6',
+      it('scenario 4: explicit timeoutMs used as hard timeout — error message contains caller-provided value', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-4',
+        });
+        mockSandbox.process.getSessionCommandLogs.mockImplementation(
+          (
+            _sessionId: string,
+            _cmdId: string,
+            onStdout: (chunk: string) => void,
+          ) => {
+            if (!onStdout) {
+              return Promise.resolve({});
+            }
+            const outputInterval = setInterval(() => {
+              onStdout('keep alive\n');
+            }, 3000);
+            return new Promise<void>(() => {
+              void outputInterval;
+            }).catch(() => {});
+          },
+        );
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
+          id: 'cmd-4',
           command: 'test',
         });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const execPromise = runtime.exec({
+          cmd: 'test',
+          sessionId: 'sess-explicit',
+          timeoutMs: 10_000,
+          idleTimeoutMs: 60_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(12_000);
+        const result = await execPromise;
+
+        expect(result.stderr).toContain('10s');
+        expect(result.stderr).not.toContain('3600s');
       });
 
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        sessionId: 'sess-transient',
-      });
+      it('scenario 7: periodic output prevents idle timeout', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-7',
+        });
 
-      // First poll at 2s — fails transiently
-      await vi.advanceTimersByTimeAsync(2500);
-      // Second poll at 4s — succeeds
-      await vi.advanceTimersByTimeAsync(2500);
-      const result = await execPromise;
+        mockSandbox.process.getSessionCommandLogs.mockImplementation(
+          (
+            _sessionId: string,
+            _cmdId: string,
+            onStdout?: (chunk: string) => void,
+          ) => {
+            if (!onStdout) {
+              return Promise.resolve({ stdout: 'progress\n', stderr: '' });
+            }
+            const outputInterval = setInterval(() => {
+              onStdout('progress\n');
+            }, 30_000);
+            return new Promise<void>(() => {
+              void outputInterval;
+            }).catch(() => {});
+          },
+        );
 
-      expect(result.exitCode).toBe(0);
-      expect(result.fail).toBe(false);
-    });
-
-    it('scenario 7: periodic output prevents idle timeout', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-7',
-      });
-
-      // Emit output every 30s to keep the idle timer fresh (well within the 300s idle limit)
-      // Handle both overloads: streaming (4 args) and synchronous fetch (2 args)
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          // Synchronous fetch overload (2 args) — return collected output
-          if (!onStdout) {
-            return Promise.resolve({ stdout: 'progress\n', stderr: '' });
+        let pollCount = 0;
+        mockSandbox.process.getSessionCommand.mockImplementation(() => {
+          pollCount++;
+          if (pollCount < 46) {
+            return Promise.resolve({ id: 'cmd-7', command: 'test' });
           }
-          // Streaming overload (4 args)
-          const outputInterval = setInterval(() => {
-            onStdout('progress\n');
-          }, 30_000);
-          return new Promise<void>(() => {
-            void outputInterval;
-          }).catch(() => {});
-        },
-      );
+          return Promise.resolve({
+            exitCode: 0,
+            id: 'cmd-7',
+            command: 'test',
+          });
+        });
 
-      // Return no exitCode for enough polls that 90s+ wall time passes,
-      // then return exitCode: 0. At 2s poll interval, 45 polls = 90s.
-      let pollCount = 0;
-      mockSandbox.process.getSessionCommand.mockImplementation(() => {
-        pollCount++;
-        if (pollCount < 46) {
-          return Promise.resolve({ id: 'cmd-7', command: 'test' });
-        }
-        return Promise.resolve({
-          exitCode: 0,
-          id: 'cmd-7',
+        const execPromise = runtime.exec({
+          cmd: 'test',
+          sessionId: 'sess-output',
+          idleTimeoutMs: 300_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(120_000);
+        const result = await execPromise;
+
+        expect(result.exitCode).toBe(0);
+        expect(result.fail).toBe(false);
+      });
+
+      it('scenario 8: idle timeout fires before hard timeout', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-8',
+        });
+        mockStreamingLogsWithoutSnapshots();
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
+          id: 'cmd-8',
           command: 'test',
         });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const execPromise = runtime.exec({
+          cmd: 'test',
+          sessionId: 'sess-idle-vs-hard',
+          timeoutMs: 600_000,
+          idleTimeoutMs: 300_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(302_000);
+        const result = await execPromise;
+
+        expect(result.exitCode).toBe(124);
+        expect(result.stderr).toContain('Idle timeout');
+        expect(result.stderr).not.toContain('Hard timeout');
       });
 
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        sessionId: 'sess-output',
-      });
+      it('scenario 9a: returns failure immediately when command exits instantly (streaming with idleTimeoutMs)', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-fast-fail',
+        });
 
-      // Advance 120s — without periodic output resetting the idle timer,
-      // this would eventually trigger idle timeout (300s).
-      await vi.advanceTimersByTimeAsync(120_000);
-      const result = await execPromise;
+        mockSandbox.process.getSessionCommandLogs.mockImplementation(
+          (
+            _sessionId: string,
+            _cmdId: string,
+            onStdout?: (chunk: string) => void,
+          ) => {
+            if (!onStdout) {
+              return Promise.resolve({ stdout: '', stderr: '' });
+            }
+            return new Promise<void>(() => undefined);
+          },
+        );
 
-      // Command completes normally — proving output kept resetting the idle timer
-      expect(result.exitCode).toBe(0);
-      expect(result.fail).toBe(false);
-    });
-
-    it('scenario 8: idle timeout fires before hard timeout', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-8',
-      });
-      // No output produced
-      mockStreamingLogsWithoutSnapshots();
-      // Command never completes
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'cmd-8',
-        command: 'test',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const execPromise = runtime.exec({
-        cmd: 'test',
-        sessionId: 'sess-idle-vs-hard',
-        timeoutMs: 600_000,
-      });
-
-      // Advance 302s — idle timeout (300s) should fire before hard timeout (600s)
-      await vi.advanceTimersByTimeAsync(302_000);
-      const result = await execPromise;
-
-      expect(result.exitCode).toBe(124);
-      expect(result.stderr).toContain('Idle timeout');
-      expect(result.stderr).not.toContain('Hard timeout');
-    });
-
-    it('scenario 9a: returns failure immediately when command exits instantly (no idle timeout)', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-fast-fail',
-      });
-
-      // Streaming getSessionCommandLogs hangs forever; snapshot returns empty
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({ stdout: '', stderr: '' });
-          }
-          return new Promise<void>(() => undefined);
-        },
-      );
-
-      // getSessionCommand returns exitCode: 127 immediately
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        exitCode: 127,
-        id: 'cmd-fast-fail',
-        command: 'bun install',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const execPromise = runtime.exec({
-        cmd: 'bun install',
-        sessionId: 'sess-fast-fail',
-        idleTimeoutMs: 15_000,
-      });
-
-      // Fixed poll at 200ms — the exit code should be detected quickly
-      await vi.advanceTimersByTimeAsync(500);
-      const result = await execPromise;
-
-      expect(result.exitCode).toBe(127);
-      expect(result.fail).toBe(true);
-      expect(result.stderr).not.toContain('Idle timeout');
-    });
-
-    it('scenario 9b: returns failure when stream hangs and getSessionCommand delays exitCode', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-delayed',
-      });
-
-      // Stream hangs; snapshot returns empty
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({ stdout: '', stderr: '' });
-          }
-          return new Promise<void>(() => undefined);
-        },
-      );
-
-      // First 2 polls: no exitCode. Third poll: exitCode 127.
-      let pollCount = 0;
-      mockSandbox.process.getSessionCommand.mockImplementation(() => {
-        pollCount++;
-        if (pollCount <= 2) {
-          return Promise.resolve({ id: 'cmd-delayed', command: 'bun install' });
-        }
-        return Promise.resolve({
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
           exitCode: 127,
-          id: 'cmd-delayed',
+          id: 'cmd-fast-fail',
           command: 'bun install',
         });
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
-      const execPromise = runtime.exec({
-        cmd: 'bun install',
-        sessionId: 'sess-delayed',
-        idleTimeoutMs: 15_000,
-      });
+        const execPromise = runtime.exec({
+          cmd: 'bun install',
+          sessionId: 'sess-fast-fail',
+          idleTimeoutMs: 15_000,
+        });
 
-      // Fixed 200ms poll interval: 3 polls at 200ms each = 600ms
-      await vi.advanceTimersByTimeAsync(5000);
-      const result = await execPromise;
+        await vi.advanceTimersByTimeAsync(500);
+        const result = await execPromise;
 
-      expect(result.exitCode).toBe(127);
-      expect(result.fail).toBe(true);
-    });
-
-    it('scenario 9c: one-shot returns failure immediately when command exits instantly', async () => {
-      // One-shot path (no sessionId)
-      mockSandbox.process.createSession.mockResolvedValue(undefined);
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'oneshot-fast-fail',
+        expect(result.exitCode).toBe(127);
+        expect(result.fail).toBe(true);
+        expect(result.stderr).not.toContain('Idle timeout');
       });
 
-      // Streaming hangs; snapshot returns empty
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({ stdout: '', stderr: '' });
+      it('scenario 9b: returns failure when stream hangs and getSessionCommand delays exitCode', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-delayed',
+        });
+
+        mockSandbox.process.getSessionCommandLogs.mockImplementation(
+          (
+            _sessionId: string,
+            _cmdId: string,
+            onStdout?: (chunk: string) => void,
+          ) => {
+            if (!onStdout) {
+              return Promise.resolve({ stdout: '', stderr: '' });
+            }
+            return new Promise<void>(() => undefined);
+          },
+        );
+
+        let pollCount = 0;
+        mockSandbox.process.getSessionCommand.mockImplementation(() => {
+          pollCount++;
+          if (pollCount <= 2) {
+            return Promise.resolve({
+              id: 'cmd-delayed',
+              command: 'bun install',
+            });
           }
-          return new Promise<void>(() => undefined);
-        },
-      );
+          return Promise.resolve({
+            exitCode: 127,
+            id: 'cmd-delayed',
+            command: 'bun install',
+          });
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
-      // getSessionCommand returns exitCode: 127 immediately
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        exitCode: 127,
-        id: 'oneshot-fast-fail',
-        command: 'bun install',
+        const execPromise = runtime.exec({
+          cmd: 'bun install',
+          sessionId: 'sess-delayed',
+          idleTimeoutMs: 15_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(5000);
+        const result = await execPromise;
+
+        expect(result.exitCode).toBe(127);
+        expect(result.fail).toBe(true);
       });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
-      const execPromise = runtime.exec({
-        cmd: 'bun install',
-        idleTimeoutMs: 15_000,
+      it('scenario 9d: snapshot fallback — WS deadlock rescued by snapshot HTTP GET', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-bun-hang',
+        });
+
+        mockSandbox.process.getSessionCommandLogs.mockImplementation(
+          (
+            _sessionId: string,
+            _cmdId: string,
+            onStdout?: (chunk: string) => void,
+          ) => {
+            if (!onStdout) {
+              return Promise.resolve({
+                stdout: '',
+                stderr: 'bun: not found\n',
+              });
+            }
+            return new Promise<void>(() => undefined);
+          },
+        );
+
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
+          id: 'cmd-bun-hang',
+          command: 'bun install',
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const execPromise = runtime.exec({
+          cmd: 'bun install',
+          sessionId: 'sess-bun-hang',
+          idleTimeoutMs: 15_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(3000);
+        const result = await execPromise;
+
+        expect(result.fail).toBe(true);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toBe('bun: not found\n');
+        expect(result.stderr).not.toContain('Idle timeout');
       });
 
-      // Fixed 200ms poll interval should catch it
-      await vi.advanceTimersByTimeAsync(500);
-      const result = await execPromise;
+      it('scenario 9: fast-exit race — stream delivers stderr then getSessionCommand throws', async () => {
+        const stderrOutput =
+          'bash: cd: /nonexistent: No such file or directory';
 
-      expect(result.exitCode).toBe(127);
-      expect(result.fail).toBe(true);
-      expect(result.stderr).not.toContain('Idle timeout');
-      // One-shot session should be cleaned up
-      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
-        expect.stringMatching(/^oneshot-/),
-      );
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-9',
+        });
+
+        mockSandbox.process.getSessionCommandLogs.mockImplementation(
+          (
+            _sessionId: string,
+            _cmdId: string,
+            _onStdout?: (chunk: string) => void,
+            onStderr?: (chunk: string) => void,
+          ) => {
+            if (!onStderr) {
+              return Promise.reject(new Error('cmdId not found'));
+            }
+            onStderr(stderrOutput);
+            return Promise.resolve();
+          },
+        );
+
+        mockSandbox.process.getSessionCommand.mockRejectedValue(
+          new Error('cmdId not found'),
+        );
+
+        const execPromise = runtime.exec({
+          cmd: 'cd /nonexistent',
+          sessionId: 'sess-fast-exit',
+          idleTimeoutMs: 15_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(0);
+        const result = await execPromise;
+
+        expect(result.fail).toBe(true);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toBe(stderrOutput);
+      });
+
+      it('stream resolves first — poll is irrelevant', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-stream-first',
+        });
+
+        mockSandbox.process.getSessionCommandLogs.mockImplementation(
+          (
+            _sessionId: string,
+            _cmdId: string,
+            onStdout?: (chunk: string) => void,
+          ) => {
+            if (onStdout) {
+              onStdout('stream output\n');
+            }
+            return Promise.resolve();
+          },
+        );
+
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
+          exitCode: 0,
+          id: 'cmd-stream-first',
+          command: 'echo hi',
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const execPromise = runtime.exec({
+          cmd: 'echo hi',
+          sessionId: 'sess-stream-first',
+          idleTimeoutMs: 15_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(0);
+        const result = await execPromise;
+
+        expect(result.exitCode).toBe(0);
+        expect(result.fail).toBe(false);
+        expect(result.stdout).toBe('stream output\n');
+        expect(mockSandbox.process.getSessionCommand).toHaveBeenCalledTimes(1);
+      });
+
+      it('onSessionStuck callback return value is used', async () => {
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          cmdId: 'cmd-stuck-cb',
+        });
+        mockStreamingLogsWithoutSnapshots();
+        mockSandbox.process.getSessionCommand.mockResolvedValue({
+          id: 'cmd-stuck-cb',
+          command: 'sleep infinity',
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+        const execPromise = runtime.exec({
+          cmd: 'sleep infinity',
+          sessionId: 'sess-stuck-cb',
+          idleTimeoutMs: 5_000,
+        });
+
+        await vi.advanceTimersByTimeAsync(6_000);
+        const result = await execPromise;
+
+        expect(result.exitCode).toBe(124);
+        expect(result.fail).toBe(true);
+        expect(result.stderr).toContain('Idle timeout');
+        expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
+          'sess-stuck-cb',
+        );
+        expect(mockSandbox.process.createSession).toHaveBeenCalledWith(
+          'sess-stuck-cb',
+        );
+      });
     });
 
-    it('scenario 9: fast-exit race — stream delivers stderr then getSessionCommand throws (already cleaned up)', async () => {
-      const stderrOutput = 'bash: cd: /nonexistent: No such file or directory';
+    describe('one-shot path scenarios', () => {
+      it('scenario 9c: one-shot returns failure immediately when command exits instantly', async () => {
+        mockSandbox.process.createSession.mockResolvedValue(undefined);
+        mockSandbox.process.executeSessionCommand.mockResolvedValue({
+          exitCode: 127,
+          stdout: '',
+          stderr: 'bun: not found',
+        });
+        mockSandbox.process.deleteSession.mockResolvedValue(undefined);
 
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-9',
+        const result = await runtime.exec({
+          cmd: 'bun install',
+        });
+
+        expect(result.exitCode).toBe(127);
+        expect(result.fail).toBe(true);
+        expect(result.stderr).not.toContain('Idle timeout');
+        expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
+          expect.stringMatching(/^oneshot-/),
+        );
       });
-
-      // Stream resolves after delivering stderr — simulates fast-exiting command
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          _onStdout?: (chunk: string) => void,
-          onStderr?: (chunk: string) => void,
-        ) => {
-          if (!onStderr) {
-            // Synchronous fetch overload — called from the .then() safety-net path;
-            // throw so the fallback to stream-collected chunks is exercised.
-            return Promise.reject(new Error('cmdId not found'));
-          }
-          // Streaming overload — deliver stderr then resolve
-          onStderr(stderrOutput);
-          return Promise.resolve();
-        },
-      );
-
-      // getSessionCommand throws — cmdId already cleaned up by Daytona
-      mockSandbox.process.getSessionCommand.mockRejectedValue(
-        new Error('cmdId not found'),
-      );
-
-      const execPromise = runtime.exec({
-        cmd: 'cd /nonexistent',
-        sessionId: 'sess-fast-exit',
-      });
-
-      // Allow microtasks to flush — the stream .then() path resolves without
-      // needing the polling interval to advance.
-      await vi.advanceTimersByTimeAsync(0);
-      const result = await execPromise;
-
-      expect(result.fail).toBe(true);
-      expect(result.exitCode).toBe(1);
-      expect(result.stderr).toBe(stderrOutput);
-    });
-
-    it('stream resolves first — poll is irrelevant', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-stream-first',
-      });
-
-      // Stream resolves immediately with stdout
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-        ) => {
-          if (onStdout) {
-            onStdout('stream output\n');
-          }
-          return Promise.resolve();
-        },
-      );
-
-      // getSessionCommand returns exitCode: 0 (called by stream .then → fetchExitCode)
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        exitCode: 0,
-        id: 'cmd-stream-first',
-        command: 'echo hi',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const execPromise = runtime.exec({
-        cmd: 'echo hi',
-        sessionId: 'sess-stream-first',
-      });
-
-      // Only flush microtasks — do NOT advance timers beyond the initial tick.
-      // The stream .then() path should settle the promise without needing the poll interval.
-      await vi.advanceTimersByTimeAsync(0);
-      const result = await execPromise;
-
-      expect(result.exitCode).toBe(0);
-      expect(result.fail).toBe(false);
-      expect(result.stdout).toBe('stream output\n');
-
-      // getSessionCommand was called once by fetchExitCode (from stream .then path),
-      // but the poll interval never fired so no additional calls were made.
-      expect(mockSandbox.process.getSessionCommand).toHaveBeenCalledTimes(1);
-    });
-
-    it('onSessionStuck callback return value is used', async () => {
-      mockSandbox.process.executeSessionCommand.mockResolvedValue({
-        cmdId: 'cmd-stuck-cb',
-      });
-      mockStreamingLogsWithoutSnapshots();
-      // Command never completes — no exitCode
-      mockSandbox.process.getSessionCommand.mockResolvedValue({
-        id: 'cmd-stuck-cb',
-        command: 'sleep infinity',
-      });
-      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
-
-      const execPromise = runtime.exec({
-        cmd: 'sleep infinity',
-        sessionId: 'sess-stuck-cb',
-        idleTimeoutMs: 5_000,
-      });
-
-      // Advance past the idle timeout (5s) so the stuck handler fires
-      await vi.advanceTimersByTimeAsync(6_000);
-      const result = await execPromise;
-
-      // The idle timeout fires and triggers onSessionStuck inside execInSession.
-      // The default onSessionStuck in execInSession returns the result as-is
-      // (it only triggers session recreation as a side-effect).
-      expect(result.exitCode).toBe(124);
-      expect(result.fail).toBe(true);
-      expect(result.stderr).toContain('Idle timeout');
-      // Verify session was recreated (deleteSession called for the stuck session)
-      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
-        'sess-stuck-cb',
-      );
-      expect(mockSandbox.process.createSession).toHaveBeenCalledWith(
-        'sess-stuck-cb',
-      );
     });
   });
 });
