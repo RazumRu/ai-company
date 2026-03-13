@@ -80,6 +80,7 @@ export type LiteLLMModelInfo = {
   };
   model_info: {
     key: string;
+    mode?: string;
     litellm_provider?: string;
     input_cost_per_token?: number;
     input_cost_per_token_cache_hit?: number;

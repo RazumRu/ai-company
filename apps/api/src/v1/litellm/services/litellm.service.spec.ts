@@ -262,14 +262,13 @@ describe('LitellmService', () => {
   });
 
   describe('listModels', () => {
-    it('marks a model with no streaming and no function calling as embedding', async () => {
+    it('marks a model with mode=embedding as embedding', async () => {
       const embeddingModel: LiteLLMModelInfo = {
         model_name: 'text-embedding-3-small',
         litellm_params: { model: 'openai/text-embedding-3-small' },
         model_info: {
           key: 'text-embedding-3-small',
-          supports_native_streaming: false,
-          supports_function_calling: false,
+          mode: 'embedding',
         },
       };
       const svc = createSvc(null, [embeddingModel]);
@@ -280,14 +279,13 @@ describe('LitellmService', () => {
       expect(result[0]!.supportsEmbedding).toBe(true);
     });
 
-    it('marks a normal LLM model with streaming support as non-embedding', async () => {
+    it('marks a model with mode=chat as non-embedding', async () => {
       const llmModel: LiteLLMModelInfo = {
         model_name: 'gpt-4',
         litellm_params: { model: 'openai/gpt-4' },
         model_info: {
           key: 'gpt-4',
-          supports_native_streaming: true,
-          supports_function_calling: true,
+          mode: 'chat',
         },
       };
       const svc = createSvc(null, [llmModel]);
@@ -298,26 +296,23 @@ describe('LitellmService', () => {
       expect(result[0]!.supportsEmbedding).toBe(false);
     });
 
-    it('marks a model with function calling support as non-embedding', async () => {
-      const toolModel: LiteLLMModelInfo = {
-        model_name: 'claude-3',
-        litellm_params: { model: 'anthropic/claude-3' },
+    it('falls back to name-based detection when mode is absent', async () => {
+      const embeddingModel: LiteLLMModelInfo = {
+        model_name: 'qwen3-embedding:4b',
+        litellm_params: { model: 'openai/qwen3-embedding:4b' },
         model_info: {
-          key: 'claude-3',
-          supports_native_streaming: false,
-          supports_function_calling: true,
+          key: 'qwen3-embedding-4b',
         },
       };
-      const svc = createSvc(null, [toolModel]);
+      const svc = createSvc(null, [embeddingModel]);
 
       const result = await svc.listModels();
 
       expect(result).toHaveLength(1);
-      expect(result[0]!.supportsEmbedding).toBe(false);
+      expect(result[0]!.supportsEmbedding).toBe(true);
     });
 
-    it('returns false for supportsEmbedding when model_info is missing', async () => {
-      // Runtime responses may omit model_info even though the type requires it
+    it('returns false for supportsEmbedding when model_info is missing and name has no embed', async () => {
       const noInfoModel = {
         model_name: 'unknown-model',
         litellm_params: { model: 'unknown-model' },

@@ -63,12 +63,8 @@ export class LitellmService {
   }
 
   private isEmbeddingModel(m: LiteLLMModelInfo): boolean {
-    const info = m.model_info;
-    if (!info) return false;
-    return (
-      info.supports_native_streaming === false &&
-      info.supports_function_calling === false
-    );
+    if (m.model_info?.mode) return m.model_info.mode === 'embedding';
+    return /embed/i.test(m.model_name);
   }
 
   async countTokens(model: string, content: unknown): Promise<number> {
