@@ -10,7 +10,7 @@ import {
   RuntimeExecResult,
   RuntimeStartParams,
 } from '../runtime.types';
-import { buildEnvPrefix } from '../runtime.utils';
+import { buildEnvPrefix, shellEscape } from '../runtime.utils';
 import { BaseRuntime } from './base-runtime';
 
 /** Configuration needed to connect to the Daytona API. */
@@ -35,14 +35,8 @@ const IDLE_TIMEOUT_MS = 300_000;
 /** Absolute wall-clock limit; overridden by params.timeoutMs when provided. */
 const HARD_TIMEOUT_MS = 3_600_000;
 
-/** Initial poll interval for adaptive backoff (ms). */
-const INITIAL_POLL_MS = 200;
-
-/** Maximum poll interval cap for adaptive backoff (ms). */
-const MAX_POLL_MS = 2000;
-
-/** Timeout for snapshot log fetch to prevent hanging Daytona API from blocking the poll loop. */
-const SYNC_LOGS_TIMEOUT_MS = 5000;
+/** Fixed poll interval for the safety-net poller (ms). */
+const POLL_INTERVAL_MS = 200;
 
 /**
  * DaytonaRuntime using the @daytonaio/sdk
@@ -286,7 +280,7 @@ export class DaytonaRuntime extends BaseRuntime {
 
     // Prepend cd when cwd is specified
     if (params.cwd) {
-      cmdString = `cd ${JSON.stringify(params.cwd)} && ${cmdString}`;
+      cmdString = `cd ${shellEscape(params.cwd)} && ${cmdString}`;
     }
 
     this.emit({
@@ -476,8 +470,8 @@ export class DaytonaRuntime extends BaseRuntime {
    * Uses two completion signals racing against each other:
    * 1. **Stream** (`getSessionCommandLogs` WebSocket) — primary signal. When it
    *    resolves, fetch exit code via `getSessionCommand`.
-   * 2. **Adaptive polling** — safety net. Starts at 200ms, exponential backoff
-   *    to 2s cap. Catches fast-exiting commands when the stream hangs.
+   * 2. **Fixed-interval polling** (200ms) — safety net for fast-exiting commands
+   *    whose WebSocket close may be delayed.
    *
    * The command itself is NEVER retried. Only `getSessionCommand` (read-only
    * status check) is polled.
@@ -499,69 +493,22 @@ export class DaytonaRuntime extends BaseRuntime {
     let lastOutputAt = Date.now();
     let stdout = '';
     let stderr = '';
-    let observedStdoutLength = 0;
-    let observedStderrLength = 0;
     let streamActive = true;
-    let pollInFlight = false;
-    let currentPollMs = INITIAL_POLL_MS;
 
     return new Promise<RuntimeExecResult>((resolve) => {
       let settled = false;
-      let pollTimer: ReturnType<typeof setTimeout> | null = null;
+      let pollInterval: ReturnType<typeof setInterval> | null = null;
 
-      /** Fetch a snapshot of stdout/stderr from the REST API, with a timeout
-       *  to prevent a hanging Daytona API from blocking the poll loop. */
-      const syncLogsWithTimeout = async () => {
-        try {
-          const logsPromise = this.sandbox!.process.getSessionCommandLogs(
-            sessionId,
-            cmdId,
-          ) as Promise<{ stdout?: string; stderr?: string }>;
-
-          const logs = await Promise.race([
-            logsPromise,
-            new Promise<null>((r) => setTimeout(r, SYNC_LOGS_TIMEOUT_MS, null)),
-          ]);
-
-          if (!logs) return;
-
-          const nextStdout = logs.stdout ?? '';
-          const nextStderr = logs.stderr ?? '';
-          const stdoutGrew = nextStdout.length > observedStdoutLength;
-          const stderrGrew = nextStderr.length > observedStderrLength;
-
-          if (stdoutGrew) {
-            stdout = nextStdout;
-            observedStdoutLength = nextStdout.length;
-          }
-          if (stderrGrew) {
-            stderr = nextStderr;
-            observedStderrLength = nextStderr.length;
-          }
-          if (stdoutGrew || stderrGrew) {
-            lastOutputAt = Date.now();
-          }
-        } catch {
-          // Snapshot fetch is best-effort; streaming callbacks or later polls may still succeed.
-        }
-      };
-
-      /** Fetch exit code after stream resolves. If getSessionCommand throws
-       *  (404 = cmdId cleaned up), infer from collected output: non-empty
-       *  stderr implies failure (exit 1), otherwise assume success (exit 0). */
       const fetchExitCode = async (): Promise<number> => {
         try {
           const cmd = await this.sandbox!.process.getSessionCommand(
             sessionId,
             cmdId,
           );
-          if (typeof cmd.exitCode === 'number') {
-            return cmd.exitCode;
-          }
+          if (typeof cmd.exitCode === 'number') return cmd.exitCode;
         } catch {
-          // cmdId not found — command completed and was already cleaned up by Daytona
+          // cmdId not found — cleaned up after fast exit
         }
-        // Exit code not retrievable. Infer: non-empty stderr → failure (exit 1).
         return stderr.length > 0 ? 1 : 0;
       };
 
@@ -569,45 +516,36 @@ export class DaytonaRuntime extends BaseRuntime {
         if (settled) return;
         settled = true;
         streamActive = false;
-        if (pollTimer !== null) {
-          clearTimeout(pollTimer);
-          pollTimer = null;
+        if (pollInterval !== null) {
+          clearInterval(pollInterval);
+          pollInterval = null;
         }
         resolve(result);
       };
 
       const settleWithStuckHandler = (result: RuntimeExecResult) => {
         if (settled) return;
-        const finalResult = onSessionStuck ? onSessionStuck(result) : result;
-        settle(finalResult);
+        settle(onSessionStuck ? onSessionStuck(result) : result);
       };
 
-      // Stream logs — callbacks update lastOutputAt and collect output.
-      // This provides a fast-path for commands that exit before the first poll:
-      // when Daytona cleans up a fast-exiting cmdId, getSessionCommand() throws a 404 that
-      // the polling catch block silently swallows, causing the loop to spin until hard timeout.
-      // Resolving via stream completion avoids that race condition entirely.
+      // Stream: primary completion signal
       void this.sandbox!.process.getSessionCommandLogs(
         sessionId,
         cmdId,
         (chunk: string) => {
           if (!streamActive) return;
           stdout += chunk;
-          observedStdoutLength = stdout.length;
           lastOutputAt = Date.now();
         },
         (chunk: string) => {
           if (!streamActive) return;
           stderr += chunk;
-          observedStderrLength = stderr.length;
           lastOutputAt = Date.now();
         },
       )
         .then(async () => {
-          // Stream resolved → command finished. Do one final exit-code fetch.
           if (settled) return;
           const exitCode = await fetchExitCode();
-          await syncLogsWithTimeout();
           settle({
             exitCode,
             stdout,
@@ -617,107 +555,84 @@ export class DaytonaRuntime extends BaseRuntime {
           });
         })
         .catch(() => {
-          // Stream error on early session kill — expected and intentionally silent.
+          /* stream error on session kill — expected */
         });
 
-      const schedulePoll = () => {
-        pollTimer = setTimeout(() => {
-          if (pollInFlight || settled) {
-            if (!settled) schedulePoll();
+      // Poll: safety net for fast-exiting commands whose WebSocket close is delayed
+      pollInterval = setInterval(() => {
+        if (settled) return;
+
+        void (async () => {
+          // Abort signal check
+          if (params.signal?.aborted) {
+            settleWithStuckHandler({
+              exitCode: 124,
+              stdout,
+              stderr: 'Aborted',
+              fail: true,
+              execPath: fullWorkdir,
+            });
             return;
           }
-          pollInFlight = true;
 
-          void (async () => {
-            try {
-              if (params.signal?.aborted) {
-                settleWithStuckHandler({
-                  exitCode: 124,
-                  stdout,
-                  stderr: 'Aborted',
-                  fail: true,
-                  execPath: fullWorkdir,
-                });
-                return;
-              }
+          const now = Date.now();
 
-              await syncLogsWithTimeout();
+          // Idle timeout
+          const idleMs = params.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
+          if (now - lastOutputAt >= idleMs) {
+            settleWithStuckHandler({
+              exitCode: 124,
+              stdout,
+              stderr: `Idle timeout: no output for ${idleMs / 1000}s`,
+              fail: true,
+              execPath: fullWorkdir,
+            });
+            return;
+          }
 
-              const now = Date.now();
+          // Hard timeout
+          if (now - startAt >= hardMs) {
+            settleWithStuckHandler({
+              exitCode: 124,
+              stdout,
+              stderr: `Hard timeout: command exceeded ${hardMs / 1000}s`,
+              fail: true,
+              execPath: fullWorkdir,
+            });
+            return;
+          }
 
-              // Idle timeout — no output for the configured idle period
-              const idleMs = params.idleTimeoutMs ?? IDLE_TIMEOUT_MS;
-              if (now - lastOutputAt >= idleMs) {
-                settleWithStuckHandler({
-                  exitCode: 124,
-                  stdout,
-                  stderr: `Idle timeout: no output for ${idleMs / 1000}s`,
-                  fail: true,
-                  execPath: fullWorkdir,
-                });
-                return;
-              }
+          // Check command status
+          let cmd: { exitCode?: number } | undefined;
+          try {
+            cmd = await this.sandbox!.process.getSessionCommand(
+              sessionId,
+              cmdId,
+            );
+          } catch {
+            // 404: cmdId cleaned up — fast exit; infer from output
+            settle({
+              exitCode: stderr.length > 0 ? 1 : 0,
+              stdout,
+              stderr,
+              fail: stderr.length > 0,
+              execPath: fullWorkdir,
+            });
+            return;
+          }
 
-              // Hard timeout — wall-clock limit exceeded
-              if (now - startAt >= hardMs) {
-                settleWithStuckHandler({
-                  exitCode: 124,
-                  stdout,
-                  stderr: `Hard timeout: command exceeded ${hardMs / 1000}s`,
-                  fail: true,
-                  execPath: fullWorkdir,
-                });
-                return;
-              }
-
-              let cmd: { exitCode?: number } | undefined;
-              try {
-                cmd = await this.sandbox!.process.getSessionCommand(
-                  sessionId,
-                  cmdId,
-                );
-              } catch {
-                // getSessionCommand failed — the cmdId is no longer retrievable
-                // (e.g. Daytona cleaned it up after a fast exit). Treat as
-                // completion: collect whatever output we have and settle.
-                await syncLogsWithTimeout();
-                const exitCode = stderr.length > 0 ? 1 : 0;
-                settle({
-                  exitCode,
-                  stdout,
-                  stderr,
-                  fail: exitCode !== 0,
-                  execPath: fullWorkdir,
-                });
-                return;
-              }
-
-              if (cmd && typeof cmd.exitCode === 'number') {
-                const finalExitCode = cmd.exitCode;
-                streamActive = false;
-                await syncLogsWithTimeout();
-
-                settle({
-                  exitCode: finalExitCode,
-                  stdout,
-                  stderr,
-                  fail: finalExitCode !== 0,
-                  execPath: fullWorkdir,
-                });
-                return;
-              }
-
-              // Exponential backoff: double the interval up to MAX_POLL_MS
-              currentPollMs = Math.min(currentPollMs * 2, MAX_POLL_MS);
-            } finally {
-              pollInFlight = false;
-              if (!settled) schedulePoll();
-            }
-          })();
-        }, currentPollMs);
-      };
-
-      schedulePoll();
+          if (cmd && typeof cmd.exitCode === 'number') {
+            streamActive = false;
+            settle({
+              exitCode: cmd.exitCode,
+              stdout,
+              stderr,
+              fail: cmd.exitCode !== 0,
+              execPath: fullWorkdir,
+            });
+          }
+        })();
+      }, POLL_INTERVAL_MS);
     });
   }
 
@@ -800,9 +715,20 @@ export class DaytonaRuntime extends BaseRuntime {
     }
   }
 
+  private static stripAnsi(str: string): string {
+    /* eslint-disable no-control-regex */
+    return str
+      .replace(
+        /[\x1b\x9b][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g,
+        '',
+      )
+      .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+    /* eslint-enable no-control-regex */
+  }
+
   public override async execStream(
-    _command: string[],
-    _options?: {
+    command: string[],
+    options?: {
       workdir?: string;
       env?: Record<string, string>;
     },
@@ -812,10 +738,87 @@ export class DaytonaRuntime extends BaseRuntime {
     stderr: PassThrough;
     close: () => void;
   }> {
-    throw new Error(
-      'execStream is not supported by DaytonaRuntime. ' +
-        'The Daytona SDK does not provide bidirectional persistent streams. ' +
-        'MCP nodes requiring execStream must use Docker runtime.',
-    );
+    if (!this.sandbox) {
+      throw new Error('Runtime not started');
+    }
+
+    const stdoutStream = new PassThrough();
+    const stderrStream = new PassThrough();
+
+    const cwd = options?.workdir || this.workdir;
+    const envPrefix = buildEnvPrefix(options?.env);
+    const escapedArgs = command.map(shellEscape);
+    const cmd = `${envPrefix}${escapedArgs.join(' ')}`;
+    let accumulated = '';
+
+    const ptyId = `pty-${randomUUID()}`;
+    this.activeSessions.add(ptyId);
+    const ptyHandle = await this.sandbox.process.createPty({
+      id: ptyId,
+      cwd,
+      envs: { SHELL: '/bin/sh', TERM: 'xterm-256color', ...options?.env },
+      cols: 220,
+      rows: 50,
+      onData: (data: Uint8Array) => {
+        const text = new TextDecoder().decode(data);
+        const stripped = DaytonaRuntime.stripAnsi(text);
+        if (stripped) {
+          accumulated += stripped;
+          stdoutStream.write(stripped);
+        }
+      },
+    });
+
+    await ptyHandle.waitForConnection();
+
+    // Send the command to the PTY shell
+    await ptyHandle.sendInput(cmd + '\n');
+
+    // Wait for completion in the background and handle exit
+    void ptyHandle
+      .wait()
+      .then((result) => {
+        const exitCode = result.exitCode ?? 0;
+        if (exitCode !== 0 && accumulated) {
+          stderrStream.write(accumulated);
+        }
+        stderrStream.end();
+        stdoutStream.end();
+      })
+      .catch(() => {
+        stderrStream.end();
+        stdoutStream.end();
+      });
+
+    const stdinDuplex = new Duplex({
+      write(
+        chunk: Buffer,
+        _encoding: BufferEncoding,
+        callback: (error?: Error | null) => void,
+      ) {
+        void ptyHandle
+          .sendInput(chunk.toString())
+          .then(() => callback())
+          .catch((err: Error) => callback(err));
+      },
+      read() {
+        // No-op — stdin is write-only from the caller's perspective
+      },
+    });
+
+    const close = () => {
+      this.activeSessions.delete(ptyId);
+      void ptyHandle
+        .kill()
+        .catch(() => {})
+        .then(() => ptyHandle.disconnect());
+    };
+
+    return {
+      stdin: stdinDuplex,
+      stdout: stdoutStream,
+      stderr: stderrStream,
+      close,
+    };
   }
 }

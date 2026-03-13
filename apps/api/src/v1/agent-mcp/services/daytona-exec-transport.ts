@@ -111,9 +111,12 @@ export class DaytonaExecTransport implements Transport {
     const envPrefix = buildEnvPrefix(this.env);
     const fullCmd = `${envPrefix}${this.command} ${this.args.join(' ')}`;
 
+    // suppressInputEcho: true asks the toolbox to suppress stdin echo server-side.
+    // pendingEchoLines provides a client-side fallback for toolbox versions that
+    // ignore the flag or MCP servers with their own echo behavior.
     const { cmdId } = await this.sandbox.process.executeSessionCommand(
       this.daytonaSessionId,
-      { command: fullCmd, runAsync: true },
+      { command: fullCmd, runAsync: true, suppressInputEcho: true },
     );
     this.cmdId = cmdId;
 

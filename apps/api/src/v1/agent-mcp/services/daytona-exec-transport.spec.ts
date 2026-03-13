@@ -82,10 +82,11 @@ describe('DaytonaExecTransport', () => {
     expect(mock.process.executeSessionCommand).toHaveBeenCalledTimes(1);
     const [sid, req] = mock.process.executeSessionCommand.mock.calls[0] as [
       string,
-      { command: string; runAsync: boolean },
+      { command: string; runAsync: boolean; suppressInputEcho: boolean },
     ];
     expect(sid).toBe(sessionId);
     expect(req.runAsync).toBe(true);
+    expect(req.suppressInputEcho).toBe(true);
     // Command should include env prefix and the full command
     expect(req.command).toContain("export API_KEY='secret'");
     expect(req.command).toContain('npx -y @mcp/server');

@@ -19,6 +19,7 @@ const mockSandbox = {
     getSessionCommandLogs: vi.fn(),
     deleteSession: vi.fn(),
     listSessions: vi.fn().mockResolvedValue([]),
+    createPty: vi.fn(),
   },
 };
 
@@ -143,7 +144,7 @@ describe('DaytonaRuntime', () => {
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         expect.stringMatching(/^oneshot-/),
         expect.objectContaining({
-          command: expect.stringContaining('cd "/app/src"'),
+          command: expect.stringContaining("cd '/app/src'"),
           runAsync: true,
         }),
         undefined,
@@ -251,22 +252,6 @@ describe('DaytonaRuntime', () => {
       });
     }
 
-    function mockStreamingLogsWithoutSnapshots() {
-      mockSandbox.process.getSessionCommandLogs.mockImplementation(
-        (
-          _sessionId: string,
-          _cmdId: string,
-          onStdout?: (chunk: string) => void,
-          _onStderr?: (chunk: string) => void,
-        ) => {
-          if (!onStdout) {
-            return Promise.resolve({});
-          }
-          return new Promise<void>(() => undefined);
-        },
-      );
-    }
-
     beforeEach(() => {
       vi.useFakeTimers();
     });
@@ -334,7 +319,7 @@ describe('DaytonaRuntime', () => {
       expect(mockSandbox.process.executeSessionCommand).toHaveBeenCalledWith(
         'sess-cwd',
         expect.objectContaining({
-          command: expect.stringContaining('cd "/workspace"'),
+          command: expect.stringContaining("cd '/workspace'"),
           runAsync: true,
         }),
       );
@@ -440,10 +425,131 @@ describe('DaytonaRuntime', () => {
   });
 
   describe('execStream()', () => {
-    it('throws descriptive error', async () => {
-      await expect(runtime.execStream(['ls'])).rejects.toThrow(
-        'execStream is not supported by DaytonaRuntime',
+    function createMockPtyHandle(overrides?: {
+      exitCode?: number;
+      onDataCb?: (fn: (data: Uint8Array) => void) => void;
+    }) {
+      let onDataFn: ((data: Uint8Array) => void) | undefined;
+      let waitResolve: ((result: { exitCode?: number }) => void) | undefined;
+
+      const handle = {
+        waitForConnection: vi.fn().mockResolvedValue(undefined),
+        sendInput: vi.fn().mockResolvedValue(undefined),
+        kill: vi.fn().mockResolvedValue(undefined),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        wait: vi.fn(
+          () =>
+            new Promise<{ exitCode?: number }>((resolve) => {
+              waitResolve = resolve;
+            }),
+        ),
+      };
+
+      mockSandbox.process.createPty.mockImplementation(
+        (opts: { onData: (data: Uint8Array) => void }) => {
+          onDataFn = opts.onData;
+          overrides?.onDataCb?.(onDataFn);
+          return Promise.resolve(handle);
+        },
       );
+
+      return {
+        handle,
+        emitData: (text: string) => onDataFn?.(new TextEncoder().encode(text)),
+        resolveWait: (exitCode?: number) =>
+          waitResolve?.({ exitCode: exitCode ?? overrides?.exitCode ?? 0 }),
+      };
+    }
+
+    it('throws when sandbox is not started', async () => {
+      const unstartedRuntime = new DaytonaRuntime({
+        apiKey: 'k',
+        apiUrl: 'http://api',
+        target: 'us',
+      });
+      await expect(unstartedRuntime.execStream(['ls'])).rejects.toThrow(
+        'Runtime not started',
+      );
+    });
+
+    it('returns stdin/stdout/stderr streams and calls createPty', async () => {
+      const pty = createMockPtyHandle();
+
+      const { stdin, stdout, stderr, close } = await runtime.execStream(
+        ['echo', 'hello'],
+        { workdir: '/test' },
+      );
+
+      expect(mockSandbox.process.createPty).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cwd: '/test',
+          cols: 220,
+          rows: 50,
+          envs: expect.objectContaining({ TERM: 'xterm-256color' }),
+        }),
+      );
+      expect(pty.handle.waitForConnection).toHaveBeenCalled();
+      expect(pty.handle.sendInput).toHaveBeenCalledWith("'echo' 'hello'\n");
+
+      // Simulate PTY output
+      pty.emitData('hello\n');
+
+      const chunks: string[] = [];
+      stdout.on('data', (chunk: Buffer) => chunks.push(chunk.toString()));
+
+      // Resolve wait to end streams
+      pty.resolveWait(0);
+      await new Promise<void>((r) => stdout.on('end', r));
+
+      expect(chunks.join('')).toContain('hello');
+      expect(stdin).toBeDefined();
+      expect(stderr).toBeDefined();
+      expect(close).toBeInstanceOf(Function);
+    });
+
+    it('strips ANSI escape codes from PTY output', async () => {
+      const pty = createMockPtyHandle();
+
+      const { stdout } = await runtime.execStream(['echo', 'test']);
+
+      const chunks: string[] = [];
+      stdout.on('data', (chunk: Buffer) => chunks.push(chunk.toString()));
+
+      pty.emitData('\x1b[32mgreen text\x1b[0m\n');
+
+      pty.resolveWait(0);
+      await new Promise<void>((r) => stdout.on('end', r));
+
+      expect(chunks.join('')).toBe('green text\n');
+    });
+
+    it('close() terminates PTY and ends streams', async () => {
+      const pty = createMockPtyHandle();
+
+      const { close } = await runtime.execStream(['ls']);
+
+      close();
+
+      // Allow microtasks to flush
+      await new Promise<void>((r) => setImmediate(r));
+
+      expect(pty.handle.kill).toHaveBeenCalled();
+    });
+
+    it('routes output to stderr on non-zero exit', async () => {
+      const pty = createMockPtyHandle();
+
+      const { stderr } = await runtime.execStream(['failing-cmd']);
+
+      const stderrChunks: string[] = [];
+      stderr.on('data', (chunk: Buffer) => stderrChunks.push(chunk.toString()));
+
+      pty.emitData('error output\n');
+
+      pty.resolveWait(1);
+      await new Promise<void>((r) => stderr.on('end', r));
+
+      expect(stderrChunks.join('')).toContain('error output');
     });
   });
 
@@ -1037,7 +1143,7 @@ describe('DaytonaRuntime', () => {
         idleTimeoutMs: 15_000,
       });
 
-      // Adaptive poll starts at 200ms — the exit code should be detected quickly
+      // Fixed poll at 200ms — the exit code should be detected quickly
       await vi.advanceTimersByTimeAsync(500);
       const result = await execPromise;
 
@@ -1086,7 +1192,7 @@ describe('DaytonaRuntime', () => {
         idleTimeoutMs: 15_000,
       });
 
-      // Adaptive backoff: 200ms + 400ms + 800ms = 1400ms for 3 polls
+      // Fixed 200ms poll interval: 3 polls at 200ms each = 600ms
       await vi.advanceTimersByTimeAsync(5000);
       const result = await execPromise;
 
@@ -1128,7 +1234,7 @@ describe('DaytonaRuntime', () => {
         idleTimeoutMs: 15_000,
       });
 
-      // Adaptive poll at 200ms should catch it
+      // Fixed 200ms poll interval should catch it
       await vi.advanceTimersByTimeAsync(500);
       const result = await execPromise;
 
@@ -1185,6 +1291,89 @@ describe('DaytonaRuntime', () => {
       expect(result.fail).toBe(true);
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toBe(stderrOutput);
+    });
+
+    it('stream resolves first — poll is irrelevant', async () => {
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'cmd-stream-first',
+      });
+
+      // Stream resolves immediately with stdout
+      mockSandbox.process.getSessionCommandLogs.mockImplementation(
+        (
+          _sessionId: string,
+          _cmdId: string,
+          onStdout?: (chunk: string) => void,
+        ) => {
+          if (onStdout) {
+            onStdout('stream output\n');
+          }
+          return Promise.resolve();
+        },
+      );
+
+      // getSessionCommand returns exitCode: 0 (called by stream .then → fetchExitCode)
+      mockSandbox.process.getSessionCommand.mockResolvedValue({
+        exitCode: 0,
+        id: 'cmd-stream-first',
+        command: 'echo hi',
+      });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+      const execPromise = runtime.exec({
+        cmd: 'echo hi',
+        sessionId: 'sess-stream-first',
+      });
+
+      // Only flush microtasks — do NOT advance timers beyond the initial tick.
+      // The stream .then() path should settle the promise without needing the poll interval.
+      await vi.advanceTimersByTimeAsync(0);
+      const result = await execPromise;
+
+      expect(result.exitCode).toBe(0);
+      expect(result.fail).toBe(false);
+      expect(result.stdout).toBe('stream output\n');
+
+      // getSessionCommand was called once by fetchExitCode (from stream .then path),
+      // but the poll interval never fired so no additional calls were made.
+      expect(mockSandbox.process.getSessionCommand).toHaveBeenCalledTimes(1);
+    });
+
+    it('onSessionStuck callback return value is used', async () => {
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        cmdId: 'cmd-stuck-cb',
+      });
+      mockStreamingLogsWithoutSnapshots();
+      // Command never completes — no exitCode
+      mockSandbox.process.getSessionCommand.mockResolvedValue({
+        id: 'cmd-stuck-cb',
+        command: 'sleep infinity',
+      });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+      const execPromise = runtime.exec({
+        cmd: 'sleep infinity',
+        sessionId: 'sess-stuck-cb',
+        idleTimeoutMs: 5_000,
+      });
+
+      // Advance past the idle timeout (5s) so the stuck handler fires
+      await vi.advanceTimersByTimeAsync(6_000);
+      const result = await execPromise;
+
+      // The idle timeout fires and triggers onSessionStuck inside execInSession.
+      // The default onSessionStuck in execInSession returns the result as-is
+      // (it only triggers session recreation as a side-effect).
+      expect(result.exitCode).toBe(124);
+      expect(result.fail).toBe(true);
+      expect(result.stderr).toContain('Idle timeout');
+      // Verify session was recreated (deleteSession called for the stuck session)
+      expect(mockSandbox.process.deleteSession).toHaveBeenCalledWith(
+        'sess-stuck-cb',
+      );
+      expect(mockSandbox.process.createSession).toHaveBeenCalledWith(
+        'sess-stuck-cb',
+      );
     });
   });
 });
