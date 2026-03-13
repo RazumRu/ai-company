@@ -85,10 +85,7 @@ const mockLlmModelsService = {
 
 const mockOpenaiService = {};
 const mockQdrantService = {
-  raw: {
-    getCollections: vi.fn().mockResolvedValue({ collections: [] }),
-    deleteCollection: vi.fn().mockResolvedValue(true),
-  },
+  getCollections: vi.fn().mockResolvedValue({ collections: [] }),
   deleteCollection: vi.fn().mockResolvedValue(undefined),
 };
 const mockRuntimeProvider = {};
@@ -154,7 +151,7 @@ describe('RepoIndexService', () => {
     );
     mockRepoIndexQueueService.addIndexJob.mockResolvedValue(undefined);
     mockRepoIndexQueueService.removeJob.mockResolvedValue(undefined);
-    mockQdrantService.raw.getCollections.mockResolvedValue({ collections: [] });
+    mockQdrantService.getCollections.mockResolvedValue({ collections: [] });
     mockQdrantService.deleteCollection.mockResolvedValue(undefined);
     mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
       'text-embedding-3-small',
@@ -803,7 +800,7 @@ describe('RepoIndexService', () => {
       mockRepoIndexDao.withIndexLock.mockImplementation(
         (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
       );
-      mockQdrantService.raw.getCollections.mockResolvedValue({
+      mockQdrantService.getCollections.mockResolvedValue({
         collections: [],
       });
 
@@ -866,7 +863,7 @@ describe('RepoIndexService', () => {
       mockRepoIndexDao.withIndexLock.mockImplementation(
         (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
       );
-      mockQdrantService.raw.getCollections.mockResolvedValue({
+      mockQdrantService.getCollections.mockResolvedValue({
         collections: [],
       });
 
@@ -911,7 +908,7 @@ describe('RepoIndexService', () => {
         (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
       );
       mockRepoIndexQueueService.removeJob.mockResolvedValue(undefined);
-      mockQdrantService.raw.getCollections.mockResolvedValue({
+      mockQdrantService.getCollections.mockResolvedValue({
         collections: setup.qdrantCollections,
       });
       mockQdrantService.deleteCollection.mockResolvedValue(undefined);
@@ -1061,7 +1058,7 @@ describe('RepoIndexService', () => {
       mockRepoIndexDao.withIndexLock.mockImplementation(
         (_repoId: string, _branch: string, cb: () => Promise<unknown>) => cb(),
       );
-      mockQdrantService.raw.getCollections.mockRejectedValue(qdrantError);
+      mockQdrantService.getCollections.mockRejectedValue(qdrantError);
 
       const svc = new RepoIndexService(
         mockRepoIndexDao as unknown as RepoIndexDao,

@@ -5,7 +5,7 @@ import { LiteLLMModelInfo } from '../litellm.types';
 
 @Injectable()
 export class LiteLlmClient {
-  private static readonly MODEL_LIST_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+  private static readonly MODEL_LIST_TTL_MS = 5 * 60 * 1000; // 5min
 
   private modelListCache: {
     expiresAt: number;

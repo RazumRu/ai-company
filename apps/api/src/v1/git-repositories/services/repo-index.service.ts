@@ -217,7 +217,7 @@ export class RepoIndexService implements OnModuleInit {
       );
 
       // 1. Fetch all codebase_* Qdrant collections and all DB rows
-      const qdrantResult = await this.qdrantService.raw.getCollections();
+      const qdrantResult = await this.qdrantService.getCollections();
       const codebaseCollections = qdrantResult.collections
         .map((c) => c.name)
         .filter((name) => name.startsWith(CODEBASE_COLLECTION_PREFIX));

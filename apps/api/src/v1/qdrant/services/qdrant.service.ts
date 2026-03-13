@@ -106,6 +106,12 @@ export class QdrantService {
     return this.client;
   }
 
+  async getCollections(): Promise<
+    Awaited<ReturnType<QdrantClient['getCollections']>>
+  > {
+    return this.client.getCollections();
+  }
+
   /**
    * Invalidate cached knowledge about a collection so the next operation
    * re-checks Qdrant. Useful when external processes drop/recreate collections.

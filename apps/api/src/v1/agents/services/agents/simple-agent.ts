@@ -944,6 +944,29 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         (name !== 'AbortError' && !msg.toLowerCase().includes('abort'))
       ) {
         const error = err as Error;
+
+        // Emit a user-visible error message into the thread history
+        const errorText = error.message || 'Unknown error';
+        const errorMsg = markMessageHideForLlm(
+          new AIMessage(`Execution failed: ${errorText}`),
+        );
+        errorMsg.additional_kwargs = {
+          ...(errorMsg.additional_kwargs ?? {}),
+          __isErrorMessage: true,
+        };
+        const errorMsgs = updateMessagesListWithMetadata(
+          [errorMsg],
+          mergedConfig,
+        );
+        this.emit({
+          type: 'message',
+          data: {
+            threadId,
+            messages: errorMsgs,
+            config: mergedConfig,
+          },
+        });
+
         this.activeRuns.delete(runId);
 
         this.emit({

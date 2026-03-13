@@ -46,6 +46,17 @@ vi.mock('@langchain/core/messages', () => ({
       this.additional_kwargs = {};
     }
   },
+  AIMessage: class MockAIMessage {
+    content: string;
+    type: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    additional_kwargs: Record<string, unknown>;
+    constructor(content: string) {
+      this.content = typeof content === 'string' ? content : '';
+      this.type = 'ai';
+      this.additional_kwargs = {};
+    }
+  },
   SystemMessage: class MockSystemMessage {
     content: string;
     type: string;

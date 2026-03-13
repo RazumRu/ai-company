@@ -163,6 +163,15 @@ describe('QdrantService', () => {
     expect(results).toEqual([{ id: 'chunk-1' }, { id: 'chunk-2' }]);
   });
 
+  it('lists all collections', async () => {
+    const result = await service.getCollections();
+
+    expect(mockClient.getCollections).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      collections: [{ name: 'test-collection' }, { name: 'knowledge_chunks' }],
+    });
+  });
+
   describe('knownCollections cache', () => {
     it('skips getCollection on second call after ensureCollection succeeds', async () => {
       // First call: collection exists (getCollection succeeds, returns size 2)
