@@ -91,6 +91,14 @@ bootstrapper.setupLogger({
 
 bootstrapper.addModules([AppModule]);
 
+// Defense-in-depth: log but do not crash on unhandled promise rejections.
+// The actual fixes in SubAgent and tool error handling should prevent these,
+// but this safety net prevents process death from floating promises in
+// third-party libraries (e.g. @langchain/openai).
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('Unhandled promise rejection (non-fatal):', reason);
+});
+
 // Initialize the application
 bootstrapper.init().catch((err) => {
   console.error('Failed to bootstrap application', err);

@@ -421,7 +421,24 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           error: 'Max iterations reached',
         };
       }
-      throw err;
+      // Catch all other errors (LLM auth failures, provider errors, etc.)
+      // and convert to a graceful error result instead of crashing.
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        err instanceof Error ? err : new Error(errorMessage),
+        `SubAgent failed with unexpected error: ${errorMessage}`,
+      );
+
+      return {
+        result: `Subagent execution failed: ${errorMessage}`,
+        statistics: {
+          totalIterations,
+          toolCallsMade,
+          usage: this.extractUsageFromState(finalState),
+        },
+        exploredFiles: extractExploredFilesFromMessages(finalState.messages),
+        error: errorMessage,
+      };
     }
   }
 

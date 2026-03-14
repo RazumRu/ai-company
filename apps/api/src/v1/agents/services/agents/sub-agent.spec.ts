@@ -584,14 +584,22 @@ describe('SubAgent', () => {
   });
 
   describe('error handling', () => {
-    it('should propagate non-abort errors', async () => {
+    it('should return graceful error result for non-abort errors', async () => {
       mockLlmInvokeRef.mockRejectedValueOnce(
         new Error('LLM connection failed'),
       );
 
-      await expect(
-        subAgent.runSubagent([new HumanMessage('Find files')], defaultCfg),
-      ).rejects.toThrow('LLM connection failed');
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('Find files')],
+        defaultCfg,
+      );
+
+      expect(result.error).toBe('LLM connection failed');
+      expect(result.result).toContain('Subagent execution failed');
+      expect(result.result).toContain('LLM connection failed');
+      expect(result.statistics.totalIterations).toBe(0);
+      expect(result.statistics.toolCallsMade).toBe(0);
+      expect(mockLogger.error).toHaveBeenCalled();
     });
 
     it('should treat AbortError as abort', async () => {

@@ -279,14 +279,29 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
 
     const userId = cfg.configurable?.thread_created_by as string | undefined;
 
-    const indexResult = await this.repoIndexService.getOrInitIndexForRepo({
-      repositoryId,
-      repoUrl: repoInfo.repoId,
-      repoRoot,
-      execFn,
-      branch,
-      userId,
-    });
+    let indexResult;
+    try {
+      indexResult = await this.repoIndexService.getOrInitIndexForRepo({
+        repositoryId,
+        repoUrl: repoInfo.repoId,
+        repoRoot,
+        execFn,
+        branch,
+        userId,
+      });
+    } catch (initError) {
+      const errMsg =
+        initError instanceof Error ? initError.message : String(initError);
+      if (/auth|api.key|unauthorized|forbidden|user not found/i.test(errMsg)) {
+        return {
+          output: {
+            error: `Embedding service authentication failed during index initialization: ${errMsg}\n\nSTOP: Do not retry codebase_search — the embedding service is unavailable.\nSwitch immediately to these tools for all remaining codebase exploration:\n- files_directory_tree — to understand project structure\n- files_find_paths — to find files by name or pattern\n- files_search_text — to search file contents with regex`,
+          },
+          messageMetadata,
+        };
+      }
+      throw initError;
+    }
 
     if (indexResult.status !== 'ready') {
       const { repoIndex } = indexResult;
