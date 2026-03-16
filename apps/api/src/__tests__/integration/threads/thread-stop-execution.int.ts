@@ -158,7 +158,9 @@ describe('Thread Stop Execution Integration Tests', () => {
 
   const ensureGraphRunning = async () => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
 
     await graphsService.run(contextDataStorage, graphId);
     await waitForGraphStatus(graphId, GraphStatus.Running);
@@ -177,7 +179,9 @@ describe('Thread Stop Execution Integration Tests', () => {
   const extractShellResult = (
     message: ThreadMessageDto['message'],
   ): { exitCode: number; stdout: string; stderr: string } | null => {
-    if (!isShellThreadMessage(message)) return null;
+    if (!isShellThreadMessage(message)) {
+      return null;
+    }
 
     const raw =
       message.role === 'tool'
@@ -211,7 +215,9 @@ describe('Thread Stop Execution Integration Tests', () => {
       );
 
   const hasShellToolCall = (message: ThreadMessageDto['message']): boolean => {
-    if (message.role !== 'ai') return false;
+    if (message.role !== 'ai') {
+      return false;
+    }
     return (
       Array.isArray(message.toolCalls) &&
       message.toolCalls.some((toolCall) => toolCall.name === 'shell')

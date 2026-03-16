@@ -79,7 +79,9 @@ export class KnowledgeReindexService {
       async () => {
         while (queue.length) {
           const item = queue.shift();
-          if (!item) return;
+          if (!item) {
+            return;
+          }
           await handler(item);
         }
       },

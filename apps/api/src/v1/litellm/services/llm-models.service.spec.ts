@@ -13,12 +13,6 @@ const ENV_DEFAULTS = vi.hoisted(() => ({
   llmMiniModel: 'env-mini',
   llmEmbeddingModel: 'env-embedding',
   llmCodeExplorerSubagentModel: '',
-  llmUseOfflineModel: false,
-  llmOfflineCodingModel: 'offline-coding',
-  llmOfflineCodingMiniModel: 'offline-coding-mini',
-  llmOfflineEmbeddingModel: 'offline-embedding',
-  llmOfflineMiniModel: 'offline-mini',
-  llmSummarizeOnlineThreshold: 30000,
 }));
 
 vi.mock('../../../environments', () => ({
@@ -75,7 +69,6 @@ const createService = (
 describe('LlmModelsService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    ENV_DEFAULTS.llmUseOfflineModel = false;
     ENV_DEFAULTS.llmCodeExplorerSubagentModel = '';
   });
 
@@ -265,7 +258,7 @@ describe('LlmModelsService', () => {
     it('returns provided model when given', () => {
       const { service } = createService();
 
-      const result = service.getSummarizeModel(undefined, 'custom-mini');
+      const result = service.getSummarizeModel('custom-mini');
 
       expect(result).toBe('custom-mini');
     });
@@ -276,33 +269,6 @@ describe('LlmModelsService', () => {
       const result = service.getSummarizeModel();
 
       expect(result).toBe('env-mini');
-    });
-
-    it('forces online model when offline mode is active and context exceeds threshold', () => {
-      ENV_DEFAULTS.llmUseOfflineModel = true;
-      const { service } = createService();
-
-      const result = service.getSummarizeModel(40000);
-
-      expect(result).toBe('env-mini');
-    });
-
-    it('returns provided model override even in offline+large-context scenario', () => {
-      ENV_DEFAULTS.llmUseOfflineModel = true;
-      const { service } = createService();
-
-      const result = service.getSummarizeModel(40000, 'user-mini');
-
-      expect(result).toBe('user-mini');
-    });
-
-    it('returns offline mini model when offline mode is active and context is within threshold', () => {
-      ENV_DEFAULTS.llmUseOfflineModel = true;
-      const { service } = createService();
-
-      const result = service.getSummarizeModel(10000);
-
-      expect(result).toBe('offline-mini');
     });
   });
 });

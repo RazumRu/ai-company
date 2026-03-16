@@ -69,7 +69,9 @@ describe('Subagents Tool Integration Tests', () => {
   }, 300_000);
 
   afterAll(async () => {
-    if (graphId) await cleanupGraph(graphId);
+    if (graphId) {
+      await cleanupGraph(graphId);
+    }
 
     if (testProjectId) {
       try {
@@ -148,7 +150,9 @@ describe('Subagents Tool Integration Tests', () => {
 
   const ensureGraphRunning = async (id: string) => {
     const graph = await graphsService.findById(contextDataStorage, id);
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
     await graphsService.run(contextDataStorage, id);
     await waitForGraphStatus(id, GraphStatus.Running);
   };

@@ -267,7 +267,9 @@ export class ToolExecutorNode extends BaseNode<
       const result = results[i];
       const toolMsg = result?.toolMessage;
 
-      if (!toolMsg) continue;
+      if (!toolMsg) {
+        continue;
+      }
 
       // Attach token usage to tool message:
       // - __requestUsage = parent LLM call (consistent with AI messages)
@@ -350,7 +352,9 @@ export class ToolExecutorNode extends BaseNode<
    */
   private extractErrorFromToolMessage(msg: ToolMessage): string | null {
     const content = typeof msg.content === 'string' ? msg.content : null;
-    if (!content) return null;
+    if (!content) {
+      return null;
+    }
 
     try {
       const parsed = JSON.parse(content) as Record<string, unknown>;

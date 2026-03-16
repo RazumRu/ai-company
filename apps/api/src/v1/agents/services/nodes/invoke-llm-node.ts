@@ -227,8 +227,12 @@ export class InvokeLlmNode extends BaseNode<
       });
 
     const getMessage = (error: unknown): string | undefined => {
-      if (typeof error === 'string') return error;
-      if (error instanceof Error) return error.message;
+      if (typeof error === 'string') {
+        return error;
+      }
+      if (error instanceof Error) {
+        return error.message;
+      }
       return typeof (error as { message?: unknown })?.message === 'string'
         ? (error as { message: string }).message
         : undefined;
@@ -249,24 +253,40 @@ export class InvokeLlmNode extends BaseNode<
       headers: Record<string, string | number | string[]> | undefined,
       name: string,
     ): string | undefined => {
-      if (!headers) return undefined;
+      if (!headers) {
+        return undefined;
+      }
       const key = Object.keys(headers).find(
         (h) => h.toLowerCase() === name.toLowerCase(),
       );
-      if (!key) return undefined;
+      if (!key) {
+        return undefined;
+      }
       const value = headers[key];
-      if (typeof value === 'string') return value;
-      if (typeof value === 'number') return String(value);
-      if (Array.isArray(value)) return value[0];
+      if (typeof value === 'string') {
+        return value;
+      }
+      if (typeof value === 'number') {
+        return String(value);
+      }
+      if (Array.isArray(value)) {
+        return value[0];
+      }
       return undefined;
     };
 
     const parseRetryAfterMs = (value?: string): number | null => {
-      if (!value) return null;
+      if (!value) {
+        return null;
+      }
       const seconds = Number.parseFloat(value);
-      if (Number.isFinite(seconds)) return Math.ceil(seconds * 1000);
+      if (Number.isFinite(seconds)) {
+        return Math.ceil(seconds * 1000);
+      }
       const dateMs = Date.parse(value);
-      if (Number.isNaN(dateMs)) return null;
+      if (Number.isNaN(dateMs)) {
+        return null;
+      }
       const diffMs = dateMs - Date.now();
       return diffMs > 0 ? Math.ceil(diffMs) : null;
     };
@@ -281,7 +301,9 @@ export class InvokeLlmNode extends BaseNode<
 
     const isAuthError = (error: unknown): boolean => {
       const status = getErrorStatus(error);
-      if (status === 401 || status === 403) return true;
+      if (status === 401 || status === 403) {
+        return true;
+      }
       const message = getMessage(error);
       return (
         typeof message === 'string' &&
@@ -302,12 +324,16 @@ export class InvokeLlmNode extends BaseNode<
         (typeof name === 'string' && name.includes('RateLimit')) ||
         (typeof message === 'string' &&
           message.toLowerCase().includes('rate limit'));
-      if (!isRateLimit) return null;
+      if (!isRateLimit) {
+        return null;
+      }
 
       const headerDelay = parseRetryAfterMs(
         getHeader(getHeaders(error), 'retry-after'),
       );
-      if (headerDelay !== null) return headerDelay;
+      if (headerDelay !== null) {
+        return headerDelay;
+      }
 
       const match = message?.match(retryAfterRe);
       return match?.[1] ? parseRetryAfterMs(match[1]) : null;
@@ -425,7 +451,9 @@ export class InvokeLlmNode extends BaseNode<
 
       const tool = toolMap.get(tc.name);
       const title = tool?.__titleFromArgs?.(tc.args);
-      if (!title) return tc;
+      if (!title) {
+        return tc;
+      }
 
       return Object.assign({}, tc, { __title: title });
     });
@@ -439,11 +467,17 @@ export class InvokeLlmNode extends BaseNode<
     // to the correct parent-level tool call, not the subagent's internal calls.
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (!(msg instanceof AIMessage)) continue;
-      if (msg.additional_kwargs?.__hideForLlm) continue;
+      if (!(msg instanceof AIMessage)) {
+        continue;
+      }
+      if (msg.additional_kwargs?.__hideForLlm) {
+        continue;
+      }
 
       const toolNames = this.getToolCallNamesFromAiMessage(msg);
-      if (toolNames.length === 0) continue;
+      if (toolNames.length === 0) {
+        continue;
+      }
 
       const stopAt = (() => {
         for (let j = i + 1; j < messages.length; j++) {

@@ -27,7 +27,9 @@ export abstract class BaseNotificationHandler<
     graphId: string,
   ): Promise<{ ownerId: string; projectId: string }> {
     const cached = this.graphInfoCache.get(graphId);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     const graph = await graphDao.getOne({ id: graphId });
 

@@ -122,8 +122,12 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
       }
     };
 
-    if (noSummarizeGraphId) await cleanup(noSummarizeGraphId);
-    if (summarizeGraphId) await cleanup(summarizeGraphId);
+    if (noSummarizeGraphId) {
+      await cleanup(noSummarizeGraphId);
+    }
+    if (summarizeGraphId) {
+      await cleanup(summarizeGraphId);
+    }
 
     if (testProjectId) {
       try {
@@ -141,7 +145,9 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
 
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
     await graphsService.run(contextDataStorage, graphId);
     await waitForCondition(
       () => graphsService.findById(contextDataStorage, graphId),
@@ -191,7 +197,9 @@ describe('Thread currentContext from invoke_llm input_tokens (integration)', () 
       },
       (stats) => {
         const current = stats?.total?.currentContext ?? 0;
-        if (current <= 0) return false;
+        if (current <= 0) {
+          return false;
+        }
         if (typeof prevTotalTokens === 'number') {
           return (stats?.total?.totalTokens ?? 0) > prevTotalTokens;
         }

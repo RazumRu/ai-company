@@ -49,7 +49,9 @@ export class RuntimeProvider {
     message?: string,
   ): void {
     // System operations (e.g. repo indexing) have no graph — skip notifications.
-    if (!graphId) return;
+    if (!graphId) {
+      return;
+    }
 
     this.notificationsService
       .emit({
@@ -112,7 +114,7 @@ export class RuntimeProvider {
     ) {
       return configured as RuntimeType;
     }
-    return RuntimeType.Docker;
+    return RuntimeType.Daytona;
   }
 
   async provide<T extends BaseRuntime>(

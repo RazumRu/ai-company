@@ -63,31 +63,41 @@ export class CommunicationExecTool extends BaseTool<
     requested: string,
     config: BaseCommunicationToolConfig,
   ): AgentInfo | undefined {
-    if (!config?.agents?.length) return undefined;
+    if (!config?.agents?.length) {
+      return undefined;
+    }
 
     // 1) Exact match (current behavior)
     const exact = config.agents.find((a) => a.name === requested);
-    if (exact) return exact;
+    if (exact) {
+      return exact;
+    }
 
     // 2) Case-insensitive exact match
     const lower = requested.trim().toLowerCase();
     const ciExact = config.agents.find(
       (a) => a.name.trim().toLowerCase() === lower,
     );
-    if (ciExact) return ciExact;
+    if (ciExact) {
+      return ciExact;
+    }
 
     // 3) Normalized match (strip role suffix, collapse spaces)
     const normRequested = this.normalizeAgentName(requested);
     const normMatches = config.agents.filter(
       (a) => this.normalizeAgentName(a.name) === normRequested,
     );
-    if (normMatches.length === 1) return normMatches[0];
+    if (normMatches.length === 1) {
+      return normMatches[0];
+    }
 
     // 4) Prefix match on normalized name (helps when model sends just first/last name)
     const prefixMatches = config.agents.filter((a) =>
       this.normalizeAgentName(a.name).startsWith(normRequested),
     );
-    if (prefixMatches.length === 1) return prefixMatches[0];
+    if (prefixMatches.length === 1) {
+      return prefixMatches[0];
+    }
 
     return undefined;
   }

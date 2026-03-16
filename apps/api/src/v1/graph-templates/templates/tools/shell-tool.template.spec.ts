@@ -353,9 +353,12 @@ describe('ShellToolTemplate', () => {
       beforeEach(() => {
         vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
           (_gid, nodes, kind) => {
-            if (kind === NodeKind.Runtime) return [mockRuntimeNodeId];
-            if (kind === NodeKind.Resource)
+            if (kind === NodeKind.Runtime) {
+              return [mockRuntimeNodeId];
+            }
+            if (kind === NodeKind.Resource) {
               return Array.from(nodes).filter((id) => id === mockResourceId);
+            }
             return [];
           },
         );
@@ -527,11 +530,14 @@ describe('ShellToolTemplate', () => {
 
         vi.mocked(mockGraphRegistry.filterNodesByType).mockImplementation(
           (_gid, nodes, kind) => {
-            if (kind === NodeKind.Runtime) return [mockRuntimeNodeId];
-            if (kind === NodeKind.Resource)
+            if (kind === NodeKind.Runtime) {
+              return [mockRuntimeNodeId];
+            }
+            if (kind === NodeKind.Resource) {
               return Array.from(nodes).filter(
                 (id) => id === mockResourceId || id === res2Id,
               );
+            }
             return [];
           },
         );

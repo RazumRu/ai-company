@@ -67,24 +67,6 @@ export class LlmModelsService {
     };
   }
 
-  private offlineCodingFallback(model: string): string {
-    return environment.llmUseOfflineModel
-      ? environment.llmOfflineCodingModel
-      : model;
-  }
-
-  private offlineEmbeddingFallback(model: string): string {
-    return environment.llmUseOfflineModel
-      ? environment.llmOfflineEmbeddingModel
-      : model;
-  }
-
-  private offlineMiniFallback(model: string): string {
-    return environment.llmUseOfflineModel
-      ? environment.llmOfflineMiniModel
-      : model;
-  }
-
   private async buildResponseParams(
     model: string,
     reasoning?: (typeof LlmModelsService.DEFAULT_REASONING)[keyof typeof LlmModelsService.DEFAULT_REASONING],
@@ -103,25 +85,8 @@ export class LlmModelsService {
     return { model, reasoning };
   }
 
-  /**
-   * Returns the model to use for summarization based on the current context size.
-   * When offline mode is active and the context exceeds the online threshold,
-   * forces the online model to ensure quality summarization of large conversations.
-   *
-   * @param currentContext - Current token count of the conversation. When above
-   *   the threshold (LLM_SUMMARIZE_ONLINE_THRESHOLD, default 30000), the online
-   *   model is used regardless of the offline mode setting.
-   * @param model - Optional model override from LLMRequestContext.
-   */
-  getSummarizeModel(currentContext?: number, model?: string): string {
-    if (
-      environment.llmUseOfflineModel &&
-      currentContext !== undefined &&
-      currentContext > environment.llmSummarizeOnlineThreshold
-    ) {
-      return model ?? environment.llmMiniModel;
-    }
-    return model ?? this.offlineMiniFallback(environment.llmMiniModel);
+  getSummarizeModel(model?: string): string {
+    return model ?? environment.llmMiniModel;
   }
 
   getAiSuggestionsDefaultModel(model?: string): string {
@@ -129,15 +94,14 @@ export class LlmModelsService {
   }
 
   getThreadNameModel(model?: string): string {
-    return model ?? this.offlineMiniFallback(environment.llmMiniModel);
+    return model ?? environment.llmMiniModel;
   }
 
   async getKnowledgeMetadataParams(model?: string): Promise<{
     model: string;
     reasoning?: { effort: 'low' | 'medium' | 'high' };
   }> {
-    const resolvedModel =
-      model ?? this.offlineMiniFallback(environment.llmMiniModel);
+    const resolvedModel = model ?? environment.llmMiniModel;
     return this.buildResponseParams(
       resolvedModel,
       LlmModelsService.DEFAULT_REASONING.medium,
@@ -145,23 +109,20 @@ export class LlmModelsService {
   }
 
   getKnowledgeEmbeddingModel(model?: string): string {
-    return (
-      model ?? this.offlineEmbeddingFallback(environment.llmEmbeddingModel)
-    );
+    return model ?? environment.llmEmbeddingModel;
   }
 
   getKnowledgeSearchModel(model?: string): string {
-    return model ?? this.offlineMiniFallback(environment.llmMiniModel);
+    return model ?? environment.llmMiniModel;
   }
 
   getSubagentFastModel(model?: string): string {
-    return model ?? this.offlineCodingFallback(environment.llmMiniCodeModel);
+    return model ?? environment.llmMiniCodeModel;
   }
 
   /**
    * Returns the model used by the explorer subagent.
-   * Always uses the online mini model -- explorer subagents need hosted-quality
-   * responses even when the main agent is in offline mode.
+   * Falls back to the explorer-specific env var, then the mini code model.
    */
   getSubagentExplorerModel(model?: string): string {
     return (
@@ -171,7 +132,7 @@ export class LlmModelsService {
   }
 
   getLargeCodeModel(model?: string): string {
-    return model ?? this.offlineCodingFallback(environment.llmLargeCodeModel);
+    return model ?? environment.llmLargeCodeModel;
   }
 
   getModelDefaults(): {

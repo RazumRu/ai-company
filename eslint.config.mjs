@@ -35,6 +35,7 @@ const config = defineConfig([
   {
     rules: {
       semi: ['error', 'always'],
+      curly: 'error',
       'no-empty': ['error', { allowEmptyCatch: false }],
       'max-depth': ['error', 5],
       'no-useless-catch': 'error',

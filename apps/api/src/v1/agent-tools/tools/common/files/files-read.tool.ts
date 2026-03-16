@@ -215,7 +215,9 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     for (let i = 0; i < args.filesToRead.length; i++) {
       const read = args.filesToRead[i];
       const filePath = read?.filePath;
-      if (!filePath) continue;
+      if (!filePath) {
+        continue;
+      }
       const idx = String(i);
       const cmd =
         read.fromLineNumber !== undefined && read.toLineNumber !== undefined
@@ -251,7 +253,9 @@ export class FilesReadTool extends FilesBaseTool<FilesReadToolSchemaType> {
     for (let i = 0; i < args.filesToRead.length; i++) {
       const read = args.filesToRead[i];
       const filePath = read?.filePath;
-      if (!filePath) continue;
+      if (!filePath) {
+        continue;
+      }
       const idx = String(i);
       const beginLine = `${beginPrefix}${idx}`;
       const endLine = `${endPrefix}${idx}`;

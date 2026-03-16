@@ -45,7 +45,9 @@ describe('FilesCodebaseSearchTool', () => {
       deriveRepoId: vi.fn().mockImplementation((url: string) => {
         // Mimic real normalization: SSH → HTTPS, strip .git
         const sshMatch = url.match(/^git@([^:]+):(.+?)(?:\.git)?$/);
-        if (sshMatch) return `https://${sshMatch[1]}/${sshMatch[2]}`;
+        if (sshMatch) {
+          return `https://${sshMatch[1]}/${sshMatch[2]}`;
+        }
         return url.replace(/\.git$/, '');
       }),
     } as unknown as RepoIndexerService;

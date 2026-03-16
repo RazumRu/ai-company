@@ -1226,10 +1226,14 @@ export class RepoIndexService implements OnModuleInit {
     try {
       const url = new URL(repoUrl);
       const pathParts = url.pathname.split('/').filter(Boolean);
-      if (pathParts.length < 2) return null;
+      if (pathParts.length < 2) {
+        return null;
+      }
       const owner = pathParts[0];
       const repo = pathParts[1]?.replace(/\.git$/, '');
-      if (!owner || !repo) return null;
+      if (!owner || !repo) {
+        return null;
+      }
       return { url, owner, repo };
     } catch {
       return null;
@@ -1247,7 +1251,9 @@ export class RepoIndexService implements OnModuleInit {
     createdBy?: string,
   ): Promise<GitRepositoryEntity | null> {
     const parsed = RepoIndexService.parseOwnerRepo(repoUrl);
-    if (!parsed) return null;
+    if (!parsed) {
+      return null;
+    }
 
     const searchParams: { owner: string; repo: string; createdBy?: string } = {
       owner: parsed.owner,
@@ -1268,7 +1274,9 @@ export class RepoIndexService implements OnModuleInit {
     gitRepo: GitRepositoryEntity | null,
   ): Promise<string> {
     const parsed = RepoIndexService.parseOwnerRepo(repoUrl);
-    if (!parsed) return repoUrl;
+    if (!parsed) {
+      return repoUrl;
+    }
 
     // gitRepo.createdBy is trusted — it originates from a DB record, not user input.
     const resolved = gitRepo
@@ -1462,7 +1470,9 @@ export class RepoIndexService implements OnModuleInit {
       unique.add(query);
       for (const item of validation.data.queries) {
         const normalized = item.trim();
-        if (normalized) unique.add(normalized);
+        if (normalized) {
+          unique.add(normalized);
+        }
       }
 
       const result = Array.from(unique).slice(0, 5);
@@ -1498,7 +1508,9 @@ export class RepoIndexService implements OnModuleInit {
     model: string,
     texts: string[],
   ): Promise<number[][]> {
-    if (texts.length === 0) return [];
+    if (texts.length === 0) {
+      return [];
+    }
     if (texts.length === 1) {
       return [await this.getOrComputeEmbedding(model, texts[0]!)];
     }
@@ -1542,13 +1554,17 @@ export class RepoIndexService implements OnModuleInit {
         const keys = this.embeddingCache.keys();
         for (let e = 0; e < overflow; e++) {
           const key = keys.next().value;
-          if (key !== undefined) this.embeddingCache.delete(key);
+          if (key !== undefined) {
+            this.embeddingCache.delete(key);
+          }
         }
       }
 
       for (let j = 0; j < uncachedTexts.length; j++) {
         const embedding = apiResult.embeddings[j];
-        if (!embedding) continue;
+        if (!embedding) {
+          continue;
+        }
 
         const idx = uncachedIndices[j]!;
         results[idx] = embedding;

@@ -69,7 +69,9 @@ describe('GhBaseTool.resolveToken', () => {
     // it would get a token back and NOT throw — catching the regression.
     mockResolveTokenForOwner.mockImplementation(
       async (_owner: string, userId?: string) => {
-        if (userId === 'graph-owner') return 'ghs_graph_owner_token';
+        if (userId === 'graph-owner') {
+          return 'ghs_graph_owner_token';
+        }
         return null;
       },
     );

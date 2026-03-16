@@ -58,8 +58,17 @@ export class KeycloakProvider extends AuthProvider {
       const { keyset, verifyOptions } = realm;
 
       const { payload } = await jwtVerify(token, keyset, verifyOptions);
+
+      const realmAccess = payload.realm_access as
+        | { roles?: string[] }
+        | undefined;
+      const roles = Array.isArray(realmAccess?.roles)
+        ? realmAccess.roles
+        : undefined;
+
       return {
         sub: payload.sub,
+        ...(roles && { roles }),
       };
     } catch (err) {
       throw new UnauthorizedException('UNAUTHORIZED', undefined, {

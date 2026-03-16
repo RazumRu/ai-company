@@ -41,7 +41,9 @@ export class QdrantService {
 
   constructor(private readonly logger: DefaultLogger) {
     const url = environment.qdrantUrl;
-    if (!url) throw new InternalException('QDRANT_URL_MISSING');
+    if (!url) {
+      throw new InternalException('QDRANT_URL_MISSING');
+    }
 
     this.client = new QdrantClient({
       url,
@@ -373,7 +375,9 @@ export class QdrantService {
     schema: 'keyword' | 'integer' | 'float' | 'bool' | 'text',
   ): Promise<void> {
     const exists = await this.collectionExists(collection);
-    if (!exists) return;
+    if (!exists) {
+      return;
+    }
 
     try {
       await this.client.createPayloadIndex(collection, {
@@ -451,14 +455,18 @@ export class QdrantService {
 
   private extractVectorSizeFromInfo(info: CollectionInfo): number | null {
     const vectors = info.config.params.vectors;
-    if (!vectors) return null;
+    if (!vectors) {
+      return null;
+    }
 
     if ('size' in vectors) {
       return typeof vectors.size === 'number' ? vectors.size : null;
     }
 
     const first = Object.values(vectors)[0];
-    if (!first) return null;
+    if (!first) {
+      return null;
+    }
     return typeof first.size === 'number' ? first.size : null;
   }
 }

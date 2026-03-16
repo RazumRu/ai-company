@@ -130,10 +130,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       // ---- summarize ----
       const summarizeNode = new SummarizeNode(
         this.litellmService,
-        (currentContext?: number, llmRequestContext?: LLMRequestContext) =>
+        (_currentContext?: number, llmRequestContext?: LLMRequestContext) =>
           this.buildLLM(
             this.llmModelsService.getSummarizeModel(
-              currentContext,
               llmRequestContext?.models?.llmMiniModel,
             ),
           ),
@@ -292,13 +291,17 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     rc: RunnableConfig<BaseAgentConfigurable> | undefined,
     threadId: string,
   ) {
-    if (!rc?.configurable?.graph_id) return;
+    if (!rc?.configurable?.graph_id) {
+      return;
+    }
     const runId = rc.configurable.run_id;
 
     const fresh = messages.filter((m) => {
       const kw = m.additional_kwargs as unknown as Record<string, unknown>;
       // Skip messages already emitted in real-time by streaming tools
-      if (kw.__streamedRealtime) return false;
+      if (kw.__streamedRealtime) {
+        return false;
+      }
       return kw.__runId === runId || kw.run_id === runId;
     });
 
@@ -338,8 +341,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     prev: BaseMessage[],
     next: BaseMessage[],
   ): BaseMessage[] {
-    if (!next.length) return [];
-    if (!prev.length) return next;
+    if (!next.length) {
+      return [];
+    }
+    if (!prev.length) {
+      return next;
+    }
 
     const prevSet = new Set(prev);
     return next.filter((m) => !prevSet.has(m));
@@ -378,7 +385,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   }
 
   private syncThreadTotals(threadId: string, state: BaseAgentState) {
-    if (!this.graphThreadState) return;
+    if (!this.graphThreadState) {
+      return;
+    }
     const prev = this.graphThreadState.getByThread(threadId);
     if (
       prev.inputTokens === state.inputTokens &&
@@ -408,7 +417,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     runnableConfig: RunnableConfig<BaseAgentConfigurable> | undefined,
     threadId: string,
   ) {
-    if (!runnableConfig?.configurable?.graph_id) return;
+    if (!runnableConfig?.configurable?.graph_id) {
+      return;
+    }
 
     // Build state change object with only changed fields
     const stateChange: Partial<BaseAgentState> = {};
@@ -461,7 +472,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
 
     // Only emit if there are changes
-    if (Object.keys(stateChange).length === 0) return;
+    if (Object.keys(stateChange).length === 0) {
+      return;
+    }
 
     // Always include a full token/cost snapshot in every AgentStateUpdate emission.
     // Consumers should be able to treat this event as "current truth" and not have to
@@ -488,7 +501,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     messages: BaseMessage[],
     activeRun: ActiveRunEntry,
   ): Promise<void> {
-    if (!messages.length) return;
+    if (!messages.length) {
+      return;
+    }
     const threadId = activeRun.threadId;
 
     const updatedMessages = updateMessagesListWithMetadata(
@@ -882,7 +897,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           for (const [_nodeName, nodeState] of Object.entries(chunk)) {
             // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
             const stateChange = nodeState;
-            if (!stateChange || typeof stateChange !== 'object') continue;
+            if (!stateChange || typeof stateChange !== 'object') {
+              continue;
+            }
 
             const beforeLen = finalState.messages.length;
             const prevMessages = finalState.messages;

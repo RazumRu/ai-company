@@ -468,9 +468,13 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
       config,
       cfg,
     );
-    if (res.exitCode !== 0) return null;
+    if (res.exitCode !== 0) {
+      return null;
+    }
     const gitDir = res.stdout.trim();
-    if (!gitDir) return null;
+    if (!gitDir) {
+      return null;
+    }
     // .git dir found — return the parent (repo root)
     const repoRoot = gitDir.replace(/\/\.git$/, '');
     return repoRoot.length ? repoRoot : null;
@@ -523,7 +527,9 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
     repoRoot: string,
   ): string | undefined {
     const trimmed = directory?.trim();
-    if (!trimmed) return undefined;
+    if (!trimmed) {
+      return undefined;
+    }
     const resolved = isAbsolute(trimmed)
       ? resolve(trimmed)
       : resolve(repoRoot, trimmed);
@@ -581,8 +587,12 @@ export class FilesCodebaseSearchTool extends FilesBaseTool<CodebaseSearchSchemaT
         .split('\n')
         .map((b) => b.replace(/^\*?\s+/, '').trim())
         .filter(Boolean);
-      if (branches.includes('main')) return 'main';
-      if (branches.includes('master')) return 'master';
+      if (branches.includes('main')) {
+        return 'main';
+      }
+      if (branches.includes('master')) {
+        return 'master';
+      }
     }
 
     return 'main';

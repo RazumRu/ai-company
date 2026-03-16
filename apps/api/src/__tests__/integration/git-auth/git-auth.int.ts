@@ -235,7 +235,9 @@ describe('Git Auth Integration Tests', () => {
 
       await gitProviderConnectionDao.hardDeleteById(connection.id);
       const idx = createdConnectionIds.indexOf(connection.id);
-      if (idx !== -1) createdConnectionIds.splice(idx, 1);
+      if (idx !== -1) {
+        createdConnectionIds.splice(idx, 1);
+      }
 
       const fetched = await gitProviderConnectionDao.getOne({
         id: connection.id,

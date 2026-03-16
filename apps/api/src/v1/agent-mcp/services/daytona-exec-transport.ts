@@ -49,7 +49,9 @@ export class DaytonaExecTransport implements Transport {
   ) {}
 
   private appendStderrTail(chunk: string): void {
-    if (!chunk) return;
+    if (!chunk) {
+      return;
+    }
     if (!this.stderrTail) {
       this.stderrTail =
         chunk.length <= STDERR_MAX_BYTES
@@ -80,7 +82,9 @@ export class DaytonaExecTransport implements Transport {
 
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed) continue;
+      if (!trimmed) {
+        continue;
+      }
 
       // Daytona echoes stdin back on stdout — skip lines we sent ourselves.
       if (this.pendingEchoLines.has(trimmed)) {
@@ -131,7 +135,9 @@ export class DaytonaExecTransport implements Transport {
       )
       .then(() => {
         // If close() was already called, isConnected is already false — don't fire callbacks again.
-        if (!this.isConnected) return;
+        if (!this.isConnected) {
+          return;
+        }
         // Stream resolved — process exited.
         if (!this.sawAnyMessage && this.stderrTail.trim()) {
           const err = this.buildEarlyCloseError();

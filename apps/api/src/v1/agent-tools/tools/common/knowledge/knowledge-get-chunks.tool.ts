@@ -199,7 +199,9 @@ export class KnowledgeGetChunksTool extends BaseTool<
     const payload = point.payload ?? {};
     const docId = this.getString(payload.docId);
     const text = this.getString(payload.text);
-    if (!docId || !text) return null;
+    if (!docId || !text) {
+      return null;
+    }
 
     return {
       id: String(point.id),

@@ -455,9 +455,13 @@ export class SubagentsRunTaskTool extends BaseTool<
         },
         cfg,
       );
-      if (res.exitCode !== 0) return undefined;
+      if (res.exitCode !== 0) {
+        return undefined;
+      }
       const gitDir = res.stdout.trim();
-      if (!gitDir) return undefined;
+      if (!gitDir) {
+        return undefined;
+      }
       const repoRoot = gitDir.replace(/\/\.git$/, '');
       return repoRoot.length ? repoRoot : undefined;
     } catch {

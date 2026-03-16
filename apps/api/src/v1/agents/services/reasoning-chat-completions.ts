@@ -49,7 +49,9 @@ export class ReasoningAwareChatCompletions extends ChatOpenAICompletions {
     source: Record<string, unknown>,
   ): T {
     const reasoning = this.extractReasoningText(source);
-    if (!reasoning) return msg;
+    if (!reasoning) {
+      return msg;
+    }
 
     msg.additional_kwargs = {
       ...msg.additional_kwargs,

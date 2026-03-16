@@ -59,7 +59,9 @@ function buildTree(paths: string[]): TreeNode {
 
   for (const p of paths) {
     const trimmed = p.replace(/^\.\/+/, '').replace(/\/+$/, '');
-    if (!trimmed) continue;
+    if (!trimmed) {
+      continue;
+    }
     const parts = trimmed.split('/').filter(Boolean);
     let node = root;
     for (const part of parts) {

@@ -200,7 +200,9 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       config,
       cfg,
     );
-    if (res.exitCode !== 0) return undefined;
+    if (res.exitCode !== 0) {
+      return undefined;
+    }
     const url = res.stdout.trim();
     const httpsMatch = url.match(/github\.com\/([^/]+)\//);
     const sshMatch = url.match(/github\.com:([^/]+)\//);

@@ -223,7 +223,9 @@ export class RepoIndexerService {
    */
   static withTimeout(execFn: RepoExecFn, timeoutMs?: number): RepoExecFn {
     const ms = timeoutMs ?? environment.codebaseGitExecTimeoutMs;
-    if (ms <= 0) return execFn;
+    if (ms <= 0) {
+      return execFn;
+    }
     return (params) => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -263,12 +265,18 @@ export class RepoIndexerService {
     let totalBytes = 0;
     for (const line of res.stdout.split('\n')) {
       const trimmed = line.trim();
-      if (!trimmed) continue;
+      if (!trimmed) {
+        continue;
+      }
       // Format: <mode> <type> <hash> <size>\t<path>
       const tabIndex = trimmed.indexOf('\t');
-      if (tabIndex === -1) continue;
+      if (tabIndex === -1) {
+        continue;
+      }
       const path = trimmed.slice(tabIndex + 1);
-      if (!this.shouldIndexPathSync(path, matcher)) continue;
+      if (!this.shouldIndexPathSync(path, matcher)) {
+        continue;
+      }
       const meta = trimmed.slice(0, tabIndex).trim();
       const parts = meta.split(/\s+/);
       const size = Number.parseInt(parts[3] ?? '0', 10);
@@ -358,10 +366,14 @@ export class RepoIndexerService {
       if (sizeRes.exitCode === 0 && sizeRes.stdout.trim()) {
         for (const line of sizeRes.stdout.split('\n')) {
           const trimmed = line.trim();
-          if (!trimmed) continue;
+          if (!trimmed) {
+            continue;
+          }
           // Format: <mode> <type> <hash> <size>\t<path>
           const tabIndex = trimmed.indexOf('\t');
-          if (tabIndex === -1) continue;
+          if (tabIndex === -1) {
+            continue;
+          }
           const filePath = trimmed.slice(tabIndex + 1);
           const meta = trimmed.slice(0, tabIndex).trim();
           const parts = meta.split(/\s+/);
@@ -433,7 +445,9 @@ export class RepoIndexerService {
 
   async getVectorSizeForModel(model: string): Promise<number> {
     const cached = this.vectorSizePromiseCache.get(model);
-    if (cached) return cached;
+    if (cached) {
+      return cached;
+    }
 
     // Evict oldest entry when cache is full (unlikely with few models, but bounded)
     if (
@@ -580,7 +594,9 @@ export class RepoIndexerService {
           total += payload.token_count ?? 0;
         }
 
-        if (!page.next_page_offset) break;
+        if (!page.next_page_offset) {
+          break;
+        }
         offset = page.next_page_offset;
       }
 
@@ -645,7 +661,9 @@ export class RepoIndexerService {
     const exists = collections.collections.some(
       (c) => c.name === sourceCollection,
     );
-    if (!exists) return 0;
+    if (!exists) {
+      return 0;
+    }
 
     // Process pages one at a time instead of loading all points into memory.
     // Each scroll page is upserted to the target before fetching the next.
@@ -678,7 +696,9 @@ export class RepoIndexerService {
 
       totalCopied += points.length;
 
-      if (!page.next_page_offset) break;
+      if (!page.next_page_offset) {
+        break;
+      }
       offset = page.next_page_offset;
     }
 
@@ -1124,7 +1144,9 @@ export class RepoIndexerService {
             token_count: number;
             commit: string;
           }>;
-          if (!payload.path || !payload.file_hash) continue;
+          if (!payload.path || !payload.file_hash) {
+            continue;
+          }
 
           const tokenCount = payload.token_count ?? 0;
           const chunkCommit = payload.commit ?? '';
@@ -1167,7 +1189,9 @@ export class RepoIndexerService {
           break;
         }
 
-        if (!page.next_page_offset) break;
+        if (!page.next_page_offset) {
+          break;
+        }
         offset = page.next_page_offset;
       }
 
@@ -1283,7 +1307,9 @@ export class RepoIndexerService {
     const res = await execFn({
       cmd: `git -C ${shQuote(repoRoot)} ls-files`,
     });
-    if (res.exitCode !== 0) return [];
+    if (res.exitCode !== 0) {
+      return [];
+    }
     return res.stdout
       .split('\n')
       .map((l) => l.trim())
@@ -1299,7 +1325,9 @@ export class RepoIndexerService {
     const res = await execFn({
       cmd: `git -C ${shQuote(repoRoot)} diff --name-only ${shQuote(fromCommit)}..${shQuote(toCommit)}`,
     });
-    if (res.exitCode !== 0) return null;
+    if (res.exitCode !== 0) {
+      return null;
+    }
     return res.stdout
       .split('\n')
       .map((l) => l.trim())
@@ -1313,18 +1341,28 @@ export class RepoIndexerService {
     const res = await execFn({
       cmd: `git -C ${shQuote(repoRoot)} status --porcelain`,
     });
-    if (res.exitCode !== 0) return [];
+    if (res.exitCode !== 0) {
+      return [];
+    }
 
     const paths = new Set<string>();
     for (const line of res.stdout.split('\n')) {
       const trimmed = line.trim();
-      if (!trimmed) continue;
+      if (!trimmed) {
+        continue;
+      }
       const payload = trimmed.slice(3).trim();
-      if (!payload) continue;
+      if (!payload) {
+        continue;
+      }
       if (payload.includes(' -> ')) {
         const [from, to] = payload.split(' -> ', 2).map((p) => p.trim());
-        if (from) paths.add(from);
-        if (to) paths.add(to);
+        if (from) {
+          paths.add(from);
+        }
+        if (to) {
+          paths.add(to);
+        }
       } else {
         paths.add(payload);
       }
@@ -1352,7 +1390,9 @@ export class RepoIndexerService {
     path: string,
     matcher: ReturnType<typeof ignore>,
   ): boolean {
-    if (!path) return false;
+    if (!path) {
+      return false;
+    }
     const normalized = posixPath
       .normalize(path.replace(/\\/g, '/'))
       .replace(/^\/+/, '');
@@ -1426,7 +1466,9 @@ export class RepoIndexerService {
     execFn: RepoExecFn,
   ): Promise<Map<string, boolean>> {
     const result = new Map<string, boolean>();
-    if (paths.length === 0) return result;
+    if (paths.length === 0) {
+      return result;
+    }
 
     // Split into shell-safe batches and run them concurrently
     const BATCH = 200;
@@ -1527,11 +1569,15 @@ export class RepoIndexerService {
     content: string,
     embeddingModel: string,
   ): Promise<ChunkDescriptor[]> {
-    if (!content) return [];
+    if (!content) {
+      return [];
+    }
 
     const encoding = await this.litellmService.getTokenizer(embeddingModel);
     const tokens = encoding.encode(content);
-    if (tokens.length === 0) return [];
+    if (tokens.length === 0) {
+      return [];
+    }
 
     const lineStarts = this.buildLineStartOffsets(content);
     const targetTokens = Math.min(
@@ -1553,7 +1599,9 @@ export class RepoIndexerService {
     let lastCharOffset = 0;
     const charOffset = (tokenIdx: number): number => {
       const cached = offsetCache.get(tokenIdx);
-      if (cached !== undefined) return cached;
+      if (cached !== undefined) {
+        return cached;
+      }
 
       // Decode only the token slice between the nearest known position and target
       let baseIdx: number;
@@ -1588,7 +1636,9 @@ export class RepoIndexerService {
     while (startToken < tokens.length && guard < 10_000) {
       guard += 1;
       const endToken = Math.min(startToken + targetTokens, tokens.length);
-      if (endToken <= startToken) break;
+      if (endToken <= startToken) {
+        break;
+      }
 
       const startOffset = charOffset(startToken);
       const endOffset = charOffset(endToken);
@@ -1615,7 +1665,9 @@ export class RepoIndexerService {
         tokenCount,
       });
 
-      if (endToken >= tokens.length) break;
+      if (endToken >= tokens.length) {
+        break;
+      }
       startToken = Math.max(0, endToken - overlapTokens);
     }
 
@@ -1639,7 +1691,9 @@ export class RepoIndexerService {
     while (left <= right) {
       const mid = Math.floor((left + right) / 2);
       const value = offsets[mid];
-      if (value === undefined) break;
+      if (value === undefined) {
+        break;
+      }
       if (value <= offset) {
         best = mid;
         left = mid + 1;
@@ -1662,7 +1716,9 @@ export class RepoIndexerService {
     maxTokens: number,
     onProgressUpdate?: (tokenCount: number) => Promise<void>,
   ): Promise<void> {
-    if (batch.length === 0) return;
+    if (batch.length === 0) {
+      return;
+    }
 
     const texts = batch.map((item) => item.chunk.text);
     const tokenCounts = batch.map((item) => item.chunk.tokenCount);
@@ -1706,7 +1762,9 @@ export class RepoIndexerService {
     const indexedAt = new Date().toISOString();
     const points = batch.map((item, index) => {
       const vector = embeddings[index];
-      if (!vector) return null;
+      if (!vector) {
+        return null;
+      }
 
       const chunk = item.chunk;
       const id = this.buildPointId(item.repoId, item.filePath, chunk.chunkHash);
@@ -1766,7 +1824,9 @@ export class RepoIndexerService {
     maxTokens: number,
     concurrency = environment.codebaseEmbeddingConcurrency,
   ): Promise<number[][]> {
-    if (texts.length === 0) return [];
+    if (texts.length === 0) {
+      return [];
+    }
 
     const batches = this.buildEmbeddingBatches(texts, tokenCounts, maxTokens);
     const results: number[][] = [];
@@ -1929,12 +1989,16 @@ export class RepoIndexerService {
             }
           }
 
-          if (!page.next_page_offset) break;
+          if (!page.next_page_offset) {
+            break;
+          }
           offset = page.next_page_offset;
         }
       }
 
-      if (orphanedPaths.size === 0) return;
+      if (orphanedPaths.size === 0) {
+        return;
+      }
 
       // Batch delete orphaned paths using a `should` (OR) filter.
       // Qdrant semantics: `must` AND (at least one `should`).
@@ -2106,7 +2170,9 @@ export class RepoIndexerService {
       Math.max(0, targetTokens - 1),
     );
     const stride = targetTokens - effectiveOverlap;
-    if (stride <= 0) return 1;
+    if (stride <= 0) {
+      return 1;
+    }
     return targetTokens / stride;
   }
 

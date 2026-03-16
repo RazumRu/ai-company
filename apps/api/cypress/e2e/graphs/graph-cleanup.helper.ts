@@ -49,7 +49,9 @@ class GraphCleanupManager {
    * Clean up a single graph (destroy if running, then delete)
    */
   private cleanupSingleGraph(graphId: string): void {
-    if (!graphId) return;
+    if (!graphId) {
+      return;
+    }
 
     cy.log(`Cleaning up graph: ${graphId}`);
 

@@ -263,11 +263,17 @@ export class GhCreatePullRequestTool extends GhBaseTool<
     const seen = new Set<string>();
 
     for (const part of parts) {
-      if (!part?.length) continue;
+      if (!part?.length) {
+        continue;
+      }
       for (const item of part) {
         const value = item.trim();
-        if (!value) continue;
-        if (seen.has(value)) continue;
+        if (!value) {
+          continue;
+        }
+        if (seen.has(value)) {
+          continue;
+        }
         seen.add(value);
         out.push(value);
       }
@@ -280,7 +286,9 @@ export class GhCreatePullRequestTool extends GhBaseTool<
     body: string | undefined,
     closesIssues: number[],
   ): string | undefined {
-    if (!closesIssues.length) return body;
+    if (!closesIssues.length) {
+      return body;
+    }
 
     const existingBody = body ?? '';
 
@@ -292,7 +300,9 @@ export class GhCreatePullRequestTool extends GhBaseTool<
       (line) => !existingLower.includes(line.toLowerCase()),
     );
 
-    if (!filtered.length) return body;
+    if (!filtered.length) {
+      return body;
+    }
 
     const separator = existingBody.trim().length ? '\n\n' : '';
     return `${existingBody}${separator}${filtered.join('\n')}`;

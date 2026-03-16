@@ -265,7 +265,9 @@ export abstract class BaseAgent<
       state.totalPrice !== 0 ||
       state.currentContext !== 0;
 
-    if (!hasAny) return null;
+    if (!hasAny) {
+      return null;
+    }
 
     return {
       inputTokens: state.inputTokens,

@@ -37,8 +37,14 @@ export class ZitadelProvider extends AuthProvider {
         });
       }
 
+      const projectRoles = payload['urn:zitadel:iam:org:project:roles'] as
+        | Record<string, unknown>
+        | undefined;
+      const roles = projectRoles ? Object.keys(projectRoles) : undefined;
+
       return {
         sub: payload.sub,
+        ...(roles && { roles }),
       };
     } catch (err) {
       if (err instanceof UnauthorizedException) {

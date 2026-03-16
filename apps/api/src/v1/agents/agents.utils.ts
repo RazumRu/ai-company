@@ -219,7 +219,9 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
 
   for (let i = 0; i < visible.length; i++) {
     const m = visible[i];
-    if (!(m instanceof AIMessage)) continue;
+    if (!(m instanceof AIMessage)) {
+      continue;
+    }
 
     const callIds = getToolCallIdsFromAiMessage(m);
 
@@ -237,7 +239,9 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
       if (hasToolCallsEntries) {
         for (let j = i + 1; j < visible.length; j++) {
           const next = visible[j];
-          if (!(next instanceof ToolMessage)) break;
+          if (!(next instanceof ToolMessage)) {
+            break;
+          }
           positionalSafeToolResultIds.add(next.tool_call_id);
         }
       }
@@ -248,7 +252,9 @@ export function filterMessagesForLlm(messages: BaseMessage[]): BaseMessage[] {
     const allAnswered = callIds.every((id) => toolResultIds.has(id));
     if (allAnswered) {
       keepAiMessage.add(m);
-      for (const id of callIds) safeAiToolCallIds.add(id);
+      for (const id of callIds) {
+        safeAiToolCallIds.add(id);
+      }
     }
   }
 
@@ -308,14 +314,18 @@ export function convertChunkToMessage(chunk: AIMessageChunk): AIMessage {
     .additional_kwargs as Record<string, unknown> | undefined;
 
   const normalizeOpenAiToolCalls = (calls: unknown): ToolCall[] => {
-    if (!Array.isArray(calls)) return [];
+    if (!Array.isArray(calls)) {
+      return [];
+    }
     return calls
       .map((c) => {
         const obj = c as Record<string, unknown>;
         const fn = obj.function as Record<string, unknown> | undefined;
         const name = fn?.name;
         const argsRaw = fn?.arguments;
-        if (typeof name !== 'string') return undefined;
+        if (typeof name !== 'string') {
+          return undefined;
+        }
 
         let args: UnknownRecord = {};
         if (typeof argsRaw === 'string') {
@@ -408,9 +418,13 @@ function extractFilePathsFromToolCalls(
   paths: Set<string>,
 ): void {
   for (const tc of toolCalls) {
-    if (tc.name !== 'files_read') continue;
+    if (tc.name !== 'files_read') {
+      continue;
+    }
     const filesToRead: unknown = tc.args?.filesToRead;
-    if (!Array.isArray(filesToRead)) continue;
+    if (!Array.isArray(filesToRead)) {
+      continue;
+    }
 
     for (const entry of filesToRead as Record<string, unknown>[]) {
       if (typeof entry?.filePath === 'string') {

@@ -43,7 +43,9 @@ export abstract class GhBaseTool<
     if (owner && config.resolveTokenForOwner) {
       const userId = cfg?.configurable?.thread_created_by;
       const token = await config.resolveTokenForOwner(owner, userId);
-      if (token) return token;
+      if (token) {
+        return token;
+      }
     }
     throw new Error(
       'No GitHub token available. Install the GitHub App to authenticate.',

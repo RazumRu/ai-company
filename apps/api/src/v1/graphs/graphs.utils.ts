@@ -24,7 +24,9 @@ export const parseStructuredContent = (input: unknown): unknown => {
   if (Array.isArray(input)) {
     return input;
   }
-  if (isObject(input)) return input as Record<string, unknown>;
+  if (isObject(input)) {
+    return input as Record<string, unknown>;
+  }
   return input;
 };
 
@@ -84,7 +86,9 @@ export function extractTriggerNodesFromSchema(
 
   const triggerNodes: TriggerNodeInfoType[] = [];
   for (const node of schema.nodes) {
-    if (!triggerTemplateIds.has(node.template)) continue;
+    if (!triggerTemplateIds.has(node.template)) {
+      continue;
+    }
 
     const metaNode = metadataNodes.get(node.id);
     const template = templateRegistry.getTemplate(node.template);
@@ -116,14 +120,17 @@ function extractMetadataNodes(
   metadata: Record<string, unknown> | null | undefined,
 ): Map<string, { name?: string }> {
   const result = new Map<string, { name?: string }>();
-  if (!metadata || !Array.isArray(metadata.nodes)) return result;
+  if (!metadata || !Array.isArray(metadata.nodes)) {
+    return result;
+  }
 
   for (const node of metadata.nodes) {
     if (
       !isObject(node) ||
       typeof (node as Record<string, unknown>).id !== 'string'
-    )
+    ) {
       continue;
+    }
     const nodeObj = node as Record<string, unknown>;
     const id = nodeObj.id as string;
     const rawName =

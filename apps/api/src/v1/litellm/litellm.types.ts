@@ -72,13 +72,22 @@ export type LLMTokenCostRates = {
   outputCostPerReasoningToken?: number;
 };
 
+export interface LiteLlmProviderEntry {
+  name: string;
+  label: string;
+  modelHint: string;
+}
+
 export type LiteLLMModelInfo = {
   model_name: string;
   litellm_params: {
     model: string;
+    api_base?: string;
+    custom_llm_provider?: string;
     [key: string]: unknown;
   };
   model_info: {
+    id?: string;
     key: string;
     mode?: string;
     litellm_provider?: string;

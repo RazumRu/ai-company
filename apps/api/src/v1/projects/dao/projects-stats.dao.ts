@@ -18,7 +18,9 @@ export class ProjectsStatsDao {
   async countStatsByProjectIds(
     projectIds: string[],
   ): Promise<ProjectStatRow[]> {
-    if (projectIds.length === 0) return [];
+    if (projectIds.length === 0) {
+      return [];
+    }
 
     return this.dataSource
       .createQueryBuilder()

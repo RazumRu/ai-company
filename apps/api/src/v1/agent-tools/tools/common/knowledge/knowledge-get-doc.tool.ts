@@ -164,7 +164,9 @@ export class KnowledgeGetDocTool extends BaseTool<
   }
 
   private allowsFullContent(politic?: string | null): boolean {
-    if (!politic) return false;
+    if (!politic) {
+      return false;
+    }
     const normalized = politic.toLowerCase();
     return FULL_CONTENT_MARKERS.some((marker) => normalized.includes(marker));
   }

@@ -44,30 +44,14 @@ export const environment = () =>
     // misc
     litellmMasterKey: getEnv('LITELLM_MASTER_KEY'),
     llmRequestTimeoutMs: +getEnv('LLM_REQUEST_TIMEOUT_MS', '600000'),
-    llmLargeModel: getEnv('LLM_LARGE_MODEL', 'gpt-5.2'),
+    llmLargeModel: getEnv('LLM_LARGE_MODEL', 'gpt-5.4'),
     llmLargeCodeModel: getEnv('LLM_LARGE_CODE_MODEL', 'gpt-5.2-codex'),
     llmMiniCodeModel: getEnv('LLM_MINI_CODE_MODEL', 'openrouter/minimax-m2.5'),
     llmCodeExplorerSubagentModel: getEnv('LLM_CODE_EXPLORER_SUBAGENT_MODEL'),
     llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
-    llmSummarizeOnlineThreshold: +getEnv(
-      'LLM_SUMMARIZE_ONLINE_THRESHOLD',
-      '30000',
-    ),
-    llmUseOfflineModel: getEnv('LLM_USE_OFFLINE_MODEL', false),
-    llmOfflineCodingModel: getEnv('LLM_OFFLINE_CODING_MODEL', 'glm-4.7-flash'),
-    llmOfflineCodingMiniModel: getEnv(
-      'LLM_OFFLINE_CODING_MINI_MODEL',
-      'qwen2.5-coder:7b',
-    ),
-    llmOfflineEmbeddingModel: getEnv(
-      'LLM_OFFLINE_EMBEDDING_MODEL',
-      'qwen3-embedding:4b',
-    ),
-    llmOfflineMiniModel: getEnv('LLM_OFFLINE_MINI_MODEL', 'phi3.5:latest'),
     llmEmbeddingModel: getEnv('LLM_EMBEDDING_MODEL', 'text-embedding-3-small'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
-    knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
     knowledgeChunksCollection: getEnv(
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks',
@@ -105,14 +89,13 @@ export const environment = () =>
     dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
 
     // --- Runtime provider ---
-    defaultRuntimeType: getEnv('DEFAULT_RUNTIME_TYPE', 'Docker'),
+    defaultRuntimeType: getEnv('DEFAULT_RUNTIME_TYPE', 'Daytona'),
 
     // --- Daytona runtime ---
     daytonaApiKey: getEnv('DAYTONA_API_KEY'),
     daytonaApiUrl: getEnv('DAYTONA_API_URL'),
     daytonaTarget: getEnv('DAYTONA_TARGET'),
 
-    restoreGraphs: getEnv('RESTORE_GRAPHS', true),
     runtimeCleanupIntervalMs: +getEnv('RUNTIME_CLEANUP_INTERVAL_MS', '300000'),
     runtimeIdleThresholdMs: +getEnv('RUNTIME_IDLE_THRESHOLD_MS', '1800000'),
 
@@ -122,6 +105,11 @@ export const environment = () =>
 
     // agents
     agentsInstructionsFile: getEnv('AGENTS_INSTRUCTIONS_FILE', 'AGENTS.md'),
+
+    // --- Feature flags ---
+    litellmManagementEnabled: getEnv('LITELLM_MANAGEMENT_ENABLED', false),
+    restoreGraphs: getEnv('RESTORE_GRAPHS', true),
+    knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
 
     // --- GitHub App (optional — feature available when all are set) ---
     githubAppId: getEnv('GITHUB_APP_ID'),

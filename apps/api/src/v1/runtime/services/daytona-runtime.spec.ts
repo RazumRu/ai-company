@@ -708,7 +708,9 @@ describe('DaytonaRuntime', () => {
         let callCount = 0;
         mockSandbox.process.executeSessionCommand.mockImplementation(() => {
           callCount++;
-          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          if (callCount === 1) {
+            return Promise.resolve({ exitCode: 0 });
+          }
           return Promise.resolve({
             exitCode: 0,
             stdout: 'hello',
@@ -734,7 +736,9 @@ describe('DaytonaRuntime', () => {
         let callCount = 0;
         mockSandbox.process.executeSessionCommand.mockImplementation(() => {
           callCount++;
-          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          if (callCount === 1) {
+            return Promise.resolve({ exitCode: 0 });
+          }
           return Promise.reject(new Error('Request timeout after 10s'));
         });
         mockSandbox.process.deleteSession.mockResolvedValue(undefined);
@@ -755,7 +759,9 @@ describe('DaytonaRuntime', () => {
         let callCount = 0;
         mockSandbox.process.executeSessionCommand.mockImplementation(() => {
           callCount++;
-          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          if (callCount === 1) {
+            return Promise.resolve({ exitCode: 0 });
+          }
           return new Promise(() => undefined); // never resolves
         });
         mockSandbox.process.deleteSession.mockResolvedValue(undefined);
@@ -780,7 +786,9 @@ describe('DaytonaRuntime', () => {
 
         mockSandbox.process.executeSessionCommand.mockImplementation(() => {
           callCount++;
-          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          if (callCount === 1) {
+            return Promise.resolve({ exitCode: 0 });
+          }
           // Long-running command — never resolves naturally
           return new Promise(() => undefined);
         });
@@ -808,7 +816,9 @@ describe('DaytonaRuntime', () => {
         let callCount = 0;
         mockSandbox.process.executeSessionCommand.mockImplementation(() => {
           callCount++;
-          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          if (callCount === 1) {
+            return Promise.resolve({ exitCode: 0 });
+          }
           return Promise.resolve({
             exitCode: 127,
             stdout: '',
@@ -838,7 +848,9 @@ describe('DaytonaRuntime', () => {
         let callCount = 0;
         mockSandbox.process.executeSessionCommand.mockImplementation(() => {
           callCount++;
-          if (callCount === 1) return Promise.resolve({ exitCode: 0 });
+          if (callCount === 1) {
+            return Promise.resolve({ exitCode: 0 });
+          }
           return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
         });
 

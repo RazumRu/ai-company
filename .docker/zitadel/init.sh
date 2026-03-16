@@ -167,6 +167,23 @@ else
   echo "[init] WARNING: Could not determine client ID."
 fi
 
+# --- Create project role "admin" ---
+echo "[init] Creating 'admin' project role..."
+ROLE_BODY=$(jq -n --arg key "admin" '{
+  "roleKey": $key,
+  "displayName": "Administrator"
+}')
+ROLE_RESPONSE=$(zcurl -s -X POST "${ZITADEL_URL}/management/v1/projects/${PROJECT_ID}/roles" \
+  -H "${AUTH_HEADER}" \
+  -H "Content-Type: application/json" \
+  -d "${ROLE_BODY}")
+
+if echo "${ROLE_RESPONSE}" | grep -q '"alreadyExists"\|"code":6'; then
+  echo "[init] Role 'admin' already exists."
+else
+  echo "[init] Role 'admin' created."
+fi
+
 # --- Configure branding / label policy ---
 echo "[init] Configuring Geniro branding..."
 
@@ -269,8 +286,55 @@ create_user() {
   fi
 }
 
+# --- Helper: grant project role to user (idempotent) ---
+grant_user_role() {
+  local user_id="$1"
+  local username="$2"
+  local role_key="$3"
+
+  echo "[init] Granting role '${role_key}' to user '${username}'..."
+  GRANT_BODY=$(jq -n \
+    --arg pid "${PROJECT_ID}" \
+    --arg role "${role_key}" \
+    '{
+      "projectId": $pid,
+      "roleKeys": [$role]
+    }')
+  GRANT_RESPONSE=$(zcurl -s -X POST "${ZITADEL_URL}/management/v1/users/${user_id}/grants" \
+    -H "${AUTH_HEADER}" \
+    -H "Content-Type: application/json" \
+    -d "${GRANT_BODY}")
+
+  if echo "${GRANT_RESPONSE}" | grep -q '"alreadyExists"\|"code":6'; then
+    echo "[init] Role '${role_key}' already granted to '${username}'."
+  else
+    echo "[init] Role '${role_key}' granted to '${username}'."
+  fi
+}
+
+# --- Helper: look up user ID by username ---
+lookup_user_id() {
+  local username="$1"
+  SEARCH_BODY=$(jq -n --arg u "${username}" '{
+    "queries": [{"userNameQuery": {"userName": $u, "method": "TEXT_QUERY_METHOD_EQUALS"}}]
+  }')
+  SEARCH_RESPONSE=$(zcurl -s -X POST "${ZITADEL_URL}/management/v1/users/_search" \
+    -H "${AUTH_HEADER}" \
+    -H "Content-Type: application/json" \
+    -d "${SEARCH_BODY}")
+  echo "${SEARCH_RESPONSE}" | jq -r '.result[0].id // empty'
+}
+
 # --- Create demo users ---
 create_user "s.razumru" 'DevPassword123!' "Sergei" "Razumovskij" "s.razumru@geniro.localhost"
 create_user "claude-test" "ClaudeTest-2026" "Claude" "Test" "claude-test@geniro.localhost"
+
+# --- Grant admin role to s.razumru ---
+ADMIN_USER_ID=$(lookup_user_id "s.razumru")
+if [ -n "${ADMIN_USER_ID}" ]; then
+  grant_user_role "${ADMIN_USER_ID}" "s.razumru" "admin"
+else
+  echo "[init] WARN: Could not find user 's.razumru' to grant admin role."
+fi
 
 echo "[init] Zitadel initialization complete."

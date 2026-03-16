@@ -226,7 +226,9 @@ export class GitHubAppService {
   }
 
   async getAppSlug(): Promise<string | null> {
-    if (this.appSlug) return this.appSlug;
+    if (this.appSlug) {
+      return this.appSlug;
+    }
 
     try {
       const appJwt = this.generateJwt();

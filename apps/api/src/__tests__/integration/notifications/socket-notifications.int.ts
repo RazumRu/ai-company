@@ -1041,7 +1041,9 @@ describe('Socket Notifications Integration Tests', () => {
 
         // Verify chronological order (at least one increase followed by decrease)
         const hasClearingSequence = metadataUpdates.some((update, index) => {
-          if (index === 0) return false;
+          if (index === 0) {
+            return false;
+          }
           const prev = metadataUpdates[index - 1];
           if (!prev) {
             return false;

@@ -50,6 +50,36 @@ describe('ZitadelProvider', () => {
     );
   });
 
+  it('should extract roles from Zitadel project roles claim', async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: {
+        sub: 'user-123',
+        iss: ZITADEL_ISSUER,
+        'urn:zitadel:iam:org:project:roles': {
+          admin: { orgId: '1' },
+          user: { orgId: '1' },
+        },
+      },
+    });
+
+    const result = await provider.verifyToken('valid-token');
+
+    expect(result).toEqual({
+      sub: 'user-123',
+      roles: ['admin', 'user'],
+    });
+  });
+
+  it('should omit roles when project roles claim is absent', async () => {
+    mockJwtVerify.mockResolvedValue({
+      payload: { sub: 'user-123', iss: ZITADEL_ISSUER },
+    });
+
+    const result = await provider.verifyToken('valid-token');
+
+    expect(result).not.toHaveProperty('roles');
+  });
+
   it('should throw UnauthorizedException when issuer does not match', async () => {
     mockJwtVerify.mockRejectedValue(new Error('unexpected "iss" claim value'));
 

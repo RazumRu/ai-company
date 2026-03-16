@@ -26,7 +26,9 @@ export class DockerExecTransport implements Transport {
 
   private appendStderrTail(chunk: Buffer, maxBytes = 64 * 1024): void {
     const next = chunk.toString('utf8');
-    if (!next) return;
+    if (!next) {
+      return;
+    }
     if (!this.stderrTail) {
       this.stderrTail =
         next.length <= maxBytes ? next : next.slice(next.length - maxBytes);

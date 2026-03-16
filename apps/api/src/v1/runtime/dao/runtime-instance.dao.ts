@@ -39,7 +39,9 @@ export class RuntimeInstanceDao extends BaseDao<
     builder: BaseQueryBuilder<RuntimeInstanceEntity>,
     params?: RuntimeInstanceSearchTerms,
   ) {
-    if (!params) return;
+    if (!params) {
+      return;
+    }
 
     if (params.ids && params.ids.length > 0) {
       builder.andWhere({ id: In(params.ids) });

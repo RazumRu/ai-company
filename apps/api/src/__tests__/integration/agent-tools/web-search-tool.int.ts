@@ -101,7 +101,9 @@ describe('Web search tool integration', () => {
 
     const dto = messageTransformer.transformMessageToDto(toolMsg);
     expect(dto.role).toBe('tool');
-    if (dto.role !== 'tool') return;
+    if (dto.role !== 'tool') {
+      return;
+    }
     expect(dto.title).toBe(title);
     expect(dto.additionalKwargs?.__title).toBe(title);
 
@@ -122,7 +124,9 @@ describe('Web search tool integration', () => {
     );
 
     expect(storedTool).toBeDefined();
-    if (!storedTool || storedTool.message.role !== 'tool') return;
+    if (!storedTool || storedTool.message.role !== 'tool') {
+      return;
+    }
     expect(storedTool.message.title).toBe(title);
     expect(storedTool.message.additionalKwargs?.__title).toBe(title);
   });

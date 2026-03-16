@@ -115,7 +115,9 @@ export class DockerRuntime extends BaseRuntime {
 
   private dropSession(sessionId: string, _reason?: Error) {
     const s = this.sessions.get(sessionId);
-    if (!s) return;
+    if (!s) {
+      return;
+    }
 
     this.sessions.delete(sessionId);
 
@@ -249,7 +251,9 @@ export class DockerRuntime extends BaseRuntime {
       // Running session-level cleanup here would race: it deletes the session
       // from the Map and destroys streams before finishWithRestart can
       // complete, causing orphaned pending commands.
-      if (session.busy) return;
+      if (session.busy) {
+        return;
+      }
 
       this.sessions.delete(sessionId);
       try {
@@ -275,10 +279,14 @@ export class DockerRuntime extends BaseRuntime {
   }
 
   private async processSessionQueue(session: ShellSession) {
-    if (session.busy) return;
+    if (session.busy) {
+      return;
+    }
 
     const next = session.queue.shift();
-    if (!next) return;
+    if (!next) {
+      return;
+    }
 
     session.busy = true;
 
@@ -335,7 +343,9 @@ export class DockerRuntime extends BaseRuntime {
       };
 
       const finishWithRestart = (res: RuntimeExecResult, reason: Error) => {
-        if (finished) return;
+        if (finished) {
+          return;
+        }
         finished = true;
         cleanupListeners();
         const pending = session.queue.splice(0);
@@ -348,8 +358,12 @@ export class DockerRuntime extends BaseRuntime {
       };
 
       const maybeResolve = () => {
-        if (!stdoutDone || !stderrDone) return;
-        if (finished) return;
+        if (!stdoutDone || !stderrDone) {
+          return;
+        }
+        if (finished) {
+          return;
+        }
         finished = true;
         cleanupListeners();
         next.resolve({
@@ -364,7 +378,9 @@ export class DockerRuntime extends BaseRuntime {
       };
 
       const resetTailTimer = () => {
-        if (tailTimer) clearTimeout(tailTimer);
+        if (tailTimer) {
+          clearTimeout(tailTimer);
+        }
         // Only start tail timeout after first output is received
         // This prevents timeouts during legitimate silent periods (e.g., Python heredoc stdin reading)
         if (hasReceivedOutput && next.tailTimeoutMs && next.tailTimeoutMs > 0) {
@@ -390,7 +406,9 @@ export class DockerRuntime extends BaseRuntime {
         stdoutBuffer = this.appendTail(stdoutBuffer, chunk, MAX_OUTPUT_BYTES);
         const endTokenWithColon = `${endToken}:`;
         const endIdx = stdoutBuffer.indexOf(endTokenWithColon);
-        if (endIdx === -1) return;
+        if (endIdx === -1) {
+          return;
+        }
 
         const exitStart = endIdx + endTokenWithColon.length;
         const exitLineEnd = stdoutBuffer.indexOf('\n', exitStart);
@@ -415,7 +433,9 @@ export class DockerRuntime extends BaseRuntime {
         resetTailTimer();
         stderrBuffer = this.appendTail(stderrBuffer, chunk, MAX_OUTPUT_BYTES);
         const idx = stderrBuffer.indexOf(stderrEndToken);
-        if (idx === -1) return;
+        if (idx === -1) {
+          return;
+        }
         let cleaned = stderrBuffer.slice(0, idx);
         if (cleaned.endsWith('\n')) {
           cleaned = cleaned.slice(0, -1);
@@ -426,7 +446,9 @@ export class DockerRuntime extends BaseRuntime {
       };
 
       const onError = (err: Error) => {
-        if (finished) return;
+        if (finished) {
+          return;
+        }
         finishWithRestart(
           {
             exitCode: 124,
@@ -878,8 +900,12 @@ export class DockerRuntime extends BaseRuntime {
     stderrStream.on('data', onData);
 
     const cleanup = () => {
-      if (overallTimer) clearTimeout(overallTimer);
-      if (tailTimer) clearTimeout(tailTimer);
+      if (overallTimer) {
+        clearTimeout(overallTimer);
+      }
+      if (tailTimer) {
+        clearTimeout(tailTimer);
+      }
       stdoutStream.removeListener('data', onData);
       stderrStream.removeListener('data', onData);
     };

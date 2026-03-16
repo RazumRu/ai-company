@@ -124,16 +124,16 @@ curl -X POST http://localhost:5000/api/v1/graphs/<graph-id>/triggers/trigger-1/e
   -d '{ "messages": [{ "content": "What happened in tech today?" }] }'
 ```
 
-### Local LLM (Offline)
+### Local LLM (Ollama)
 
-To run without cloud API keys, install and use Ollama models:
+To run without cloud API keys, install and use [Ollama](https://ollama.com/download) models:
 
 ```bash
 pnpm local-llm:install   # Download models
 pnpm local-llm:start     # Start Ollama server
 ```
 
-Then set `LLM_USE_OFFLINE_MODEL=true` in your `.env` file.
+Then set `LLM_*_MODEL` env vars to point at your Ollama models (e.g. `LLM_MINI_MODEL=ollama/phi3.5:latest`). See the "Using Local Models (Ollama)" section below for details.
 
 ## Helm Deployment (Kubernetes)
 
@@ -372,9 +372,12 @@ pnpm local-llm:install
 # 2. Start Ollama server
 pnpm local-llm:start
 
-# 3. Tell the API to use offline models
-# Add to .env in the repo root:
-echo "LLM_USE_OFFLINE_MODEL=true" >> .env
+# 3. Point the standard model env vars at your Ollama models.
+#    Add to .env in the repo root (adjust model names as needed):
+LLM_MINI_MODEL=ollama/phi3.5:latest
+LLM_LARGE_CODE_MODEL=ollama/qwen3-coder:30b
+LLM_MINI_CODE_MODEL=ollama/qwen2.5-coder:7b
+LLM_EMBEDDING_MODEL=ollama/qwen3-embedding:4b
 
 # 4. Start infrastructure and API
 pnpm deps:up
@@ -387,7 +390,7 @@ Pre-configured local models:
 
 | Model name | Role | Size |
 |---|---|---|
-| `glm-4.7-flash` | Coding (default offline) | ~9 GB |
+| `glm-4.7-flash` | Coding | ~9 GB |
 | `qwen3-coder:30b` | Coding (large) | ~18 GB |
 | `qwen3-coder-next` | Coding (next-gen) | varies |
 | `qwen2.5-coder:7b` | Coding (mini) | ~4.5 GB |
@@ -404,9 +407,6 @@ Pre-configured local models:
 | `LLM_MINI_MODEL` | Default mini model | `gpt-5-mini` |
 | `LLM_LARGE_CODE_MODEL` | Code generation model | `gpt-5.2-codex` |
 | `LLM_EMBEDDING_MODEL` | Embedding model | `text-embedding-3-small` |
-| `LLM_USE_OFFLINE_MODEL` | Switch to Ollama models | `false` |
-| `LLM_OFFLINE_CODING_MODEL` | Offline coding model | `glm-4.7-flash` |
-| `LLM_OFFLINE_EMBEDDING_MODEL` | Offline embedding model | `qwen3-embedding:4b` |
 | `LLM_REQUEST_TIMEOUT_MS` | LLM request timeout | `600000` (10 min) |
 
 ## Configuration
@@ -417,7 +417,6 @@ The API is configured through environment variables. Create a `.env` file in the
 |---|---|---|
 | `HTTP_PORT` | API server port | `5000` |
 | `OPENROUTER_API_KEY` | OpenRouter API key | — |
-| `LLM_USE_OFFLINE_MODEL` | Use local Ollama models | `false` |
 | `AUTH_DEV_MODE` | Skip Keycloak auth in dev | `true` |
 | `DOCKER_RUNTIME_IMAGE` | Runtime image for tool execution containers (includes Nix support) | `razumru/geniro-runtime:latest` |
 

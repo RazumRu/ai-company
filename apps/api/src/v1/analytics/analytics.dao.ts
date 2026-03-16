@@ -75,9 +75,15 @@ export class AnalyticsDao {
     ctx.addCondition('m."deletedAt" IS NULL');
     ctx.addCondition('g."deletedAt" IS NULL');
     ctx.addCondition('m."requestTokenUsage" IS NOT NULL');
-    if (params.dateFrom) ctx.addParam('t."createdAt" >=', params.dateFrom);
-    if (params.dateTo) ctx.addParam('t."createdAt" <', params.dateTo);
-    if (params.graphId) ctx.addParam('t."graphId" =', params.graphId);
+    if (params.dateFrom) {
+      ctx.addParam('t."createdAt" >=', params.dateFrom);
+    }
+    if (params.dateTo) {
+      ctx.addParam('t."createdAt" <', params.dateTo);
+    }
+    if (params.graphId) {
+      ctx.addParam('t."graphId" =', params.graphId);
+    }
 
     const sql = `
       SELECT
@@ -102,8 +108,12 @@ export class AnalyticsDao {
     const ctx = this.createParamContext(params.createdBy, params.projectId);
     ctx.addCondition('t."deletedAt" IS NULL');
     ctx.addCondition('g."deletedAt" IS NULL');
-    if (params.dateFrom) ctx.addParam('t."createdAt" >=', params.dateFrom);
-    if (params.dateTo) ctx.addParam('t."createdAt" <', params.dateTo);
+    if (params.dateFrom) {
+      ctx.addParam('t."createdAt" >=', params.dateFrom);
+    }
+    if (params.dateTo) {
+      ctx.addParam('t."createdAt" <', params.dateTo);
+    }
 
     return { where: ctx.where(), queryParams: ctx.params };
   }
@@ -114,8 +124,12 @@ export class AnalyticsDao {
     ctx.addCondition('m."deletedAt" IS NULL');
     ctx.addCondition('g."deletedAt" IS NULL');
     ctx.addCondition('m."requestTokenUsage" IS NOT NULL');
-    if (params.dateFrom) ctx.addParam('t."createdAt" >=', params.dateFrom);
-    if (params.dateTo) ctx.addParam('t."createdAt" <', params.dateTo);
+    if (params.dateFrom) {
+      ctx.addParam('t."createdAt" >=', params.dateFrom);
+    }
+    if (params.dateTo) {
+      ctx.addParam('t."createdAt" <', params.dateTo);
+    }
 
     return { where: ctx.where(), queryParams: ctx.params };
   }

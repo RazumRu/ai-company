@@ -226,8 +226,12 @@ describe('GraphCompiler', () => {
 
       vi.mocked(templateRegistry.getTemplate).mockImplementation(
         (templateId) => {
-          if (templateId === 'runtime') return runtimeTemplate;
-          if (templateId === 'shell-tool') return toolTemplate;
+          if (templateId === 'runtime') {
+            return runtimeTemplate;
+          }
+          if (templateId === 'shell-tool') {
+            return toolTemplate;
+          }
           return undefined;
         },
       );
@@ -265,9 +269,15 @@ describe('GraphCompiler', () => {
       const agentTemplate = createMockTemplate(NodeKind.SimpleAgent);
 
       vi.mocked(templateRegistry.getTemplate).mockImplementation((id) => {
-        if (id === 'rt') return rtTemplate;
-        if (id === 'tool') return toolTemplate;
-        if (id === 'agent') return agentTemplate;
+        if (id === 'rt') {
+          return rtTemplate;
+        }
+        if (id === 'tool') {
+          return toolTemplate;
+        }
+        if (id === 'agent') {
+          return agentTemplate;
+        }
         return undefined;
       });
 
@@ -296,9 +306,15 @@ describe('GraphCompiler', () => {
       const agentTemplate = createMockTemplate(NodeKind.SimpleAgent);
 
       vi.mocked(templateRegistry.getTemplate).mockImplementation((id) => {
-        if (id === 'rt') return rtTemplate;
-        if (id === 'tool') return toolTemplate;
-        if (id === 'agent') return agentTemplate;
+        if (id === 'rt') {
+          return rtTemplate;
+        }
+        if (id === 'tool') {
+          return toolTemplate;
+        }
+        if (id === 'agent') {
+          return agentTemplate;
+        }
         return undefined;
       });
 

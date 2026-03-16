@@ -21,6 +21,7 @@ export class SystemController {
   getSettings(): SystemSettingsResponseDto {
     return {
       githubAppEnabled: this.gitHubAppService.isConfigured(),
+      litellmManagementEnabled: environment.litellmManagementEnabled === true,
     };
   }
 

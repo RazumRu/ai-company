@@ -419,7 +419,9 @@ export class KnowledgeChunksService {
     unique.add(query);
     for (const item of validation.data.queries) {
       const normalized = item.trim();
-      if (normalized) unique.add(normalized);
+      if (normalized) {
+        unique.add(normalized);
+      }
     }
 
     return Array.from(unique).slice(0, MAX_QUERY_VARIANTS);

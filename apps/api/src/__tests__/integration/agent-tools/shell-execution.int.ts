@@ -83,9 +83,15 @@ describe('Shell Execution Integration Tests', () => {
   }, 300_000);
 
   afterAll(async () => {
-    if (defaultGraphId) await cleanupGraph(defaultGraphId);
-    if (envGraphId) await cleanupGraph(envGraphId);
-    if (alpineGraphId) await cleanupGraph(alpineGraphId);
+    if (defaultGraphId) {
+      await cleanupGraph(defaultGraphId);
+    }
+    if (envGraphId) {
+      await cleanupGraph(envGraphId);
+    }
+    if (alpineGraphId) {
+      await cleanupGraph(alpineGraphId);
+    }
 
     if (testProjectId) {
       try {
@@ -298,7 +304,9 @@ describe('Shell Execution Integration Tests', () => {
 
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
     await graphsService.run(contextDataStorage, graphId);
     await waitForGraphStatus(graphId, GraphStatus.Running);
   };
@@ -384,15 +392,21 @@ describe('Shell Execution Integration Tests', () => {
                 Array.isArray(m.toolCalls) &&
                 m.toolCalls.some((tc) => tc.name === 'shell'),
             );
-            if (aiIndex < 0) return false;
+            if (aiIndex < 0) {
+              return false;
+            }
 
             const ai = msgs[aiIndex];
-            if (!ai || ai.role !== 'ai') return false;
+            if (!ai || ai.role !== 'ai') {
+              return false;
+            }
 
             const shellToolCall = ai.toolCalls?.find(
               (tc) => tc.name === 'shell',
             );
-            if (!shellToolCall?.id) return false;
+            if (!shellToolCall?.id) {
+              return false;
+            }
 
             // Title should already be present on the request (generated from tool schema).
             if (

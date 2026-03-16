@@ -283,8 +283,12 @@ export class ShellTool extends BaseTool<ShellToolSchemaType, ShellToolOptions> {
     `;
 
     const parts: string[] = [];
-    if (stdout) parts.push(`STDOUT:\n${stdout}`);
-    if (stderr) parts.push(`STDERR:\n${stderr}`);
+    if (stdout) {
+      parts.push(`STDOUT:\n${stdout}`);
+    }
+    if (stderr) {
+      parts.push(`STDERR:\n${stderr}`);
+    }
     parts.push(`EXIT CODE: ${exitCode}`);
 
     const message = dedent`

@@ -1,3 +1,4 @@
+import type { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LiteLlmClient } from './litellm.client';
@@ -24,11 +25,20 @@ function stubFetch(response: Partial<Response>) {
   return fetchMock;
 }
 
+const createMockLogger = () =>
+  ({
+    log: vi.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
+  }) as unknown as DefaultLogger;
+
 describe('LiteLlmClient', () => {
   let client: LiteLlmClient;
+  let mockLogger: DefaultLogger;
 
   beforeEach(() => {
-    client = new LiteLlmClient();
+    mockLogger = createMockLogger();
+    client = new LiteLlmClient(mockLogger);
   });
 
   afterEach(() => {
@@ -46,20 +56,23 @@ describe('LiteLlmClient', () => {
       });
 
       await expect(client.fetchModelList()).rejects.toThrow(
-        'LiteLLM request failed: 500 Internal Server Error - upstream error details',
+        'LiteLLM request failed: 500 Internal Server Error',
       );
     });
 
-    it('includes response body in error message when available', async () => {
+    it('logs response body at debug level and excludes it from error message', async () => {
       stubFetch({
         ok: false,
         status: 502,
         statusText: 'Bad Gateway',
-        text: vi.fn().mockResolvedValue(''),
+        text: vi.fn().mockResolvedValue('gateway timeout details'),
       });
 
       await expect(client.fetchModelList()).rejects.toThrow(
         'LiteLLM request failed: 502 Bad Gateway',
+      );
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'LiteLLM error response body: gateway timeout details',
       );
     });
 
@@ -161,6 +174,99 @@ describe('LiteLlmClient', () => {
       const result = await client.getModelInfo('nonexistent');
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('createModel', () => {
+    it('sends POST to /model/new with the given payload', async () => {
+      const payload = {
+        model_name: 'my-model',
+        litellm_params: { model: 'openai/gpt-4' },
+      };
+      const fetchMock = stubFetch({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ id: 'new-id' }),
+      });
+
+      const result = await client.createModel(payload);
+
+      expect(result).toEqual({ id: 'new-id' });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const call = fetchMock.mock.calls[0]!;
+      expect(call[0]).toBe('http://litellm:4000/model/new');
+      expect((call[1] as RequestInit).method).toBe('POST');
+      expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual(
+        payload,
+      );
+    });
+  });
+
+  describe('deleteModel', () => {
+    it('sends POST to /model/delete with { id } body', async () => {
+      const fetchMock = stubFetch({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ deleted: true }),
+      });
+
+      await client.deleteModel('model-123');
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const call = fetchMock.mock.calls[0]!;
+      expect(call[0]).toBe('http://litellm:4000/model/delete');
+      expect(JSON.parse((call[1] as RequestInit).body as string)).toEqual({
+        id: 'model-123',
+      });
+    });
+  });
+
+  describe('testModel', () => {
+    it('returns success with latency on successful completion', async () => {
+      stubFetch({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ choices: [] }),
+      });
+
+      const result = await client.testModel('gpt-4');
+
+      expect(result.success).toBe(true);
+      expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('returns failure without throwing on non-ok response', async () => {
+      stubFetch({
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        text: vi.fn().mockResolvedValue('invalid model'),
+      });
+
+      const result = await client.testModel('nonexistent-model');
+
+      expect(result.success).toBe(false);
+      expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+      expect(result.error).toContain('400');
+    });
+  });
+
+  describe('invalidateCache', () => {
+    it('causes fetchModelList to issue a new HTTP request after invalidation', async () => {
+      const fetchMock = stubFetch({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ data: [] }),
+      });
+
+      await client.fetchModelList();
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      // Second call should use cache
+      await client.fetchModelList();
+      expect(fetchMock).toHaveBeenCalledOnce();
+
+      // Invalidate and call again — should issue a new request
+      client.invalidateCache();
+      await client.fetchModelList();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 });

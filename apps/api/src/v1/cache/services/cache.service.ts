@@ -99,7 +99,9 @@ export class CacheService implements OnModuleDestroy {
    * Set multiple hash fields at once
    */
   async hmset(key: string, data: Record<string, string>): Promise<void> {
-    if (Object.keys(data).length === 0) return;
+    if (Object.keys(data).length === 0) {
+      return;
+    }
     await this.redis.hmset(key, data);
   }
 
@@ -132,7 +134,9 @@ export class CacheService implements OnModuleDestroy {
     if (results) {
       for (let i = 0; i < keys.length; i++) {
         const result = results[i];
-        if (!result) continue;
+        if (!result) {
+          continue;
+        }
 
         const [error, data] = result;
         const key = keys[i];

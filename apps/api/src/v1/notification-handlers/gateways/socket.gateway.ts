@@ -30,8 +30,12 @@ import { NotificationHandler } from '../services/notification-handler.service';
   cors: {
     origin: (() => {
       const env = process.env.CORS_ALLOWED_ORIGINS?.trim();
-      if (!env) return false;
-      if (env === '*') return '*';
+      if (!env) {
+        return false;
+      }
+      if (env === '*') {
+        return '*';
+      }
       return env
         .split(',')
         .map((o) => o.trim())
@@ -67,7 +71,9 @@ export class SocketGateway
 
   private emitError(err: Error, client: Socket, disconnect = false): void {
     client.emit('server_error', { message: err.message });
-    if (disconnect) client.disconnect(true);
+    if (disconnect) {
+      client.disconnect(true);
+    }
   }
 
   afterInit() {
@@ -121,7 +127,9 @@ export class SocketGateway
       const isDev = environment.env !== 'production';
       const authData: Record<string, string> = {};
       for (const [key, value] of Object.entries(authRecord)) {
-        if (!isDev && key.startsWith('x-dev-jwt-')) continue;
+        if (!isDev && key.startsWith('x-dev-jwt-')) {
+          continue;
+        }
         if (typeof value === 'string') {
           authData[key] = value;
         }

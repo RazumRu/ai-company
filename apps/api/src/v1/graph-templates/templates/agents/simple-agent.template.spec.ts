@@ -268,8 +268,12 @@ describe('SimpleAgentTemplate', () => {
       });
 
       vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
-        if (id === 'tool-node-1') return toolNode1;
-        if (id === 'tool-node-2') return toolNode2;
+        if (id === 'tool-node-1') {
+          return toolNode1;
+        }
+        if (id === 'tool-node-2') {
+          return toolNode2;
+        }
         return undefined;
       });
 

@@ -329,7 +329,9 @@ describe('GitRepositoriesService sync (integration)', () => {
         hasInstallationId: true,
       });
       for (const r of reposAfterFirst) {
-        if (r.owner === 'reconnect-org') trackRepo(r.id);
+        if (r.owner === 'reconnect-org') {
+          trackRepo(r.id);
+        }
       }
 
       // Simulate disconnect: deactivate the installation and remove repos

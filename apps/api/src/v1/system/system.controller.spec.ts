@@ -40,19 +40,36 @@ describe('SystemController', () => {
 
     // Reset to default for each test
     mockEnvironment.authProvider = 'keycloak';
+    mockEnvironment.litellmManagementEnabled = true;
   });
 
   describe('getSettings', () => {
     it('should return githubAppEnabled: true when configured', () => {
       mockGitHubAppService.isConfigured.mockReturnValue(true);
       const result = controller.getSettings();
-      expect(result).toEqual({ githubAppEnabled: true });
+      expect(result).toEqual({
+        githubAppEnabled: true,
+        litellmManagementEnabled: true,
+      });
     });
 
     it('should return githubAppEnabled: false when not configured', () => {
       mockGitHubAppService.isConfigured.mockReturnValue(false);
       const result = controller.getSettings();
-      expect(result).toEqual({ githubAppEnabled: false });
+      expect(result).toEqual({
+        githubAppEnabled: false,
+        litellmManagementEnabled: true,
+      });
+    });
+
+    it('should return litellmManagementEnabled: false when disabled', () => {
+      mockGitHubAppService.isConfigured.mockReturnValue(true);
+      mockEnvironment.litellmManagementEnabled = false;
+      const result = controller.getSettings();
+      expect(result).toEqual({
+        githubAppEnabled: true,
+        litellmManagementEnabled: false,
+      });
     });
   });
 

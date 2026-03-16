@@ -49,7 +49,9 @@ describe('Thread Management Integration Tests', () => {
     contextDataStorage = projectResult.ctx;
 
     const registerGraph = (graphId: string) => {
-      if (!createdGraphIds.includes(graphId)) createdGraphIds.push(graphId);
+      if (!createdGraphIds.includes(graphId)) {
+        createdGraphIds.push(graphId);
+      }
     };
 
     const waitForGraphRunning = async (graphId: string) => {
@@ -257,7 +259,9 @@ describe('Thread Management Integration Tests', () => {
 
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
     await graphsService.run(contextDataStorage, graphId);
     await waitForCondition(
       () => graphsService.findById(contextDataStorage, graphId),

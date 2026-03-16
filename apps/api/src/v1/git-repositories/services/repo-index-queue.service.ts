@@ -220,7 +220,9 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   async removeJob(repoIndexId: string): Promise<void> {
     try {
       const job = await this.queue.getJob(repoIndexId);
-      if (!job) return;
+      if (!job) {
+        return;
+      }
 
       const state = await job.getState();
 
@@ -257,7 +259,9 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   private async handleJobStalled(jobId: string): Promise<void> {
     this.logger.warn('Repo index job stalled, will be retried', { jobId });
 
-    if (!this.callbacks) return;
+    if (!this.callbacks) {
+      return;
+    }
 
     try {
       // Resolve repoIndexId from job data rather than relying on the
@@ -278,7 +282,9 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
     job: Job<RepoIndexJobData> | undefined,
     err: Error,
   ): Promise<void> {
-    if (!job) return;
+    if (!job) {
+      return;
+    }
 
     this.logger.error(err, 'Repo index job failed', {
       jobId: job.id,
@@ -286,7 +292,9 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
       attemptsMade: job.attemptsMade,
     });
 
-    if (!this.callbacks) return;
+    if (!this.callbacks) {
+      return;
+    }
 
     const isFinalFailure = job.attemptsMade >= (job.opts.attempts ?? 1);
 

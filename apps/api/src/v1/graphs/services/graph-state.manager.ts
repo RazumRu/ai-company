@@ -75,7 +75,9 @@ export class GraphStateManager {
   }
 
   registerNode(nodeId: string) {
-    if (this.nodes.has(nodeId)) return;
+    if (this.nodes.has(nodeId)) {
+      return;
+    }
 
     this.nodes.set(nodeId, {
       nodeId,
@@ -614,12 +616,16 @@ export class GraphStateManager {
     // Check stored metadata first
     if (threadId) {
       const stored = state.metadata.byThread.get(threadId);
-      if (stored) return stored;
+      if (stored) {
+        return stored;
+      }
     }
 
     if (runId) {
       const stored = state.metadata.byRun.get(runId);
-      if (stored) return stored;
+      if (stored) {
+        return stored;
+      }
     }
 
     if (state.metadata.base) {
@@ -628,7 +634,9 @@ export class GraphStateManager {
 
     // Fall back to querying node instance
     const node = state.node;
-    if (!node) return undefined;
+    if (!node) {
+      return undefined;
+    }
 
     const meta: GraphExecutionMetadata = { threadId, runId };
 
@@ -750,8 +758,12 @@ export class GraphStateManager {
   }
 
   private toErrorMessage(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    if (typeof error === 'string') return error;
+    if (error instanceof Error) {
+      return error.message;
+    }
+    if (typeof error === 'string') {
+      return error;
+    }
     try {
       return JSON.stringify(error);
     } catch (stringifyError) {

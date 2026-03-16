@@ -44,7 +44,9 @@ describe('Thread token usage + cost from running graph state (integration)', () 
   afterEach(async () => {
     while (createdGraphIds.length > 0) {
       const graphId = createdGraphIds.pop();
-      if (!graphId) continue;
+      if (!graphId) {
+        continue;
+      }
 
       try {
         await graphsService.destroy(contextDataStorage, graphId);

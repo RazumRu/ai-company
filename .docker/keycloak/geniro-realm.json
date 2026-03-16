@@ -13,6 +13,14 @@
   "ssoSessionIdleTimeout": 86400,
   "ssoSessionMaxLifespan": 86400,
   "offlineSessionIdleTimeout": 2592000,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "Administrator role with full management access"
+      }
+    ]
+  },
   "clients": [
     {
       "clientId": "geniro",
@@ -50,6 +58,7 @@
       "firstName": "Demo",
       "lastName": "User",
       "email": "demo@geniro.test",
+      "realmRoles": ["admin"],
       "credentials": [
         {
           "type": "password",

@@ -266,7 +266,9 @@ export class ThreadsService {
   public async prepareThreadsResponse(
     entities: ThreadEntity[],
   ): Promise<ThreadDto[]> {
-    if (entities.length === 0) return [];
+    if (entities.length === 0) {
+      return [];
+    }
     const graphIds = [...new Set(entities.map((e) => e.graphId))];
     const agentsByGraphId = await this.graphDao.getAgentsByGraphIds(graphIds);
     return entities.map((entity) => {
@@ -762,7 +764,9 @@ export class ThreadsService {
         for (const msg of page) {
           yield prepareMessageResponse(msg);
         }
-        if (page.length < PAGE_SIZE) break;
+        if (page.length < PAGE_SIZE) {
+          break;
+        }
         offset += PAGE_SIZE;
         await new Promise<void>((resolve) => setImmediate(resolve));
       }

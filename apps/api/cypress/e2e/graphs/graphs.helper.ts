@@ -16,7 +16,9 @@ import { graphCleanup } from './graph-cleanup.helper';
 const isCreateGraphBodyLike = (
   value: unknown,
 ): value is Pick<CreateGraphDto, 'name' | 'schema'> => {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
   const record = value as Record<string, unknown>;
   return typeof record.name === 'string' && typeof record.schema === 'object';
 };

@@ -3,6 +3,7 @@ import { AuthProvider } from './providers/auth.provider';
 
 export interface IContextData {
   sub?: string;
+  roles?: string[];
   [key: string]: unknown;
 }
 

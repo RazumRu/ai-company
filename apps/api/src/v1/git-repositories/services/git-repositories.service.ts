@@ -548,7 +548,9 @@ export class GitRepositoriesService {
           });
         }
 
-        if (data.repositories.length < 100) break;
+        if (data.repositories.length < 100) {
+          break;
+        }
         page++;
       } while (allGithubRepos.length < totalCount);
 
@@ -621,7 +623,9 @@ export class GitRepositoriesService {
     userId: string,
     installationIds: number[],
   ): Promise<number> {
-    if (installationIds.length === 0) return 0;
+    if (installationIds.length === 0) {
+      return 0;
+    }
 
     const repos = await this.gitRepositoriesDao.getAll({
       createdBy: userId,

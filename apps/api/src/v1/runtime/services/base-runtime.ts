@@ -60,14 +60,18 @@ export abstract class BaseRuntime {
         return next.length <= max ? next : next.slice(next.length - max);
       }
       const combined = prev + next;
-      if (combined.length <= max) return combined;
+      if (combined.length <= max) {
+        return combined;
+      }
       return combined.slice(combined.length - max);
     }
 
     const combined = (prev.length ? Buffer.concat([prev, chunk]) : chunk) as
       | Buffer<ArrayBufferLike>
       | Buffer<ArrayBuffer>;
-    if (combined.length <= max) return combined as Buffer<ArrayBufferLike>;
+    if (combined.length <= max) {
+      return combined as Buffer<ArrayBufferLike>;
+    }
     return combined.subarray(combined.length - max) as Buffer<ArrayBufferLike>;
   }
 

@@ -5,6 +5,11 @@ export const SystemSettingsResponseSchema = z.object({
   githubAppEnabled: z
     .boolean()
     .describe('Whether the GitHub App integration is configured and available'),
+  litellmManagementEnabled: z
+    .boolean()
+    .describe(
+      'Whether the LiteLLM model management UI is enabled for the frontend',
+    ),
 });
 
 export type SystemSettingsResponse = z.infer<

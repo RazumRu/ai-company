@@ -17,7 +17,7 @@ export enum SubagentToolId {
 export interface SubagentModelContext {
   /** The model name used by the parent agent. */
   parentModel: string;
-  /** Service for resolving model names with offline fallback logic. */
+  /** Service for resolving model names with user and project override logic. */
   llmModelsService: LlmModelsService;
   /** Pre-resolved model override context for the graph owner. */
   modelOverrideContext?: LLMRequestContext;

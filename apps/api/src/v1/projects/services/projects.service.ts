@@ -72,7 +72,9 @@ export class ProjectsService {
       order: { updatedAt: 'DESC' },
     });
 
-    if (rows.length === 0) return [];
+    if (rows.length === 0) {
+      return [];
+    }
 
     const projectIds = rows.map((r) => r.id);
     const statsRows =

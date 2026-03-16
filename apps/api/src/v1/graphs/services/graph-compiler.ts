@@ -96,8 +96,12 @@ export class GraphCompiler {
       }
 
       const isAllowed = sourceTemplate.outputs.some((rule: NodeConnection) => {
-        if (rule.type === 'template') return rule.value === targetTemplateName;
-        if (rule.type === 'kind') return rule.value === targetTemplate.kind;
+        if (rule.type === 'template') {
+          return rule.value === targetTemplateName;
+        }
+        if (rule.type === 'kind') {
+          return rule.value === targetTemplate.kind;
+        }
         return false;
       });
 
@@ -121,8 +125,12 @@ export class GraphCompiler {
       }
 
       const isAllowed = targetTemplate.inputs.some((rule: NodeConnection) => {
-        if (rule.type === 'template') return rule.value === sourceTemplateName;
-        if (rule.type === 'kind') return rule.value === sourceTemplate.kind;
+        if (rule.type === 'template') {
+          return rule.value === sourceTemplateName;
+        }
+        if (rule.type === 'kind') {
+          return rule.value === sourceTemplate.kind;
+        }
         return false;
       });
 
@@ -156,15 +164,21 @@ export class GraphCompiler {
 
       for (const rule of requiredRules) {
         const hasRequiredConnection = edges.some((edge) => {
-          if (edge.from !== node.id) return false;
+          if (edge.from !== node.id) {
+            return false;
+          }
 
           const targetNode = nodeMap.get(edge.to);
-          if (!targetNode) return false;
+          if (!targetNode) {
+            return false;
+          }
 
           const targetTemplate = this.templateRegistry.getTemplate(
             targetNode.template,
           );
-          if (!targetTemplate) return false;
+          if (!targetTemplate) {
+            return false;
+          }
 
           if (rule.type === 'template') {
             return rule.value === targetNode.template;

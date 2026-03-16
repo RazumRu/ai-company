@@ -318,7 +318,9 @@ describe('InvokeLlmNode', () => {
         await vi.advanceTimersByTimeAsync(5_000);
       }
       await p;
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       return result!;
     };
 

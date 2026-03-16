@@ -78,14 +78,14 @@ pnpm test:e2e  # (server must be running)
 pnpm commit
 ```
 
-## Local offline model (Ollama)
+## Local models (Ollama)
 
-Use a local model to keep title generation working when you are offline or do
+Use local Ollama models to keep the platform working when you are offline or do
 not want to call hosted providers.
 
-### Install the local model
+### Install the local models
 
-> **Note:** Installing offline models locally requires at least 32GB RAM and
+> **Note:** Installing local models requires at least 32GB RAM and
 > ~40GB of available disk space.
 
 Run the setup script from the repo root:
@@ -97,23 +97,25 @@ Run the setup script from the repo root:
 This installs Ollama (if needed), starts it, and pulls `qwen3:32b-q4_K_M`,
 `qwen3-coder:30b`, and `qwen3-embedding:4b`.
 
-### Run the model manually (optional)
+### Run a model manually (optional)
 
 ```bash
 ollama run qwen3-coder:30b
 ```
 
-### Enable offline model for title generation
+### Configure Geniro to use Ollama models
 
-Set the environment variables:
+Set the standard `LLM_*_MODEL` env vars to point at your Ollama models:
 
 ```bash
-LLM_USE_OFFLINE_MODEL=true
-LLM_OFFLINE_GENERAL_MODEL=qwen3:32b-q4_K_M
-LLM_OFFLINE_CODING_MODEL=qwen3-coder:30b
-LLM_OFFLINE_EMBEDDING_MODEL=qwen3-embedding:4b
-LLM_NO_REASONING_MODELS=qwen3-coder:30b
+LLM_MINI_MODEL=ollama/phi3.5:latest
+LLM_LARGE_CODE_MODEL=ollama/qwen3-coder:30b
+LLM_MINI_CODE_MODEL=ollama/qwen2.5-coder:7b
+LLM_EMBEDDING_MODEL=ollama/qwen3-embedding:4b
 ```
+
+You can use any model from the [Ollama library](https://ollama.com/library) as
+long as it is added to `litellm.yaml`.
 
 ## Need Help?
 

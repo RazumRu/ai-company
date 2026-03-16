@@ -117,7 +117,9 @@ export class GitRepositoriesDao extends BaseDao<
    * installationId, and syncedAt without touching other user-managed fields.
    */
   async upsertGithubSyncRepos(repos: GithubSyncRepo[]): Promise<void> {
-    if (!repos.length) return;
+    if (!repos.length) {
+      return;
+    }
 
     const params: unknown[] = [];
     const valuePlaceholders = repos.map((r) => {
@@ -154,7 +156,9 @@ export class GitRepositoriesDao extends BaseDao<
     userId: string,
     ownerRepoPairs: { owner: string; repo: string }[],
   ): Promise<void> {
-    if (!ownerRepoPairs.length) return;
+    if (!ownerRepoPairs.length) {
+      return;
+    }
     const params: unknown[] = [userId];
     const tuples = ownerRepoPairs.map((pair) => {
       params.push(pair.owner, pair.repo);

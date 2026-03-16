@@ -752,7 +752,9 @@ export class DaytonaRuntime extends BaseRuntime {
             sessionId,
             cmdId,
           );
-          if (typeof cmd.exitCode === 'number') return cmd.exitCode;
+          if (typeof cmd.exitCode === 'number') {
+            return cmd.exitCode;
+          }
         } catch {
           // cmdId not found — cleaned up after fast exit
         }
@@ -760,7 +762,9 @@ export class DaytonaRuntime extends BaseRuntime {
       };
 
       const settle = (result: RuntimeExecResult) => {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settled = true;
         streamActive = false;
         if (pollInterval !== null) {
@@ -771,7 +775,9 @@ export class DaytonaRuntime extends BaseRuntime {
       };
 
       const settleWithStuckHandler = (result: RuntimeExecResult) => {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
         settle(onSessionStuck ? onSessionStuck(result) : result);
       };
 
@@ -780,18 +786,24 @@ export class DaytonaRuntime extends BaseRuntime {
         sessionId,
         cmdId,
         (chunk: string) => {
-          if (!streamActive) return;
+          if (!streamActive) {
+            return;
+          }
           stdout += chunk;
           lastOutputAt = Date.now();
         },
         (chunk: string) => {
-          if (!streamActive) return;
+          if (!streamActive) {
+            return;
+          }
           stderr += chunk;
           lastOutputAt = Date.now();
         },
       )
         .then(async () => {
-          if (settled) return;
+          if (settled) {
+            return;
+          }
           const exitCode = await fetchExitCode();
           settle({
             exitCode,
@@ -819,7 +831,9 @@ export class DaytonaRuntime extends BaseRuntime {
       // can merge the snapshot data into our accumulated output and settle immediately
       // using the exit code from getSessionCommand (or infer from stderr).
       pollInterval = setInterval(() => {
-        if (settled) return;
+        if (settled) {
+          return;
+        }
 
         pollTick++;
 

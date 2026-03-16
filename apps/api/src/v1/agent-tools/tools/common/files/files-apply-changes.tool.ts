@@ -213,7 +213,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
     for (const line of lines) {
       const isBlank = line.trim().length === 0;
       if (isBlank) {
-        if (!prevBlank) out.push('');
+        if (!prevBlank) {
+          out.push('');
+        }
         prevBlank = true;
       } else {
         out.push(line);
@@ -264,7 +266,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
   private detectIndentationFromBlock(text: string): string {
     const line = this.splitLines(text).find((l) => l.trim().length > 0);
-    if (!line) return '';
+    if (!line) {
+      return '';
+    }
     const match = line.match(/^(\s+)/);
     return match && match[1] ? match[1] : '';
   }
@@ -272,10 +276,14 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
   private stripCommonIndent(text: string): string {
     const lines = this.splitLines(text);
     const nonEmpty = lines.filter((l) => l.trim().length > 0);
-    if (nonEmpty.length === 0) return lines.join('\n');
+    if (nonEmpty.length === 0) {
+      return lines.join('\n');
+    }
     const indents = nonEmpty.map((l) => l?.match(/^(\s*)/)?.[1]?.length ?? 0);
     const minIndent = Math.min(...indents);
-    if (minIndent === 0) return lines.join('\n');
+    if (minIndent === 0) {
+      return lines.join('\n');
+    }
     return lines
       .map((l) => (l.trim().length ? l.slice(minIndent) : l))
       .join('\n');
@@ -283,7 +291,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
   private applyIndentation(text: string, indentation: string): string {
     const stripped = this.stripCommonIndent(text);
-    if (!indentation) return stripped;
+    if (!indentation) {
+      return stripped;
+    }
     const lines = this.splitLines(stripped);
     return lines
       .map((line) => {
@@ -303,14 +313,24 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     while (j < oldLinesRaw.length) {
       if (oldLinesRaw[j] === '') {
-        while (j < oldLinesRaw.length && oldLinesRaw[j] === '') j++;
-        if (i >= fileLinesRaw.length || fileLinesRaw[i] !== '') return null;
-        while (i < fileLinesRaw.length && fileLinesRaw[i] === '') i++;
+        while (j < oldLinesRaw.length && oldLinesRaw[j] === '') {
+          j++;
+        }
+        if (i >= fileLinesRaw.length || fileLinesRaw[i] !== '') {
+          return null;
+        }
+        while (i < fileLinesRaw.length && fileLinesRaw[i] === '') {
+          i++;
+        }
         continue;
       }
 
-      if (i >= fileLinesRaw.length) return null;
-      if (fileLinesRaw[i] !== oldLinesRaw[j]) return null;
+      if (i >= fileLinesRaw.length) {
+        return null;
+      }
+      if (fileLinesRaw[i] !== oldLinesRaw[j]) {
+        return null;
+      }
 
       i++;
       j++;
@@ -337,13 +357,19 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     for (let j = 0; j < oldLinesTrimmed.length; j++) {
       const fileLine = fileLinesOriginal[startLine + j];
-      if (fileLine === undefined) return null;
+      if (fileLine === undefined) {
+        return null;
+      }
       const fileLineTrimmed = fileLine.trim();
       const oldLineTrimmed = oldLinesTrimmed[j]!;
 
       // Both blank → match
-      if (fileLineTrimmed === '' && oldLineTrimmed === '') continue;
-      if (fileLineTrimmed !== oldLineTrimmed) return null;
+      if (fileLineTrimmed === '' && oldLineTrimmed === '') {
+        continue;
+      }
+      if (fileLineTrimmed !== oldLineTrimmed) {
+        return null;
+      }
     }
 
     const endLine = startLine + oldLinesTrimmed.length - 1;
@@ -357,9 +383,15 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
    * Simple Levenshtein distance for short strings.
    */
   private levenshteinDistance(a: string, b: string): number {
-    if (a === b) return 0;
-    if (a.length === 0) return b.length;
-    if (b.length === 0) return a.length;
+    if (a === b) {
+      return 0;
+    }
+    if (a.length === 0) {
+      return b.length;
+    }
+    if (b.length === 0) {
+      return a.length;
+    }
 
     // Use two rows instead of full matrix for memory efficiency
     let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -397,30 +429,42 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
 
     for (let j = 0; j < oldLinesTrimmed.length; j++) {
       const fileLine = fileLinesOriginal[startLine + j];
-      if (fileLine === undefined) return null;
+      if (fileLine === undefined) {
+        return null;
+      }
       const fileLineTrimmed = fileLine.trim();
       const oldLineTrimmed = oldLinesTrimmed[j]!;
 
       // Both blank → match
-      if (fileLineTrimmed === '' && oldLineTrimmed === '') continue;
+      if (fileLineTrimmed === '' && oldLineTrimmed === '') {
+        continue;
+      }
 
       const maxLen = Math.max(fileLineTrimmed.length, oldLineTrimmed.length);
-      if (maxLen === 0) continue;
+      if (maxLen === 0) {
+        continue;
+      }
 
       // Short lines (e.g. "}", "return;") require exact trimmed match to avoid false positives
       if (maxLen < MIN_FUZZY_LINE_LENGTH) {
-        if (fileLineTrimmed !== oldLineTrimmed) return null;
+        if (fileLineTrimmed !== oldLineTrimmed) {
+          return null;
+        }
         continue;
       }
 
       // Skip Levenshtein for very long lines (expensive) — fall back to trimmed comparison
       if (maxLen > 500) {
-        if (fileLineTrimmed !== oldLineTrimmed) return null;
+        if (fileLineTrimmed !== oldLineTrimmed) {
+          return null;
+        }
         continue;
       }
 
       const dist = this.levenshteinDistance(fileLineTrimmed, oldLineTrimmed);
-      if (dist / maxLen > maxEditRatio) return null;
+      if (dist / maxLen > maxEditRatio) {
+        return null;
+      }
     }
 
     const endLine = startLine + oldLinesTrimmed.length - 1;
@@ -449,7 +493,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         lineIndex,
         oldLinesTrimmed,
       );
-      if (!candidate) continue;
+      if (!candidate) {
+        continue;
+      }
 
       const indentation = this.detectIndentationFromBlock(
         candidate.matchedText,
@@ -505,7 +551,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         oldLinesTrimmed,
         MAX_FUZZY_EDIT_RATIO,
       );
-      if (!candidate) continue;
+      if (!candidate) {
+        continue;
+      }
 
       const indentation = this.detectIndentationFromBlock(
         candidate.matchedText,
@@ -606,7 +654,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       const oldLine = oldLines[i]!.trim();
       const candLine = candidateLines[i]!.trim();
 
-      if (oldLine === candLine) continue;
+      if (oldLine === candLine) {
+        continue;
+      }
 
       // Truncate long lines for readability
       const truncate = (s: string, max = 80): string =>
@@ -635,13 +685,17 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
       (l) => l.trim().length > 0,
     );
 
-    if (oldLines.length === 0) return [];
+    if (oldLines.length === 0) {
+      return [];
+    }
 
     const firstOldLineNormalized = oldLines[0]
       ?.trim()
       .toLowerCase()
       .substring(0, 50);
-    if (!firstOldLineNormalized) return [];
+    if (!firstOldLineNormalized) {
+      return [];
+    }
 
     const candidates: {
       lineStart: number;
@@ -699,7 +753,9 @@ export class FilesApplyChangesTool extends FilesBaseTool<FilesApplyChangesToolSc
         lineIndex,
         oldLinesRaw,
       );
-      if (!candidate) continue;
+      if (!candidate) {
+        continue;
+      }
 
       const normalizedCandidate = this.normalizeWhitespace(
         candidate.matchedText,

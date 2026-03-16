@@ -99,7 +99,9 @@ describe('Socket Gateway E2E', () => {
       let testCompleted = false;
 
       const completeTest = (error?: Error) => {
-        if (testCompleted) return;
+        if (testCompleted) {
+          return;
+        }
         testCompleted = true;
         done(error);
       };

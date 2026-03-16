@@ -200,8 +200,12 @@ describe('AgentCommunicationToolTemplate', () => {
         'agent-2',
       ]);
       vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
-        if (id === 'agent-1') return mockAgentNode;
-        if (id === 'agent-2') return agent2Node;
+        if (id === 'agent-1') {
+          return mockAgentNode;
+        }
+        if (id === 'agent-2') {
+          return agent2Node;
+        }
         return undefined;
       });
 

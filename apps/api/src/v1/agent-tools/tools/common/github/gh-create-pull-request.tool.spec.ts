@@ -233,7 +233,9 @@ describe('GhCreatePullRequestTool', () => {
       );
 
       expect(output.success).toBe(true);
-      if (output.success !== true) throw new Error('Expected success output');
+      if (output.success !== true) {
+        throw new Error('Expected success output');
+      }
 
       expect(output.pullRequest.number).toBe(101);
       expect(output.pullRequest.url).toContain('/pull/101');
@@ -301,7 +303,9 @@ describe('GhCreatePullRequestTool', () => {
       );
 
       expect(output.success).toBe(true);
-      if (output.success !== true) throw new Error('Expected success output');
+      if (output.success !== true) {
+        throw new Error('Expected success output');
+      }
 
       expect(issuesUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -365,7 +369,9 @@ describe('GhCreatePullRequestTool', () => {
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(output.success).toBe(true);
-      if (output.success !== true) throw new Error('Expected success output');
+      if (output.success !== true) {
+        throw new Error('Expected success output');
+      }
 
       expect(output.pullRequest.number).toBe(101);
       expect(output.warnings?.length).toBe(1);
@@ -437,7 +443,9 @@ describe('GhCreatePullRequestTool', () => {
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(output.success).toBe(true);
-      if (output.success !== true) throw new Error('Expected success output');
+      if (output.success !== true) {
+        throw new Error('Expected success output');
+      }
 
       expect(output.applied?.labels).toEqual(['bug']);
       expect(output.applied?.assignees).toEqual(['octocat']);
@@ -477,7 +485,9 @@ describe('GhCreatePullRequestTool', () => {
       const { output } = await tool.invoke(args, mockConfig, mockCfg);
 
       expect(output.success).toBe(false);
-      if (output.success !== false) throw new Error('Expected error output');
+      if (output.success !== false) {
+        throw new Error('Expected error output');
+      }
 
       expect(output.error).toContain('GitHubError:');
     });

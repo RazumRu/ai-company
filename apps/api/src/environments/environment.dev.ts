@@ -52,8 +52,6 @@ export const environment = () =>
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks',
     ),
-    knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', true),
-
     // Daytona runtime (local docker-compose instance)
     daytonaApiUrl: getEnv('DAYTONA_API_URL', 'http://localhost:3986/api'),
     daytonaApiKey: getEnv('DAYTONA_API_KEY', 'geniro-dev-admin-key'),

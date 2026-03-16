@@ -63,7 +63,9 @@ export class LitellmService {
   }
 
   private isEmbeddingModel(m: LiteLLMModelInfo): boolean {
-    if (m.model_info?.mode) return m.model_info.mode === 'embedding';
+    if (m.model_info?.mode) {
+      return m.model_info.mode === 'embedding';
+    }
     return /embed/i.test(m.model_name);
   }
 
@@ -89,7 +91,9 @@ export class LitellmService {
     let sawContext = false;
 
     for (const usage of usages) {
-      if (!usage) continue;
+      if (!usage) {
+        continue;
+      }
       sawAny = true;
       inputTokens += usage.inputTokens;
       cachedInputTokens += usage.cachedInputTokens ?? 0;

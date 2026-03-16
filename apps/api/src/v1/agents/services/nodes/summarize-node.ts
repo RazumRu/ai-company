@@ -260,7 +260,9 @@ export class SummarizeNode extends BaseNode<
     // summarization if the conversation was seeded with a large payload.
     if (!currentContext || currentContext <= 0) {
       const candidates = messages.filter((m) => !(m instanceof SystemMessage));
-      if (candidates.length === 0) return 0;
+      if (candidates.length === 0) {
+        return 0;
+      }
       return this.estimateBlockTokens(candidates);
     }
 
@@ -292,7 +294,9 @@ export class SummarizeNode extends BaseNode<
   }
 
   private async safeGetNumTokens(text: string): Promise<number> {
-    if (!text) return 0;
+    if (!text) {
+      return 0;
+    }
     try {
       return await this.litellmService.countTokens(
         this.opts.tokenCountModel,
@@ -458,7 +462,9 @@ export class SummarizeNode extends BaseNode<
         : JSON.stringify(msg.content);
     // Keep the content at the start so existing token-counter mocks in tests (and
     // many heuristics) that key off message text still behave sensibly.
-    if (content) parts.push(content);
+    if (content) {
+      parts.push(content);
+    }
 
     parts.push(`TYPE:${String((msg as { type?: unknown })?.type ?? '')}`);
 

@@ -44,8 +44,9 @@ export class InjectPendingNode extends BaseNode<
             const finishState = FinishTool.getStateFromToolsMetadata(
               state.toolsMetadata,
             );
-            if (finishState)
+            if (finishState) {
               return finishState.done || finishState.needsMoreInfo;
+            }
             return false;
           })()
         : true;

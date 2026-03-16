@@ -7,7 +7,6 @@ export const environment = () =>
     ...devEnvironment(),
     env: getEnv('NODE_ENV', 'test'),
     logLevel: getEnv('LOG_LEVEL', 'debug'),
-    llmUseOfflineModel: false,
     postgresRunMigrations: getEnv('POSTGRES_RUN_MIGRATIONS', false),
     restoreGraphs: getEnv('RESTORE_GRAPHS', false),
     knowledgeReindexOnStartup: getEnv('KNOWLEDGE_REINDEX_ON_STARTUP', false),

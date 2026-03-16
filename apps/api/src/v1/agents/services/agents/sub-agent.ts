@@ -308,7 +308,9 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           const chunk = value as Record<string, BaseAgentStateChange>;
 
           for (const [nodeName, nodeState] of Object.entries(chunk)) {
-            if (!nodeState || typeof nodeState !== 'object') continue;
+            if (!nodeState || typeof nodeState !== 'object') {
+              continue;
+            }
 
             const prevMessages = finalState.messages;
             finalState = this.applyChange(finalState, nodeState);

@@ -78,7 +78,9 @@ export type FilesSearchTextToolSchemaType = z.infer<
 function coerceToArray(
   value: string | string[] | null | undefined,
 ): string[] | null {
-  if (value == null) return null;
+  if (value == null) {
+    return null;
+  }
   return typeof value === 'string' ? [value] : value;
 }
 
@@ -280,13 +282,21 @@ export class FilesSearchTextTool extends FilesBaseTool<FilesSearchTextToolSchema
     for (const line of lines) {
       try {
         const parsed = JSON.parse(line) as unknown;
-        if (typeof parsed !== 'object' || parsed === null) continue;
+        if (typeof parsed !== 'object' || parsed === null) {
+          continue;
+        }
         const record = parsed as Record<string, unknown>;
-        if (record.type !== 'match') continue;
-        if (matches.length >= MAX_MATCHES) break;
+        if (record.type !== 'match') {
+          continue;
+        }
+        if (matches.length >= MAX_MATCHES) {
+          break;
+        }
 
         const data = record.data as Record<string, unknown> | undefined;
-        if (!data) continue;
+        if (!data) {
+          continue;
+        }
 
         const pathObj = data.path as { text?: string } | undefined;
         const linesObj = data.lines as { text?: string } | undefined;

@@ -79,7 +79,9 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
     graphIds: string[],
   ): Promise<Map<string, GraphAgentInfo[]>> {
     const result = new Map<string, GraphAgentInfo[]>();
-    if (graphIds.length === 0) return result;
+    if (graphIds.length === 0) {
+      return result;
+    }
     const rows = await this.getQueryBuilder()
       .select([`${this.alias}.id`, `${this.alias}.agents`])
       .where(`${this.alias}.id IN (:...graphIds)`, { graphIds })
@@ -148,7 +150,9 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
       string,
       Pick<GraphEntity, 'schema' | 'metadata' | 'agents'>
     >();
-    if (graphIds.length === 0) return result;
+    if (graphIds.length === 0) {
+      return result;
+    }
     const rows = await this.getQueryBuilder()
       .select([
         `${this.alias}.id`,

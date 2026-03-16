@@ -689,7 +689,9 @@ export class AiSuggestionsService {
 
   private formatMessageCompact(index: number, msg: SanitizedMessage): string {
     const truncate = (text: string, maxLen: number): string => {
-      if (text.length <= maxLen) return text;
+      if (text.length <= maxLen) {
+        return text;
+      }
       return text.substring(0, maxLen) + '... [truncated]';
     };
 

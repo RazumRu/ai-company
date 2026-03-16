@@ -40,7 +40,9 @@ export class GithubResource extends BaseResource<
       owner: string,
       userId?: string,
     ): Promise<string | null> => {
-      if (!userId) return null;
+      if (!userId) {
+        return null;
+      }
       const resolved = await this.gitTokenResolverService.resolveToken(
         GitProvider.GitHub,
         owner,
@@ -53,7 +55,9 @@ export class GithubResource extends BaseResource<
       ctx?: ResourceResolveContext,
     ): Promise<Record<string, string>> => {
       const userId = ctx?.configurable?.thread_created_by;
-      if (!userId) return {};
+      if (!userId) {
+        return {};
+      }
       const resolved =
         await this.gitTokenResolverService.resolveDefaultToken(userId);
       if (resolved?.token) {

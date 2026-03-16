@@ -248,25 +248,33 @@ export class OpenaiService {
     const output = isObject(response)
       ? (response as { output?: unknown }).output
       : undefined;
-    if (!Array.isArray(output)) return undefined;
+    if (!Array.isArray(output)) {
+      return undefined;
+    }
 
     const parts = output
       .map((block) => {
         const content = isObject(block)
           ? (block as { content?: unknown }).content
           : undefined;
-        if (!Array.isArray(content)) return undefined;
+        if (!Array.isArray(content)) {
+          return undefined;
+        }
 
         return content
           .map((item) => {
             const textValue = isObject(item)
               ? (item as { text?: unknown }).text
               : undefined;
-            if (typeof textValue === 'string') return textValue;
+            if (typeof textValue === 'string') {
+              return textValue;
+            }
 
             if (isObject(textValue)) {
               const v = (textValue as { value?: unknown }).value;
-              if (typeof v === 'string') return v;
+              if (typeof v === 'string') {
+                return v;
+              }
             }
 
             return undefined;
@@ -281,10 +289,14 @@ export class OpenaiService {
   }
 
   private parseJson<T>(content?: string): T | null {
-    if (!content) return null;
+    if (!content) {
+      return null;
+    }
 
     const trimmed = content.trim();
-    if (!trimmed) return null;
+    if (!trimmed) {
+      return null;
+    }
 
     const jsonString = trimmed.startsWith('```')
       ? trimmed

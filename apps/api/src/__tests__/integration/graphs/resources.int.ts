@@ -272,7 +272,9 @@ describe('Graph Resources Integration Tests', () => {
       contextDataStorage,
       resourceGraphId,
     );
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
 
     await graphsService.run(contextDataStorage, resourceGraphId);
     await waitForGraphStatus(resourceGraphId, GraphStatus.Running, 120_000);

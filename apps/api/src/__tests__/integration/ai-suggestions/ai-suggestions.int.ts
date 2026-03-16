@@ -101,7 +101,9 @@ describe('AiSuggestionsController (integration)', () => {
 
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
     await graphsService.run(contextDataStorage, graphId);
   };
 

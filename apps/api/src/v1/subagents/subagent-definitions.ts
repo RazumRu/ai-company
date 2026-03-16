@@ -24,7 +24,9 @@ function buildWorkspaceContext(ctx: SubagentPromptContext): string {
     lines.push(`- Resources:\n${ctx.resourcesInformation}`);
   }
 
-  if (lines.length === 0) return '';
+  if (lines.length === 0) {
+    return '';
+  }
 
   return `\n\n## Workspace Context\n${lines.join('\n')}`;
 }

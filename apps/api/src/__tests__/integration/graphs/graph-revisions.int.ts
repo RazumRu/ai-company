@@ -232,7 +232,9 @@ describe('Graph Revisions Integration Tests', () => {
         ): entry is ThreadMessageDto & {
           message: ShellThreadMessage;
         } => {
-          if (!isShellThreadMessage(entry.message)) return false;
+          if (!isShellThreadMessage(entry.message)) {
+            return false;
+          }
           const content = entry.message.content;
           const stdout = (content as { stdout?: unknown } | undefined)?.stdout;
           return typeof stdout === 'string' && stdout.includes(stdoutIncludes);
@@ -278,7 +280,9 @@ describe('Graph Revisions Integration Tests', () => {
     const selectShellCall = () => {
       for (const aiEntry of aiEntries) {
         for (const tc of aiEntry.message.toolCalls ?? []) {
-          if (tc.name !== 'shell') continue;
+          if (tc.name !== 'shell') {
+            continue;
+          }
           const cmd = (tc.args as { cmd?: unknown } | undefined)?.cmd;
           if (options?.cmdIncludes) {
             if (typeof cmd !== 'string' || !cmd.includes(options.cmdIncludes)) {
@@ -410,7 +414,9 @@ describe('Graph Revisions Integration Tests', () => {
 
   const ensureCoreGraphRunning = async () => {
     const graph = await graphsService.findById(contextDataStorage, coreGraphId);
-    if (graph.status === GraphStatus.Running) return;
+    if (graph.status === GraphStatus.Running) {
+      return;
+    }
     await graphsService.run(contextDataStorage, coreGraphId);
     await waitForGraphToBeRunning(coreGraphId, 120000);
   };

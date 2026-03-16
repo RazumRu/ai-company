@@ -165,7 +165,9 @@ export class GraphsService {
       order: { updatedAt: 'DESC' },
     });
 
-    if (rows.length === 0) return [];
+    if (rows.length === 0) {
+      return [];
+    }
 
     const graphIds = rows.map((r) => r.id);
     const [schemaMetadataMap, threadCounts] = await Promise.all([

@@ -94,7 +94,9 @@ export class MessageTransformerService {
         const reasoningId = (() => {
           const fromId =
             typeof obj['id'] === 'string' ? (obj['id'] as string) : undefined;
-          if (fromId) return fromId;
+          if (fromId) {
+            return fromId;
+          }
           const raw = rawAdditionalKwargs as unknown as Record<string, unknown>;
           const v = raw?.__reasoningId ?? raw?.reasoningId;
           return typeof v === 'string' && v.length > 0 ? v : undefined;
@@ -184,7 +186,9 @@ export class MessageTransformerService {
     v: unknown,
   ): Record<string, unknown> | undefined {
     const obj = isObject(v) ? (v as Record<string, unknown>) : undefined;
-    if (!obj || !Object.keys(obj).length) return undefined;
+    if (!obj || !Object.keys(obj).length) {
+      return undefined;
+    }
 
     // Normalize legacy keys to the canonical `__*` camelCase format.
     // We keep provider/tool transport fields untouched.
