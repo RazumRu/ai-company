@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { OnlyForAuthorized } from '@packages/http-server';
+import type { IContextData } from '@packages/http-server';
+import { CtxData, OnlyForAuthorized } from '@packages/http-server';
 
 import { environment } from '../../environments';
 import { GitHubAppService } from '../git-auth/services/github-app.service';
@@ -18,10 +19,12 @@ export class SystemController {
   @Get('settings')
   @ApiBearerAuth()
   @OnlyForAuthorized()
-  getSettings(): SystemSettingsResponseDto {
+  getSettings(@CtxData() ctx: IContextData): SystemSettingsResponseDto {
     return {
       githubAppEnabled: this.gitHubAppService.isConfigured(),
       litellmManagementEnabled: environment.litellmManagementEnabled === true,
+      isAdmin:
+        Array.isArray(ctx.roles) && ctx.roles.includes(environment.adminRole),
     };
   }
 

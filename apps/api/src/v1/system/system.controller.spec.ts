@@ -1,3 +1,4 @@
+import type { IContextData } from '@packages/http-server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GitHubAppService } from '../git-auth/services/github-app.service';
@@ -10,6 +11,8 @@ const KEYCLOAK_CLIENT_ID = 'geniro';
 const ZITADEL_ISSUER = 'http://localhost:8085';
 const ZITADEL_CLIENT_ID = 'zitadel-geniro';
 
+const ADMIN_ROLE = 'admin';
+
 const mockEnvironment: Record<string, unknown> = {
   authProvider: 'keycloak',
   keycloakUrl: KEYCLOAK_URL,
@@ -17,6 +20,7 @@ const mockEnvironment: Record<string, unknown> = {
   keycloakClientId: KEYCLOAK_CLIENT_ID,
   zitadelIssuer: ZITADEL_ISSUER,
   zitadelClientId: ZITADEL_CLIENT_ID,
+  adminRole: ADMIN_ROLE,
 };
 
 vi.mock('../../environments', () => ({
@@ -41,34 +45,94 @@ describe('SystemController', () => {
     // Reset to default for each test
     mockEnvironment.authProvider = 'keycloak';
     mockEnvironment.litellmManagementEnabled = true;
+    mockEnvironment.adminRole = ADMIN_ROLE;
   });
 
   describe('getSettings', () => {
+    const adminCtx = { roles: [ADMIN_ROLE] } as IContextData;
+    const nonAdminCtx = { roles: ['viewer'] } as IContextData;
+    const noRolesCtx = {} as IContextData;
+
     it('should return githubAppEnabled: true when configured', () => {
       mockGitHubAppService.isConfigured.mockReturnValue(true);
-      const result = controller.getSettings();
+      const result = controller.getSettings(nonAdminCtx);
       expect(result).toEqual({
         githubAppEnabled: true,
         litellmManagementEnabled: true,
+        isAdmin: false,
       });
     });
 
     it('should return githubAppEnabled: false when not configured', () => {
       mockGitHubAppService.isConfigured.mockReturnValue(false);
-      const result = controller.getSettings();
+      const result = controller.getSettings(nonAdminCtx);
       expect(result).toEqual({
         githubAppEnabled: false,
         litellmManagementEnabled: true,
+        isAdmin: false,
       });
     });
 
     it('should return litellmManagementEnabled: false when disabled', () => {
       mockGitHubAppService.isConfigured.mockReturnValue(true);
       mockEnvironment.litellmManagementEnabled = false;
-      const result = controller.getSettings();
+      const result = controller.getSettings(nonAdminCtx);
       expect(result).toEqual({
         githubAppEnabled: true,
         litellmManagementEnabled: false,
+        isAdmin: false,
+      });
+    });
+
+    it('should return isAdmin: true when user has admin role', () => {
+      mockGitHubAppService.isConfigured.mockReturnValue(true);
+      const result = controller.getSettings(adminCtx);
+      expect(result).toEqual({
+        githubAppEnabled: true,
+        litellmManagementEnabled: true,
+        isAdmin: true,
+      });
+    });
+
+    it('should return isAdmin: false when user has no roles', () => {
+      mockGitHubAppService.isConfigured.mockReturnValue(true);
+      const result = controller.getSettings(noRolesCtx);
+      expect(result).toEqual({
+        githubAppEnabled: true,
+        litellmManagementEnabled: true,
+        isAdmin: false,
+      });
+    });
+
+    it('should return isAdmin: false when user has roles but not the admin role', () => {
+      mockGitHubAppService.isConfigured.mockReturnValue(true);
+      const multiRoleCtx = { roles: ['viewer', 'editor'] } as IContextData;
+      const result = controller.getSettings(multiRoleCtx);
+      expect(result).toEqual({
+        githubAppEnabled: true,
+        litellmManagementEnabled: true,
+        isAdmin: false,
+      });
+    });
+
+    it('should return isAdmin: true when custom admin role matches', () => {
+      mockGitHubAppService.isConfigured.mockReturnValue(true);
+      mockEnvironment.adminRole = 'superuser';
+
+      const superuserCtx = { roles: ['superuser'] } as IContextData;
+      const superuserResult = controller.getSettings(superuserCtx);
+      expect(superuserResult).toEqual({
+        githubAppEnabled: true,
+        litellmManagementEnabled: true,
+        isAdmin: true,
+      });
+
+      const defaultAdminCtx = { roles: ['admin'] } as IContextData;
+      const defaultAdminResult = controller.getSettings(defaultAdminCtx);
+      expect(defaultAdminResult).toEqual({
+        githubAppEnabled: true,
+        litellmManagementEnabled: true,
+        isAdmin: false,
       });
     });
   });

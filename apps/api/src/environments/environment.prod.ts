@@ -25,6 +25,7 @@ export const environment = () =>
     zitadelIssuer: getEnv('ZITADEL_ISSUER'),
     keycloakClientId: getEnv('KEYCLOAK_CLIENT_ID', 'geniro'),
     zitadelClientId: getEnv('ZITADEL_CLIENT_ID', 'geniro'),
+    adminRole: getEnv('USER_ADMIN_ROLE', 'admin'),
 
     // connections
     postgresUrl: getEnv('POSTGRES_URL'),

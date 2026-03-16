@@ -11,6 +11,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OnlyForAuthorized } from '@packages/http-server';
 
+import { environment } from '../../../environments';
 import {
   CreateLiteLlmCredentialDto,
   CreateLiteLlmModelDto,
@@ -27,7 +28,7 @@ import { LiteLlmAdminService } from '../services/litellm-admin.service';
 @Controller('litellm')
 @ApiTags('litellm')
 @ApiBearerAuth()
-@OnlyForAuthorized({ roles: ['admin'] })
+@OnlyForAuthorized({ roles: [environment.adminRole] })
 export class LiteLlmAdminController {
   constructor(private readonly adminService: LiteLlmAdminService) {}
 

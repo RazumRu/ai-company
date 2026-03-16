@@ -10,6 +10,7 @@ export const SystemSettingsResponseSchema = z.object({
     .describe(
       'Whether the LiteLLM model management UI is enabled for the frontend',
     ),
+  isAdmin: z.boolean().describe('Whether the current user has the admin role'),
 });
 
 export type SystemSettingsResponse = z.infer<
