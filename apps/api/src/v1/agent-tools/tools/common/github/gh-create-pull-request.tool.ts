@@ -1,8 +1,6 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
-import { RequestError } from '@octokit/request-error';
 import dedent from 'dedent';
-import { isPlainObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
@@ -186,7 +184,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
   GhCreatePullRequestToolConfig,
   GhCreatePullRequestToolOutput
 > {
-  public name = 'gh_create_pull_request';
+  public name = 'gh_pr_create';
   public description =
     'Create a GitHub Pull Request from a head branch into a base branch, optionally with labels, assignees, and reviewers in a single call. The branch must be pushed first with gh_push. Returns the PR URL and number on success.';
 
@@ -205,55 +203,6 @@ export class GhCreatePullRequestTool extends GhBaseTool<
     return args.closesIssues?.length
       ? this.appendClosesIssues(baseBody, args.closesIssues)
       : baseBody;
-  }
-
-  private formatGitHubError(error: unknown): string {
-    if (error instanceof RequestError) {
-      const status: number = error.status;
-      const message: string = error.message;
-
-      const responseData: unknown = error.response?.data;
-      const responseRecord: Record<string, unknown> | undefined = isPlainObject(
-        responseData,
-      )
-        ? (responseData as Record<string, unknown>)
-        : undefined;
-      const responseMessage: unknown = responseRecord?.['message'];
-      const responseErrors: unknown = responseRecord?.['errors'];
-
-      const parts: string[] = [`GitHubError(${status}):`, message];
-
-      if (typeof responseMessage === 'string' && responseMessage.length) {
-        parts.push(`- ${responseMessage}`);
-      }
-
-      if (Array.isArray(responseErrors) && responseErrors.length) {
-        // Keep this stable + reasonably small; Octokit errors can be verbose.
-        parts.push(
-          `- errors: ${JSON.stringify(responseErrors).slice(0, 2000)}`,
-        );
-      }
-
-      if (status === 401 || status === 403) {
-        parts.push('- Not authorized. Check PAT scopes and repo access.');
-
-        const remaining = error.response?.headers?.['x-ratelimit-remaining'];
-        const reset = error.response?.headers?.['x-ratelimit-reset'];
-
-        // Some rate limit errors surface as 403.
-        if (remaining === '0' && typeof reset === 'string') {
-          parts.push(`- Rate limit exceeded. Reset: ${reset}`);
-        }
-      }
-
-      return parts.join(' ');
-    }
-
-    if (error instanceof Error) {
-      return `GitHubError: ${error.message}`;
-    }
-
-    return `GitHubError: ${String(error)}`;
   }
 
   private mergeUniqueStrings(
@@ -536,7 +485,7 @@ export class GhCreatePullRequestTool extends GhBaseTool<
       ### ⚠️ PREREQUISITE — Successful Push Required
 
       **Only call this tool AFTER \`gh_push\` has returned \`"success": true\`.**
-      Never call \`gh_push\` and \`gh_create_pull_request\` in the same parallel tool batch.
+      Never call \`gh_push\` and \`gh_pr_create\` in the same parallel tool batch.
       If the push failed or hasn't been attempted, the PR will point to a branch with stale or missing commits — making it empty and useless.
 
       ### Troubleshooting

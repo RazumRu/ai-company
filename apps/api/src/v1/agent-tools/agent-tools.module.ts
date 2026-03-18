@@ -21,6 +21,10 @@ import { GhBranchTool } from './tools/common/github/gh-branch.tool';
 import { GhCloneTool } from './tools/common/github/gh-clone.tool';
 import { GhCommitTool } from './tools/common/github/gh-commit.tool';
 import { GhCreatePullRequestTool } from './tools/common/github/gh-create-pull-request.tool';
+import { GhIssueCommentTool } from './tools/common/github/gh-issue-comment.tool';
+import { GhIssueManageTool } from './tools/common/github/gh-issue-manage.tool';
+import { GhPrCommentTool } from './tools/common/github/gh-pr-comment.tool';
+import { GhPrReadTool } from './tools/common/github/gh-pr-read.tool';
 import { GhPushTool } from './tools/common/github/gh-push.tool';
 import { GhToolGroup } from './tools/common/github/gh-tool-group';
 import { KnowledgeGetChunksTool } from './tools/common/knowledge/knowledge-get-chunks.tool';
@@ -56,6 +60,10 @@ import { FinishTool } from './tools/core/finish.tool';
     GhBranchTool,
     GhPushTool,
     GhCreatePullRequestTool,
+    GhIssueManageTool,
+    GhIssueCommentTool,
+    GhPrReadTool,
+    GhPrCommentTool,
     GhToolGroup,
     KnowledgeSearchDocsTool,
     KnowledgeSearchChunksTool,
@@ -86,6 +94,10 @@ import { FinishTool } from './tools/core/finish.tool';
     GhBranchTool,
     GhPushTool,
     GhCreatePullRequestTool,
+    GhIssueManageTool,
+    GhIssueCommentTool,
+    GhPrReadTool,
+    GhPrCommentTool,
     GhToolGroup,
     KnowledgeSearchDocsTool,
     KnowledgeSearchChunksTool,

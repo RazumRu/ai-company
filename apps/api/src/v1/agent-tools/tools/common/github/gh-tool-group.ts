@@ -11,6 +11,10 @@ import { GhBranchTool } from './gh-branch.tool';
 import { GhCloneTool } from './gh-clone.tool';
 import { GhCommitTool } from './gh-commit.tool';
 import { GhCreatePullRequestTool } from './gh-create-pull-request.tool';
+import { GhIssueCommentTool } from './gh-issue-comment.tool';
+import { GhIssueManageTool } from './gh-issue-manage.tool';
+import { GhPrCommentTool } from './gh-pr-comment.tool';
+import { GhPrReadTool } from './gh-pr-read.tool';
 import { GhPushTool } from './gh-push.tool';
 
 export enum GhToolType {
@@ -18,13 +22,17 @@ export enum GhToolType {
   Commit = 'commit',
   Branch = 'branch',
   Push = 'push',
-  CreatePullRequest = 'create_pull_request',
+  PrCreate = 'pr_create',
+  PrRead = 'pr_read',
+  PrComment = 'pr_comment',
+  Issue = 'issue',
+  IssueComment = 'issue_comment',
 }
 
 export type GhToolGroupConfig = GhBaseToolConfig & {
   tools?: GhToolType[];
   /**
-   * Labels that will always be applied when creating PRs via `gh_create_pull_request`.
+   * Labels that will always be applied when creating PRs via `gh_pr_create`.
    * These are merged with any labels passed at invocation time.
    */
   additionalLabels?: string[];
@@ -38,6 +46,10 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
     private readonly ghBranchTool: GhBranchTool,
     private readonly ghPushTool: GhPushTool,
     private readonly ghCreatePullRequestTool: GhCreatePullRequestTool,
+    private readonly ghIssueManageTool: GhIssueManageTool,
+    private readonly ghIssueCommentTool: GhIssueCommentTool,
+    private readonly ghPrReadTool: GhPrReadTool,
+    private readonly ghPrCommentTool: GhPrCommentTool,
   ) {
     super();
   }
@@ -57,16 +69,16 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
       4. \`gh_commit\` → commit changes
       5. \`gh_push\` → push the branch to remote
       6. **Wait for \`gh_push\` result** — check that \`"success": true\`
-      7. \`gh_create_pull_request\` → open a PR (only after push succeeded)
+      7. \`gh_pr_create\` → open a PR (only after push succeeded)
 
       ### ⚠️ CRITICAL — Sequential Dependency Rules
 
-      **\`gh_push\` and \`gh_create_pull_request\` must NEVER be called in the same parallel batch.**
+      **\`gh_push\` and \`gh_pr_create\` must NEVER be called in the same parallel batch.**
       These tools have a strict sequential dependency: the PR can only reference commits that exist on the remote.
       If you call both in parallel, the PR may be created before the push completes — pointing to a branch with stale or missing commits.
 
       **If \`gh_push\` returns \`"success": false\`:**
-      - Do NOT call \`gh_create_pull_request\`.
+      - Do NOT call \`gh_pr_create\`.
       - Do NOT call \`finish\` or report the task as complete.
       - Diagnose the push failure and attempt recovery (see \`gh_push\` instructions for details).
       - Only after a successful push should you proceed to create a PR.
@@ -84,7 +96,11 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
       GhToolType.Commit,
       GhToolType.Branch,
       GhToolType.Push,
-      GhToolType.CreatePullRequest,
+      GhToolType.PrCreate,
+      GhToolType.PrRead,
+      GhToolType.PrComment,
+      GhToolType.Issue,
+      GhToolType.IssueComment,
     ];
 
     const tools: BuiltAgentTool[] = [];
@@ -103,8 +119,20 @@ export class GhToolGroup extends BaseToolGroup<GhToolGroupConfig> {
         case GhToolType.Push:
           tools.push(this.ghPushTool.build(config, lgConfig));
           break;
-        case GhToolType.CreatePullRequest:
+        case GhToolType.PrCreate:
           tools.push(this.ghCreatePullRequestTool.build(config, lgConfig));
+          break;
+        case GhToolType.PrRead:
+          tools.push(this.ghPrReadTool.build(config, lgConfig));
+          break;
+        case GhToolType.PrComment:
+          tools.push(this.ghPrCommentTool.build(config, lgConfig));
+          break;
+        case GhToolType.Issue:
+          tools.push(this.ghIssueManageTool.build(config, lgConfig));
+          break;
+        case GhToolType.IssueComment:
+          tools.push(this.ghIssueCommentTool.build(config, lgConfig));
           break;
       }
     }

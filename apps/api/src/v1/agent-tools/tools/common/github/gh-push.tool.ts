@@ -45,7 +45,7 @@ type GhPushToolOutput = {
 export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
   public name = 'gh_push';
   public description =
-    'Push local commits to the remote GitHub repository using authenticated HTTPS. Pushes to the specified branch, or the currently checked-out branch if no branch is specified. Use this after creating commits with gh_commit. Will fail if no commits exist to push, or if the remote branch has diverged (non-fast-forward). Pushing directly to the repository default branch (e.g. main/master) is blocked — always create a feature branch and use gh_create_pull_request instead. The repository must already be cloned with gh_clone.';
+    'Push local commits to the remote GitHub repository using authenticated HTTPS. Pushes to the specified branch, or the currently checked-out branch if no branch is specified. Use this after creating commits with gh_commit. Will fail if no commits exist to push, or if the remote branch has diverged (non-fast-forward). Pushing directly to the repository default branch (e.g. main/master) is blocked — always create a feature branch and use gh_pr_create instead. The repository must already be cloned with gh_clone.';
 
   protected override generateTitle(
     args: GhPushToolSchemaType,
@@ -71,7 +71,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       No commits exist → use gh_commit first. Protected branch → may need PR workflow. Changes need review → wait for confirmation.
 
       ### Best Practices
-      Always pass \`path\` (use the path returned by gh_clone). Never push directly to the default branch — this tool will block it. Always work on a feature branch and open a pull request via gh_create_pull_request. Verify current branch before pushing with shell: \`git branch --show-current\`.
+      Always pass \`path\` (use the path returned by gh_clone). Never push directly to the default branch — this tool will block it. Always work on a feature branch and open a pull request via gh_pr_create. Verify current branch before pushing with shell: \`git branch --show-current\`.
 
       ### Examples
       **1. Push feature branch:**
@@ -87,7 +87,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       ### Failure Handling — MANDATORY
 
       **If this tool returns \`"success": false\`, you MUST stop and handle the error.**
-      Do NOT proceed to \`gh_create_pull_request\` or \`finish\` after a failed push.
+      Do NOT proceed to \`gh_pr_create\` or \`finish\` after a failed push.
 
       **Non-fast-forward rejection** (\`! [rejected] ... (non-fast-forward)\`):
       The remote branch tip is ahead of your local branch. Recovery steps:
@@ -100,8 +100,8 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       - "Permission denied" / 401 / 403 → Authentication issue. Report the error — do not attempt to create a PR.
       - "protected branch" → Create a PR instead of pushing directly.
 
-      ### ⚠️ NEVER call gh_push and gh_create_pull_request in the same parallel batch
-      These tools have a strict sequential dependency. Always wait for \`gh_push\` to return \`"success": true\` before calling \`gh_create_pull_request\`.
+      ### ⚠️ NEVER call gh_push and gh_pr_create in the same parallel batch
+      These tools have a strict sequential dependency. Always wait for \`gh_push\` to return \`"success": true\` before calling \`gh_pr_create\`.
     `;
   }
 
@@ -231,7 +231,7 @@ export class GhPushTool extends GhBaseTool<GhPushToolSchemaType> {
       return {
         output: {
           success: false,
-          error: `Pushing to the default branch "${defaultBranch}" is not allowed. Create a feature branch and use gh_create_pull_request instead.`,
+          error: `Pushing to the default branch "${defaultBranch}" is not allowed. Create a feature branch and use gh_pr_create instead.`,
         },
         messageMetadata,
       };

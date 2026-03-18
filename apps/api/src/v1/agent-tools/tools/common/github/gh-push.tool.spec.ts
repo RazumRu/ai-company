@@ -424,7 +424,7 @@ describe('GhPushTool', () => {
       expect(result.error).toContain(
         'Pushing to the default branch "main" is not allowed',
       );
-      expect(result.error).toContain('gh_create_pull_request');
+      expect(result.error).toContain('gh_pr_create');
     });
 
     it('should block push when current branch matches default branch (master)', async () => {

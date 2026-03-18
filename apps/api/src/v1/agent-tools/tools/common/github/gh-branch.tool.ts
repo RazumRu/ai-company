@@ -96,7 +96,7 @@ export class GhBranchTool extends GhBaseTool<GhBranchToolSchemaType> {
       4. Stage changes: shell \`git add .\`
       5. \`gh_commit\` → commit changes
       6. \`gh_push\` → push branch to remote
-      7. \`gh_create_pull_request\` → open a PR
+      7. \`gh_pr_create\` → open a PR
 
       ### Troubleshooting
       - "Failed to checkout base branch" → the base branch (e.g., \`main\`) doesn't exist; check with \`git branch -a\`

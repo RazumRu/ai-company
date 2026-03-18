@@ -93,6 +93,21 @@ describe('ThreadNameGeneratorService', () => {
       const result = await service.generateFromFirstUserMessage(input);
 
       expect(result).toBe(input);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Thread name LLM response returned no content',
+      );
+    });
+
+    it('should return fallback when LLM returns null content', async () => {
+      openaiService.jsonRequest.mockResolvedValue({ content: null });
+
+      const input = 'Test message for null content';
+      const result = await service.generateFromFirstUserMessage(input);
+
+      expect(result).toBe(input);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Thread name LLM response returned no content',
+      );
     });
 
     it('should return fallback when LLM response fails schema validation', async () => {
@@ -104,6 +119,9 @@ describe('ThreadNameGeneratorService', () => {
       const result = await service.generateFromFirstUserMessage(input);
 
       expect(result).toBe(input);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Thread name parse failed'),
+      );
     });
 
     it('should return fallback when LLM returns title with empty string', async () => {
@@ -116,6 +134,9 @@ describe('ThreadNameGeneratorService', () => {
 
       // Empty title fails zod min(1) validation, falls back
       expect(result).toBe(input);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Thread name parse failed'),
+      );
     });
 
     it('should return fallback when jsonRequest throws', async () => {
@@ -125,6 +146,9 @@ describe('ThreadNameGeneratorService', () => {
       const result = await service.generateFromFirstUserMessage(input);
 
       expect(result).toBe(input);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Thread name LLM call failed: LLM error'),
+      );
     });
 
     it('should return fallback when LLM times out', async () => {
@@ -157,10 +181,8 @@ describe('ThreadNameGeneratorService', () => {
 
       const result = await service.generateFromFirstUserMessage('test');
 
-      // The title passes min(1) but then gets sliced to 100 by the service
-      // However, the Zod schema has max(100) so safeParse would fail for >100 chars
-      // This means it falls back to user message truncation
-      expect(result).toBe('test');
+      // The title passes min(1) safeParse, then gets sliced to 100 by the service
+      expect(result).toBe('A'.repeat(100));
     });
 
     it('should truncate fallback to 100 characters for long input', async () => {

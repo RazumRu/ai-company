@@ -326,6 +326,114 @@ describe('LitellmService', () => {
     });
   });
 
+  describe('supportsResponsesApi', () => {
+    it('returns false when no model info is found', async () => {
+      const svc = createSvc(null);
+      await expect(svc.supportsResponsesApi('unknown-model')).resolves.toBe(
+        false,
+      );
+    });
+
+    it('returns false when supports_response_schema is false', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'openai',
+          supports_response_schema: false,
+        }),
+      );
+      await expect(svc.supportsResponsesApi('gpt-4')).resolves.toBe(false);
+    });
+
+    it('returns true for openai provider with supports_response_schema', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'openai',
+          supports_response_schema: true,
+        }),
+      );
+      await expect(svc.supportsResponsesApi('gpt-4')).resolves.toBe(true);
+    });
+
+    it('returns true for azure provider with supports_response_schema', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'azure',
+          supports_response_schema: true,
+        }),
+      );
+      await expect(svc.supportsResponsesApi('azure/gpt-4')).resolves.toBe(true);
+    });
+
+    it('returns true for azure_ai provider with supports_response_schema', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'azure_ai',
+          supports_response_schema: true,
+        }),
+      );
+      await expect(svc.supportsResponsesApi('azure_ai/gpt-4')).resolves.toBe(
+        true,
+      );
+    });
+
+    it('returns false for gemini provider even with supports_response_schema', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'gemini',
+          supports_response_schema: true,
+        }),
+      );
+      await expect(svc.supportsResponsesApi('gemini/gemini-pro')).resolves.toBe(
+        false,
+      );
+    });
+
+    it('returns false for minimax provider even with supports_response_schema', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'minimax',
+          supports_response_schema: true,
+        }),
+      );
+      await expect(
+        svc.supportsResponsesApi('minimax/minimax-m2.5'),
+      ).resolves.toBe(false);
+    });
+
+    it('returns false for anthropic provider even with supports_response_schema', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'anthropic',
+          supports_response_schema: true,
+        }),
+      );
+      await expect(
+        svc.supportsResponsesApi('anthropic/claude-3'),
+      ).resolves.toBe(false);
+    });
+
+    it('returns false for unknown provider even with supports_response_schema', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          litellm_provider: 'some_new_provider',
+          supports_response_schema: true,
+        }),
+      );
+      await expect(
+        svc.supportsResponsesApi('some_new_provider/model'),
+      ).resolves.toBe(false);
+    });
+
+    it('returns false when provider is missing from model_info', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          supports_response_schema: true,
+        }),
+      );
+      await expect(svc.supportsResponsesApi('gpt-4')).resolves.toBe(false);
+    });
+  });
+
   describe('sumTokenUsages', () => {
     it('sums multiple token usages', () => {
       const svc = createSvc();

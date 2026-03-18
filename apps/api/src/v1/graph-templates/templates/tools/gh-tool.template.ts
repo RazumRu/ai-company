@@ -28,7 +28,7 @@ export const GhToolTemplateSchema = z
       .array(z.string().min(1))
       .optional()
       .describe(
-        'Labels that will always be applied when creating PRs via gh_create_pull_request.',
+        'Labels that will always be applied when creating PRs via gh_pr_create.',
       ),
   })
   .strip();

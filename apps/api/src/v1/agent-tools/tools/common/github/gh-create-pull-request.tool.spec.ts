@@ -48,7 +48,7 @@ describe('GhCreatePullRequestTool', () => {
 
   describe('properties', () => {
     it('should have correct name', () => {
-      expect(tool.name).toBe('gh_create_pull_request');
+      expect(tool.name).toBe('gh_pr_create');
     });
 
     it('should have correct description', () => {

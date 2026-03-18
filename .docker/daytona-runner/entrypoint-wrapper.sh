@@ -25,26 +25,79 @@ PROXY_BIN="/opt/docker-socket-proxy"
 rm -f /var/run/docker.pid
 rm -f /var/run/docker.sock /var/run/docker-real.sock
 
+# Kill stale containerd/dockerd processes from previous runs.
+# A leftover containerd causes "containerd is still running" → Docker startup failure.
+for proc in containerd dockerd; do
+  if pids=$(pidof "$proc" 2>/dev/null); then
+    echo "[entrypoint-wrapper] Killing stale $proc (PIDs: $pids)"
+    kill $pids 2>/dev/null || true
+    sleep 1
+    kill -9 $pids 2>/dev/null || true
+  fi
+done
+# Clean up containerd socket/state that may be left behind
+rm -f /var/run/docker/containerd/containerd.sock
+rm -f /var/run/containerd/containerd.sock
+
 # 1. Start Docker daemon with Unix socket ONLY (no TCP, no TLS)
 #    Suppress TLS cert generation by clearing DOCKER_TLS_CERTDIR
 export DOCKER_TLS_CERTDIR=
-dockerd --host=unix:///var/run/docker.sock &
-DOCKERD_PID=$!
 
-# 2. Wait for the Docker daemon socket to appear
-echo "[entrypoint-wrapper] Waiting for Docker daemon socket..."
-for i in $(seq 1 120); do
-  if [ -S "$PROXY_SOCK" ]; then
-    if docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; then
+MAX_ATTEMPTS=3
+ATTEMPT=0
+DOCKER_READY=false
+
+while [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; do
+  ATTEMPT=$((ATTEMPT + 1))
+  echo "[entrypoint-wrapper] Starting Docker daemon (attempt $ATTEMPT/$MAX_ATTEMPTS)..."
+
+  dockerd --host=unix:///var/run/docker.sock &
+  DOCKERD_PID=$!
+
+  # 2. Wait for the Docker daemon socket to appear
+  echo "[entrypoint-wrapper] Waiting for Docker daemon socket..."
+  for i in $(seq 1 120); do
+    if [ -S "$PROXY_SOCK" ]; then
+      if docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; then
+        DOCKER_READY=true
+        break
+      fi
+    fi
+    # Check if dockerd process died
+    if ! kill -0 "$DOCKERD_PID" 2>/dev/null; then
+      echo "[entrypoint-wrapper] Docker daemon exited unexpectedly"
       break
     fi
+    sleep 1
+  done
+
+  if [ "$DOCKER_READY" = "true" ]; then
+    break
   fi
-  sleep 1
+
+  echo "[entrypoint-wrapper] Docker daemon not ready after 120s (attempt $ATTEMPT/$MAX_ATTEMPTS)"
+
+  # Kill the failed daemon and clean up before retrying
+  kill "$DOCKERD_PID" 2>/dev/null || true
+  sleep 2
+  kill -9 "$DOCKERD_PID" 2>/dev/null || true
+  rm -f /var/run/docker.pid /var/run/docker.sock
+  rm -f /var/run/docker/containerd/containerd.sock
+  # Kill any lingering containerd from the failed attempt
+  for proc in containerd dockerd; do
+    if pids=$(pidof "$proc" 2>/dev/null); then
+      echo "[entrypoint-wrapper] Cleaning up stale $proc (PIDs: $pids)"
+      kill $pids 2>/dev/null || true
+      sleep 1
+      kill -9 $pids 2>/dev/null || true
+    fi
+  done
 done
 
-if ! docker --host unix:///var/run/docker.sock info >/dev/null 2>&1; then
-  echo "[entrypoint-wrapper] WARNING: Docker daemon not ready after 120s, starting runner without proxy"
-  exec daytona-runner
+if [ "$DOCKER_READY" != "true" ]; then
+  echo "[entrypoint-wrapper] FATAL: Docker daemon failed to start after $MAX_ATTEMPTS attempts. Cannot run sandboxes without Docker."
+  echo "[entrypoint-wrapper] Exiting with error so the container restarts (restart: on-failure)."
+  exit 1
 fi
 
 echo "[entrypoint-wrapper] Docker daemon is ready, installing socket proxy..."

@@ -6,7 +6,7 @@ import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 
 const ThreadTitleSchema = z.object({
-  title: z.string().min(1).max(100),
+  title: z.string().min(1),
 });
 type ThreadTitleResponse = z.infer<typeof ThreadTitleSchema>;
 
@@ -46,10 +46,25 @@ export class ThreadNameGeneratorService {
           maxOutputTokens: 1024,
         })
         .then((r) => {
+          if (r.content === undefined || r.content === null) {
+            this.logger.error('Thread name LLM response returned no content');
+            return fallback;
+          }
           const parsed = ThreadTitleSchema.safeParse(r.content);
-          return parsed.success ? parsed.data.title : '';
+          if (!parsed.success) {
+            this.logger.error(
+              `Thread name parse failed: ${parsed.error.message}, content=${JSON.stringify(r.content).slice(0, 200)}`,
+            );
+            return fallback;
+          }
+          return parsed.data.title;
         })
-        .catch(() => '');
+        .catch((err) => {
+          this.logger.error(
+            `Thread name LLM call failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return fallback;
+        });
 
       const timeoutPromise = new Promise<null>((resolve) => {
         timeoutId = setTimeout(() => resolve(null), llmTimeoutMs);

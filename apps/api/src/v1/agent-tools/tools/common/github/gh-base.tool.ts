@@ -1,6 +1,8 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { RequestError } from '@octokit/request-error';
 import { Octokit } from '@octokit/rest';
+import { isPlainObject } from 'lodash';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
@@ -117,5 +119,52 @@ export abstract class GhBaseTool<
         execPath: '',
       };
     }
+  }
+
+  protected formatGitHubError(error: unknown): string {
+    if (error instanceof RequestError) {
+      const status: number = error.status;
+      const message: string = error.message;
+
+      const responseData: unknown = error.response?.data;
+      const responseRecord: Record<string, unknown> | undefined = isPlainObject(
+        responseData,
+      )
+        ? (responseData as Record<string, unknown>)
+        : undefined;
+      const responseMessage: unknown = responseRecord?.['message'];
+      const responseErrors: unknown = responseRecord?.['errors'];
+
+      const parts: string[] = [`GitHubError(${status}):`, message];
+
+      if (typeof responseMessage === 'string' && responseMessage.length) {
+        parts.push(`- ${responseMessage}`);
+      }
+
+      if (Array.isArray(responseErrors) && responseErrors.length) {
+        parts.push(
+          `- errors: ${JSON.stringify(responseErrors).slice(0, 2000)}`,
+        );
+      }
+
+      if (status === 401 || status === 403) {
+        parts.push('- Not authorized. Check PAT scopes and repo access.');
+
+        const remaining = error.response?.headers?.['x-ratelimit-remaining'];
+        const reset = error.response?.headers?.['x-ratelimit-reset'];
+
+        if (remaining === '0' && typeof reset === 'string') {
+          parts.push(`- Rate limit exceeded. Reset: ${reset}`);
+        }
+      }
+
+      return parts.join(' ');
+    }
+
+    if (error instanceof Error) {
+      return `GitHubError: ${error.message}`;
+    }
+
+    return `GitHubError: ${String(error)}`;
   }
 }

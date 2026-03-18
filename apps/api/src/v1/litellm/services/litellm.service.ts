@@ -224,20 +224,24 @@ export class LitellmService {
     };
   }
 
+  private static readonly RESPONSES_API_PROVIDERS = new Set([
+    'openai',
+    'azure',
+    'azure_ai',
+  ]);
+
   async supportsResponsesApi(model: string): Promise<boolean> {
     const entry = await this.getLiteLLMModelInfo(model);
     if (!entry) {
-      return true;
-    }
-
-    // useResponsesApi is an OpenAI-specific feature and should not be used with Gemini
-    // even though Gemini supports response_schema, it doesn't support the Responses API format
-    const provider = entry.model_info?.litellm_provider?.toLowerCase();
-    if (provider === 'gemini') {
       return false;
     }
 
-    return !!entry.model_info?.supports_response_schema;
+    if (!entry.model_info?.supports_response_schema) {
+      return false;
+    }
+
+    const provider = entry.model_info?.litellm_provider?.toLowerCase();
+    return !!provider && LitellmService.RESPONSES_API_PROVIDERS.has(provider);
   }
 
   async supportsReasoning(model: string): Promise<boolean> {
