@@ -21,16 +21,9 @@ export class Generated1774281863983 implements MigrationInterface {
     await queryRunner.query(`
             CREATE UNIQUE INDEX "IDX_56701d1f07abeeab125ab93452" ON "webhook_sync_state" ("type")
         `);
-    await queryRunner.query(`
-            ALTER TABLE "repo_indexes" DROP COLUMN "branchFallbackNote"
-        `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
-            ALTER TABLE "repo_indexes"
-            ADD "branchFallbackNote" text
-        `);
     await queryRunner.query(`
             DROP INDEX "public"."IDX_56701d1f07abeeab125ab93452"
         `);
