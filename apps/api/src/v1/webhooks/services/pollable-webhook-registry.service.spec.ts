@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import * as envModule from '../../../environments';
+import { WebhookProcessedEventDao } from '../dao/webhook-processed-event.dao';
 import { WebhookSyncStateDao } from '../dao/webhook-sync-state.dao';
 import {
   PollableWebhookSubscriber,
@@ -7,11 +9,22 @@ import {
 } from '../webhooks.types';
 import { PollableWebhookRegistry } from './pollable-webhook-registry.service';
 
-function createMockDao(): WebhookSyncStateDao {
+vi.mock('../../../environments', () => ({
+  environment: { webhookPollIntervalMs: 60_000 },
+}));
+
+function createMockSyncDao(): WebhookSyncStateDao {
   return {
     getLastSyncDate: vi.fn().mockResolvedValue(null),
     upsertLastSyncDate: vi.fn().mockResolvedValue(undefined),
   } as unknown as WebhookSyncStateDao;
+}
+
+function createMockProcessedDao(): WebhookProcessedEventDao {
+  return {
+    exists: vi.fn().mockResolvedValue(false),
+    markProcessed: vi.fn().mockResolvedValue(undefined),
+  } as unknown as WebhookProcessedEventDao;
 }
 
 interface TestPayload {
@@ -25,6 +38,7 @@ function createTestSubscriber(
   return {
     subscriberKey: WebhookSubscriberType.GhIssue,
     pollFn: vi.fn().mockResolvedValue([]),
+    getDeduplicationKey: (payload: TestPayload) => payload.id,
     onEvent: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -32,12 +46,14 @@ function createTestSubscriber(
 
 describe('PollableWebhookRegistry', () => {
   let registry: PollableWebhookRegistry;
-  let dao: WebhookSyncStateDao;
+  let syncDao: WebhookSyncStateDao;
+  let processedDao: WebhookProcessedEventDao;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    dao = createMockDao();
-    registry = new PollableWebhookRegistry(dao);
+    syncDao = createMockSyncDao();
+    processedDao = createMockProcessedDao();
+    registry = new PollableWebhookRegistry(syncDao, processedDao);
     registry.onModuleInit();
   });
 
@@ -59,7 +75,7 @@ describe('PollableWebhookRegistry', () => {
     expect(subscriber.pollFn).toHaveBeenCalledTimes(1);
     expect(subscriber.onEvent).toHaveBeenCalledTimes(1);
     expect(subscriber.onEvent).toHaveBeenCalledWith(payload);
-    expect(dao.upsertLastSyncDate).toHaveBeenCalledWith(
+    expect(syncDao.upsertLastSyncDate).toHaveBeenCalledWith(
       WebhookSubscriberType.GhIssue,
       expect.any(Date),
     );
@@ -67,7 +83,7 @@ describe('PollableWebhookRegistry', () => {
 
   it('uses stored lastSyncDate from DAO as since argument', async () => {
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
-    (dao.getLastSyncDate as ReturnType<typeof vi.fn>).mockResolvedValue(
+    (syncDao.getLastSyncDate as ReturnType<typeof vi.fn>).mockResolvedValue(
       thirtyMinAgo,
     );
 
@@ -86,7 +102,9 @@ describe('PollableWebhookRegistry', () => {
   });
 
   it('cold start: uses now when DAO returns null', async () => {
-    (dao.getLastSyncDate as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (syncDao.getLastSyncDate as ReturnType<typeof vi.fn>).mockResolvedValue(
+      null,
+    );
 
     const subscriber = createTestSubscriber({
       pollFn: vi.fn().mockResolvedValue([]),
@@ -112,9 +130,9 @@ describe('PollableWebhookRegistry', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     const afterAdvance = Date.now();
 
-    expect(dao.upsertLastSyncDate).toHaveBeenCalledTimes(1);
-    const upsertCall = (dao.upsertLastSyncDate as ReturnType<typeof vi.fn>).mock
-      .calls[0]!;
+    expect(syncDao.upsertLastSyncDate).toHaveBeenCalledTimes(1);
+    const upsertCall = (syncDao.upsertLastSyncDate as ReturnType<typeof vi.fn>)
+      .mock.calls[0]!;
     expect(upsertCall[0]).toBe(WebhookSubscriberType.GhIssue);
     const savedDate = upsertCall[1] as Date;
     expect(savedDate.getTime()).toBeGreaterThanOrEqual(beforeAdvance);
@@ -130,7 +148,7 @@ describe('PollableWebhookRegistry', () => {
 
     await vi.advanceTimersByTimeAsync(60_000);
 
-    expect(dao.upsertLastSyncDate).not.toHaveBeenCalled();
+    expect(syncDao.upsertLastSyncDate).not.toHaveBeenCalled();
   });
 
   it('pollFn error does not crash timer: second cycle succeeds', async () => {
@@ -172,11 +190,11 @@ describe('PollableWebhookRegistry', () => {
 
     expect(subscriberA.onEvent).toHaveBeenCalledWith(payloadA);
     expect(subscriberB.onEvent).toHaveBeenCalledWith(payloadB);
-    expect(dao.upsertLastSyncDate).toHaveBeenCalledWith(
+    expect(syncDao.upsertLastSyncDate).toHaveBeenCalledWith(
       'sub:a',
       expect.any(Date),
     );
-    expect(dao.upsertLastSyncDate).toHaveBeenCalledWith(
+    expect(syncDao.upsertLastSyncDate).toHaveBeenCalledWith(
       'sub:b',
       expect.any(Date),
     );
@@ -208,11 +226,13 @@ describe('PollableWebhookRegistry', () => {
     expect(subscriber.pollFn).not.toHaveBeenCalled();
   });
 
-  it('reads WEBHOOK_POLL_INTERVAL_MS from env for interval', async () => {
+  it('uses webhookPollIntervalMs from environment config', async () => {
     registry.onModuleDestroy();
 
-    process.env.WEBHOOK_POLL_INTERVAL_MS = '30000';
-    const customRegistry = new PollableWebhookRegistry(dao);
+    (
+      envModule as { environment: { webhookPollIntervalMs: number } }
+    ).environment.webhookPollIntervalMs = 30_000;
+    const customRegistry = new PollableWebhookRegistry(syncDao, processedDao);
     customRegistry.onModuleInit();
 
     const subscriber = createTestSubscriber({
@@ -227,6 +247,8 @@ describe('PollableWebhookRegistry', () => {
     expect(subscriber.pollFn).toHaveBeenCalledTimes(1);
 
     customRegistry.onModuleDestroy();
-    delete process.env.WEBHOOK_POLL_INTERVAL_MS;
+    (
+      envModule as { environment: { webhookPollIntervalMs: number } }
+    ).environment.webhookPollIntervalMs = 60_000;
   });
 });

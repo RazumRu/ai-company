@@ -44,9 +44,14 @@ export interface GitHubIssueNode {
   };
 }
 
-export interface GitHubIssueSearchData {
-  search: {
-    nodes: GitHubIssueNode[];
+export interface GitHubIssueListData {
+  repository: {
+    issues: {
+      nodes: GitHubIssueNode[];
+    };
+    nameWithOwner: string;
+    name: string;
+    owner: { login: string };
   };
   rateLimit: {
     remaining: number;
@@ -54,7 +59,7 @@ export interface GitHubIssueSearchData {
   };
 }
 
-export type GraphQLSearchResponse = GraphQlQueryResponse<GitHubIssueSearchData>;
+export type GitHubIssueListResponse = GraphQlQueryResponse<GitHubIssueListData>;
 
 export interface GitHubIssuePayload {
   action: string;

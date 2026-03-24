@@ -26,7 +26,10 @@ import { TriggerNodeBaseTemplate } from '../base-node.template';
 
 export const GitHubIssuesTriggerTemplateSchema = z
   .object({
-    repositoryIds: z.array(z.string().uuid()).min(1),
+    repositoryIds: z
+      .array(z.string().uuid())
+      .min(1)
+      .meta({ 'x-ui:github-repos-select': true }),
     labels: z.array(z.string()).optional(),
     titleRegexp: z.string().max(500).optional(),
   })

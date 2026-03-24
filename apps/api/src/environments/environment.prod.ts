@@ -120,4 +120,5 @@ export const environment = () =>
 
     // --- GitHub Webhook ---
     githubWebhookSecret: getEnv('GITHUB_WEBHOOK_SECRET'),
+    webhookPollIntervalMs: +getEnv('WEBHOOK_POLL_INTERVAL_MS', '60000'),
   }) as const satisfies Record<string, string | number | boolean>;

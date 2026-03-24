@@ -12,6 +12,6 @@ export class WebhookSyncStateEntity extends TimestampsEntity {
   @Column({ type: 'enum', enum: WebhookSubscriberType })
   type!: WebhookSubscriberType;
 
-  @Column({ type: 'timestamptz', name: 'last_sync_date' })
+  @Column({ type: 'timestamptz' })
   lastSyncDate!: Date;
 }

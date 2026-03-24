@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PollableWebhookRegistry } from '../../webhooks/services/pollable-webhook-registry.service';
 import {
   GitHubIssueAction,
+  type GitHubIssueListResponse,
   GitHubIssueNode,
   GitHubIssuePayload,
-  GraphQLSearchResponse,
 } from '../git-auth.types';
 import { GitHubAppService } from './github-app.service';
 import { GitHubWebhookSignatureService } from './github-webhook-signature.service';
@@ -278,10 +278,18 @@ describe('GitHubWebhookSubscriptionService', () => {
     function mockFetchWithGraphQLResponse(
       nodes: GitHubIssueNode[],
       rateLimit = { remaining: 1000, resetAt: '2025-06-01T02:00:00Z' },
+      repo = {
+        nameWithOwner: 'owner/repo',
+        name: 'repo',
+        owner: { login: 'owner' },
+      },
     ): void {
-      const responseBody: GraphQLSearchResponse = {
+      const responseBody: GitHubIssueListResponse = {
         data: {
-          search: { nodes },
+          repository: {
+            issues: { nodes },
+            ...repo,
+          },
           rateLimit,
         },
       };
@@ -307,21 +315,15 @@ describe('GitHubWebhookSubscriptionService', () => {
       expect(results).toHaveLength(0);
     });
 
-    it('filters out CLOSED issues and returns only OPEN issues', async () => {
-      const openNode = createIssueNode({
+    it('maps returned issues to payloads', async () => {
+      const node = createIssueNode({
         id: 'I_open',
         number: 10,
         title: 'Open issue',
         state: 'OPEN',
       });
-      const closedNode = createIssueNode({
-        id: 'I_closed',
-        number: 20,
-        title: 'Closed issue',
-        state: 'CLOSED',
-      });
 
-      mockFetchWithGraphQLResponse([openNode, closedNode]);
+      mockFetchWithGraphQLResponse([node]);
       (
         gitHubAppService.getInstallationToken as ReturnType<typeof vi.fn>
       ).mockResolvedValue('fake-token');
@@ -398,26 +400,38 @@ describe('GitHubWebhookSubscriptionService', () => {
         id: 'I_B',
         number: 2,
         title: 'Repo B issue',
-        repository: {
-          nameWithOwner: 'org/repo-b',
-          name: 'repo-b',
-          owner: { login: 'org' },
-        },
       });
 
       (
         gitHubAppService.getInstallationToken as ReturnType<typeof vi.fn>
       ).mockResolvedValue('fake-token');
 
+      const repos = [
+        {
+          nameWithOwner: 'owner/repo',
+          name: 'repo',
+          owner: { login: 'owner' },
+        },
+        {
+          nameWithOwner: 'org/repo-b',
+          name: 'repo-b',
+          owner: { login: 'org' },
+        },
+      ];
+
       let fetchCallCount = 0;
       vi.spyOn(global, 'fetch').mockImplementation(async () => {
-        fetchCallCount++;
-        const node = fetchCallCount === 1 ? nodeA : nodeB;
+        const idx = fetchCallCount++;
+        const node = idx === 0 ? nodeA : nodeB;
+        const repo = repos[idx]!;
         return {
           ok: true,
           json: vi.fn().mockResolvedValue({
             data: {
-              search: { nodes: [node] },
+              repository: {
+                issues: { nodes: [node] },
+                ...repo,
+              },
               rateLimit: { remaining: 1000, resetAt: '2025-06-01T02:00:00Z' },
             },
           }),

@@ -5,10 +5,10 @@ import { PollableWebhookRegistry } from '../../webhooks/services/pollable-webhoo
 import { WebhookSubscriberType } from '../../webhooks/webhooks.types';
 import {
   GitHubIssueAction,
+  type GitHubIssueListResponse,
   type GitHubIssueNode,
   GitHubIssuePayload,
   GitHubWebhookEvent,
-  type GraphQLSearchResponse,
   type RegisteredTrigger,
 } from '../git-auth.types';
 import { GitHubAppService } from './github-app.service';
@@ -41,6 +41,9 @@ export class GitHubWebhookSubscriptionService
       subscriberKey: WebhookSubscriberType.GhIssue,
       pollFn: async (since: Date) => {
         return await this.pollAllInstallations(since);
+      },
+      getDeduplicationKey: (payload: GitHubIssuePayload) => {
+        return `gh_issue:${payload.repository.full_name}#${payload.issue.number}`;
       },
       onEvent: async (payload: GitHubIssuePayload) => {
         await this.fanOutToTriggers(payload);
@@ -94,6 +97,10 @@ export class GitHubWebhookSubscriptionService
 
     const payload = JSON.parse(rawBody.toString()) as GitHubIssuePayload;
 
+    this.logger.debug(
+      `[handleWebhook] event=${eventType} action=${payload.action} issue=#${payload.issue?.number} repo=${payload.repository?.full_name}`,
+    );
+
     void this.dispatch(eventType, payload).catch((error: unknown) => {
       this.logger.error(
         `Webhook dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -135,6 +142,10 @@ export class GitHubWebhookSubscriptionService
   private async pollAllInstallations(
     since: Date,
   ): Promise<GitHubIssuePayload[]> {
+    this.logger.debug(
+      `[pollAllInstallations] triggers count=${this.triggers.size} since=${since.toISOString()}`,
+    );
+
     const installationRepos = new Map<number, Set<string>>();
 
     for (const entry of this.triggers.values()) {
@@ -173,79 +184,99 @@ export class GitHubWebhookSubscriptionService
     repos: string[],
     since: Date,
   ): Promise<GitHubIssueNode[]> {
-    const repoFilter = repos.map((r) => `repo:${r}`).join(' ');
     const sinceISO = since.toISOString();
-    const searchQuery = `${repoFilter} is:issue updated:>=${sinceISO}`;
+    const allNodes: GitHubIssueNode[] = [];
 
-    const query = `
-      query($q: String!) {
-        search(query: $q, type: ISSUE, first: 100) {
-          nodes {
-            ... on Issue {
-              id
-              number
-              title
-              body
-              url
-              state
-              createdAt
-              updatedAt
-              author { login }
-              labels(first: 20) { nodes { name } }
-              repository {
-                nameWithOwner
-                name
-                owner { login }
+    for (const repoFullName of repos) {
+      const [owner, name] = repoFullName.split('/');
+
+      this.logger.debug(
+        `[fetchRecentIssues] repo=${repoFullName} since=${sinceISO}`,
+      );
+
+      const query = `
+        query($owner: String!, $name: String!, $since: DateTime!) {
+          repository(owner: $owner, name: $name) {
+            issues(
+              filterBy: { since: $since, states: OPEN }
+              first: 100
+              orderBy: { field: UPDATED_AT, direction: DESC }
+            ) {
+              nodes {
+                id
+                number
+                title
+                body
+                url
+                state
+                createdAt
+                updatedAt
+                author { login }
+                labels(first: 20) { nodes { name } }
               }
             }
+            nameWithOwner
+            name
+            owner { login }
+          }
+          rateLimit {
+            remaining
+            resetAt
           }
         }
-        rateLimit {
-          remaining
-          resetAt
-        }
+      `;
+
+      const response = await fetch('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: {
+          Authorization: `bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent': 'Geniro-Webhook-Reconciler',
+        },
+        body: JSON.stringify({
+          query,
+          variables: { owner, name, since: sinceISO },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `GitHub GraphQL request failed with status ${response.status}`,
+        );
       }
-    `;
 
-    const response = await fetch('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: {
-        Authorization: `bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Geniro-Webhook-Reconciler',
-      },
-      body: JSON.stringify({ query, variables: { q: searchQuery } }),
-    });
+      const result = (await response.json()) as GitHubIssueListResponse;
 
-    if (!response.ok) {
-      throw new Error(
-        `GitHub GraphQL request failed with status ${response.status}`,
-      );
-    }
+      if (!result.data) {
+        throw new Error(
+          `GitHub GraphQL response contained errors: ${JSON.stringify(result.errors)}`,
+        );
+      }
 
-    const result = (await response.json()) as GraphQLSearchResponse;
+      if (result.data.rateLimit.remaining < RATE_LIMIT_THRESHOLD) {
+        this.logger.debug(
+          `GitHub rate limit low (${result.data.rateLimit.remaining} remaining, resets at ${result.data.rateLimit.resetAt}). Future reconciliation cycles may be throttled.`,
+        );
+      }
 
-    if (!result.data) {
-      throw new Error(
-        `GitHub GraphQL response contained errors: ${JSON.stringify(result.errors)}`,
-      );
-    }
+      const repoData = result.data.repository;
+      const nodes = repoData.issues.nodes.map((node) => ({
+        ...node,
+        repository: {
+          nameWithOwner: repoData.nameWithOwner,
+          name: repoData.name,
+          owner: { login: repoData.owner.login },
+        },
+      }));
 
-    if (result.data.rateLimit.remaining < RATE_LIMIT_THRESHOLD) {
       this.logger.debug(
-        `GitHub rate limit low (${result.data.rateLimit.remaining} remaining, resets at ${result.data.rateLimit.resetAt}). Future reconciliation cycles may be throttled.`,
+        `[fetchRecentIssues] repo=${repoFullName} nodes count=${nodes.length}: ${JSON.stringify(nodes.map((n) => ({ number: n.number, state: n.state, updatedAt: n.updatedAt, labels: n.labels.nodes.map((l) => l.name) })))}`,
       );
+
+      allNodes.push(...nodes);
     }
 
-    return result.data.search.nodes.filter((node) => {
-      if (!node.updatedAt) {
-        return false;
-      }
-      if (node.state !== 'OPEN') {
-        return false;
-      }
-      return new Date(node.updatedAt) >= since;
-    });
+    return allNodes;
   }
 
   private mapNodeToPayload(node: GitHubIssueNode): GitHubIssuePayload {

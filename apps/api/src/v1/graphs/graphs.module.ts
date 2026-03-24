@@ -72,9 +72,9 @@ export class GraphsModule implements OnModuleInit {
     private readonly graphRestorationService: GraphRestorationService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
     if (environment.restoreGraphs) {
-      await this.graphRestorationService.restoreRunningGraphs();
+      void this.graphRestorationService.restoreRunningGraphs();
     }
   }
 }
