@@ -8,10 +8,10 @@ import {
 } from '@packages/common';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
+import type { InstallationUnlinkedEvent } from '../../git-auth/git-auth.types';
+import { INSTALLATION_UNLINKED_EVENT } from '../../git-auth/git-auth.types';
 import { GitHubAppService } from '../../git-auth/services/github-app.service';
 import { GitHubAppProviderService } from '../../git-auth/services/github-app-provider.service';
-import type { InstallationUnlinkedEvent } from '../../git-auth/types/installation-unlinked.event';
-import { INSTALLATION_UNLINKED_EVENT } from '../../git-auth/types/installation-unlinked.event';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import { GitRepositoriesDao } from '../dao/git-repositories.dao';

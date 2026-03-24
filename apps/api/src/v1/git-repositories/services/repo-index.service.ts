@@ -5,8 +5,8 @@ import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
 
 import { environment } from '../../../environments';
+import { GitProvider } from '../../git-auth/git-auth.types';
 import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
-import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { QdrantService } from '../../qdrant/services/qdrant.service';

@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
 import { GitProviderConnectionEntity } from '../entity/git-provider-connection.entity';
-import { GitProvider } from '../types/git-provider.enum';
-import { INSTALLATION_UNLINKED_EVENT } from '../types/installation-unlinked.event';
+import { GitProvider } from '../git-auth.types';
+import { INSTALLATION_UNLINKED_EVENT } from '../git-auth.types';
 import { GitHubAppService } from './github-app.service';
 import { GitHubAppProviderService } from './github-app-provider.service';
 

@@ -111,8 +111,12 @@ export const setupSwagger = (
  * '*' → '*' (allow all), empty/undefined → false (disabled), otherwise → string[].
  */
 const parseCorsOrigin = (raw?: string): boolean | string | string[] => {
-  if (!raw || raw.trim() === '') return false;
-  if (raw.trim() === '*') return '*';
+  if (!raw || raw.trim() === '') {
+    return false;
+  }
+  if (raw.trim() === '*') {
+    return '*';
+  }
   return raw
     .split(',')
     .map((o) => o.trim())

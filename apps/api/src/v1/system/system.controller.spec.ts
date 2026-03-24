@@ -21,6 +21,7 @@ const mockEnvironment: Record<string, unknown> = {
   zitadelIssuer: ZITADEL_ISSUER,
   zitadelClientId: ZITADEL_CLIENT_ID,
   adminRole: ADMIN_ROLE,
+  githubWebhookSecret: '',
 };
 
 vi.mock('../../environments', () => ({
@@ -46,6 +47,7 @@ describe('SystemController', () => {
     mockEnvironment.authProvider = 'keycloak';
     mockEnvironment.litellmManagementEnabled = true;
     mockEnvironment.adminRole = ADMIN_ROLE;
+    mockEnvironment.githubWebhookSecret = '';
   });
 
   describe('getSettings', () => {
@@ -60,6 +62,7 @@ describe('SystemController', () => {
         githubAppEnabled: true,
         litellmManagementEnabled: true,
         isAdmin: false,
+        githubWebhookEnabled: false,
       });
     });
 
@@ -70,6 +73,7 @@ describe('SystemController', () => {
         githubAppEnabled: false,
         litellmManagementEnabled: true,
         isAdmin: false,
+        githubWebhookEnabled: false,
       });
     });
 
@@ -81,6 +85,7 @@ describe('SystemController', () => {
         githubAppEnabled: true,
         litellmManagementEnabled: false,
         isAdmin: false,
+        githubWebhookEnabled: false,
       });
     });
 
@@ -91,6 +96,7 @@ describe('SystemController', () => {
         githubAppEnabled: true,
         litellmManagementEnabled: true,
         isAdmin: true,
+        githubWebhookEnabled: false,
       });
     });
 
@@ -101,6 +107,7 @@ describe('SystemController', () => {
         githubAppEnabled: true,
         litellmManagementEnabled: true,
         isAdmin: false,
+        githubWebhookEnabled: false,
       });
     });
 
@@ -112,6 +119,7 @@ describe('SystemController', () => {
         githubAppEnabled: true,
         litellmManagementEnabled: true,
         isAdmin: false,
+        githubWebhookEnabled: false,
       });
     });
 
@@ -125,6 +133,7 @@ describe('SystemController', () => {
         githubAppEnabled: true,
         litellmManagementEnabled: true,
         isAdmin: true,
+        githubWebhookEnabled: false,
       });
 
       const defaultAdminCtx = { roles: ['admin'] } as IContextData;
@@ -133,6 +142,7 @@ describe('SystemController', () => {
         githubAppEnabled: true,
         litellmManagementEnabled: true,
         isAdmin: false,
+        githubWebhookEnabled: false,
       });
     });
   });

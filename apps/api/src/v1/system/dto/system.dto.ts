@@ -11,6 +11,11 @@ export const SystemSettingsResponseSchema = z.object({
       'Whether the LiteLLM model management UI is enabled for the frontend',
     ),
   isAdmin: z.boolean().describe('Whether the current user has the admin role'),
+  githubWebhookEnabled: z
+    .boolean()
+    .describe(
+      'Whether the GitHub webhook receiver is configured and available',
+    ),
 });
 
 export type SystemSettingsResponse = z.infer<

@@ -55,4 +55,7 @@ export const environment = () =>
     // Daytona runtime (local docker-compose instance)
     daytonaApiUrl: getEnv('DAYTONA_API_URL', 'http://localhost:3986/api'),
     daytonaApiKey: getEnv('DAYTONA_API_KEY', 'geniro-dev-admin-key'),
+
+    // --- GitHub Webhook ---
+    githubWebhookSecret: getEnv('GITHUB_WEBHOOK_SECRET'),
   }) as const satisfies Record<string, string | number | boolean>;

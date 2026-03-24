@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitHubAuthMethod } from '../../graph-resources/graph-resources.types';
 import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
 import { GitProviderConnectionEntity } from '../entity/git-provider-connection.entity';
-import { GitProvider } from '../types/git-provider.enum';
+import { GitProvider } from '../git-auth.types';
 import { GitTokenResolverService } from './git-token-resolver.service';
 import { GitHubAppService } from './github-app.service';
 

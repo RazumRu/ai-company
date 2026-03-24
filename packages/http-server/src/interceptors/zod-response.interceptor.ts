@@ -32,7 +32,9 @@ export class ZodResponseInterceptor implements NestInterceptor {
     const resp = meta['200'] || meta['201'] || meta['default'];
     const dto = resp?.type as MaybeZodDto | undefined;
     const schema = getZod(dto);
-    if (!schema) return next.handle();
+    if (!schema) {
+      return next.handle();
+    }
     const schemaDef = ((schema as z.ZodObject<z.ZodRawShape>).def?.shape ??
       {}) as Record<string, unknown>;
 

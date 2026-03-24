@@ -21,7 +21,7 @@ export enum GhIssueManageAction {
 
 export const GhIssueManageToolSchema = GhBaseToolSchema.extend({
   action: z
-    .nativeEnum(GhIssueManageAction)
+    .enum(GhIssueManageAction)
     .describe('The action to perform on a GitHub issue.'),
   issue_number: z
     .number()

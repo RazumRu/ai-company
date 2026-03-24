@@ -18,7 +18,9 @@ class MockAuthProvider extends AuthProvider {
 
   public getToken?(req: FastifyRequest): string | undefined {
     // return preset token if provided, else fall back to Authorization header
-    if (this.opts.token) return this.opts.token;
+    if (this.opts.token) {
+      return this.opts.token;
+    }
     const auth = req?.headers?.authorization as string | undefined;
     return auth?.split(' ').pop();
   }

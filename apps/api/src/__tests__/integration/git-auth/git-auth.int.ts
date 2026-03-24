@@ -4,10 +4,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { GitProviderConnectionDao } from '../../../v1/git-auth/dao/git-provider-connection.dao';
 import { GitProviderConnectionEntity } from '../../../v1/git-auth/entity/git-provider-connection.entity';
+import { GitProvider } from '../../../v1/git-auth/git-auth.types';
 import { GitTokenResolverService } from '../../../v1/git-auth/services/git-token-resolver.service';
 import { GitHubAppService } from '../../../v1/git-auth/services/github-app.service';
 import { GitHubAppProviderService } from '../../../v1/git-auth/services/github-app-provider.service';
-import { GitProvider } from '../../../v1/git-auth/types/git-provider.enum';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 describe('Git Auth Integration Tests', () => {

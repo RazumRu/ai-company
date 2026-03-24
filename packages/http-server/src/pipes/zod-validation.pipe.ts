@@ -11,7 +11,9 @@ export class ZodValidationPipe implements PipeTransform {
       (metatype as { schema?: z.ZodTypeAny; zodSchema?: z.ZodTypeAny })
         ?.zodSchema;
 
-    if (!schema) return value;
+    if (!schema) {
+      return value;
+    }
 
     const result = schema.safeParse(value, { reportInput: true });
 

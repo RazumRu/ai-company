@@ -7,6 +7,7 @@ import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { AgentTriggersModule } from '../agent-triggers/agent-triggers.module';
 import { AgentsModule } from '../agents/agents.module';
 import { GitAuthModule } from '../git-auth/git-auth.module';
+import { GitRepositoriesModule } from '../git-repositories/git-repositories.module';
 import { GraphResourcesModule } from '../graph-resources/graph-resources.module';
 import { GraphsModule } from '../graphs/graphs.module';
 import { RuntimeModule } from '../runtime/runtime.module';
@@ -30,6 +31,7 @@ import { KnowledgeToolsTemplate } from './templates/tools/knowledge-tools.templa
 import { ShellToolTemplate } from './templates/tools/shell-tool.template';
 import { SubagentsToolTemplate } from './templates/tools/subagents-tool.template';
 import { WebSearchToolTemplate } from './templates/tools/web-search-tool.template';
+import { GitHubIssuesTriggerTemplate } from './templates/triggers/github-issues-trigger.template';
 import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.template';
 
 @Module({
@@ -40,6 +42,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     AgentMcpModule,
     AgentsModule,
     AgentTriggersModule,
+    GitRepositoriesModule,
     GraphResourcesModule,
     SubagentsModule,
     forwardRef(() => GraphsModule),
@@ -56,6 +59,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     WebSearchToolTemplate,
     KnowledgeToolsTemplate,
     SimpleAgentTemplate,
+    GitHubIssuesTriggerTemplate,
     ManualTriggerTemplate,
     GhToolTemplate,
     FilesToolTemplate,

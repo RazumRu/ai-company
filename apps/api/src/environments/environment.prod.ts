@@ -117,4 +117,7 @@ export const environment = () =>
     githubAppPrivateKey: getEnv('GITHUB_APP_PRIVATE_KEY'),
     githubAppClientId: getEnv('GITHUB_APP_CLIENT_ID'),
     githubAppClientSecret: getEnv('GITHUB_APP_CLIENT_SECRET'),
+
+    // --- GitHub Webhook ---
+    githubWebhookSecret: getEnv('GITHUB_WEBHOOK_SECRET'),
   }) as const satisfies Record<string, string | number | boolean>;

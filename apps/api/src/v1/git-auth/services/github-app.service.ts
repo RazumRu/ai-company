@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 
 import { environment } from '../../../environments';
 import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
-import { GitProvider } from '../types/git-provider.enum';
+import { GitProvider } from '../git-auth.types';
 
 const TOKEN_CACHE_TTL_MS = 55 * 60 * 1000; // 55 minutes (tokens last ~1 hour)
 const JWT_EXPIRY_SECONDS = 10 * 60; // 10 minutes

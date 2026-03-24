@@ -7,9 +7,9 @@ import {
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
+import { GitProvider } from '../../git-auth/git-auth.types';
 import { GitHubAppService } from '../../git-auth/services/github-app.service';
 import { GitHubAppProviderService } from '../../git-auth/services/github-app-provider.service';
-import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { QdrantService } from '../../qdrant/services/qdrant.service';
 import {

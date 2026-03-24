@@ -14,9 +14,9 @@ import {
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { GitProviderConnectionDao } from '../../../v1/git-auth/dao/git-provider-connection.dao';
+import { GitProvider } from '../../../v1/git-auth/git-auth.types';
 import { GitHubAppService } from '../../../v1/git-auth/services/github-app.service';
 import { GitHubAppProviderService } from '../../../v1/git-auth/services/github-app-provider.service';
-import { GitProvider } from '../../../v1/git-auth/types/git-provider.enum';
 import { GitRepositoriesDao } from '../../../v1/git-repositories/dao/git-repositories.dao';
 import { GitRepositoryProvider } from '../../../v1/git-repositories/git-repositories.types';
 import { GitRepositoriesService } from '../../../v1/git-repositories/services/git-repositories.service';

@@ -11,11 +11,11 @@ import type {
   UnlinkInstallationResponse,
 } from '../dto/git-auth.dto';
 import { GitProviderConnectionEntity } from '../entity/git-provider-connection.entity';
-import { GitProvider } from '../types/git-provider.enum';
+import { GitProvider } from '../git-auth.types';
 import {
   INSTALLATION_UNLINKED_EVENT,
   InstallationUnlinkedEvent,
-} from '../types/installation-unlinked.event';
+} from '../git-auth.types';
 import { GitHubAppService } from './github-app.service';
 
 @Injectable()

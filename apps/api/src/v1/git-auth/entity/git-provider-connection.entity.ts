@@ -1,7 +1,7 @@
 import { TimestampsEntity } from '@packages/typeorm';
 import { Column, Entity, Index, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
-import { GitProvider } from '../types/git-provider.enum';
+import { GitProvider } from '../git-auth.types';
 
 @Entity('git_provider_connections')
 @Unique(['userId', 'provider', 'accountLogin'])

@@ -25,6 +25,7 @@ export class SystemController {
       litellmManagementEnabled: environment.litellmManagementEnabled === true,
       isAdmin:
         Array.isArray(ctx.roles) && ctx.roles.includes(environment.adminRole),
+      githubWebhookEnabled: Boolean(environment.githubWebhookSecret),
     };
   }
 

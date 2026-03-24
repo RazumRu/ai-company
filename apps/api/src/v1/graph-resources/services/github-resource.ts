@@ -2,8 +2,8 @@ import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import outdent from 'outdent';
 
+import { GitProvider } from '../../git-auth/git-auth.types';
 import { GitTokenResolverService } from '../../git-auth/services/git-token-resolver.service';
-import { GitProvider } from '../../git-auth/types/git-provider.enum';
 import {
   IShellResourceOutput,
   ResourceKind,

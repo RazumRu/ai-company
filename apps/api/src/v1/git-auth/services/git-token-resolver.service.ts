@@ -3,7 +3,7 @@ import { DefaultLogger } from '@packages/common';
 
 import { GitHubAuthMethod } from '../../graph-resources/graph-resources.types';
 import { GitProviderConnectionDao } from '../dao/git-provider-connection.dao';
-import { GitProvider } from '../types/git-provider.enum';
+import { GitProvider } from '../git-auth.types';
 import { GitHubAppService } from './github-app.service';
 
 export interface ResolvedToken {
