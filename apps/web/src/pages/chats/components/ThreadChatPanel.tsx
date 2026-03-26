@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   ChevronDown,
   GitBranch,
-  Github,
   Loader2,
   Send,
   Square,
@@ -16,6 +15,8 @@ import React, {
   useState,
 } from 'react';
 import { toast } from 'sonner';
+
+import { GithubIcon as Github } from '@/components/ui/icons';
 
 import { gitRepositoriesApi, graphsApi, threadsApi } from '../../../api';
 import type {

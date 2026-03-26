@@ -95,7 +95,7 @@ export class DaytonaRuntime extends BaseRuntime {
     });
 
     try {
-      const sandbox = await daytona.findOne({ idOrName: name });
+      const sandbox = await daytona.get(name);
       await daytona.delete(sandbox).catch(() => undefined);
     } catch {
       // Sandbox not found or already deleted — nothing to do
@@ -123,7 +123,7 @@ export class DaytonaRuntime extends BaseRuntime {
     // Check if an existing sandbox can be reused
     if (!params?.recreate) {
       try {
-        const existing = await this.daytona.findOne({ idOrName: sandboxName });
+        const existing = await this.daytona.get(sandboxName);
         if (existing) {
           if (existing.state !== 'started') {
             await this.daytona.start(existing, SANDBOX_CREATE_TIMEOUT_SECONDS);
@@ -139,7 +139,7 @@ export class DaytonaRuntime extends BaseRuntime {
 
     if (params?.recreate) {
       try {
-        const existing = await this.daytona.findOne({ idOrName: sandboxName });
+        const existing = await this.daytona.get(sandboxName);
         if (existing) {
           await this.daytona.delete(existing).catch(() => undefined);
         }
@@ -173,9 +173,7 @@ export class DaytonaRuntime extends BaseRuntime {
 
         // Clean up the failed sandbox so the retry can reuse the same name
         try {
-          const failed = await this.daytona!.findOne({
-            idOrName: sandboxName,
-          });
+          const failed = await this.daytona!.get(sandboxName);
           if (failed) {
             await this.daytona!.delete(failed).catch((e) => {
               this.logger?.warn(

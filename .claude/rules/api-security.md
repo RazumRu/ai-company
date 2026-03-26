@@ -1,7 +1,7 @@
 ---
 paths:
-  - "geniro/apps/api/**/*.controller.ts"
-  - "geniro/apps/api/**/*.service.ts"
+  - "apps/api/**/*.controller.ts"
+  - "apps/api/**/*.service.ts"
 ---
 
 # Endpoint Security

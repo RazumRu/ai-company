@@ -11,8 +11,8 @@
     "run-all-seeds": "src/bin/run-all-seeds.mjs"
   },
   "dependencies": {
-    "@nestjs/common": "^11.1.16",
-    "@nestjs/core": "^11.1.16",
+    "@nestjs/common": "^11.1.17",
+    "@nestjs/core": "^11.1.17",
     "@nestjs/typeorm": "^11.0.0",
     "@packages/common": "workspace:*",
     "lodash": "^4.17.23",
@@ -23,10 +23,10 @@
   },
   "devDependencies": {
     "@types/lodash": "^4.17.24",
-    "@types/node": "^25.4.0",
-    "eslint": "^10.0.3",
-    "typescript": "^5.9.3",
-    "vitest": "^4.0.18"
+    "@types/node": "^25.5.0",
+    "eslint": "^10.1.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.1"
   },
   "license": "ISC",
   "main": "dist/index.js",

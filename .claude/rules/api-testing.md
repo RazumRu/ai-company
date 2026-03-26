@@ -1,8 +1,8 @@
 ---
 paths:
-  - "geniro/apps/api/**/*.spec.ts"
-  - "geniro/apps/api/**/*.int.ts"
-  - "geniro/apps/api/src/__tests__/**/*.ts"
+  - "apps/api/**/*.spec.ts"
+  - "apps/api/**/*.int.ts"
+  - "apps/api/src/__tests__/**/*.ts"
 ---
 
 # API Testing

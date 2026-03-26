@@ -25,7 +25,7 @@ const mockSandbox = {
 
 const mockDaytonaInstance = {
   create: vi.fn().mockResolvedValue(mockSandbox),
-  findOne: vi.fn(),
+  get: vi.fn(),
   delete: vi.fn().mockResolvedValue(undefined),
   start: vi.fn().mockResolvedValue(undefined),
 };
@@ -612,7 +612,7 @@ describe('DaytonaRuntime', () => {
         target: 'us',
       });
       mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.delete.mockResolvedValue(undefined);
       // runImageEntrypoint exec calls need session mocks.
       // Return exitCode 1 so the entrypoint check sees "not found" and skips.
@@ -654,16 +654,14 @@ describe('DaytonaRuntime', () => {
 
     it('with recreate: true deletes existing sandbox first', async () => {
       const existingSandbox = { ...mockSandbox, id: 'existing-1' };
-      mockDaytonaInstance.findOne.mockResolvedValue(existingSandbox);
+      mockDaytonaInstance.get.mockResolvedValue(existingSandbox);
 
       await freshRuntime.start({
         containerName: 'recreate-sandbox',
         recreate: true,
       });
 
-      expect(mockDaytonaInstance.findOne).toHaveBeenCalledWith({
-        idOrName: 'recreate-sandbox',
-      });
+      expect(mockDaytonaInstance.get).toHaveBeenCalledWith('recreate-sandbox');
       expect(mockDaytonaInstance.delete).toHaveBeenCalledWith(existingSandbox);
       expect(mockDaytonaInstance.create).toHaveBeenCalledTimes(1);
     });
@@ -1401,7 +1399,7 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.updateById.mockResolvedValue(undefined);
       mockDao.hardDeleteById.mockResolvedValue(undefined);
 
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockRejectedValue(
         new Error('Sandbox creation timed out after 300s'),
       );
@@ -1426,7 +1424,7 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.updateById.mockResolvedValue(undefined);
       mockDao.hardDeleteById.mockResolvedValue(undefined);
 
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockRejectedValue(
         new Error('Sandbox creation timed out after 300s'),
       );
@@ -1460,7 +1458,7 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.create.mockResolvedValue(freshRecord);
 
       // Make the new creation succeed
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
 
       const result = await provider.provide(baseParams);
@@ -1484,8 +1482,8 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.updateById.mockResolvedValue(undefined);
       // No runtime in the runtimeInstances map — stopByName path will be taken.
       // DaytonaRuntime.stopByName uses new Daytona() internally (mocked).
-      // findOne rejects → stopByName swallows the error silently.
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      // get rejects → stopByName swallows the error silently.
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
 
       vi.clearAllMocks();
       mockDao.updateById.mockResolvedValue(undefined);
@@ -1547,7 +1545,7 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.create.mockResolvedValue(createdRecord);
       mockDao.updateById.mockResolvedValue(undefined);
 
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
 
       await provider.provide(baseParams);
@@ -1594,7 +1592,7 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.create.mockResolvedValue(createdRecord);
       mockDao.updateById.mockResolvedValue(undefined);
 
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockRejectedValue(
         new Error('Sandbox creation timed out after 300s'),
       );
@@ -1638,7 +1636,7 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.getOne.mockResolvedValue(existingRecord);
       mockDao.updateById.mockResolvedValue(undefined);
 
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
 
       await provider.provide(baseParams);
@@ -1677,7 +1675,7 @@ describe('RuntimeProvider failure handling', () => {
       mockDao.create.mockResolvedValue(createdRecord);
       mockDao.updateById.mockResolvedValue(undefined);
 
-      mockDaytonaInstance.findOne.mockRejectedValue(new Error('Not found'));
+      mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
 
       // Make emit reject — should not affect provide()

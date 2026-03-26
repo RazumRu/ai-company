@@ -1,7 +1,7 @@
 ---
 paths:
-  - "geniro/apps/web/src/pages/**/*.tsx"
-  - "geniro/apps/web/src/components/**/*.tsx"
+  - "apps/web/src/pages/**/*.tsx"
+  - "apps/web/src/components/**/*.tsx"
 ---
 
 # Component Library Rules

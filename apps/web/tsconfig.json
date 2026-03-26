@@ -19,7 +19,6 @@
     "experimentalDecorators": false,
     "noUncheckedIndexedAccess": false,
     "types": [],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }

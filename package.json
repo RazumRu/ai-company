@@ -35,36 +35,36 @@
     "node": ">=24"
   },
   "dependencies": {
-    "turbo": "^2.8.16"
+    "turbo": "^2.8.20"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.4.3",
-    "@commitlint/config-conventional": "^20.4.3",
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^10.0.1",
     "@semantic-release/commit-analyzer": "^13.0.1",
-    "@swc/core": "^1.15.18",
-    "@types/node": "^25.4.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.0",
-    "@typescript-eslint/parser": "^8.57.0",
+    "@swc/core": "^1.15.21",
+    "@types/node": "^25.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
     "commitizen": "^4.3.1",
     "conventional-changelog-angular": "^8.3.0",
     "cz-conventional-changelog": "^3.3.0",
-    "eslint": "^10.0.3",
+    "eslint": "^10.1.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
     "jira-prepare-commit-msg": "^1.7.2",
-    "npm-check-updates": "^19.6.3",
+    "npm-check-updates": "^19.6.5",
     "prettier": "^3.8.1",
     "semantic-release": "^25.0.3",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.0",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.57.2",
     "unplugin-swc": "^1.5.9",
     "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.1"
   },
   "pnpm": {
     "overrides": {

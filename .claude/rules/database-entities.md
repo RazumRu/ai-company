@@ -1,6 +1,6 @@
 ---
 paths:
-  - "geniro/apps/api/**/*.entity.ts"
+  - "apps/api/**/*.entity.ts"
 ---
 
 # Entity Conventions

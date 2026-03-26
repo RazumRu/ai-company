@@ -1,7 +1,7 @@
 ---
 paths:
-  - "geniro/apps/api/**/*.ts"
-  - "geniro/packages/**/*.ts"
+  - "apps/api/**/*.ts"
+  - "packages/**/*.ts"
 ---
 
 # API Conventions

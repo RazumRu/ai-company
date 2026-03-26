@@ -1,7 +1,7 @@
 ---
 paths:
-  - "geniro/apps/api/**/*.dao.ts"
-  - "geniro/apps/api/**/*.service.ts"
+  - "apps/api/**/*.dao.ts"
+  - "apps/api/**/*.service.ts"
 ---
 
 # Database Query Patterns

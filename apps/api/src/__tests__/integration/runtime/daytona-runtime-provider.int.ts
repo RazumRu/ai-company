@@ -131,7 +131,7 @@ describe('RuntimeProvider Daytona Integration', () => {
 
       let sandboxFound = false;
       try {
-        await daytona.findOne({ idOrName: containerName! });
+        await daytona.get(containerName!);
         sandboxFound = true;
       } catch {
         // Expected — 404 means sandbox was deleted

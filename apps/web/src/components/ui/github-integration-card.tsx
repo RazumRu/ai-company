@@ -5,7 +5,6 @@ import {
   Circle,
   ExternalLink,
   GitBranch,
-  Github,
   Info,
   Loader2,
   RefreshCw,
@@ -46,6 +45,8 @@ import type {
   GitHubAppInstallationDto,
   GitRepositoryDto,
 } from '@/pages/github-app/types';
+
+import { GithubIcon as Github } from './icons';
 
 export type GitHubConnectionState =
   | 'disconnected'

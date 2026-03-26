@@ -1,6 +1,6 @@
 ---
 paths:
-  - "geniro/apps/web/src/**/*.{ts,tsx}"
+  - "apps/web/src/**/*.{ts,tsx}"
 ---
 
 # Web Patterns

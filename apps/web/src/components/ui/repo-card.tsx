@@ -2,7 +2,6 @@ import { formatDistanceToNow } from 'date-fns';
 import {
   AlertCircle,
   GitBranch,
-  Github,
   Loader2,
   RefreshCw,
   Trash2,
@@ -10,6 +9,7 @@ import {
 
 import { Badge } from './badge';
 import { Button } from './button';
+import { GithubIcon as Github } from './icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

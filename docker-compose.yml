@@ -125,7 +125,7 @@ services:
       - ./.docker/daytona-proxy/nginx.conf:/etc/nginx/conf.d/default.conf.tmpl:ro
 
   daytona-api:
-    image: daytonaio/daytona-api:v0.149.0
+    image: daytonaio/daytona-api:v0.155.0
     restart: on-failure
     networks:
       - daytona
@@ -204,7 +204,7 @@ services:
       - "3986:3986"
 
   daytona-runner:
-    image: daytonaio/daytona-runner:v0.149.0
+    image: daytonaio/daytona-runner:v0.155.0
     restart: on-failure
     privileged: true
     networks:
@@ -217,7 +217,7 @@ services:
       - DAYTONA_RUNNER_TOKEN=geniro-dev-runner-key
       - API_PORT=8080
       - API_VERSION=2
-      - RUNNER_DOMAIN=localhost
+      - RUNNER_DOMAIN=runner
       - LOG_LEVEL=debug
       - DAEMON_START_TIMEOUT_SEC=120
       - SANDBOX_START_TIMEOUT_SEC=120

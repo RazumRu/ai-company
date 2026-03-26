@@ -25,7 +25,6 @@
     "strict": true,
     "strictNullChecks": true,
     "types": ["node"],
-    "baseUrl": "./",
     "verbatimModuleSyntax": false,
     "noUncheckedIndexedAccess": true,
     "paths": {
