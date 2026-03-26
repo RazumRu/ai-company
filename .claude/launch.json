@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Geniro Web Frontend",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "apps/web", "dev"],
+      "port": 5174
+    },
+    {
+      "name": "Geniro API",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "apps/api", "start:dev"],
+      "port": 5000
+    }
+  ]
+}

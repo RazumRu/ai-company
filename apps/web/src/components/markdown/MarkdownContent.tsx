@@ -1,0 +1,371 @@
+import { Check, Copy } from 'lucide-react';
+import React, { useState } from 'react';
+import type { Components } from 'react-markdown';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+import { Button } from '../ui/button';
+import { SyntaxHighlighter } from '../ui/syntax-highlighter';
+
+/** Remark plugin that converts "loose" lists (items separated by blank lines
+ *  in the source) into "tight" lists.  Loose lists cause react-markdown to
+ *  wrap each list-item's content in <p> tags, which — combined with our
+ *  `whiteSpace: pre-wrap` on <p> — produces excessive vertical spacing. */
+function remarkTightLists() {
+  return (tree: { type: string; children?: unknown[] }) => {
+    visit(tree);
+  };
+
+  function visit(node: {
+    type: string;
+    children?: unknown[];
+    spread?: boolean;
+  }) {
+    if (node.type === 'list' || node.type === 'listItem') {
+      node.spread = false;
+    }
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        if (child && typeof child === 'object') {
+          visit(child as typeof node);
+        }
+      }
+    }
+  }
+}
+
+type MarkdownElementProps<T> = React.HTMLAttributes<T> & {
+  children?: React.ReactNode;
+};
+
+function CodeBlockCopyButton({
+  code,
+  light,
+}: {
+  code: string;
+  light?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={`absolute top-2 right-1 h-6 w-6 z-10 bg-transparent hover:bg-transparent ${
+        light
+          ? 'text-gray-400 hover:text-gray-700'
+          : 'text-gray-400 hover:text-white'
+      }`}
+      onClick={() => {
+        navigator.clipboard.writeText(code).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          },
+          () => {
+            /* silently ignore clipboard failures */
+          },
+        );
+      }}
+      title="Copy code">
+      {copied ? (
+        <Check className="w-3.5 h-3.5 text-green-500" />
+      ) : (
+        <Copy className="w-3.5 h-3.5" />
+      )}
+    </Button>
+  );
+}
+
+type MarkdownCodeProps = React.HTMLAttributes<HTMLElement> & {
+  inline?: boolean;
+  className?: string;
+  children?: React.ReactNode[];
+};
+
+const renderMarkdownCode = ({
+  inline,
+  className,
+  children,
+}: MarkdownCodeProps) => {
+  const match = /language-([^\s]+)/.exec(className || '');
+  const codeContent = String(children ?? '').replace(/\n$/, '');
+
+  const looksLikeDiff =
+    codeContent.startsWith('---') ||
+    codeContent.startsWith('+++') ||
+    codeContent.includes('\n--- ') ||
+    codeContent.includes('\n+++ ') ||
+    codeContent.includes('\n@@') ||
+    codeContent.startsWith('@@');
+
+  const language = match?.[1]?.toLowerCase();
+  const isDiffLanguage =
+    language === 'diff' ||
+    language === 'patch' ||
+    language === 'gitdiff' ||
+    language === 'unidiff';
+
+  if (!inline && (isDiffLanguage || looksLikeDiff)) {
+    const lines = codeContent.split('\n');
+    return (
+      <div style={{ position: 'relative' }}>
+        <CodeBlockCopyButton code={codeContent} light />
+        <pre
+          style={{
+            margin: 0,
+            padding: 0,
+            borderRadius: 6,
+            overflow: 'auto',
+            background: '#ffffff',
+            border: '1px solid #f0f0f0',
+            color: '#111',
+            fontSize: 12,
+            lineHeight: 1.55,
+          }}>
+          <code style={{ display: 'block' }}>
+            {lines.map((line, index) => {
+              const isInsert = line.startsWith('+') && !line.startsWith('+++');
+              const isDelete = line.startsWith('-') && !line.startsWith('---');
+              const isHunk = line.startsWith('@@');
+              const isHeader = line.startsWith('+++') || line.startsWith('---');
+
+              const style: React.CSSProperties = {};
+              if (isHeader) {
+                // GitHub-ish header colors
+                style.color = '#0969da';
+                style.background = '#ddf4ff';
+              } else if (isHunk) {
+                style.color = '#8250df';
+                style.background = '#fbefff';
+              } else if (isInsert) {
+                style.background = '#e6ffed';
+                style.color = '#1a7f37';
+                style.borderLeft = '3px solid #1a7f37';
+              } else if (isDelete) {
+                style.background = '#ffebe9';
+                style.color = '#cf222e';
+                style.borderLeft = '3px solid #cf222e';
+              }
+
+              return (
+                <div
+                  key={index}
+                  style={{
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    padding: '2px 10px',
+                    ...style,
+                  }}>
+                  {line.length === 0 ? '\u00A0' : line}
+                </div>
+              );
+            })}
+          </code>
+        </pre>
+      </div>
+    );
+  }
+  if (!inline && match) {
+    return (
+      <div
+        style={{
+          position: 'relative',
+          margin: '8px 0',
+          borderRadius: 6,
+          overflow: 'auto',
+        }}>
+        <CodeBlockCopyButton code={codeContent} />
+        <SyntaxHighlighter
+          language={match[1]}
+          preTag="div"
+          codeTagProps={{ style: { fontSize: 12 } }}>
+          {codeContent}
+        </SyntaxHighlighter>
+      </div>
+    );
+  }
+  return (
+    <code
+      className={className}
+      style={{
+        backgroundColor: 'rgba(0, 0, 0, 0.04)',
+        padding: '0 4px',
+        borderRadius: 4,
+        fontSize: '12px',
+      }}>
+      {children}
+    </code>
+  );
+};
+
+const markdownComponents: Components = {
+  p: ({ children }: MarkdownElementProps<HTMLParagraphElement>) => {
+    // Skip empty paragraphs that only contain whitespace/newlines.
+    // These are generated by react-markdown from consecutive blank lines
+    // in the source and produce large visual gaps due to whiteSpace: pre-wrap.
+    const arr = React.Children.toArray(children);
+    if (
+      arr.length === 0 ||
+      (arr.length === 1 &&
+        typeof arr[0] === 'string' &&
+        arr[0].trim().length === 0)
+    ) {
+      return null;
+    }
+    return (
+      <p
+        style={{
+          margin: '0 0 8px',
+          lineHeight: '1.5',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}>
+        {children}
+      </p>
+    );
+  },
+  a: ({
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a
+      {...props}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{ color: '#1677ff' }}>
+      {children}
+    </a>
+  ),
+  ul: ({ children }: MarkdownElementProps<HTMLUListElement>) => (
+    <ul style={{ margin: '0 0 8px 20px', padding: 0 }}>{children}</ul>
+  ),
+  ol: ({ children }: MarkdownElementProps<HTMLOListElement>) => (
+    <ol style={{ margin: '0 0 8px 20px', padding: 0 }}>{children}</ol>
+  ),
+  li: ({ children }: MarkdownElementProps<HTMLLIElement>) => (
+    <li style={{ marginBottom: 4, lineHeight: '1.5' }}>{children}</li>
+  ),
+  blockquote: ({ children }: MarkdownElementProps<HTMLQuoteElement>) => (
+    <blockquote
+      style={{
+        margin: '0 0 8px',
+        paddingLeft: 12,
+        borderLeft: '3px solid #d9d9d9',
+        color: '#595959',
+      }}>
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }: MarkdownElementProps<HTMLTableElement>) => (
+    <table
+      style={{
+        borderCollapse: 'collapse',
+        width: '100%',
+        marginBottom: 12,
+      }}>
+      {children}
+    </table>
+  ),
+  thead: ({ children }: MarkdownElementProps<HTMLTableSectionElement>) => (
+    <thead style={{ background: '#f5f5f5' }}>{children}</thead>
+  ),
+  tbody: ({ children }: MarkdownElementProps<HTMLTableSectionElement>) => (
+    <tbody>{children}</tbody>
+  ),
+  th: ({ children }: MarkdownElementProps<HTMLTableCellElement>) => (
+    <th
+      style={{
+        border: '1px solid #d9d9d9',
+        padding: '4px 8px',
+        textAlign: 'left',
+        fontWeight: 600,
+      }}>
+      {children}
+    </th>
+  ),
+  td: ({ children }: MarkdownElementProps<HTMLTableCellElement>) => (
+    <td
+      style={{
+        border: '1px solid #d9d9d9',
+        padding: '4px 8px',
+        verticalAlign: 'top',
+      }}>
+      {children}
+    </td>
+  ),
+  hr: () => (
+    <hr
+      style={{
+        margin: '4px 0',
+        border: 'none',
+        borderTop: '1px solid #d9d9d9',
+      }}
+    />
+  ),
+  h1: ({ children }: MarkdownElementProps<HTMLHeadingElement>) => (
+    <h1 style={{ margin: '8px 0 4px', fontSize: '1.5em', lineHeight: 1.4 }}>
+      {children}
+    </h1>
+  ),
+  h2: ({ children }: MarkdownElementProps<HTMLHeadingElement>) => (
+    <h2 style={{ margin: '8px 0 4px', fontSize: '1.3em', lineHeight: 1.4 }}>
+      {children}
+    </h2>
+  ),
+  h3: ({ children }: MarkdownElementProps<HTMLHeadingElement>) => (
+    <h3 style={{ margin: '8px 0 4px', fontSize: '1.1em', lineHeight: 1.4 }}>
+      {children}
+    </h3>
+  ),
+  h4: ({ children }: MarkdownElementProps<HTMLHeadingElement>) => (
+    <h4 style={{ margin: '4px 0 2px', fontSize: '1em', lineHeight: 1.4 }}>
+      {children}
+    </h4>
+  ),
+  code: renderMarkdownCode as Components['code'],
+};
+
+const REMARK_PLUGINS = [remarkGfm, remarkTightLists];
+
+export interface MarkdownContentProps {
+  content: string;
+  style?: React.CSSProperties;
+  className?: string;
+  allowHorizontalScroll?: boolean;
+}
+
+export const MarkdownContent: React.FC<MarkdownContentProps> = React.memo(
+  ({ content, style, className, allowHorizontalScroll = true }) => {
+    if (!content || content.trim().length === 0) {
+      return null;
+    }
+
+    // Collapse 3+ consecutive blank lines into 2 (one visual blank line).
+    // This prevents react-markdown from generating excessive <p> wrappers
+    // inside list items when the source markdown has extra blank lines.
+    const normalizedContent = content.replace(/\n{3,}/g, '\n\n');
+
+    const combinedStyle: React.CSSProperties = {
+      width: '100%',
+      maxWidth: '100%',
+      overflowX: allowHorizontalScroll ? 'auto' : 'hidden',
+      wordBreak: 'break-word',
+      ...style,
+    };
+
+    return (
+      <div
+        style={combinedStyle}
+        className={`md-content${className ? ` ${className}` : ''}`}>
+        <ReactMarkdown
+          remarkPlugins={REMARK_PLUGINS}
+          components={markdownComponents}>
+          {normalizedContent}
+        </ReactMarkdown>
+      </div>
+    );
+  },
+);
+MarkdownContent.displayName = 'MarkdownContent';

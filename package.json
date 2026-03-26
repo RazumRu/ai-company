@@ -26,7 +26,10 @@
     "local-llm:start": "nohup ollama serve >/tmp/ollama.log 2>&1 &",
     "local-llm:stop": "pkill -x ollama || true",
     "prepare": "husky",
-    "up-versions": "./scripts/up-versions.sh"
+    "up-versions": "./scripts/up-versions.sh",
+    "web:dev": "pnpm --filter @geniro/web dev",
+    "web:build": "pnpm --filter @geniro/web build",
+    "web:generate-api": "pnpm --filter @geniro/web generate:api"
   },
   "engines": {
     "node": ">=24"

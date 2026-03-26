@@ -4,5 +4,7 @@
   "quoteProps": "preserve",
   "trailingComma": "all",
   "bracketSpacing": true,
+  "bracketSameLine": true,
+  "arrowParens": "always",
   "printWidth": 80
 }

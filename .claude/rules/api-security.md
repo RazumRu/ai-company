@@ -1,0 +1,59 @@
+---
+paths:
+  - "geniro/apps/api/**/*.controller.ts"
+  - "geniro/apps/api/**/*.service.ts"
+---
+
+# Endpoint Security
+
+## Controller-Level Auth
+
+Every controller must have:
+
+```typescript
+@Controller('feature')
+@ApiTags('feature')
+@ApiBearerAuth()
+@OnlyForAuthorized()
+export class FeatureController { ... }
+```
+
+- `@OnlyForAuthorized()` from `@packages/http-server` enforces JWT authentication.
+- `@ApiBearerAuth()` documents the auth requirement in Swagger.
+
+## Context Injection
+
+Every endpoint that needs the current user must inject context:
+
+```typescript
+@Get()
+async getAll(
+  @CtxStorage() ctx: AppContextStorage,
+): Promise<ItemDto[]> {
+  return this.service.getAll(ctx);
+}
+```
+
+## Service-Level Authorization
+
+Services must validate ownership. Never trust client-provided user IDs:
+
+```typescript
+async findById(ctx: AppContextStorage, id: string): Promise<ItemDto> {
+  const userId = ctx.checkSub();        // throws UnauthorizedException if missing
+  const projectId = ctx.checkProjectId(); // throws UnauthorizedException if missing
+
+  const item = await this.dao.getOne({ id, createdBy: userId, projectId });
+  if (!item) throw new NotFoundException('ITEM_NOT_FOUND');
+
+  return item;
+}
+```
+
+## Rules
+
+- Always filter by `createdBy` and/or `projectId` in DAO queries for user-owned resources.
+- Use `ctx.checkSub()` (not `ctx.sub`) to ensure the value is present and throw if not.
+- Use `ctx.checkProjectId()` (not `ctx.projectId`) to ensure the project header is present.
+- Rate-limit expensive endpoints with `@Throttle({ default: { ttl: 60000, limit: 10 } })`.
+- Use `EntityUUIDDto` from `utils/dto/misc.dto` for `:id` param validation.

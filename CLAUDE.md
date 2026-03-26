@@ -88,6 +88,18 @@ Never use `--` as a separator when running pnpm scripts. Pass flags directly:
 
 ---
 
+### Web Frontend (apps/web/)
+- React + Vite, Refine, Ant Design, @xyflow/react
+- See apps/web/CLAUDE.md for detailed frontend conventions
+
+```bash
+pnpm --filter @geniro/web dev          # Dev server (port 5174)
+pnpm --filter @geniro/web build        # Production build
+pnpm --filter @geniro/web generate:api # Regenerate API client from Swagger
+```
+
+---
+
 ## Architecture overview
 
 This is a **pnpm + Turbo monorepo**. The single application lives in `apps/api` (NestJS on Fastify). Shared libraries live in `packages/`.
@@ -190,7 +202,7 @@ When all four are set, the `GET /api/system/settings` endpoint returns `githubAp
 - **Generated files**: Never manually edit `cypress/api-definitions/` — regenerate with `pnpm test:e2e:generate-api`.
 - **Imports**: Shared packages are aliased as `@packages/*` (e.g. `import { … } from '@packages/common'`).
 - **Agent tool definitions**: All tools in `agent-tools/` must follow the best practices in `/docs/tool-definitions-best-practices.md` and the [official Anthropic tool use guide](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions). Descriptions must be detailed (3-4+ sentences), parameters must have clear `.describe()` strings, and `getDetailedInstructions()` must carry all heavy guidance. Read the docs file before creating or modifying any tool.
-- **Tool and agent instructions must be generic**: Tool descriptions, `getDetailedInstructions()`, subagent system prompts (in `subagent-definitions.ts`), and `.prompts/` agent templates must never contain repo-specific content. This includes: specific package manager commands (e.g. `pnpm run full-check`), specific tool names as if they are the only option (e.g. `turbo`, `vitest`), hardcoded instruction file names (e.g. `CLAUDE.md`), or project-specific directory paths (e.g. `apps/api/src/v1`). Repo-specific rules are injected dynamically at runtime via the `agentInstructions` field from `gh_clone`. Instructions should reference "the repository's instruction file" or "the `agentInstructions` field from `gh_clone`" — not specific filenames or commands. Examples in instructions should use generic placeholders (e.g. `npm install`, `npm test`, `<repo>/src/...`).
+- **Tool and agent instructions must be generic**: Tool descriptions, `getDetailedInstructions()`, subagent system prompts (in `subagent-definitions.ts`), and agent templates must never contain repo-specific content. This includes: specific package manager commands (e.g. `pnpm run full-check`), specific tool names as if they are the only option (e.g. `turbo`, `vitest`), hardcoded instruction file names (e.g. `CLAUDE.md`), or project-specific directory paths (e.g. `apps/api/src/v1`). Repo-specific rules are injected dynamically at runtime via the `agentInstructions` field from `gh_clone`. Instructions should reference "the repository's instruction file" or "the `agentInstructions` field from `gh_clone`" — not specific filenames or commands. Examples in instructions should use generic placeholders (e.g. `npm install`, `npm test`, `<repo>/src/...`).
 
 ---
 

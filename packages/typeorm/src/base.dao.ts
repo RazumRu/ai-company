@@ -134,8 +134,12 @@ export abstract class BaseDao<
   ): void;
 
   private qualify(field: string) {
-    if (!field) return field;
-    if (field.includes('.')) return field;
+    if (!field) {
+      return field;
+    }
+    if (field.includes('.')) {
+      return field;
+    }
 
     const hasColumn =
       this.repository.metadata.findColumnWithPropertyName(field) ??
@@ -262,7 +266,9 @@ export abstract class BaseDao<
       conflictPaths = undefined;
     }
 
-    if (!data.length) return [];
+    if (!data.length) {
+      return [];
+    }
 
     const conflictTarget = conflictPaths?.length
       ? conflictPaths
