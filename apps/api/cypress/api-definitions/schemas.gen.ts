@@ -547,6 +547,288 @@ export const ModelDefaultsDtoSchema = {
   ],
 } as const;
 
+export const LiteLlmModelInfoItemDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+    },
+    modelName: {
+      type: 'string',
+    },
+    providerModel: {
+      type: 'string',
+    },
+    apiBase: {
+      type: 'string',
+    },
+    customLlmProvider: {
+      type: 'string',
+    },
+    supportsToolCalling: {
+      type: 'boolean',
+    },
+    supportsStreaming: {
+      type: 'boolean',
+    },
+    supportsReasoning: {
+      type: 'boolean',
+    },
+  },
+  required: ['id', 'modelName', 'providerModel'],
+} as const;
+
+export const TestModelRequestDtoSchema = {
+  type: 'object',
+  properties: {
+    model: {
+      type: 'string',
+      minLength: 1,
+    },
+  },
+  required: ['model'],
+} as const;
+
+export const TestModelResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    success: {
+      type: 'boolean',
+    },
+    latencyMs: {
+      type: 'number',
+    },
+    error: {
+      type: 'string',
+    },
+  },
+  required: ['success', 'latencyMs'],
+} as const;
+
+export const TestModelConnectionDtoSchema = {
+  type: 'object',
+  properties: {
+    litellmModel: {
+      type: 'string',
+      minLength: 1,
+    },
+    apiKey: {
+      type: 'string',
+    },
+    apiBase: {
+      type: 'string',
+    },
+    litellmCredentialName: {
+      type: 'string',
+    },
+  },
+  required: ['litellmModel'],
+} as const;
+
+export const CreateLiteLlmModelDtoSchema = {
+  type: 'object',
+  properties: {
+    modelName: {
+      type: 'string',
+      minLength: 1,
+    },
+    litellmParams: {
+      type: 'object',
+      properties: {
+        model: {
+          type: 'string',
+        },
+        apiKey: {
+          type: 'string',
+        },
+        apiBase: {
+          type: 'string',
+        },
+        customLlmProvider: {
+          type: 'string',
+        },
+        maxTokens: {
+          type: 'integer',
+          exclusiveMinimum: 0,
+          maximum: 9007199254740991,
+        },
+        temperature: {
+          type: 'number',
+          minimum: 0,
+          maximum: 2,
+        },
+        requestTimeout: {
+          type: 'integer',
+          exclusiveMinimum: 0,
+          maximum: 9007199254740991,
+        },
+        customHeaders: {
+          type: 'object',
+          propertyNames: {
+            type: 'string',
+          },
+          additionalProperties: {
+            type: 'string',
+          },
+        },
+        litellmCredentialName: {
+          type: 'string',
+        },
+      },
+      required: ['model'],
+    },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
+    modelInfo: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
+  },
+  required: ['modelName', 'litellmParams'],
+} as const;
+
+export const UpdateLiteLlmModelDtoSchema = {
+  type: 'object',
+  properties: {
+    modelId: {
+      type: 'string',
+    },
+    modelName: {
+      type: 'string',
+      minLength: 1,
+    },
+    litellmParams: {
+      type: 'object',
+      properties: {
+        model: {
+          type: 'string',
+        },
+        apiKey: {
+          type: 'string',
+        },
+        apiBase: {
+          type: 'string',
+        },
+        customLlmProvider: {
+          type: 'string',
+        },
+        maxTokens: {
+          type: 'integer',
+          exclusiveMinimum: 0,
+          maximum: 9007199254740991,
+        },
+        temperature: {
+          type: 'number',
+          minimum: 0,
+          maximum: 2,
+        },
+        requestTimeout: {
+          type: 'integer',
+          exclusiveMinimum: 0,
+          maximum: 9007199254740991,
+        },
+        customHeaders: {
+          type: 'object',
+          propertyNames: {
+            type: 'string',
+          },
+          additionalProperties: {
+            type: 'string',
+          },
+        },
+        litellmCredentialName: {
+          type: 'string',
+        },
+      },
+    },
+    tags: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
+    modelInfo: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
+  },
+  required: ['modelId'],
+} as const;
+
+export const LiteLlmProvidersResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    providers: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+          },
+          label: {
+            type: 'string',
+          },
+          modelHint: {
+            type: 'string',
+          },
+        },
+        required: ['name', 'label', 'modelHint'],
+      },
+    },
+  },
+  required: ['providers'],
+} as const;
+
+export const LiteLlmCredentialsResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    credentials: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          credentialName: {
+            type: 'string',
+          },
+        },
+        required: ['credentialName'],
+      },
+    },
+  },
+  required: ['credentials'],
+} as const;
+
+export const CreateLiteLlmCredentialDtoSchema = {
+  type: 'object',
+  properties: {
+    credentialName: {
+      type: 'string',
+      minLength: 1,
+    },
+    credentialValues: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {
+        type: 'string',
+      },
+    },
+  },
+  required: ['credentialName', 'credentialValues'],
+} as const;
+
 export const UserPreferencesDtoSchema = {
   type: 'object',
   properties: {
@@ -3672,8 +3954,22 @@ export const SystemSettingsResponseDtoSchema = {
     githubAppEnabled: {
       type: 'boolean',
     },
+    litellmManagementEnabled: {
+      type: 'boolean',
+    },
+    isAdmin: {
+      type: 'boolean',
+    },
+    githubWebhookEnabled: {
+      type: 'boolean',
+    },
   },
-  required: ['githubAppEnabled'],
+  required: [
+    'githubAppEnabled',
+    'litellmManagementEnabled',
+    'isAdmin',
+    'githubWebhookEnabled',
+  ],
 } as const;
 
 export const AuthConfigResponseDtoSchema = {

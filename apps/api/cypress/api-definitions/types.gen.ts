@@ -285,6 +285,188 @@ export type ModelDefaultsDto = {
   llmEmbeddingModel: string;
 };
 
+export type LiteLlmModelInfoItemDto = {
+  /**
+   * LiteLLM database model ID
+   */
+  id: string;
+  /**
+   * Model alias (display name)
+   */
+  modelName: string;
+  /**
+   * Underlying provider model identifier
+   */
+  providerModel: string;
+  /**
+   * Custom API base URL
+   */
+  apiBase?: string;
+  /**
+   * Provider override
+   */
+  customLlmProvider?: string;
+  supportsToolCalling?: boolean;
+  supportsStreaming?: boolean;
+  supportsReasoning?: boolean;
+};
+
+export type TestModelRequestDto = {
+  /**
+   * Model alias to test
+   */
+  model: string;
+};
+
+export type TestModelResponseDto = {
+  success: boolean;
+  latencyMs: number;
+  error?: string;
+};
+
+export type TestModelConnectionDto = {
+  /**
+   * LiteLLM model string, e.g. openai/gpt-4o
+   */
+  litellmModel: string;
+  /**
+   * Provider API key
+   */
+  apiKey?: string;
+  /**
+   * Custom API base URL
+   */
+  apiBase?: string;
+  /**
+   * Named credential reference (resolved server-side)
+   */
+  litellmCredentialName?: string;
+};
+
+export type CreateLiteLlmModelDto = {
+  /**
+   * Display name / alias
+   */
+  modelName: string;
+  litellmParams: {
+    /**
+     * Provider model ID, e.g. openai/gpt-4o
+     */
+    model: string;
+    /**
+     * Provider API key
+     */
+    apiKey?: string;
+    /**
+     * Custom API base URL
+     */
+    apiBase?: string;
+    customLlmProvider?: string;
+    maxTokens?: number;
+    temperature?: number;
+    requestTimeout?: number;
+    customHeaders?: {
+      [key: string]: string;
+    };
+    /**
+     * Named credential reference
+     */
+    litellmCredentialName?: string;
+  };
+  /**
+   * Routing tags for this model
+   */
+  tags?: Array<string>;
+  /**
+   * Additional model info metadata
+   */
+  modelInfo?: {
+    [key: string]: unknown;
+  };
+};
+
+export type UpdateLiteLlmModelDto = {
+  /**
+   * LiteLLM database model ID from model_info.id
+   */
+  modelId: string;
+  modelName?: string;
+  litellmParams?: {
+    /**
+     * Provider model ID, e.g. openai/gpt-4o
+     */
+    model?: string;
+    /**
+     * Provider API key
+     */
+    apiKey?: string;
+    /**
+     * Custom API base URL
+     */
+    apiBase?: string;
+    customLlmProvider?: string;
+    maxTokens?: number;
+    temperature?: number;
+    requestTimeout?: number;
+    customHeaders?: {
+      [key: string]: string;
+    };
+    /**
+     * Named credential reference
+     */
+    litellmCredentialName?: string;
+  };
+  /**
+   * Routing tags for this model
+   */
+  tags?: Array<string>;
+  /**
+   * Additional model info metadata
+   */
+  modelInfo?: {
+    [key: string]: unknown;
+  };
+};
+
+export type LiteLlmProvidersResponseDto = {
+  providers: Array<{
+    /**
+     * Provider identifier, e.g. openai, anthropic
+     */
+    name: string;
+    /**
+     * Human-readable label
+     */
+    label: string;
+    /**
+     * Example model name format
+     */
+    modelHint: string;
+  }>;
+};
+
+export type LiteLlmCredentialsResponseDto = {
+  credentials: Array<{
+    /**
+     * Unique credential identifier
+     */
+    credentialName: string;
+  }>;
+};
+
+export type CreateLiteLlmCredentialDto = {
+  /**
+   * Unique credential identifier
+   */
+  credentialName: string;
+  /**
+   * Key-value pairs, e.g. { api_key: "sk-..." }
+   */
+  credentialValues: {
+    [key: string]: string;
+  };
+};
+
 export type UserPreferencesDto = {
   id: string;
   userId: string;
@@ -1932,6 +2114,18 @@ export type SystemSettingsResponseDto = {
    * Whether the GitHub App integration is configured and available
    */
   githubAppEnabled: boolean;
+  /**
+   * Whether the LiteLLM model management UI is enabled for the frontend
+   */
+  litellmManagementEnabled: boolean;
+  /**
+   * Whether the current user has the admin role
+   */
+  isAdmin: boolean;
+  /**
+   * Whether the GitHub webhook receiver is configured and available
+   */
+  githubWebhookEnabled: boolean;
 };
 
 export type AuthConfigResponseDto = {
@@ -2168,6 +2362,28 @@ export type ListModelsResponses = {
 
 export type ListModelsResponse = ListModelsResponses[keyof ListModelsResponses];
 
+export type UpdateModelData = {
+  body: UpdateLiteLlmModelDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/models';
+};
+
+export type UpdateModelResponses = {
+  200: unknown;
+};
+
+export type CreateModelData = {
+  body: CreateLiteLlmModelDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/models';
+};
+
+export type CreateModelResponses = {
+  201: unknown;
+};
+
 export type GetModelDefaultsData = {
   body?: never;
   path?: never;
@@ -2181,6 +2397,112 @@ export type GetModelDefaultsResponses = {
 
 export type GetModelDefaultsResponse =
   GetModelDefaultsResponses[keyof GetModelDefaultsResponses];
+
+export type ListModelsInfoData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/models/info';
+};
+
+export type ListModelsInfoResponses = {
+  200: Array<LiteLlmModelInfoItemDto>;
+};
+
+export type ListModelsInfoResponse =
+  ListModelsInfoResponses[keyof ListModelsInfoResponses];
+
+export type TestModelData = {
+  body: TestModelRequestDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/models/test';
+};
+
+export type TestModelResponses = {
+  200: TestModelResponseDto;
+};
+
+export type TestModelResponse = TestModelResponses[keyof TestModelResponses];
+
+export type TestModelConnectionData = {
+  body: TestModelConnectionDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/models/test-connection';
+};
+
+export type TestModelConnectionResponses = {
+  200: TestModelResponseDto;
+};
+
+export type TestModelConnectionResponse =
+  TestModelConnectionResponses[keyof TestModelConnectionResponses];
+
+export type DeleteModelData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/litellm/models/{id}';
+};
+
+export type DeleteModelResponses = {
+  200: unknown;
+};
+
+export type ListProvidersData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/providers';
+};
+
+export type ListProvidersResponses = {
+  200: LiteLlmProvidersResponseDto;
+};
+
+export type ListProvidersResponse =
+  ListProvidersResponses[keyof ListProvidersResponses];
+
+export type ListCredentialsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/credentials';
+};
+
+export type ListCredentialsResponses = {
+  200: LiteLlmCredentialsResponseDto;
+};
+
+export type ListCredentialsResponse =
+  ListCredentialsResponses[keyof ListCredentialsResponses];
+
+export type CreateCredentialData = {
+  body: CreateLiteLlmCredentialDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/litellm/credentials';
+};
+
+export type CreateCredentialResponses = {
+  201: unknown;
+};
+
+export type DeleteCredentialData = {
+  body?: never;
+  path: {
+    name: string;
+  };
+  query?: never;
+  url: '/api/v1/litellm/credentials/{name}';
+};
+
+export type DeleteCredentialResponses = {
+  200: unknown;
+};
 
 export type GetPreferencesData = {
   body?: never;

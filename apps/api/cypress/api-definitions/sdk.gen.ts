@@ -9,18 +9,26 @@ import type {
 import type {
   AnalyzeThreadData,
   AnalyzeThreadResponses,
+  CreateCredentialData,
+  CreateCredentialResponses,
   CreateDocData,
   CreateDocResponses,
   CreateGraphData,
   CreateGraphResponses,
+  CreateModelData,
+  CreateModelResponses,
   CreateProjectData,
   CreateProjectResponses,
   CreateRepositoryData,
   CreateRepositoryResponses,
+  DeleteCredentialData,
+  DeleteCredentialResponses,
   DeleteDocData,
   DeleteDocResponses,
   DeleteGraphData,
   DeleteGraphResponses,
+  DeleteModelData,
+  DeleteModelResponses,
   DeleteProjectData,
   DeleteProjectResponses,
   DeleteRepositoryData,
@@ -91,12 +99,18 @@ import type {
   GetThreadUsageStatisticsResponses,
   LinkViaOAuthCodeData,
   LinkViaOAuthCodeResponses,
+  ListCredentialsData,
+  ListCredentialsResponses,
   ListDocsData,
   ListDocsResponses,
   ListInstallationsData,
   ListInstallationsResponses,
   ListModelsData,
+  ListModelsInfoData,
+  ListModelsInfoResponses,
   ListModelsResponses,
+  ListProvidersData,
+  ListProvidersResponses,
   RunGraphData,
   RunGraphResponses,
   SetThreadMetadataByExternalIdData,
@@ -115,6 +129,10 @@ import type {
   SuggestKnowledgeContentResponses,
   SyncRepositoriesData,
   SyncRepositoriesResponses,
+  TestModelConnectionData,
+  TestModelConnectionResponses,
+  TestModelData,
+  TestModelResponses,
   TriggerReindexData,
   TriggerReindexResponses,
   UnlinkInstallationData,
@@ -123,6 +141,8 @@ import type {
   UpdateDocResponses,
   UpdateGraphData,
   UpdateGraphResponses,
+  UpdateModelData,
+  UpdateModelResponses,
   UpdatePreferencesData,
   UpdatePreferencesResponses,
   UpdateProjectData,
@@ -297,6 +317,40 @@ export const listModels = <ThrowOnError extends boolean = false>(
     ...options,
   });
 
+/**
+ * Update an existing LiteLLM model
+ */
+export const updateModel = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateModelData, ThrowOnError>,
+) =>
+  (options.client ?? client).patch<UpdateModelResponses, unknown, ThrowOnError>(
+    {
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/litellm/models',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    },
+  );
+
+/**
+ * Add a new LiteLLM model
+ */
+export const createModel = <ThrowOnError extends boolean = false>(
+  options: Options<CreateModelData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<CreateModelResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/models',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
 export const getModelDefaults = <ThrowOnError extends boolean = false>(
   options?: Options<GetModelDefaultsData, ThrowOnError>,
 ) =>
@@ -307,6 +361,142 @@ export const getModelDefaults = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/litellm/model-defaults',
+    ...options,
+  });
+
+/**
+ * List all LiteLLM models with full config (admin)
+ */
+export const listModelsInfo = <ThrowOnError extends boolean = false>(
+  options?: Options<ListModelsInfoData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    ListModelsInfoResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/models/info',
+    ...options,
+  });
+
+/**
+ * Test a registered model connection
+ */
+export const testModel = <ThrowOnError extends boolean = false>(
+  options: Options<TestModelData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<TestModelResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/models/test',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+/**
+ * Test a model connection with inline config (no registration)
+ */
+export const testModelConnection = <ThrowOnError extends boolean = false>(
+  options: Options<TestModelConnectionData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    TestModelConnectionResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/models/test-connection',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+/**
+ * Delete a LiteLLM model by database ID
+ */
+export const deleteModel = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteModelData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<
+    DeleteModelResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/models/{id}',
+    ...options,
+  });
+
+/**
+ * List available LLM providers
+ */
+export const listProviders = <ThrowOnError extends boolean = false>(
+  options?: Options<ListProvidersData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    ListProvidersResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/providers',
+    ...options,
+  });
+
+/**
+ * List saved LiteLLM credentials
+ */
+export const listCredentials = <ThrowOnError extends boolean = false>(
+  options?: Options<ListCredentialsData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<
+    ListCredentialsResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/credentials',
+    ...options,
+  });
+
+/**
+ * Create a new named credential
+ */
+export const createCredential = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCredentialData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<
+    CreateCredentialResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/credentials',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+/**
+ * Delete a named credential
+ */
+export const deleteCredential = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteCredentialData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<
+    DeleteCredentialResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/litellm/credentials/{name}',
     ...options,
   });
 
