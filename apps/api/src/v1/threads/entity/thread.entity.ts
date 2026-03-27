@@ -8,8 +8,8 @@ import {
   Property,
   Unique,
 } from '@mikro-orm/decorators/legacy';
-import { AuditEntity } from '../../../auth/audit.entity';
 
+import { AuditEntity } from '../../../auth/audit.entity';
 import { GraphEntity } from '../../graphs/entity/graph.entity';
 import { ThreadStatus } from '../threads.types';
 import { MessageEntity } from './message.entity';

@@ -5,6 +5,7 @@ import {
   Property,
   Unique,
 } from '@mikro-orm/decorators/legacy';
+
 import { AuditEntity } from '../../../auth/audit.entity';
 
 @Entity({ tableName: 'knowledge_docs' })

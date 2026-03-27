@@ -7,8 +7,8 @@ import {
   PrimaryKey,
   Property,
 } from '@mikro-orm/decorators/legacy';
-import { AuditEntity } from '../../../auth/audit.entity';
 
+import { AuditEntity } from '../../../auth/audit.entity';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
 import {
   type GraphAgentInfo,
