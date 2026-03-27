@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { GitAuthModule } from '../git-auth/git-auth.module';
 import { LitellmModule } from '../litellm/litellm.module';

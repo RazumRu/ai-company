@@ -1,22 +1,20 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class GraphRevisionConfig1767026178813 implements MigrationInterface {
-  name = 'GraphRevisionConfig1767026178813';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class GraphRevisionConfig1767026178813 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "configDiff" jsonb
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "clientConfig" jsonb
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "newConfig" jsonb
         `);
-    await queryRunner.query(`
+    this.addSql(`
             UPDATE "graph_revisions" r
             SET
                 "configDiff" = r."configurationDiff",
@@ -35,68 +33,68 @@ export class GraphRevisionConfig1767026178813 implements MigrationInterface {
             FROM "graphs" g
             WHERE g."id" = r."graphId"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ALTER COLUMN "configDiff" SET NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ALTER COLUMN "clientConfig" SET NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ALTER COLUMN "newConfig" SET NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "configurationDiff"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "newSchema"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "clientSchema"
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "clientSchema" jsonb
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "newSchema" jsonb
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "configurationDiff" jsonb
         `);
-    await queryRunner.query(`
+    this.addSql(`
             UPDATE "graph_revisions"
             SET
                 "configurationDiff" = "configDiff",
                 "clientSchema" = ("clientConfig"->'schema'),
                 "newSchema" = ("newConfig"->'schema')
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ALTER COLUMN "clientSchema" SET NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ALTER COLUMN "newSchema" SET NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ALTER COLUMN "configurationDiff" SET NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "newConfig"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "clientConfig"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "configDiff"
         `);
   }

@@ -1,80 +1,14 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
-import { DataSource, In } from 'typeorm';
-import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
+import { BaseDao } from '@packages/mikroorm';
 
 import { ThreadEntity } from '../entity/thread.entity';
 import { ThreadStatus } from '../threads.types';
 
-export type SearchTerms = Partial<{
-  id: string;
-  graphId: string;
-  ids: string[];
-  createdBy: string;
-  externalThreadId: string;
-  status: ThreadStatus;
-  statuses: ThreadStatus[];
-}>;
-
 @Injectable()
-export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
-  public get alias() {
-    return 't';
-  }
-
-  protected get entity() {
-    return ThreadEntity;
-  }
-
-  constructor(dataSource: DataSource) {
-    super(dataSource);
-  }
-
-  protected applySearchParams(
-    builder: BaseQueryBuilder<ThreadEntity>,
-    params?: SearchTerms,
-  ) {
-    if (params?.ids && params.ids.length > 0) {
-      builder.andWhere({
-        id: In(params?.ids),
-      });
-    }
-
-    if (params?.id) {
-      builder.andWhere({
-        id: params.id,
-      });
-    }
-
-    if (params?.graphId) {
-      builder.andWhere({
-        graphId: params.graphId,
-      });
-    }
-
-    if (params?.createdBy) {
-      builder.andWhere({
-        createdBy: params.createdBy,
-      });
-    }
-
-    if (params?.externalThreadId) {
-      builder.andWhere({
-        externalThreadId: params.externalThreadId,
-      });
-    }
-
-    if (params?.status) {
-      builder.andWhere({
-        status: params.status,
-      });
-    }
-
-    if (params?.statuses && params?.statuses.length > 0) {
-      builder.andWhere({
-        status: In(params.statuses),
-      });
-    }
+export class ThreadsDao extends BaseDao<ThreadEntity> {
+  constructor(em: EntityManager) {
+    super(em, ThreadEntity);
   }
 
   /**
@@ -89,15 +23,12 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
       return result;
     }
 
-    const rows: { graphId: string; status: string; cnt: string }[] =
-      await this.getQueryBuilder()
-        .select(`${this.alias}.graphId`, 'graphId')
-        .addSelect(`${this.alias}.status`, 'status')
-        .addSelect('COUNT(*)', 'cnt')
-        .where(`${this.alias}.graphId IN (:...graphIds)`, { graphIds })
-        .groupBy(`${this.alias}.graphId`)
-        .addGroupBy(`${this.alias}.status`)
-        .getRawMany();
+    const qb = this.em.createQueryBuilder(ThreadEntity, 't');
+    const rows = await qb
+      .select(['t.graphId', 't.status', 'count(*) as cnt'])
+      .where({ graphId: { $in: graphIds } })
+      .groupBy(['t.graphId', 't.status'])
+      .execute<{ graphId: string; status: string; cnt: string }[]>();
 
     for (const row of rows) {
       const count = parseInt(row.cnt, 10);
@@ -115,7 +46,7 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
   /**
    * Inserts a thread or updates it on externalThreadId conflict.
    * On conflict, only updates: status, lastRunId, updatedAt.
-   * Source is only set on first insert — never overwritten on conflict.
+   * Source is only set on first insert -- never overwritten on conflict.
    * Returns the upserted row.
    */
   async upsertByExternalThreadId(
@@ -125,30 +56,19 @@ export class ThreadsDao extends BaseDao<ThreadEntity, SearchTerms> {
     > &
       Partial<Pick<ThreadEntity, 'source' | 'lastRunId' | 'metadata'>>,
   ): Promise<ThreadEntity> {
-    const CONFLICT_COLUMN = 'externalThreadId';
-    const UPDATE_ON_CONFLICT = ['status', 'lastRunId', 'updatedAt'];
-
-    const result = await this.getQueryBuilder()
-      .insert()
-      .values(data as QueryDeepPartialEntity<ThreadEntity>)
-      .orUpdate(UPDATE_ON_CONFLICT, [CONFLICT_COLUMN])
-      .returning('*')
-      .execute();
-
-    return (
-      Array.isArray(result.raw) && result.raw.length
-        ? result.raw[0]
-        : result.generatedMaps[0]
-    ) as ThreadEntity;
+    return await this.getRepo().upsert(data, {
+      onConflictFields: ['externalThreadId'],
+      onConflictAction: 'merge',
+      onConflictMergeFields: ['status', 'lastRunId', 'updatedAt'],
+    });
   }
 
   async touchById(id: string): Promise<void> {
-    await this.getQueryBuilder()
-      .update()
-      .set({
-        updatedAt: () => 'CURRENT_TIMESTAMP',
-      } as QueryDeepPartialEntity<ThreadEntity>)
-      .where({ id })
-      .execute();
+    await this.getRepo().nativeUpdate(
+      { id },
+      {
+        updatedAt: new Date(),
+      },
+    );
   }
 }

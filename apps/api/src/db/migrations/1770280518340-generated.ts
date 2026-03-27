@@ -1,17 +1,15 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1770280518340 implements MigrationInterface {
-  name = 'Generated1770280518340';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1770280518340 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "repo_indexes"
             ADD "indexedTokens" integer DEFAULT '0'
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "repo_indexes" DROP COLUMN "indexedTokens"
         `);
   }

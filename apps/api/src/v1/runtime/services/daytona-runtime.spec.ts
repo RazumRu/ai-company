@@ -1526,11 +1526,13 @@ describe('RuntimeProvider failure handling', () => {
 
       expect(mockDao.getAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          statuses: expect.arrayContaining([
-            RuntimeInstanceStatus.Running,
-            RuntimeInstanceStatus.Starting,
-            RuntimeInstanceStatus.Failed,
-          ]),
+          status: {
+            $in: expect.arrayContaining([
+              RuntimeInstanceStatus.Running,
+              RuntimeInstanceStatus.Starting,
+              RuntimeInstanceStatus.Failed,
+            ]),
+          },
         }),
       );
     });

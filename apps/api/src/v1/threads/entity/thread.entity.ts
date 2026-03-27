@@ -1,53 +1,51 @@
+import { Collection } from '@mikro-orm/core';
 import {
-  Column,
   Entity,
   Index,
-  JoinColumn,
   ManyToOne,
   OneToMany,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
-
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
 import { AuditEntity } from '../../../auth/audit.entity';
-import type { GraphEntity } from '../../graphs/entity/graph.entity';
-import { ThreadStatus } from '../threads.types';
-import type { MessageEntity } from './message.entity';
 
-@Entity('threads')
+import { GraphEntity } from '../../graphs/entity/graph.entity';
+import { ThreadStatus } from '../threads.types';
+import { MessageEntity } from './message.entity';
+
+@Entity({ tableName: 'threads' })
 export class ThreadEntity extends AuditEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Property({ type: 'uuid' })
   @Index()
   graphId!: string;
 
-  @ManyToOne('GraphEntity', 'threads', { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'graphId' })
+  @ManyToOne(() => GraphEntity, { deleteRule: 'cascade', nullable: true })
   graph?: GraphEntity;
 
-  @OneToMany('MessageEntity', 'thread')
-  messages?: MessageEntity[];
+  @OneToMany(() => MessageEntity, (m) => m.thread)
+  messages?: Collection<MessageEntity>;
 
-  @Column({ type: 'varchar' })
-  @Index({
-    unique: true,
-  })
+  @Property({ type: 'varchar' })
+  @Unique()
   externalThreadId!: string;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Property({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown>;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Property({ type: 'varchar', nullable: true })
   source?: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Property({ type: 'varchar', nullable: true })
   name?: string;
 
-  @Column({ type: 'varchar', default: ThreadStatus.Running })
+  @Property({ type: 'varchar', default: ThreadStatus.Running })
   @Index()
   status!: ThreadStatus;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Property({ type: 'uuid', nullable: true })
   lastRunId?: string;
 }

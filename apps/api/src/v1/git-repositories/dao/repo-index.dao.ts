@@ -1,75 +1,25 @@
 import { createHash } from 'node:crypto';
 
+import { raw } from '@mikro-orm/core';
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
-import { DataSource, In } from 'typeorm';
+import { BaseDao } from '@packages/mikroorm';
 
 import { RepoIndexEntity } from '../entity/repo-index.entity';
-import { RepoIndexStatus } from '../git-repositories.types';
-
-export type RepoIndexSearchTerms = Partial<{
-  id: string;
-  repositoryId: string;
-  repositoryIds: string[];
-  repoUrl: string;
-  status: RepoIndexStatus | RepoIndexStatus[];
-  branch: string | string[];
-}>;
 
 @Injectable()
-export class RepoIndexDao extends BaseDao<
-  RepoIndexEntity,
-  RepoIndexSearchTerms
-> {
-  public get alias() {
-    return 'ri';
+export class RepoIndexDao extends BaseDao<RepoIndexEntity> {
+  constructor(em: EntityManager) {
+    super(em, RepoIndexEntity);
   }
 
-  protected get entity() {
-    return RepoIndexEntity;
-  }
-
-  constructor(dataSource: DataSource) {
-    super(dataSource);
-  }
-
-  protected applySearchParams(
-    builder: BaseQueryBuilder<RepoIndexEntity>,
-    params?: RepoIndexSearchTerms,
-  ) {
-    if (params?.id) {
-      builder.andWhere({ id: params.id });
-    }
-
-    if (params?.repositoryId) {
-      builder.andWhere({ repositoryId: params.repositoryId });
-    }
-
-    if (params?.repositoryIds && params.repositoryIds.length > 0) {
-      builder.andWhere({ repositoryId: In(params.repositoryIds) });
-    }
-
-    if (params?.repoUrl) {
-      builder.andWhere({ repoUrl: params.repoUrl });
-    }
-
-    if (params?.branch) {
-      if (Array.isArray(params.branch)) {
-        builder.andWhere({ branch: In(params.branch) });
-      } else {
-        builder.andWhere({ branch: params.branch });
-      }
-    }
-
-    if (params?.status) {
-      if (Array.isArray(params.status)) {
-        builder.andWhere(`${this.alias}.status IN (:...statuses)`, {
-          statuses: params.status,
-        });
-      } else {
-        builder.andWhere({ status: params.status });
-      }
-    }
+  async restoreById(id: string): Promise<void> {
+    await this.getRepo().nativeUpdate(
+      { id },
+      {
+        deletedAt: null,
+      },
+    );
   }
 
   /**
@@ -77,13 +27,10 @@ export class RepoIndexDao extends BaseDao<
    * when multiple batches complete concurrently.
    */
   async incrementIndexedTokens(id: string, amount: number): Promise<void> {
-    await this.getQueryBuilder()
-      .update()
-      .set({
-        indexedTokens: () => `"indexedTokens" + :amount`,
-      })
-      .where('id = :id', { id })
-      .setParameter('amount', amount)
+    await this.em
+      .createQueryBuilder(RepoIndexEntity)
+      .update({ indexedTokens: raw(`indexed_tokens + ${amount}`) })
+      .where({ id })
       .execute();
   }
 
@@ -103,19 +50,17 @@ export class RepoIndexDao extends BaseDao<
     cb: () => Promise<T>,
   ): Promise<T> {
     const lockId = RepoIndexDao.advisoryLockId(repositoryId, branch);
-    const runner = this.getQueryRunner();
-    await runner.connect();
+    const connection = this.em.getConnection();
     try {
-      await runner.query('SELECT pg_advisory_lock($1)', [lockId]);
+      await connection.execute('SELECT pg_advisory_lock($1)', [lockId]);
       const result = await cb();
       return result;
     } finally {
       try {
-        await runner.query('SELECT pg_advisory_unlock($1)', [lockId]);
+        await connection.execute('SELECT pg_advisory_unlock($1)', [lockId]);
       } catch {
-        // Best-effort unlock — connection release will clean up the lock anyway
+        // Best-effort unlock -- connection release will clean up the lock anyway
       }
-      await runner.release();
     }
   }
 
@@ -127,7 +72,7 @@ export class RepoIndexDao extends BaseDao<
     const hash = createHash('sha256')
       .update(`${repositoryId}:${branch}`)
       .digest();
-    // Read as signed int64 — pg_advisory_lock accepts bigint
+    // Read as signed int64 -- pg_advisory_lock accepts bigint
     return hash.readBigInt64BE(0).toString();
   }
 }

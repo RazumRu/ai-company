@@ -46,11 +46,10 @@ export class ThreadsService {
   ): Promise<ThreadDto[]> {
     const userId = ctx.checkSub();
 
-    const threads = await this.threadDao.getAll({
-      createdBy: userId,
-      ...query,
-      order: { updatedAt: 'DESC' },
-    });
+    const threads = await this.threadDao.getAll(
+      { createdBy: userId, ...query },
+      { orderBy: { updatedAt: 'DESC' } },
+    );
 
     return await this.prepareThreadsResponse(threads);
   }
@@ -108,11 +107,10 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    const messages = await this.messagesDao.getAll({
-      threadId,
-      ...(query || {}),
-      order: { createdAt: 'DESC' },
-    });
+    const messages = await this.messagesDao.getAll(
+      { threadId, ...(query || {}) },
+      { orderBy: { createdAt: 'DESC' } },
+    );
 
     return messages.map((msg) => this.prepareMessageResponse(msg));
   }
@@ -131,7 +129,7 @@ export class ThreadsService {
     }
 
     // Delete all messages associated with this thread first
-    await this.messagesDao.delete({ threadId });
+    await this.messagesDao.hardDelete({ threadId });
 
     // Emit thread delete notification before removing the thread record
     await this.notificationsService.emit({
@@ -181,10 +179,11 @@ export class ThreadsService {
 
     if (!stoppedViaEventChain) {
       // Graph not in registry or no active agent run — update DB directly
-      const updated = await this.threadDao.updateById(thread.id, {
+      await this.threadDao.updateById(thread.id, {
         status: ThreadStatus.Stopped,
       });
-      const responseThread = updated ?? thread;
+      const responseThread =
+        (await this.threadDao.getById(thread.id)) ?? thread;
 
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadUpdate,
@@ -233,11 +232,12 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    const updated = await this.threadDao.updateById(threadId, {
+    await this.threadDao.updateById(threadId, {
       metadata: dto.metadata,
     });
+    const updated = (await this.threadDao.getById(threadId)) ?? thread;
 
-    return (await this.prepareThreadsResponse([updated!]))[0]!;
+    return (await this.prepareThreadsResponse([updated]))[0]!;
   }
 
   async setMetadataByExternalId(
@@ -256,11 +256,12 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    const updated = await this.threadDao.updateById(thread.id, {
+    await this.threadDao.updateById(thread.id, {
       metadata: dto.metadata,
     });
+    const updated = (await this.threadDao.getById(thread.id)) ?? thread;
 
-    return (await this.prepareThreadsResponse([updated!]))[0]!;
+    return (await this.prepareThreadsResponse([updated]))[0]!;
   }
 
   public async prepareThreadsResponse(
@@ -354,22 +355,24 @@ export class ThreadsService {
     // Format usage statistics from stored token usage data.
     // Use denormalized columns instead of full message JSONB for performance.
     const messages =
-      (await this.messagesDao.getAll({
-        threadId: thread.id,
-        order: { createdAt: 'ASC' },
-        projection: [
-          'id',
-          'nodeId',
-          'role',
-          'name',
-          'requestTokenUsage',
-          'toolCallNames',
-          'answeredToolCallNames',
-          'additionalKwargs',
-          'toolCallIds',
-          'toolTokenUsage',
-        ],
-      })) ?? [];
+      (await this.messagesDao.getAll(
+        { threadId: thread.id },
+        {
+          orderBy: { createdAt: 'ASC' },
+          fields: [
+            'id',
+            'nodeId',
+            'role',
+            'name',
+            'requestTokenUsage',
+            'toolCallNames',
+            'answeredToolCallNames',
+            'additionalKwargs',
+            'toolCallIds',
+            'toolTokenUsage',
+          ] as never,
+        },
+      )) ?? [];
 
     // Use Decimal.js for price aggregation to avoid floating-point errors
     let toolsPriceDecimal = new Decimal(0);
@@ -718,7 +721,7 @@ export class ThreadsService {
     const [usageStatistics, graphDataMap, graphRows] = await Promise.all([
       this.getThreadUsageStatistics(ctx, thread.id),
       this.graphDao.getSchemaAndMetadata([thread.graphId]),
-      this.graphDao.getAll({ ids: [thread.graphId], limit: 1 }),
+      this.graphDao.getAll({ id: { $in: [thread.graphId] } }, { limit: 1 }),
     ]);
 
     const graphData = graphDataMap.get(thread.graphId) ?? null;
@@ -755,12 +758,10 @@ export class ThreadsService {
       const PAGE_SIZE = 500;
       let offset = 0;
       while (true) {
-        const page = await messagesDao.getAll({
-          threadId: thread.id,
-          limit: PAGE_SIZE,
-          offset,
-          order: { createdAt: 'ASC' },
-        });
+        const page = await messagesDao.getAll(
+          { threadId: thread.id },
+          { limit: PAGE_SIZE, offset, orderBy: { createdAt: 'ASC' } },
+        );
         for (const msg of page) {
           yield prepareMessageResponse(msg);
         }

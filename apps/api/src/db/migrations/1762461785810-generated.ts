@@ -1,13 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1762461785810 implements MigrationInterface {
-  name = 'Generated1762461785810';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1762461785810 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             CREATE TYPE "public"."graph_revisions_status_enum" AS ENUM('pending', 'applying', 'applied', 'failed')
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE TABLE "graph_revisions" (
                 "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -24,31 +22,31 @@ export class Generated1762461785810 implements MigrationInterface {
                 CONSTRAINT "PK_0a0462eb89ae062d8bd3345872a" PRIMARY KEY ("id")
             )
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE INDEX "IDX_c16df53f74a9053299af7a1740" ON "graph_revisions" ("graphId")
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE INDEX "IDX_9c3be1885dfe18d1c59675de45" ON "graph_revisions" ("status")
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE INDEX "IDX_8656c524a47fa65047677f6825" ON "graph_revisions" ("createdBy")
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             DROP INDEX "public"."IDX_8656c524a47fa65047677f6825"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP INDEX "public"."IDX_9c3be1885dfe18d1c59675de45"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP INDEX "public"."IDX_c16df53f74a9053299af7a1740"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TABLE "graph_revisions"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TYPE "public"."graph_revisions_status_enum"
         `);
   }

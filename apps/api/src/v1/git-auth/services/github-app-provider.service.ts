@@ -139,12 +139,10 @@ export class GitHubAppProviderService {
   }
 
   async listInstallations(userId: string): Promise<ListInstallationsResponse> {
-    const connections = await this.gitProviderConnectionDao.getAll({
-      userId,
-      provider: GitProvider.GitHub,
-      isActive: true,
-      order: { createdAt: 'DESC' },
-    });
+    const connections = await this.gitProviderConnectionDao.getAll(
+      { userId, provider: GitProvider.GitHub, isActive: true },
+      { orderBy: { createdAt: 'DESC' } },
+    );
 
     return {
       installations: connections.map((conn) => ({

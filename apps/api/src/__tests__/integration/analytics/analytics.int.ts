@@ -42,7 +42,7 @@ describe('Analytics (integration)', () => {
 
   afterEach(async () => {
     for (const threadId of createdThreadIds) {
-      await messagesDao.delete({ threadId });
+      await messagesDao.hardDelete({ threadId });
       await threadsDao.deleteById(threadId);
     }
     createdThreadIds.length = 0;
@@ -62,7 +62,7 @@ describe('Analytics (integration)', () => {
     const graph = await graphDao.create({
       name,
       description: 'analytics integration test',
-      error: null,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
@@ -83,8 +83,8 @@ describe('Analytics (integration)', () => {
       projectId: testProjectId,
       externalThreadId: `analytics-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       metadata: {},
-      source: null,
-      name: null,
+      source: undefined,
+      name: undefined,
       status: ThreadStatus.Done,
     });
     createdThreadIds.push(thread.id);
@@ -312,7 +312,7 @@ describe('Analytics (integration)', () => {
 
     afterEach(async () => {
       for (const threadId of otherProjectThreadIds) {
-        await messagesDao.delete({ threadId });
+        await messagesDao.hardDelete({ threadId });
         await threadsDao.deleteById(threadId);
       }
       otherProjectThreadIds.length = 0;
@@ -331,7 +331,7 @@ describe('Analytics (integration)', () => {
       const graph = await graphDao.create({
         name,
         description: 'analytics isolation test',
-        error: null,
+        error: undefined,
         version: '1.0.0',
         targetVersion: '1.0.0',
         schema: { nodes: [], edges: [] },
@@ -359,8 +359,8 @@ describe('Analytics (integration)', () => {
         projectId,
         externalThreadId: `isolation-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         metadata: {},
-        source: null,
-        name: null,
+        source: undefined,
+        name: undefined,
         status: ThreadStatus.Done,
       });
       if (projectId === otherProjectId) {

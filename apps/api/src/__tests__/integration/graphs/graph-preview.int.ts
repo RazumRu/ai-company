@@ -236,10 +236,10 @@ describe('Graph Preview Integration Tests', () => {
       );
       registerGraph(graph.id);
 
-      const rows = await graphDao.getPreview({
-        ids: [graph.id],
-        order: { updatedAt: 'DESC' },
-      });
+      const rows = await graphDao.getPreview(
+        { id: { $in: [graph.id] } },
+        { orderBy: { updatedAt: 'DESC' } },
+      );
 
       expect(rows).toHaveLength(1);
       const row = rows[0]!;

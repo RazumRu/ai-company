@@ -79,21 +79,22 @@ describe('GraphCompiler', () => {
     id = 'test-graph',
     name = 'Test Graph',
     version = '1.0.0',
-  ): GraphEntity => ({
-    id,
-    name,
-    version,
-    targetVersion: version,
-    description: 'Test Description',
-    schema,
-    status: GraphStatus.Created,
-    createdBy: 'test-user',
-    projectId: 'project-123',
-    createdAt: new Date('2024-01-01'),
-    updatedAt: new Date('2024-01-01'),
-    deletedAt: null,
-    temporary: false,
-  });
+  ): GraphEntity =>
+    ({
+      id,
+      name,
+      version,
+      targetVersion: version,
+      description: 'Test Description',
+      schema,
+      status: GraphStatus.Created,
+      createdBy: 'test-user',
+      projectId: 'project-123',
+      createdAt: new Date('2024-01-01'),
+      updatedAt: new Date('2024-01-01'),
+      deletedAt: null,
+      temporary: false,
+    }) as unknown as GraphEntity;
 
   beforeEach(async () => {
     mockGraphStateManager = {

@@ -1,15 +1,13 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class AddGraphAgentsColumn1772538380484 implements MigrationInterface {
-  name = 'AddGraphAgentsColumn1772538380484';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class AddGraphAgentsColumn1772538380484 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graphs"
             ADD "agents" jsonb
         `);
 
-    await queryRunner.query(`
+    this.addSql(`
             UPDATE "graphs"
             SET "agents" = (
                 SELECT COALESCE(jsonb_agg(
@@ -25,8 +23,8 @@ export class AddGraphAgentsColumn1772538380484 implements MigrationInterface {
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graphs" DROP COLUMN "agents"
         `);
   }

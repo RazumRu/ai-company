@@ -1,10 +1,8 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1759225623237 implements MigrationInterface {
-  name = 'Generated1759225623237';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1759225623237 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             CREATE TABLE "graph_checkpoints" (
                 "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
                 "threadId" character varying NOT NULL,
@@ -19,10 +17,10 @@ export class Generated1759225623237 implements MigrationInterface {
                 CONSTRAINT "PK_2739e90f63ccbd3ec1b2b4baf4a" PRIMARY KEY ("id")
             )
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE UNIQUE INDEX "IDX_5efb40becb5b10edac9b6934c3" ON "graph_checkpoints" ("threadId", "checkpointNs", "checkpointId")
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE TABLE "graph_checkpoint_writes" (
                 "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
                 "threadId" character varying NOT NULL,
@@ -38,7 +36,7 @@ export class Generated1759225623237 implements MigrationInterface {
                 CONSTRAINT "PK_80475d6b7a7bbf6a3c9c11a1f00" PRIMARY KEY ("id")
             )
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE UNIQUE INDEX "IDX_bb6786a7e802321198ea9036a0" ON "graph_checkpoint_writes" (
                 "threadId",
                 "checkpointNs",
@@ -49,17 +47,17 @@ export class Generated1759225623237 implements MigrationInterface {
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             DROP INDEX "public"."IDX_bb6786a7e802321198ea9036a0"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TABLE "graph_checkpoint_writes"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP INDEX "public"."IDX_5efb40becb5b10edac9b6934c3"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TABLE "graph_checkpoints"
         `);
   }

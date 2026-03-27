@@ -110,9 +110,9 @@ apps/api/src/
 ├── app.module.ts             # Root NestJS module
 ├── v1/                       # Feature modules (see below)
 ├── db/
-│   ├── migrations/           # Auto-generated TypeORM migrations
+│   ├── migrations/           # MikroORM migrations
 │   ├── seeds/                # Seed files (timestamped, run in order)
-│   └── typeormconfig.ts
+│   └── mikro-orm.config.ts
 ├── environments/             # Env loading (dotenv)
 ├── utils/                    # Shared utilities
 └── __tests__/integration/    # Integration tests (*.int.ts)
@@ -121,7 +121,7 @@ packages/
 ├── common/      # Logger (Pino+Sentry), custom exception classes, bootstrapper
 ├── http-server/ # Fastify setup, Swagger, auth (Keycloak), middleware, request tracing
 ├── metrics/     # Prometheus integration
-├── typeorm/     # TypeORM config wrapper, BaseDao, migration/seed CLI utilities
+├── mikroorm/    # MikroORM config wrapper, base entities, NestJS module integration
 └── cypress/     # Cypress helpers + API type generator (cy-generate-api)
 ```
 
@@ -137,7 +137,7 @@ Controller  →  Service  →  DAO  →  Entity  →  PostgreSQL
 ```
 src/v1/feature-name/
 ├── dto/                    # Zod-backed DTOs (all in one file per module)
-├── entities/               # TypeORM entities
+├── entities/               # MikroORM entities
 ├── feature.controller.ts
 ├── feature.service.ts
 ├── feature.dao.ts
@@ -146,9 +146,9 @@ src/v1/feature-name/
 
 - **Controllers** are thin: route + validate only.
 - **Services** own business logic and orchestrate DAOs.
-- **DAOs** use generic filter-based `find()` methods with a filters interface — avoid proliferating `findByX` methods. Only add specific methods when they involve complex joins/relations.
+- **DAOs** inject `EntityManager` from `@mikro-orm/postgresql`. Use `FilterQuery<T>` for type-safe filtering — avoid proliferating `findByX` methods. Only add specific methods when they involve complex joins/raw SQL.
 - **DTOs** use Zod schemas with `createZodDto()` from `nestjs-zod`. Keep all DTOs for a module in a single file.
-- **Entities** are plain TypeORM-decorated classes. Schema changes must go through `migration:generate`.
+- **Entities** are MikroORM-decorated classes. Schema changes must go through `migration:generate`.
 
 ### Key modules in `src/v1/`
 

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { WebhookProcessedEventDao } from './dao/webhook-processed-event.dao';
 import { WebhookSyncStateDao } from './dao/webhook-sync-state.dao';

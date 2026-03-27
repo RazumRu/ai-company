@@ -1,8 +1,7 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, NotFoundException } from '@packages/common';
-import { TypeormService } from '@packages/typeorm';
 import { isUndefined, pickBy } from 'lodash';
-import { EntityManager } from 'typeorm';
 import { z } from 'zod';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -43,7 +42,7 @@ export type KnowledgeDocListResult = {
 export class KnowledgeService {
   constructor(
     private readonly docDao: KnowledgeDocDao,
-    private readonly typeorm: TypeormService,
+    private readonly em: EntityManager,
     private readonly openaiService: OpenaiService,
     private readonly llmModelsService: LlmModelsService,
     private readonly knowledgeChunksService: KnowledgeChunksService,
@@ -88,7 +87,7 @@ export class KnowledgeService {
       embeddingModel,
     );
 
-    const doc = await this.typeorm.trx(async (entityManager: EntityManager) => {
+    const doc = await this.em.transactional(async (em: EntityManager) => {
       const doc = await this.docDao.create(
         {
           content,
@@ -100,7 +99,7 @@ export class KnowledgeService {
           createdBy: userId,
           projectId,
         },
-        entityManager,
+        em,
       );
       return doc;
     });
@@ -164,21 +163,14 @@ export class KnowledgeService {
       updateData.tags = normalizeTags(dto.tags, MAX_TAGS);
     }
 
-    const updated = await this.typeorm.trx(
-      async (entityManager: EntityManager) => {
-        const updated = await this.docDao.updateById(
-          id,
-          updateData,
-          entityManager,
-        );
+    await this.em.transactional(async (em: EntityManager) => {
+      await this.docDao.updateById(id, updateData, em);
+    });
 
-        if (!updated) {
-          throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
-        }
-
-        return updated;
-      },
-    );
+    const updated = await this.docDao.getOne({ id, createdBy: userId });
+    if (!updated) {
+      throw new NotFoundException('KNOWLEDGE_DOC_NOT_FOUND');
+    }
 
     if (dto.content) {
       await this.knowledgeChunksService.upsertDocChunks(
@@ -205,9 +197,7 @@ export class KnowledgeService {
     // orphan vectors in Qdrant with no DB record to reference.
     await this.knowledgeChunksService.deleteDocChunks(id);
 
-    await this.typeorm.trx(async (entityManager: EntityManager) => {
-      await this.docDao.deleteById(id, entityManager);
-    });
+    await this.docDao.deleteById(id);
   }
 
   async listDocs(
@@ -218,21 +208,18 @@ export class KnowledgeService {
 
     const tags = normalizeFilterTags(query.tags);
 
-    const searchParams = {
+    const baseWhere = {
       createdBy: userId,
-      tags,
-      search: query.search,
       projectId: ctx.checkProjectId(),
-      order: { updatedAt: 'DESC' as const },
     };
 
     const [rows, total] = await Promise.all([
-      this.docDao.getAll({
-        ...searchParams,
+      this.docDao.search(baseWhere, query.search, tags, {
+        orderBy: { updatedAt: 'DESC' },
         limit: query.limit,
         offset: query.offset,
       }),
-      this.docDao.count(searchParams),
+      this.docDao.count(baseWhere),
     ]);
 
     return {

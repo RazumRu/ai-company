@@ -1,17 +1,15 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1761684645739 implements MigrationInterface {
-  name = 'Generated1761684645739';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1761684645739 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "threads"
             ADD "source" character varying
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "threads" DROP COLUMN "source"
         `);
   }

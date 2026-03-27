@@ -28,8 +28,10 @@ export class ThreadsListener {
         this.logger.log(
           `Deleting ${threadIds.length} threads and their messages for graph ${event.graphId} by user ${event.userId}`,
         );
-        await this.messagesDao.delete({ threadIds });
-        await this.threadsDao.delete({
+        for (const threadId of threadIds) {
+          await this.messagesDao.hardDelete({ threadId });
+        }
+        await this.threadsDao.hardDelete({
           graphId: event.graphId,
           createdBy: event.userId,
         });

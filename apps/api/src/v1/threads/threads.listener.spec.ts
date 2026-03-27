@@ -17,11 +17,11 @@ describe('ThreadsListener', () => {
         ThreadsListener,
         {
           provide: ThreadsDao,
-          useValue: { getAll: vi.fn(), delete: vi.fn() },
+          useValue: { getAll: vi.fn(), hardDelete: vi.fn() },
         },
         {
           provide: MessagesDao,
-          useValue: { delete: vi.fn() },
+          useValue: { hardDelete: vi.fn() },
         },
         { provide: DefaultLogger, useValue: { log: vi.fn(), error: vi.fn() } },
       ],
@@ -38,8 +38,8 @@ describe('ThreadsListener', () => {
       { id: 'thread-2', graphId: 'g-1' },
     ];
     vi.mocked(threadsDao.getAll).mockResolvedValue(threads as never);
-    vi.mocked(messagesDao.delete).mockResolvedValue(undefined as never);
-    vi.mocked(threadsDao.delete).mockResolvedValue(undefined as never);
+    vi.mocked(messagesDao.hardDelete).mockResolvedValue(undefined as never);
+    vi.mocked(threadsDao.hardDelete).mockResolvedValue(undefined as never);
 
     await listener.onGraphDeleted({ graphId: 'g-1', userId: 'u-1' });
 
@@ -47,10 +47,14 @@ describe('ThreadsListener', () => {
       graphId: 'g-1',
       createdBy: 'u-1',
     });
-    expect(messagesDao.delete).toHaveBeenCalledWith({
-      threadIds: ['thread-1', 'thread-2'],
+    // Source iterates per thread calling hardDelete({ threadId })
+    expect(messagesDao.hardDelete).toHaveBeenCalledWith({
+      threadId: 'thread-1',
     });
-    expect(threadsDao.delete).toHaveBeenCalledWith({
+    expect(messagesDao.hardDelete).toHaveBeenCalledWith({
+      threadId: 'thread-2',
+    });
+    expect(threadsDao.hardDelete).toHaveBeenCalledWith({
       graphId: 'g-1',
       createdBy: 'u-1',
     });
@@ -61,8 +65,8 @@ describe('ThreadsListener', () => {
 
     await listener.onGraphDeleted({ graphId: 'g-1', userId: 'u-1' });
 
-    expect(messagesDao.delete).not.toHaveBeenCalled();
-    expect(threadsDao.delete).not.toHaveBeenCalled();
+    expect(messagesDao.hardDelete).not.toHaveBeenCalled();
+    expect(threadsDao.hardDelete).not.toHaveBeenCalled();
   });
 
   it('propagates DAO errors from threadsDao.getAll', async () => {
@@ -73,9 +77,9 @@ describe('ThreadsListener', () => {
     ).rejects.toThrow('DB failure');
   });
 
-  it('propagates DAO errors from messagesDao.delete', async () => {
+  it('propagates DAO errors from messagesDao.hardDelete', async () => {
     vi.mocked(threadsDao.getAll).mockResolvedValue([{ id: 't-1' }] as never);
-    vi.mocked(messagesDao.delete).mockRejectedValue(
+    vi.mocked(messagesDao.hardDelete).mockRejectedValue(
       new Error('Messages DB failure'),
     );
 
@@ -84,10 +88,10 @@ describe('ThreadsListener', () => {
     ).rejects.toThrow('Messages DB failure');
   });
 
-  it('propagates DAO errors from threadsDao.delete', async () => {
+  it('propagates DAO errors from threadsDao.hardDelete', async () => {
     vi.mocked(threadsDao.getAll).mockResolvedValue([{ id: 't-1' }] as never);
-    vi.mocked(messagesDao.delete).mockResolvedValue(undefined as never);
-    vi.mocked(threadsDao.delete).mockRejectedValue(
+    vi.mocked(messagesDao.hardDelete).mockResolvedValue(undefined as never);
+    vi.mocked(threadsDao.hardDelete).mockRejectedValue(
       new Error('Threads DB failure'),
     );
 

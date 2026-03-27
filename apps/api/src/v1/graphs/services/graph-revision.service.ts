@@ -1,16 +1,15 @@
+import { EntityManager, FilterQuery } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import {
   BadRequestException,
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { AdditionalParams, TypeormService } from '@packages/typeorm';
 import { UnrecoverableError } from 'bullmq';
 import { compare, type Operation } from 'fast-json-patch';
 import { isEqual } from 'lodash';
 import { coerce, compare as compareSemver, inc } from 'semver';
 import { setTimeout } from 'timers/promises';
-import { EntityManager } from 'typeorm';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
@@ -19,7 +18,7 @@ import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { GraphDao } from '../dao/graph.dao';
-import { GraphRevisionDao, SearchTerms } from '../dao/graph-revision.dao';
+import { GraphRevisionDao } from '../dao/graph-revision.dao';
 import {
   GraphRevisionDto,
   GraphRevisionQueryDto,
@@ -58,7 +57,7 @@ export class GraphRevisionService {
 
   constructor(
     private readonly logger: DefaultLogger,
-    private readonly typeorm: TypeormService,
+    private readonly em: EntityManager,
     private readonly graphDao: GraphDao,
     private readonly graphRevisionDao: GraphRevisionDao,
     private readonly notificationsService: NotificationsService,
@@ -83,7 +82,7 @@ export class GraphRevisionService {
   ): Promise<GraphRevisionDto & { entity: GraphRevisionEntity }> {
     const userId = ctx.checkSub();
 
-    const revision = await this.typeorm.trx(async (em: EntityManager) => {
+    const txFn = async (em: EntityManager) => {
       const { headVersion, headSchema } = await this.resolveHeadSchema(
         graph,
         em,
@@ -154,7 +153,12 @@ export class GraphRevisionService {
       );
 
       return revision;
-    }, entityManager);
+    };
+
+    // If an outer entityManager is provided, run within it; otherwise create a new transaction
+    const revision = entityManager
+      ? await txFn(entityManager)
+      : await this.em.transactional(txFn);
 
     // Emit notification only when queueRevision owns the transaction (no outer entityManager).
     // When called within an outer transaction, the caller is responsible for emitting
@@ -273,14 +277,12 @@ export class GraphRevisionService {
   private async getSchemaAtVersion(
     graphId: string,
     version: string,
-    entityManager?: EntityManager,
+    txEm?: EntityManager,
   ): Promise<GraphRevisionEntity | null> {
     const revision = await this.graphRevisionDao.getOne(
-      {
-        graphId,
-        toVersion: version,
-      },
-      entityManager,
+      { graphId, toVersion: version },
+      undefined,
+      txEm,
     );
 
     return revision || null;
@@ -484,20 +486,14 @@ export class GraphRevisionService {
     entityManager: EntityManager,
   ): Promise<void> {
     const diff = compare(currentHeadConfig, newConfig);
-    const updated = await this.graphRevisionDao.updateById(
+    await this.graphRevisionDao.updateById(
       revision.id,
       { newConfig, configDiff: diff },
-      {},
       entityManager,
     );
 
-    if (updated) {
-      revision.newConfig = updated.newConfig;
-      revision.configDiff = updated.configDiff as Operation[];
-    } else {
-      revision.newConfig = newConfig;
-      revision.configDiff = diff;
-    }
+    revision.newConfig = newConfig;
+    revision.configDiff = diff;
   }
 
   private async finalizeAppliedRevision(
@@ -536,10 +532,7 @@ export class GraphRevisionService {
 
     await this.graphRevisionDao.updateById(
       revision.id,
-      {
-        status: GraphRevisionStatus.Applied,
-      },
-      {},
+      { status: GraphRevisionStatus.Applied },
       entityManager,
     );
 
@@ -618,11 +611,8 @@ export class GraphRevisionService {
     baseConfigCache: GraphRevisionConfig | null,
   ): Promise<void> {
     // Phase 1: Short DB transaction -- re-merge and validate only
-    await this.typeorm.trx(async (entityManager) => {
-      const graph = await this.graphDao.getOne(
-        { id: revision.graphId },
-        entityManager,
-      );
+    await this.em.transactional(async (em) => {
+      const graph = await this.graphDao.getOne({ id: revision.graphId });
 
       if (!graph) {
         throw new NotFoundException('GRAPH_NOT_FOUND');
@@ -633,7 +623,7 @@ export class GraphRevisionService {
         graph,
         baseSchemaCache,
         baseConfigCache,
-        entityManager,
+        em,
       );
     });
 
@@ -651,17 +641,14 @@ export class GraphRevisionService {
     }
 
     // Phase 3: Short DB transaction to finalize
-    await this.typeorm.trx(async (entityManager) => {
-      const graph = await this.graphDao.getOne(
-        { id: revision.graphId },
-        entityManager,
-      );
+    await this.em.transactional(async (em) => {
+      const graph = await this.graphDao.getOne({ id: revision.graphId });
 
       if (!graph) {
         throw new NotFoundException('GRAPH_NOT_FOUND');
       }
 
-      await this.finalizeAppliedRevision(graph, revision, entityManager);
+      await this.finalizeAppliedRevision(graph, revision, em);
     });
 
     // Emit after Phase 3 transaction commits so the enrichment handler
@@ -703,9 +690,9 @@ export class GraphRevisionService {
   ): Promise<void> {
     this.logger.error(error, `Failed to apply graph revision ${revision.id}`);
 
-    await this.typeorm.trx(async (entityManager) => {
-      await this.resetTargetVersionIfNeeded(revision, entityManager);
-      await this.markRevisionAsFailed(revision, error, entityManager);
+    await this.em.transactional(async (em) => {
+      await this.resetTargetVersionIfNeeded(revision, em);
+      await this.markRevisionAsFailed(revision, error, em);
     });
 
     const compiledGraph = this.graphRegistry.get(revision.graphId);
@@ -744,10 +731,7 @@ export class GraphRevisionService {
     revision: GraphRevisionEntity,
     entityManager: EntityManager,
   ): Promise<void> {
-    const graph = await this.graphDao.getOne(
-      { id: revision.graphId },
-      entityManager,
-    );
+    const graph = await this.graphDao.getOne({ id: revision.graphId });
 
     if (graph && graph.targetVersion === revision.toVersion) {
       await this.graphDao.updateById(
@@ -766,7 +750,6 @@ export class GraphRevisionService {
     await this.graphRevisionDao.updateById(
       revision.id,
       { status: GraphRevisionStatus.Failed, error: error.message },
-      {},
       entityManager,
     );
   }
@@ -1088,17 +1071,18 @@ export class GraphRevisionService {
 
   private async pruneOldRevisions(
     graphId: string,
-    entityManager: EntityManager,
+    txEm: EntityManager,
   ): Promise<void> {
     try {
-      const revisionsToKeep = await entityManager
-        .getRepository(GraphRevisionEntity)
-        .createQueryBuilder('gr')
-        .select('gr.id')
-        .where('gr.graphId = :graphId', { graphId })
-        .orderBy('gr.createdAt', 'DESC')
-        .limit(GraphRevisionService.REVISION_RETENTION_LIMIT)
-        .getMany();
+      const revisionsToKeep = await this.graphRevisionDao.getAll(
+        { graphId },
+        {
+          fields: ['id'],
+          orderBy: { createdAt: 'DESC' },
+          limit: GraphRevisionService.REVISION_RETENTION_LIMIT,
+        },
+        txEm,
+      );
 
       const keepIds = revisionsToKeep.map((r) => r.id);
 
@@ -1106,14 +1090,10 @@ export class GraphRevisionService {
         return;
       }
 
-      await entityManager
-        .getRepository(GraphRevisionEntity)
-        .createQueryBuilder()
-        .delete()
-        .from(GraphRevisionEntity)
-        .where('graphId = :graphId', { graphId })
-        .andWhere('id NOT IN (:...keepIds)', { keepIds })
-        .execute();
+      await this.graphRevisionDao.hardDelete(
+        { graphId, id: { $nin: keepIds } },
+        txEm,
+      );
     } catch (error) {
       this.logger.warn(
         `Failed to prune old revisions for graph ${graphId}: ${(error as Error).message}`,
@@ -1169,26 +1149,19 @@ export class GraphRevisionService {
     query: GraphRevisionQueryDto,
   ): Promise<GraphRevisionDto[]> {
     const userId = ctx.checkSub();
-    const searchTerms: SearchTerms = {
+    const where: FilterQuery<GraphRevisionEntity> = {
       graphId,
       createdBy: userId,
     };
 
     if (query.status) {
-      searchTerms.status = query.status;
+      where.status = query.status;
     }
 
-    const params: SearchTerms & AdditionalParams = {
-      ...searchTerms,
-      orderBy: 'createdAt',
-      sortOrder: 'DESC',
-    };
-
-    if (typeof query.limit === 'number') {
-      params.limit = query.limit;
-    }
-
-    const revisions = await this.graphRevisionDao.getAll(params);
+    const revisions = await this.graphRevisionDao.getAll(where, {
+      orderBy: { createdAt: 'DESC' },
+      ...(typeof query.limit === 'number' ? { limit: query.limit } : {}),
+    });
 
     return revisions.map(this.prepareResponse.bind(this));
   }

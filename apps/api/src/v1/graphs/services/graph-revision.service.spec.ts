@@ -1,14 +1,13 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { TypeormService } from '@packages/typeorm';
 import { compare } from 'fast-json-patch';
 import type { FastifyRequest } from 'fastify';
 import * as timers from 'timers/promises';
-import { EntityManager } from 'typeorm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -44,7 +43,7 @@ describe('GraphRevisionService', () => {
   let graphMergeService: GraphMergeService;
   let graphRegistry: GraphRegistry;
   let templateRegistry: TemplateRegistry;
-  let typeorm: TypeormService;
+  let em: EntityManager;
   let notificationsService: NotificationsService;
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -61,31 +60,32 @@ describe('GraphRevisionService', () => {
 
   const createMockGraphEntity = (
     overrides: Partial<GraphEntity> = {},
-  ): GraphEntity => ({
-    id: mockGraphId,
-    name: 'Test Graph',
-    description: 'A test graph',
-    version: '1.0.0',
-    targetVersion: '1.0.0',
-    schema: {
-      nodes: [
-        {
-          id: 'node-1',
-          template: 'runtime',
-          config: { image: 'python:3.11' },
-        },
-      ],
-      edges: [],
-    },
-    status: GraphStatus.Running,
-    createdBy: mockUserId,
-    projectId: 'project-123',
-    temporary: false,
-    createdAt: new Date('2024-01-01T00:00:00Z'),
-    updatedAt: new Date('2024-01-01T00:00:00Z'),
-    deletedAt: null,
-    ...overrides,
-  });
+  ): GraphEntity =>
+    ({
+      id: mockGraphId,
+      name: 'Test Graph',
+      description: 'A test graph',
+      version: '1.0.0',
+      targetVersion: '1.0.0',
+      schema: {
+        nodes: [
+          {
+            id: 'node-1',
+            template: 'runtime',
+            config: { image: 'python:3.11' },
+          },
+        ],
+        edges: [],
+      },
+      status: GraphStatus.Running,
+      createdBy: mockUserId,
+      projectId: 'project-123',
+      temporary: false,
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      updatedAt: new Date('2024-01-01T00:00:00Z'),
+      deletedAt: null,
+      ...overrides,
+    }) as unknown as GraphEntity;
 
   const createMockUpdateEntity = (
     overrides: Partial<GraphRevisionEntity> = {},
@@ -203,9 +203,9 @@ describe('GraphRevisionService', () => {
           },
         },
         {
-          provide: TypeormService,
+          provide: EntityManager,
           useValue: {
-            trx: vi.fn(),
+            transactional: vi.fn(),
           },
         },
         {
@@ -255,7 +255,7 @@ describe('GraphRevisionService', () => {
     graphCompiler = module.get<GraphCompiler>(GraphCompiler);
     graphMergeService = module.get<GraphMergeService>(GraphMergeService);
     graphRegistry = module.get<GraphRegistry>(GraphRegistry);
-    typeorm = module.get<TypeormService>(TypeormService);
+    em = module.get<EntityManager>(EntityManager);
     notificationsService =
       module.get<NotificationsService>(NotificationsService);
     // authContext removal
@@ -279,8 +279,8 @@ describe('GraphRevisionService', () => {
       };
 
       // authContext expectation removal
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
@@ -334,8 +334,8 @@ describe('GraphRevisionService', () => {
       const mockUpdate = createMockUpdateEntity();
 
       // authContext expectation removal
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
       vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
@@ -344,7 +344,7 @@ describe('GraphRevisionService', () => {
         conflicts: [],
       });
       vi.mocked(graphUpdateDao.create).mockResolvedValue(mockUpdate);
-      vi.mocked(graphDao.updateById).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
       await service.queueRevision(
@@ -361,8 +361,8 @@ describe('GraphRevisionService', () => {
 
     it('should validate schema before queuing', async () => {
       // authContext expectation removal
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
 
       const mockGraph = createMockGraphEntity();
@@ -403,8 +403,8 @@ describe('GraphRevisionService', () => {
       };
 
       // authContext expectation removal
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
@@ -445,8 +445,8 @@ describe('GraphRevisionService', () => {
       const clientSchema = JSON.parse(JSON.stringify(mockGraph.schema));
 
       // authContext expectation removal
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
       vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
@@ -474,8 +474,8 @@ describe('GraphRevisionService', () => {
       const clientSchema = { nodes: [], edges: [] };
 
       // authContext expectation removal
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
       vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
@@ -527,13 +527,14 @@ describe('GraphRevisionService', () => {
         expect.objectContaining({
           graphId: mockGraphId,
           createdBy: mockUserId,
-          orderBy: 'createdAt',
-          sortOrder: 'DESC',
+        }),
+        expect.objectContaining({
+          orderBy: { createdAt: 'DESC' },
         }),
       );
 
-      const callArgs = vi.mocked(graphUpdateDao.getAll).mock.calls[0]?.[0];
-      expect(callArgs?.limit).toBeUndefined();
+      const optionsArg = vi.mocked(graphUpdateDao.getAll).mock.calls[0]?.[1];
+      expect(optionsArg?.limit).toBeUndefined();
     });
 
     it('should filter revisions by status if provided', async () => {
@@ -553,8 +554,9 @@ describe('GraphRevisionService', () => {
           graphId: mockGraphId,
           createdBy: mockUserId,
           status: GraphRevisionStatus.Applied,
-          orderBy: 'createdAt',
-          sortOrder: 'DESC',
+        }),
+        expect.objectContaining({
+          orderBy: { createdAt: 'DESC' },
         }),
       );
     });
@@ -571,9 +573,10 @@ describe('GraphRevisionService', () => {
         expect.objectContaining({
           graphId: mockGraphId,
           createdBy: mockUserId,
+        }),
+        expect.objectContaining({
+          orderBy: { createdAt: 'DESC' },
           limit: 1,
-          orderBy: 'createdAt',
-          sortOrder: 'DESC',
         }),
       );
     });
@@ -700,16 +703,18 @@ describe('GraphRevisionService', () => {
         },
       });
 
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
-      vi.mocked(graphUpdateDao.getOne).mockImplementation(async (params) => {
-        if (params?.toVersion === baseVersion) {
-          return baseRevision;
-        }
-        return null;
-      });
+      vi.mocked(graphUpdateDao.getOne).mockImplementation(
+        async (params: any) => {
+          if (params?.toVersion === baseVersion) {
+            return baseRevision;
+          }
+          return null;
+        },
+      );
       vi.mocked(graphMergeService.mergeSchemas).mockReturnValue({
         success: true,
         mergedSchema,
@@ -718,17 +723,13 @@ describe('GraphRevisionService', () => {
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
-      vi.mocked(graphDao.updateById).mockResolvedValue({
-        ...graph,
-        schema: mergedSchema,
-        version: toVersion,
-      });
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
       vi.mocked(graphUpdateDao.updateById).mockImplementation(
         async (_id: string, data: any) =>
           ({
             ...revision,
             ...(data || {}),
-          }) as GraphRevisionEntity,
+          }) as unknown as Promise<number>,
       );
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
@@ -827,8 +828,8 @@ describe('GraphRevisionService', () => {
         status: GraphStatus.Compiling,
       };
 
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
       vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
@@ -845,8 +846,8 @@ describe('GraphRevisionService', () => {
       vi.mocked(graphDao.getById).mockResolvedValue(graph);
 
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
-      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
-      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
       // Mock template registry for applyLiveUpdate
@@ -891,16 +892,16 @@ describe('GraphRevisionService', () => {
         status: GraphStatus.Stopped, // Graph is stopped, not being restored
       });
 
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
       vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
-      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
-      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
       await (
@@ -975,16 +976,16 @@ describe('GraphRevisionService', () => {
         status: GraphStatus.Stopped, // Status changed during wait
       });
 
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphUpdateDao.getById).mockResolvedValue(revision);
       vi.mocked(graphUpdateDao.getOne).mockResolvedValue(null);
       vi.mocked(graphDao.getOne).mockResolvedValue(runningGraph);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(graphCompiler.validateSchema).mockReturnValue(undefined);
-      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
-      vi.mocked(graphDao.updateById).mockResolvedValue(stoppedGraph);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
       // Return stopped graph on subsequent getById calls (simulating status change)
@@ -1029,12 +1030,12 @@ describe('GraphRevisionService', () => {
         status: GraphStatus.Running,
       };
 
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
-      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
-      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph as any);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
@@ -1069,12 +1070,12 @@ describe('GraphRevisionService', () => {
       const error = new Error('Merge failed');
       const graph = createMockGraphEntity({ status: GraphStatus.Stopped });
 
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
-      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
-      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
       vi.mocked(graphRegistry.get).mockReturnValue(undefined);
       vi.mocked(notificationsService.emit).mockResolvedValue(undefined as any);
 
@@ -1112,12 +1113,12 @@ describe('GraphRevisionService', () => {
         status: GraphStatus.Running,
       };
 
-      vi.mocked(typeorm.trx).mockImplementation(async (callback) => {
-        return await callback({} as EntityManager);
+      vi.mocked(em.transactional).mockImplementation(async (callback) => {
+        return await callback(em as never);
       });
       vi.mocked(graphDao.getOne).mockResolvedValue(graph);
-      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
-      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph as any);
       vi.mocked(graphRegistry.destroy).mockRejectedValue(
         new Error('Container cleanup failed'),
@@ -1191,8 +1192,8 @@ describe('GraphRevisionService', () => {
         }),
       } as unknown as EntityManager;
 
-      vi.mocked(graphDao.updateById).mockResolvedValue(graph);
-      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(revision);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
+      vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
 
       // Should not throw even though pruning will fail internally
       await expect(
@@ -1217,7 +1218,6 @@ describe('GraphRevisionService', () => {
         expect.objectContaining({
           status: GraphRevisionStatus.Applied,
         }),
-        {},
         mockEntityManager,
       );
       // GraphRevisionApplied notification is now emitted by applyRevisionTransaction

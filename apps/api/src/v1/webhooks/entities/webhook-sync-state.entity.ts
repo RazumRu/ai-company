@@ -1,17 +1,23 @@
-import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Entity,
+  Enum,
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
 import { WebhookSubscriberType } from '../webhooks.types';
 
-@Entity('webhook_sync_state')
+@Entity({ tableName: 'webhook_sync_state' })
 export class WebhookSyncStateEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Index({ unique: true })
-  @Column({ type: 'enum', enum: WebhookSubscriberType })
+  @Unique()
+  @Enum({ items: () => WebhookSubscriberType })
   type!: WebhookSubscriberType;
 
-  @Column({ type: 'timestamptz' })
+  @Property({ type: 'timestamptz' })
   lastSyncDate!: Date;
 }

@@ -134,13 +134,10 @@ export class KnowledgeSearchChunksTool extends BaseTool<
     }
 
     const tagsFilter = normalizeFilterTags(config.tags);
-    const docs = await this.docDao.getAll({
-      createdBy: graphCreatedBy,
-      publicIds: args.docIds,
-      tags: tagsFilter,
-      projection: ['id', 'publicId'],
-      order: { updatedAt: 'DESC' },
-    });
+    const docs = await this.docDao.getAll(
+      { createdBy: graphCreatedBy, publicId: { $in: args.docIds } },
+      { fields: ['id', 'publicId'], orderBy: { updatedAt: 'DESC' } },
+    );
 
     if (docs.length === 0) {
       return { output: [] };

@@ -135,12 +135,10 @@ export class KnowledgeGetChunksTool extends BaseTool<
     const docIds = Array.from(
       new Set(parsedChunks.map((chunk) => chunk.docId)),
     );
-    const docs = await this.docDao.getAll({
-      ids: docIds,
-      createdBy: graphCreatedBy,
-      tags: tagsFilter,
-      projection: ['id', 'publicId', 'tags'],
-    });
+    const docs = await this.docDao.getAll(
+      { id: { $in: docIds }, createdBy: graphCreatedBy },
+      { fields: ['id', 'publicId', 'tags'] },
+    );
     const allowedDocs = tagsFilter?.length
       ? docs.filter((doc) => this.hasMatchingTag(doc.tags ?? [], tagsFilter))
       : docs;

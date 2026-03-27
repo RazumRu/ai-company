@@ -1,6 +1,6 @@
+import { MikroORM } from '@mikro-orm/postgresql';
 import type { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -43,8 +43,13 @@ describe('Knowledge tools (integration)', () => {
     getDocTool = await app.resolve(KnowledgeGetDocTool);
     docDao = app.get(KnowledgeDocDao);
     qdrantService = app.get(QdrantService);
-    const dataSource = app.get(DataSource);
-    await dataSource.synchronize();
+    const orm = app.get(MikroORM);
+    const schemaGenerator = (
+      orm as unknown as {
+        getSchemaGenerator(): { updateSchema(): Promise<void> };
+      }
+    ).getSchemaGenerator();
+    await schemaGenerator.updateSchema();
 
     const projectResult = await createTestProject(app);
     testProjectId = projectResult.projectId;

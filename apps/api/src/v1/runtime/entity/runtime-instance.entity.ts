@@ -1,51 +1,56 @@
-import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Entity,
+  Enum,
+  Index,
+  PrimaryKey,
+  Property,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
 import type { RuntimeStartParams } from '../runtime.types';
 import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
 
-@Entity('runtime_instances')
-@Index(['graphId', 'nodeId', 'threadId'], { unique: true })
+@Entity({ tableName: 'runtime_instances' })
+@Index({
+  properties: ['graphId', 'nodeId', 'threadId'],
+  options: { unique: true },
+})
 export class RuntimeInstanceEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Property({ type: 'uuid', nullable: true })
   @Index()
   graphId!: string | null;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   nodeId!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   threadId!: string;
 
-  @Column({
-    type: 'enum',
-    enum: RuntimeType,
-  })
+  @Enum({ items: () => RuntimeType })
   type!: RuntimeType;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Property({ length: 255 })
   containerName!: string;
 
-  @Column({
-    type: 'enum',
-    enum: RuntimeInstanceStatus,
+  @Enum({
+    items: () => RuntimeInstanceStatus,
     default: RuntimeInstanceStatus.Starting,
   })
   @Index()
   status!: RuntimeInstanceStatus;
 
-  @Column({ type: 'jsonb' })
+  @Property({ type: 'jsonb' })
   config!: RuntimeStartParams;
 
-  @Column({ type: 'boolean', default: false })
-  @Index('IDX_runtime_instances_temporary')
+  @Property({ type: 'boolean', default: false })
+  @Index({ name: 'IDX_runtime_instances_temporary' })
   temporary!: boolean;
 
-  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+  @Property({ type: 'timestamptz', defaultRaw: 'CURRENT_TIMESTAMP' })
   @Index()
   lastUsedAt!: Date;
 }

@@ -1,24 +1,22 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1772723656606 implements MigrationInterface {
-  name = 'Generated1772723656606';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1772723656606 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "git_repositories"
             ADD "installationId" integer
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "git_repositories"
             ADD "syncedAt" TIMESTAMP WITH TIME ZONE
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "git_repositories" DROP COLUMN "syncedAt"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "git_repositories" DROP COLUMN "installationId"
         `);
   }

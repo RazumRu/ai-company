@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { WebhooksModule } from '../webhooks/webhooks.module';
 import { GitHubAuthController } from './controllers/github-auth.controller';

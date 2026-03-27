@@ -1,38 +1,36 @@
 import {
-  Column,
   Entity,
-  Generated,
   Index,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
-
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
 import { AuditEntity } from '../../../auth/audit.entity';
 
-@Entity('knowledge_docs')
+@Entity({ tableName: 'knowledge_docs' })
 export class KnowledgeDocEntity extends AuditEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'int' })
-  @Generated('increment')
-  @Index({ unique: true })
+  @Property({ type: 'int', autoincrement: true })
+  @Unique()
   publicId!: number;
 
-  @Column({ type: 'text' })
+  @Property({ type: 'text' })
   content!: string;
 
-  @Column({ type: 'text' })
+  @Property({ type: 'text' })
   title!: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Property({ type: 'text', nullable: true })
   summary?: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Property({ type: 'text', nullable: true })
   politic?: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Property({ type: 'text', nullable: true })
   embeddingModel?: string | null;
 
-  @Column({ type: 'jsonb', default: () => "'[]'" })
+  @Property({ type: 'jsonb', default: '[]' })
   tags!: string[];
 }

@@ -1,30 +1,28 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class AddParentThreadIdToGraphCheckpoints1768196540296 implements MigrationInterface {
-  name = 'AddParentThreadIdToGraphCheckpoints1768196540296';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
+export class AddParentThreadIdToGraphCheckpoints1768196540296 extends Migration {
+  override async up(): Promise<void> {
     // Add parentThreadId column to graph_checkpoints table
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_checkpoints"
             ADD COLUMN "parentThreadId" VARCHAR
         `);
 
     // Create index on parentThreadId for efficient lookups
-    await queryRunner.query(`
+    this.addSql(`
             CREATE INDEX "IDX_graph_checkpoints_parentThreadId"
             ON "graph_checkpoints" ("parentThreadId")
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
+  override async down(): Promise<void> {
     // Drop index first
-    await queryRunner.query(`
+    this.addSql(`
             DROP INDEX "IDX_graph_checkpoints_parentThreadId"
         `);
 
     // Drop column
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_checkpoints"
             DROP COLUMN "parentThreadId"
         `);

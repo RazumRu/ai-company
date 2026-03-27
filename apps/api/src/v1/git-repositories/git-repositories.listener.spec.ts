@@ -13,7 +13,7 @@ describe('GitRepositoriesListener', () => {
     const module = await Test.createTestingModule({
       providers: [
         GitRepositoriesListener,
-        { provide: GitRepositoriesDao, useValue: { delete: vi.fn() } },
+        { provide: GitRepositoriesDao, useValue: { hardDelete: vi.fn() } },
         { provide: DefaultLogger, useValue: { log: vi.fn(), error: vi.fn() } },
       ],
     }).compile();
@@ -23,18 +23,20 @@ describe('GitRepositoriesListener', () => {
   });
 
   it('deletes git repositories for the deleted project', async () => {
-    vi.mocked(gitRepositoriesDao.delete).mockResolvedValue(undefined as never);
+    vi.mocked(gitRepositoriesDao.hardDelete).mockResolvedValue(
+      undefined as never,
+    );
 
     await listener.onProjectDeleted({ projectId: 'p-1', userId: 'u-1' });
 
-    expect(gitRepositoriesDao.delete).toHaveBeenCalledWith({
+    expect(gitRepositoriesDao.hardDelete).toHaveBeenCalledWith({
       projectId: 'p-1',
       createdBy: 'u-1',
     });
   });
 
   it('propagates DAO errors', async () => {
-    vi.mocked(gitRepositoriesDao.delete).mockRejectedValue(
+    vi.mocked(gitRepositoriesDao.hardDelete).mockRejectedValue(
       new Error('DB failure'),
     );
 

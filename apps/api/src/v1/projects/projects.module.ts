@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { ProjectsController } from './controllers/projects.controller';
 import { ProjectsDao } from './dao/projects.dao';

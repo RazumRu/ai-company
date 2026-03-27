@@ -1,7 +1,7 @@
+import { EntityManager, MikroORM } from '@mikro-orm/postgresql';
 import type { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
 import type { FastifyRequest } from 'fastify';
-import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -37,38 +37,39 @@ describe('ProjectsService (integration)', () => {
     projectsDao = app.get(ProjectsDao);
     graphDao = app.get(GraphDao);
     threadsDao = app.get(ThreadsDao);
-    const dataSource = app.get(DataSource);
+    const em = app.get(EntityManager);
+    const conn = em.getConnection();
 
-    // Backfill NULL projectId rows before synchronize() attempts SET NOT NULL.
+    // Backfill NULL project_id rows before updateSchema() attempts SET NOT NULL.
     // This mirrors the data migration in 1772088372277-AddProjectsFeature.
-    const qr = dataSource.createQueryRunner();
-    await qr.connect();
-    try {
-      await qr.query(`
-        INSERT INTO "projects" ("id","name","description","icon","color","settings","createdBy","createdAt","updatedAt")
-        SELECT gen_random_uuid(),'Default',NULL,NULL,NULL,'{}',sub,NOW(),NOW()
-        FROM (
-          SELECT DISTINCT "createdBy" AS sub FROM "graphs" WHERE "projectId" IS NULL
-          UNION
-          SELECT DISTINCT "createdBy" AS sub FROM "knowledge_docs" WHERE "projectId" IS NULL
-          UNION
-          SELECT DISTINCT "createdBy" AS sub FROM "git_repositories" WHERE "projectId" IS NULL
-        ) AS users
-        ON CONFLICT DO NOTHING
+    await conn.execute(`
+      INSERT INTO "projects" ("id","name","description","icon","color","settings","created_by","created_at","updated_at")
+      SELECT gen_random_uuid(),'Default',NULL,NULL,NULL,'{}',sub,NOW(),NOW()
+      FROM (
+        SELECT DISTINCT "created_by" AS sub FROM "graphs" WHERE "project_id" IS NULL
+        UNION
+        SELECT DISTINCT "created_by" AS sub FROM "knowledge_docs" WHERE "project_id" IS NULL
+        UNION
+        SELECT DISTINCT "created_by" AS sub FROM "git_repositories" WHERE "project_id" IS NULL
+      ) AS users
+      ON CONFLICT DO NOTHING
+    `);
+    for (const table of ['graphs', 'knowledge_docs', 'git_repositories']) {
+      await conn.execute(`
+        UPDATE "${table}" t SET "project_id" = (
+          SELECT p."id" FROM "projects" p WHERE p."created_by" = t."created_by"
+          ORDER BY p."created_at" ASC LIMIT 1
+        ) WHERE t."project_id" IS NULL
       `);
-      for (const table of ['graphs', 'knowledge_docs', 'git_repositories']) {
-        await qr.query(`
-          UPDATE "${table}" t SET "projectId" = (
-            SELECT p."id" FROM "projects" p WHERE p."createdBy" = t."createdBy"
-            ORDER BY p."createdAt" ASC LIMIT 1
-          ) WHERE t."projectId" IS NULL
-        `);
-      }
-    } finally {
-      await qr.release();
     }
 
-    await dataSource.synchronize();
+    const orm = app.get(MikroORM);
+    const schemaGenerator = (
+      orm as unknown as {
+        getSchemaGenerator(): { updateSchema(): Promise<void> };
+      }
+    ).getSchemaGenerator();
+    await schemaGenerator.updateSchema();
   }, 120_000);
 
   afterEach(async () => {
@@ -441,10 +442,10 @@ describe('ProjectsService (integration)', () => {
       expect(afterDelete).toBeNull();
 
       // Confirm deletedAt is set on the soft-deleted row
-      const withDeleted = await graphDao.getOne({
-        id: graph.id,
-        withDeleted: true,
-      });
+      const withDeleted = await graphDao.getOne(
+        { id: graph.id },
+        { filters: { softDelete: false } },
+      );
       expect(withDeleted).not.toBeNull();
       expect(withDeleted!.deletedAt).not.toBeNull();
 

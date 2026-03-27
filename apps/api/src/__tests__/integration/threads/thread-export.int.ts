@@ -49,7 +49,7 @@ describe('Thread Export Integration Tests', () => {
 
     const project = await projectsDao.create({
       name: `Thread Export Test Project ${Date.now()}`,
-      description: null,
+      description: undefined,
       icon: null,
       color: null,
       settings: {},
@@ -61,7 +61,7 @@ describe('Thread Export Integration Tests', () => {
 
   afterEach(async () => {
     for (const threadId of createdThreadIds) {
-      await messagesDao.delete({ threadId });
+      await messagesDao.hardDelete({ threadId });
       await threadsDao.deleteById(threadId);
     }
     createdThreadIds.length = 0;
@@ -81,7 +81,7 @@ describe('Thread Export Integration Tests', () => {
     const graph = await graphDao.create({
       name: 'Export Test Graph',
       description: 'Graph for export test',
-      error: null,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: {
@@ -102,7 +102,7 @@ describe('Thread Export Integration Tests', () => {
       projectId: testProjectId,
       externalThreadId: `export-test-${Date.now()}`,
       metadata: {},
-      source: null,
+      source: undefined,
       name: 'Export Test Thread',
       status: ThreadStatus.Done,
     });
@@ -166,8 +166,8 @@ describe('Thread Export Integration Tests', () => {
   it('sets isRunning: true for a running thread', async () => {
     const graph = await graphDao.create({
       name: 'Running Thread Export Graph',
-      description: null,
-      error: null,
+      description: undefined,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
@@ -185,8 +185,8 @@ describe('Thread Export Integration Tests', () => {
       projectId: testProjectId,
       externalThreadId: `running-export-${Date.now()}`,
       metadata: {},
-      source: null,
-      name: null,
+      source: undefined,
+      name: undefined,
       status: ThreadStatus.Running,
     });
     createdThreadIds.push(thread.id);
@@ -207,8 +207,8 @@ describe('Thread Export Integration Tests', () => {
     // but getSchemaAndMetadata excludes soft-deleted rows → returns empty map → graph: null.
     const graph = await graphDao.create({
       name: 'Soft-Deleted Graph For Export',
-      description: null,
-      error: null,
+      description: undefined,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
@@ -226,8 +226,8 @@ describe('Thread Export Integration Tests', () => {
       projectId: testProjectId,
       externalThreadId: `deleted-graph-export-${Date.now()}`,
       metadata: {},
-      source: null,
-      name: null,
+      source: undefined,
+      name: undefined,
       status: ThreadStatus.Done,
     });
     createdThreadIds.push(thread.id);
@@ -248,8 +248,8 @@ describe('Thread Export Integration Tests', () => {
   it('getThreadExportFile throws NotFoundException for a different user', async () => {
     const graph = await graphDao.create({
       name: 'Validate Access Graph',
-      description: null,
-      error: null,
+      description: undefined,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
@@ -267,8 +267,8 @@ describe('Thread Export Integration Tests', () => {
       projectId: testProjectId,
       externalThreadId: `validate-access-${Date.now()}`,
       metadata: {},
-      source: null,
-      name: null,
+      source: undefined,
+      name: undefined,
       status: ThreadStatus.Done,
     });
     createdThreadIds.push(thread.id);

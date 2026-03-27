@@ -1,12 +1,12 @@
-import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Index } from 'typeorm';
+import { Index, Property } from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
-export class AuditEntity extends TimestampsEntity {
-  @Column({ type: 'varchar' })
+export abstract class AuditEntity extends TimestampsEntity {
+  @Property({ type: 'varchar' })
   @Index()
   createdBy!: string;
 
-  @Column({ type: 'uuid' })
+  @Property({ type: 'uuid' })
   @Index()
   projectId!: string;
 }

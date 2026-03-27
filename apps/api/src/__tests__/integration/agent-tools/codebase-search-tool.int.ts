@@ -1,7 +1,7 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
+import { EntityManager } from '@mikro-orm/postgresql';
 import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { DataSource } from 'typeorm';
 import { v5 as uuidv5 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -108,17 +108,17 @@ describe('Codebase search tool (integration)', () => {
 
     // Ensure a git_repositories row exists so repo_indexes FK is satisfied.
     // Hard-delete any stale rows (including soft-deleted) first, then upsert.
-    const dataSource = app.get(DataSource);
-    await dataSource.query(
-      `DELETE FROM "repo_indexes" WHERE "repositoryId" = $1`,
-      [REPOSITORY_ID],
-    );
-    await dataSource.query(`DELETE FROM "git_repositories" WHERE "id" = $1`, [
+    const em = app.get(EntityManager);
+    const conn = em.getConnection();
+    await conn.execute(`DELETE FROM "repo_indexes" WHERE "repository_id" = ?`, [
       REPOSITORY_ID,
     ]);
-    await dataSource.query(
-      `INSERT INTO "git_repositories" ("id", "owner", "repo", "url", "provider", "createdBy", "defaultBranch", "projectId")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    await conn.execute(`DELETE FROM "git_repositories" WHERE "id" = ?`, [
+      REPOSITORY_ID,
+    ]);
+    await conn.execute(
+      `INSERT INTO "git_repositories" ("id", "owner", "repo", "url", "provider", "created_by", "default_branch", "project_id")
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         REPOSITORY_ID,
         'local',
@@ -163,12 +163,13 @@ describe('Codebase search tool (integration)', () => {
   afterAll(async () => {
     // Hard-delete repo_indexes first, then git_repositories (FK order)
     try {
-      const dataSource = app.get(DataSource);
-      await dataSource.query(
-        `DELETE FROM "repo_indexes" WHERE "repositoryId" = $1`,
+      const em = app.get(EntityManager);
+      const conn = em.getConnection();
+      await conn.execute(
+        `DELETE FROM "repo_indexes" WHERE "repository_id" = ?`,
         [REPOSITORY_ID],
       );
-      await dataSource.query(`DELETE FROM "git_repositories" WHERE "id" = $1`, [
+      await conn.execute(`DELETE FROM "git_repositories" WHERE "id" = ?`, [
         REPOSITORY_ID,
       ]);
     } catch {

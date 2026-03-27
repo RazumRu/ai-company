@@ -38,7 +38,7 @@ describe('GraphRestorationService', () => {
     vi.mocked(graphDao.getAll).mockResolvedValueOnce(statusGraphs);
   };
 
-  const mockGraph: GraphEntity = {
+  const mockGraph = {
     id: 'test-graph-id',
     name: 'Test Graph',
     description: 'Test Description',
@@ -75,7 +75,7 @@ describe('GraphRestorationService', () => {
     updatedAt: new Date(),
     deletedAt: null,
     temporary: false,
-  };
+  } as unknown as GraphEntity;
 
   const mockCompiledGraph = {
     metadata: {
@@ -212,7 +212,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphsService.run).toHaveBeenCalledWith(
         expect.anything(),
@@ -229,7 +229,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphCompiler.compile).not.toHaveBeenCalled();
       expect(graphRegistry.register).not.toHaveBeenCalled();
@@ -247,7 +247,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphsService.run).toHaveBeenCalledWith(
         expect.anything(),
@@ -265,7 +265,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphCompiler.compile).not.toHaveBeenCalled();
       expect(graphRegistry.register).not.toHaveBeenCalled();
@@ -305,7 +305,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphsService.run).toHaveBeenCalledWith(
         expect.anything(),
@@ -326,7 +326,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphsService.run).not.toHaveBeenCalled();
     });
@@ -340,7 +340,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphsService.run).not.toHaveBeenCalled();
     });
@@ -366,7 +366,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(graphsService.run).toHaveBeenCalledWith(
         expect.anything(),
@@ -396,7 +396,7 @@ describe('GraphRestorationService', () => {
 
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
     });
 
@@ -429,7 +429,7 @@ describe('GraphRestorationService', () => {
       // Assert
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: 'test-graph-id',
@@ -458,7 +458,7 @@ describe('GraphRestorationService', () => {
       // Assert
       expect(graphDao.hardDelete).toHaveBeenCalledWith({ temporary: true });
       expect(graphDao.getAll).toHaveBeenCalledWith({
-        statuses: [GraphStatus.Running, GraphStatus.Compiling],
+        status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
       });
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: 'test-graph-id',

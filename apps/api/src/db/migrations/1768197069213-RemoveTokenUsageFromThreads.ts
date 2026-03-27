@@ -1,20 +1,18 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class RemoveTokenUsageFromThreads1768197069213 implements MigrationInterface {
-  name = 'RemoveTokenUsageFromThreads1768197069213';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
+export class RemoveTokenUsageFromThreads1768197069213 extends Migration {
+  override async up(): Promise<void> {
     // Remove tokenUsage column from threads table
     // Token usage is now stored in checkpoint state only
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "threads"
             DROP COLUMN "tokenUsage"
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
+  override async down(): Promise<void> {
     // Re-add tokenUsage column
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "threads"
             ADD "tokenUsage" jsonb
         `);

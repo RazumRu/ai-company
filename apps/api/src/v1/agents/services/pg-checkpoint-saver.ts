@@ -10,7 +10,6 @@ import {
 } from '@langchain/langgraph-checkpoint';
 import { Injectable, Optional, Scope } from '@nestjs/common';
 import { ValidationException } from '@packages/common';
-import { Brackets } from 'typeorm';
 
 import { SUBAGENT_THREAD_PREFIX } from '../agents.types';
 import { GraphCheckpointsDao } from '../dao/graph-checkpoints.dao';
@@ -59,13 +58,17 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const { threadId, checkpointNs, checkpointId } = this.k(config);
-    const doc = await this.graphCheckpointsDao.getOne({
-      threadId,
-      checkpointNs,
-      checkpointId,
-      order: checkpointId ? undefined : { checkpointId: 'DESC' },
-      limit: 1,
-    });
+    const doc = await this.graphCheckpointsDao.getOne(
+      {
+        threadId,
+        checkpointNs,
+        ...(checkpointId ? { checkpointId } : {}),
+      },
+      {
+        ...(checkpointId ? {} : { orderBy: { checkpointId: 'DESC' } }),
+        limit: 1,
+      },
+    );
     if (!doc) {
       return undefined;
     }
@@ -88,28 +91,24 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     includeWrites = false,
   ): Promise<(CheckpointTuple & { nodeId?: string })[]> {
     // Get all checkpoints for this thread
-    const checkpoints = await this.graphCheckpointsDao.getAll({
-      threadId,
-      checkpointNs,
-      order: { checkpointId: 'DESC' },
-    });
+    const checkpoints = await this.graphCheckpointsDao.getAll(
+      { threadId, checkpointNs },
+      { orderBy: { checkpointId: 'DESC' } },
+    );
 
     // Also get checkpoints where this threadId is the parent (nested agent runs
     // from inter-agent communication in multi-agent graphs).
-    // Subagent checkpoints (threadId starts with "subagent-") are excluded at
-    // the SQL level because their token usage is already folded into the parent
+    // Subagent checkpoints (threadId starts with "subagent-") are excluded
+    // because their token usage is already folded into the parent
     // checkpoint by tool-executor-node's aggregatedToolUsage spread.
-    const nestedCheckpoints = await this.graphCheckpointsDao.getAll({
-      parentThreadId: threadId,
-      checkpointNs,
-      order: { checkpointId: 'DESC' },
-      customCondition: new Brackets((qb) =>
-        qb.andWhere(
-          `${this.graphCheckpointsDao.alias}.threadId NOT LIKE :subagentPrefix`,
-          { subagentPrefix: `${SUBAGENT_THREAD_PREFIX}%` },
-        ),
-      ),
-    });
+    const nestedCheckpoints = await this.graphCheckpointsDao.getAll(
+      {
+        parentThreadId: threadId,
+        checkpointNs,
+        threadId: { $not: { $like: `${SUBAGENT_THREAD_PREFIX}%` } },
+      },
+      { orderBy: { checkpointId: 'DESC' } },
+    );
 
     // Combine and deduplicate - keep latest checkpoint per unique threadId
     const allCheckpoints = [...checkpoints, ...nestedCheckpoints];
@@ -158,12 +157,14 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
 
     const pendingWrites = includeWrites
       ? await (async () => {
-          const writes = await this.graphCheckpointsWritesDao.getAll({
-            threadId,
-            checkpointNs,
-            checkpointId: doc.checkpointId,
-            order: { taskId: 'ASC', idx: 'ASC' },
-          });
+          const writes = await this.graphCheckpointsWritesDao.getAll(
+            {
+              threadId,
+              checkpointNs,
+              checkpointId: doc.checkpointId,
+            },
+            { orderBy: { taskId: 'ASC', idx: 'ASC' } },
+          );
 
           return Promise.all(
             writes.map(
@@ -223,20 +224,17 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     )?.checkpoint_id;
     const beforeId = typeof before === 'string' ? before : undefined;
 
-    const rows = await this.graphCheckpointsDao.getAll({
-      threadId,
-      checkpointNs,
-      order: { checkpointId: 'DESC' },
-      limit: options?.limit,
-      customCondition: beforeId
-        ? new Brackets((qb) =>
-            qb.andWhere(
-              `${this.graphCheckpointsDao.alias}.checkpointId < :cid`,
-              { cid: beforeId },
-            ),
-          )
-        : undefined,
-    });
+    const rows = await this.graphCheckpointsDao.getAll(
+      {
+        threadId,
+        checkpointNs,
+        ...(beforeId ? { checkpointId: { $lt: beforeId } } : {}),
+      },
+      {
+        orderBy: { checkpointId: 'DESC' },
+        ...(options?.limit ? { limit: options.limit } : {}),
+      },
+    );
 
     for (const doc of rows) {
       const checkpoint = (await this.serde.loadsTyped(

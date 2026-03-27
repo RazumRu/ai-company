@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ThreadsDao } from '../threads/dao/threads.dao';

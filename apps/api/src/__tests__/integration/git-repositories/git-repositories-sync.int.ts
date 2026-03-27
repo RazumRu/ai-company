@@ -1,6 +1,6 @@
+import { EntityManager, type FilterQuery } from '@mikro-orm/postgresql';
 import type { INestApplication } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import { DataSource } from 'typeorm';
 import {
   afterAll,
   afterEach,
@@ -18,6 +18,7 @@ import { GitProvider } from '../../../v1/git-auth/git-auth.types';
 import { GitHubAppService } from '../../../v1/git-auth/services/github-app.service';
 import { GitHubAppProviderService } from '../../../v1/git-auth/services/github-app-provider.service';
 import { GitRepositoriesDao } from '../../../v1/git-repositories/dao/git-repositories.dao';
+import { GitRepositoryEntity } from '../../../v1/git-repositories/entity/git-repository.entity';
 import { GitRepositoryProvider } from '../../../v1/git-repositories/git-repositories.types';
 import { GitRepositoriesService } from '../../../v1/git-repositories/services/git-repositories.service';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
@@ -83,10 +84,10 @@ describe('GitRepositoriesService sync (integration)', () => {
     // Create a test project with a deterministic ID so ctx.checkProjectId() resolves correctly.
     const existingProject = await projectsDao.getOne({ id: TEST_PROJECT_ID });
     if (!existingProject) {
-      const dataSource = app.get(DataSource);
-      await dataSource.query(
-        `INSERT INTO projects (id, name, "createdBy", settings, "createdAt", "updatedAt")
-         VALUES ($1, $2, $3, $4, NOW(), NOW())
+      const em = app.get(EntityManager);
+      await em.getConnection().execute(
+        `INSERT INTO projects (id, name, "created_by", settings, "created_at", "updated_at")
+         VALUES (?, ?, ?, ?, NOW(), NOW())
          ON CONFLICT (id) DO NOTHING`,
         [TEST_PROJECT_ID, 'Sync Integration Test Project', TEST_USER_ID, '{}'],
       );
@@ -127,10 +128,10 @@ describe('GitRepositoriesService sync (integration)', () => {
   afterAll(async () => {
     if (projectCreated) {
       try {
-        const dataSource = app.get(DataSource);
-        await dataSource.query(`DELETE FROM projects WHERE id = $1`, [
-          TEST_PROJECT_ID,
-        ]);
+        const em = app.get(EntityManager);
+        await em
+          .getConnection()
+          .execute(`DELETE FROM projects WHERE id = ?`, [TEST_PROJECT_ID]);
       } catch {
         // Ignore
       }
@@ -193,8 +194,8 @@ describe('GitRepositoriesService sync (integration)', () => {
       // Verify DB records exist with null projectId
       const savedRepos = await gitRepositoriesDao.getAll({
         createdBy: TEST_USER_ID,
-        hasInstallationId: true,
-      });
+        installationId: { $ne: null },
+      } as FilterQuery<GitRepositoryEntity>);
 
       const apiService = savedRepos.find((r) => r.repo === 'api-service');
       const webApp = savedRepos.find((r) => r.repo === 'web-app');
@@ -256,10 +257,10 @@ describe('GitRepositoriesService sync (integration)', () => {
       expect(afterSync).toBeNull();
 
       // Confirm deletedAt is set
-      const withDeleted = await gitRepositoriesDao.getOne({
-        id: existingRepo.id,
-        withDeleted: true,
-      });
+      const withDeleted = await gitRepositoriesDao.getOne(
+        { id: existingRepo.id },
+        { filters: { softDelete: false } },
+      );
       expect(withDeleted).not.toBeNull();
       expect(withDeleted!.deletedAt).not.toBeNull();
     });
@@ -326,8 +327,8 @@ describe('GitRepositoriesService sync (integration)', () => {
       // Track created repos for cleanup
       const reposAfterFirst = await gitRepositoriesDao.getAll({
         createdBy: TEST_USER_ID,
-        hasInstallationId: true,
-      });
+        installationId: { $ne: null },
+      } as FilterQuery<GitRepositoryEntity>);
       for (const r of reposAfterFirst) {
         if (r.owner === 'reconnect-org') {
           trackRepo(r.id);
@@ -394,8 +395,8 @@ describe('GitRepositoriesService sync (integration)', () => {
       // Verify repos exist with correct data
       const reposAfterReconnect = await gitRepositoriesDao.getAll({
         createdBy: TEST_USER_ID,
-        hasInstallationId: true,
-      });
+        installationId: { $ne: null },
+      } as FilterQuery<GitRepositoryEntity>);
       const reconnectRepos = reposAfterReconnect.filter(
         (r) => r.owner === 'reconnect-org',
       );

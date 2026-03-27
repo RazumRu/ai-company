@@ -25,6 +25,7 @@ vi.mock('../../../environments', () => ({
 
 const mockRepoIndexDao = {
   getOne: vi.fn(),
+  getById: vi.fn(),
   getAll: vi.fn().mockResolvedValue([]), // For recoverStuckJobs & cleanupOrphanedIndexes
   create: vi.fn(),
   updateById: vi.fn(),
@@ -284,7 +285,8 @@ describe('RepoIndexService', () => {
       mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
       // For incremental, estimateChangedTokenCount is used instead of estimateTokenCount
       mockRepoIndexerService.estimateChangedTokenCount.mockResolvedValue(1000);
-      mockRepoIndexDao.updateById.mockResolvedValue(existingEntity);
+      mockRepoIndexDao.updateById.mockResolvedValue(1);
+      mockRepoIndexDao.getById.mockResolvedValue(existingEntity);
 
       const result = await service.getOrInitIndexForRepo(baseParams);
 

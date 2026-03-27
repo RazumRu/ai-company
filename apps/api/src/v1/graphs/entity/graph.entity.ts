@@ -1,59 +1,57 @@
+import { Collection } from '@mikro-orm/core';
 import {
-  Column,
   Entity,
+  Enum,
   Index,
   OneToMany,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
-
+  PrimaryKey,
+  Property,
+} from '@mikro-orm/decorators/legacy';
 import { AuditEntity } from '../../../auth/audit.entity';
-import type { ThreadEntity } from '../../threads/entity/thread.entity';
+
+import { ThreadEntity } from '../../threads/entity/thread.entity';
 import {
   type GraphAgentInfo,
   type GraphSchemaType,
   GraphStatus,
 } from '../graphs.types';
 
-@Entity('graphs')
+@Entity({ tableName: 'graphs' })
 export class GraphEntity extends AuditEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @OneToMany('ThreadEntity', 'graph')
-  threads?: ThreadEntity[];
+  @OneToMany(() => ThreadEntity, (t) => t.graph)
+  threads?: Collection<ThreadEntity>;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Property({ length: 255 })
   name!: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Property({ type: 'text', nullable: true })
   description?: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Property({ type: 'text', nullable: true })
   error?: string;
 
-  @Column({ type: 'varchar', length: 50 })
+  @Property({ length: 50 })
   version!: string;
 
-  @Column({ type: 'varchar', length: 50 })
+  @Property({ length: 50 })
   targetVersion!: string;
 
-  @Column({ type: 'jsonb' })
+  @Property({ type: 'jsonb' })
   schema!: GraphSchemaType;
 
-  @Column({
-    type: 'enum',
-    enum: GraphStatus,
-    default: GraphStatus.Created,
-  })
+  @Enum({ items: () => GraphStatus, default: GraphStatus.Created })
   @Index()
   status!: GraphStatus;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Property({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown> | null;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Property({ type: 'jsonb', nullable: true })
   agents?: GraphAgentInfo[] | null;
 
-  @Column({ type: 'boolean', default: false })
+  @Property({ type: 'boolean', default: false })
   temporary!: boolean;
 }

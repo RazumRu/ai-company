@@ -1,89 +1,61 @@
-import { TimestampsEntity } from '@packages/typeorm';
 import {
-  Column,
   Entity,
   Index,
-  JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+  PrimaryKey,
+  Property,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
 import type { MessageDto } from '../../graphs/dto/graphs.dto';
 import { MessageRole } from '../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../litellm/litellm.types';
-import type { ThreadEntity } from './thread.entity';
+import { ThreadEntity } from './thread.entity';
 
-@Entity('messages')
+@Entity({ tableName: 'messages' })
 export class MessageEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Property({ type: 'uuid' })
   @Index()
   threadId!: string;
 
-  @ManyToOne('ThreadEntity', 'messages', { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'threadId' })
+  @ManyToOne(() => ThreadEntity, { deleteRule: 'cascade', nullable: true })
   thread?: ThreadEntity;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   externalThreadId!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   nodeId!: string;
 
-  @Column({ type: 'jsonb' })
+  @Property({ type: 'jsonb' })
   message!: MessageDto;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Property({ type: 'jsonb', nullable: true })
   requestTokenUsage?: RequestTokenUsage;
 
-  /**
-   * Message role extracted from message.role for query performance
-   * Used to determine if a message is a tool message without parsing full JSONB
-   */
-  @Column({ type: 'varchar', nullable: true })
+  @Property({ type: 'varchar', nullable: true })
   role?: MessageRole;
 
-  /**
-   * Tool/message name extracted from message.name for query performance
-   * Used to aggregate statistics by tool without parsing full JSONB
-   */
-  @Column({ type: 'varchar', nullable: true })
+  @Property({ type: 'varchar', nullable: true })
   name?: string;
 
-  /**
-   * Array of tool names from message.toolCalls for AI messages
-   * Used to identify AI messages with tool calls and aggregate by tool without parsing full JSONB
-   * Only populated for AI messages that have toolCalls
-   */
-  @Column({ type: 'text', array: true, nullable: true })
+  @Property({ type: 'array', columnType: 'text[]', nullable: true })
   toolCallNames?: string[];
 
-  @Column({ type: 'text', array: true, nullable: true })
+  @Property({ type: 'array', columnType: 'text[]', nullable: true })
   answeredToolCallNames?: string[];
 
-  /**
-   * Tool call IDs from AI message's toolCalls array (parallel to toolCallNames).
-   * Used to map toolCallId → toolName for subagent sub-call linking without parsing full JSONB.
-   */
-  @Column({ type: 'text', array: true, nullable: true })
+  @Property({ type: 'array', columnType: 'text[]', nullable: true })
   toolCallIds?: string[];
 
-  /**
-   * Denormalized additionalKwargs from message JSONB.
-   * Contains metadata like __hideForLlm, __toolCallId, __requestUsage, __model, etc.
-   * Used by statistics queries to avoid projecting the full message JSONB.
-   */
-  @Column({ type: 'jsonb', nullable: true })
+  @Property({ type: 'jsonb', nullable: true })
   additionalKwargs?: Record<string, unknown>;
 
-  /**
-   * Tool's own execution token cost (e.g. subagent aggregate tokens).
-   * Only populated for tool result messages whose tool produced its own LLM usage.
-   */
-  @Column({ type: 'jsonb', nullable: true })
+  @Property({ type: 'jsonb', nullable: true })
   toolTokenUsage?: RequestTokenUsage;
 }

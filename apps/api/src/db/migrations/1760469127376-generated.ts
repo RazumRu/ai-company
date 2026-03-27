@@ -1,17 +1,15 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1760469127376 implements MigrationInterface {
-  name = 'Generated1760469127376';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1760469127376 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graphs"
             ADD "temporary" boolean NOT NULL DEFAULT false
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graphs" DROP COLUMN "temporary"
         `);
   }

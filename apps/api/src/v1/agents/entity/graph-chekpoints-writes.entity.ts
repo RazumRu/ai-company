@@ -1,47 +1,49 @@
 import {
-  Column,
-  CreateDateColumn,
   Entity,
-  Index,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
 
-@Entity({ name: 'graph_checkpoint_writes' })
-@Index(['threadId', 'checkpointNs', 'checkpointId', 'taskId', 'idx'], {
-  unique: true,
+@Entity({ tableName: 'graph_checkpoint_writes' })
+@Unique({
+  properties: ['threadId', 'checkpointNs', 'checkpointId', 'taskId', 'idx'],
 })
 export class GraphCheckpointWritesEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   threadId!: string;
 
-  @Column({ type: 'varchar', default: '' })
+  @Property({ type: 'varchar', default: '' })
   checkpointNs!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   checkpointId!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   taskId!: string;
 
-  @Column({ type: 'integer' })
+  @Property({ type: 'integer' })
   idx!: number;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   channel!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   type!: string;
 
-  @Column({ type: 'bytea' })
+  @Property({ columnType: 'bytea' })
   value!: Buffer;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date;
+  @Property({ type: 'timestamptz', defaultRaw: 'now()' })
+  createdAt: Date = new Date();
 
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt!: Date;
+  @Property({
+    type: 'timestamptz',
+    defaultRaw: 'now()',
+    onUpdate: () => new Date(),
+  })
+  updatedAt: Date = new Date();
 }

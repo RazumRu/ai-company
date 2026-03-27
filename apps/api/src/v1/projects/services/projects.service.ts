@@ -1,8 +1,7 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { NotFoundException } from '@packages/common';
-import { TypeormService } from '@packages/typeorm';
-import { EntityManager } from 'typeorm';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ProjectsDao } from '../dao/projects.dao';
@@ -20,7 +19,7 @@ export class ProjectsService {
   constructor(
     private readonly projectsDao: ProjectsDao,
     private readonly projectsStatsDao: ProjectsStatsDao,
-    private readonly typeorm: TypeormService,
+    private readonly em: EntityManager,
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
@@ -49,7 +48,7 @@ export class ProjectsService {
   ): Promise<ProjectDto> {
     const userId = ctx.checkSub();
 
-    return this.typeorm.trx(async (em: EntityManager) => {
+    return await this.em.transactional(async (em: EntityManager) => {
       const project = await this.projectsDao.create(
         {
           name: dto.name,
@@ -67,10 +66,10 @@ export class ProjectsService {
 
   async getAll(ctx: AppContextStorage): Promise<ProjectDto[]> {
     const userId = ctx.checkSub();
-    const rows = await this.projectsDao.getAll({
-      createdBy: userId,
-      order: { updatedAt: 'DESC' },
-    });
+    const rows = await this.projectsDao.getAll(
+      { createdBy: userId },
+      { orderBy: { updatedAt: 'DESC' } },
+    );
 
     if (rows.length === 0) {
       return [];
@@ -108,13 +107,14 @@ export class ProjectsService {
   ): Promise<ProjectDto> {
     const userId = ctx.checkSub();
 
-    return this.typeorm.trx(async (em: EntityManager) => {
+    return await this.em.transactional(async (em: EntityManager) => {
       const existing = await this.projectsDao.getOne({ id, createdBy: userId });
       if (!existing) {
         throw new NotFoundException('PROJECT_NOT_FOUND');
       }
 
-      const updated = await this.projectsDao.updateById(id, dto, em);
+      await this.projectsDao.updateById(id, dto, em);
+      const updated = await this.projectsDao.getOne({ id, createdBy: userId });
       if (!updated) {
         throw new NotFoundException('PROJECT_NOT_FOUND');
       }

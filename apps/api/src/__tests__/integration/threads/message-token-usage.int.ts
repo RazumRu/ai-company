@@ -45,7 +45,7 @@ describe('Message token usage (integration)', () => {
 
   afterEach(async () => {
     for (const threadId of createdThreads) {
-      await messagesDao.delete({ threadId });
+      await messagesDao.hardDelete({ threadId });
       await threadsDao.deleteById(threadId);
     }
     createdThreads.length = 0;
@@ -65,7 +65,7 @@ describe('Message token usage (integration)', () => {
     const graph = await graphDao.create({
       name: 'token-usage-test-graph',
       description: 'token usage integration test',
-      error: null,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
@@ -85,8 +85,8 @@ describe('Message token usage (integration)', () => {
       projectId: testProjectId,
       externalThreadId: internalThreadExternalId,
       metadata: {},
-      source: null,
-      name: null,
+      source: undefined,
+      name: undefined,
       status: ThreadStatus.Running,
     });
     createdThreads.push(thread.id);
@@ -127,10 +127,10 @@ describe('Message token usage (integration)', () => {
 
     expect(enriched).toHaveLength(2);
 
-    const stored = await messagesDao.getAll({
-      threadId: thread.id,
-      order: { createdAt: 'ASC' },
-    });
+    const stored = await messagesDao.getAll(
+      { threadId: thread.id },
+      { orderBy: { createdAt: 'ASC' } },
+    );
 
     expect(stored).toHaveLength(2);
 

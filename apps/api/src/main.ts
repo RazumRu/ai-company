@@ -7,11 +7,11 @@ import {
   ZitadelProvider,
 } from '@packages/http-server';
 import { buildMetricExtension } from '@packages/metrics';
-import { buildTypeormExtension } from '@packages/typeorm';
+import { buildMikroOrmExtension } from '@packages/mikroorm';
 
 import { AppModule } from './app.module';
 import { AppContextStorage } from './auth/app-context-storage';
-import typeormconfig from './db/typeormconfig';
+import mikroOrmConfig from './db/mikro-orm.config';
 import { environment } from './environments';
 import { RedisIoAdapter } from './v1/notification-handlers/gateways/redis-io.adapter';
 
@@ -81,7 +81,7 @@ bootstrapper.addExtension(
 );
 
 bootstrapper.addExtension(buildMetricExtension());
-bootstrapper.addExtension(buildTypeormExtension(typeormconfig));
+bootstrapper.addExtension(buildMikroOrmExtension(mikroOrmConfig));
 
 bootstrapper.setupLogger({
   prettyPrint: environment.prettyLog,

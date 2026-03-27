@@ -1,12 +1,17 @@
-import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
-@Entity('webhook_processed_event')
+@Entity({ tableName: 'webhook_processed_event' })
 export class WebhookProcessedEventEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Index({ unique: true })
-  @Column({ type: 'varchar' })
+  @Unique()
+  @Property({ type: 'varchar' })
   dedupKey!: string;
 }

@@ -1,13 +1,11 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1770209370585 implements MigrationInterface {
-  name = 'Generated1770209370585';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1770209370585 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             CREATE TYPE "public"."repo_indexes_status_enum" AS ENUM('pending', 'in_progress', 'completed', 'failed')
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE TABLE "repo_indexes" (
                 "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -27,20 +25,20 @@ export class Generated1770209370585 implements MigrationInterface {
                 CONSTRAINT "PK_3918e335f71f09612e28cb8e8e7" PRIMARY KEY ("id")
             )
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "git_repositories"
             ADD "encryptedToken" text
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "git_repositories" DROP COLUMN "encryptedToken"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TABLE "repo_indexes"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TYPE "public"."repo_indexes_status_enum"
         `);
   }

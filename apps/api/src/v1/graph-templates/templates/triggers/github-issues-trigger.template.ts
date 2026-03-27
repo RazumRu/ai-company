@@ -93,7 +93,7 @@ export class GitHubIssuesTriggerTemplate extends TriggerNodeBaseTemplate<
 
         // Resolve repositories from DB
         const repos = await this.gitRepositoriesDao.getAll({
-          ids: params.config.repositoryIds,
+          id: { $in: params.config.repositoryIds },
         });
 
         if (repos.length === 0) {

@@ -1,12 +1,10 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class MigrateRequestUsageToTokenUsage1768196540297 implements MigrationInterface {
-  name = 'MigrateRequestUsageToTokenUsage1768196540297';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
+export class MigrateRequestUsageToTokenUsage1768196540297 extends Migration {
+  override async up(): Promise<void> {
     // Migrate existing data: extract __requestUsage from message.additionalKwargs
     // and populate the tokenUsage column (overwriting minimal data with full TokenUsage)
-    await queryRunner.query(`
+    this.addSql(`
             UPDATE "messages"
             SET "tokenUsage" = (
                 message -> 'additionalKwargs' -> '__requestUsage'
@@ -16,7 +14,7 @@ export class MigrateRequestUsageToTokenUsage1768196540297 implements MigrationIn
         `);
   }
 
-  public async down(_queryRunner: QueryRunner): Promise<void> {
+  override async down(): Promise<void> {
     // No-op: We don't want to lose the full token usage data
     // The old minimal data structure is a subset, so no rollback needed
   }

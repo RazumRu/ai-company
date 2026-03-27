@@ -43,27 +43,28 @@ describe('ThreadLifecycleNotificationHandler', () => {
 
   const createMockThreadEntity = (
     overrides: Partial<ThreadEntity> = {},
-  ): ThreadEntity => ({
-    id: mockInternalThreadId,
-    graphId: mockGraphId,
-    createdBy: mockOwnerId,
-    projectId: 'project-abc',
-    externalThreadId: mockThreadId,
-    lastRunId: undefined,
-    createdAt: new Date('2024-01-01T00:00:00Z'),
-    updatedAt: new Date('2024-01-01T00:00:00Z'),
-    deletedAt: null,
-    metadata: {},
-    source: undefined,
-    name: undefined,
-    status: ThreadStatus.Running,
-    ...overrides,
-  });
+  ): ThreadEntity =>
+    ({
+      id: mockInternalThreadId,
+      graphId: mockGraphId,
+      createdBy: mockOwnerId,
+      projectId: 'project-abc',
+      externalThreadId: mockThreadId,
+      lastRunId: undefined,
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      updatedAt: new Date('2024-01-01T00:00:00Z'),
+      deletedAt: null,
+      metadata: {},
+      source: undefined,
+      name: undefined,
+      status: ThreadStatus.Running,
+      ...overrides,
+    }) as unknown as ThreadEntity;
 
   const mockProjectId = 'project-abc';
 
   beforeEach(async () => {
-    const mockGraph: GraphEntity = {
+    const mockGraph = {
       id: mockGraphId,
       createdBy: mockOwnerId,
       projectId: mockProjectId,
@@ -78,7 +79,7 @@ describe('ThreadLifecycleNotificationHandler', () => {
       updatedAt: new Date(),
       deletedAt: null,
       error: undefined,
-    };
+    } as unknown as GraphEntity;
 
     threadsServiceMock = {
       prepareThreadResponse: vi

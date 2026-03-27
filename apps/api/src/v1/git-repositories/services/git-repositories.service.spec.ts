@@ -74,6 +74,7 @@ describe('GitRepositoriesService', () => {
             getOne: vi.fn(),
             create: vi.fn(),
             updateById: vi.fn(),
+            getById: vi.fn(),
             deleteById: vi.fn(),
             upsertMany: vi.fn(),
             upsertGithubSyncRepos: vi.fn(),
@@ -90,6 +91,7 @@ describe('GitRepositoriesService', () => {
             updateById: vi.fn(),
             deleteById: vi.fn(),
             delete: vi.fn(),
+            hardDelete: vi.fn(),
             restoreById: vi.fn(),
             incrementIndexedTokens: vi.fn(),
           },
@@ -210,7 +212,8 @@ describe('GitRepositoriesService', () => {
       };
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(existing);
-      vi.spyOn(dao, 'updateById').mockResolvedValue({
+      vi.spyOn(dao, 'updateById').mockResolvedValue(undefined as never);
+      vi.spyOn(dao, 'getById').mockResolvedValue({
         ...existing,
         url: 'https://github.com/octocat/Hello-World-New.git',
       });
@@ -258,15 +261,10 @@ describe('GitRepositoriesService', () => {
 
       const result = await service.getRepositories(mockCtx, query);
 
-      expect(dao.getAll).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-        owner: undefined,
-        repo: undefined,
-        provider: undefined,
-        limit: 50,
-        offset: 0,
-        order: { createdAt: 'DESC' },
-      });
+      expect(dao.getAll).toHaveBeenCalledWith(
+        { createdBy: mockUserId },
+        { limit: 50, offset: 0, orderBy: { createdAt: 'DESC' } },
+      );
       expect(result).toHaveLength(2);
     });
 
@@ -276,9 +274,8 @@ describe('GitRepositoriesService', () => {
 
       await service.getRepositories(mockCtx, { limit: 50, offset: 0 });
 
-      expect(dao.getAll).toHaveBeenCalledWith(
-        expect.not.objectContaining({ projectId: expect.anything() }),
-      );
+      const whereArg = vi.mocked(dao.getAll).mock.calls[0]?.[0];
+      expect(whereArg).not.toHaveProperty('projectId');
     });
 
     it('should pass installationId filter to DAO when provided in query', async () => {
@@ -296,6 +293,7 @@ describe('GitRepositoriesService', () => {
         expect.objectContaining({
           installationId: 12345,
         }),
+        expect.any(Object),
       );
     });
   });
@@ -343,7 +341,7 @@ describe('GitRepositoriesService', () => {
       expect(qdrantService.deleteCollection).toHaveBeenCalledWith(
         'codebase_my_repo_1536',
       );
-      expect(repoIndexDao.delete).toHaveBeenCalledWith({
+      expect(repoIndexDao.hardDelete).toHaveBeenCalledWith({
         repositoryId: mockRepositoryId,
       });
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
@@ -358,7 +356,7 @@ describe('GitRepositoriesService', () => {
 
       await service.deleteRepository(mockCtx, mockRepositoryId);
 
-      expect(repoIndexDao.delete).toHaveBeenCalledWith({
+      expect(repoIndexDao.hardDelete).toHaveBeenCalledWith({
         repositoryId: mockRepositoryId,
       });
       expect(dao.deleteById).toHaveBeenCalledWith(mockRepositoryId);
@@ -623,7 +621,7 @@ describe('GitRepositoriesService', () => {
       vi.spyOn(dao, 'getOne').mockResolvedValue(mockRepository);
       vi.spyOn(repoIndexDao, 'getOne').mockResolvedValue(softDeletedIndex);
       vi.spyOn(repoIndexDao, 'restoreById').mockResolvedValue(undefined);
-      vi.spyOn(repoIndexDao, 'updateById').mockResolvedValue(null);
+      vi.spyOn(repoIndexDao, 'updateById').mockResolvedValue(0);
 
       const result = await service.triggerReindex(mockCtx, {
         repositoryId: mockRepositoryId,
@@ -676,7 +674,7 @@ describe('GitRepositoriesService', () => {
 
       expect(dao.getAll).toHaveBeenCalledWith({
         createdBy: mockUserId,
-        installationIds: [100, 200],
+        installationId: { $in: [100, 200] },
       });
       expect(dao.deleteById).toHaveBeenCalledTimes(2);
       expect(dao.deleteById).toHaveBeenCalledWith('repo-1');
@@ -704,7 +702,7 @@ describe('GitRepositoriesService', () => {
 
       expect(repoIndexQueueService.removeJob).toHaveBeenCalledWith('index-1');
       expect(qdrantService.deleteCollection).toHaveBeenCalledWith('col-test');
-      expect(repoIndexDao.delete).toHaveBeenCalledWith({
+      expect(repoIndexDao.hardDelete).toHaveBeenCalledWith({
         repositoryId: 'repo-1',
       });
       expect(dao.deleteById).toHaveBeenCalledWith('repo-1');
@@ -752,7 +750,7 @@ describe('GitRepositoriesService', () => {
       const result = await service.syncRepositories(mockCtx);
 
       expect(result).toEqual({ synced: 0, removed: 0, total: 0 });
-      expect(dao.upsertMany).not.toHaveBeenCalled();
+      expect(dao.upsertGithubSyncRepos).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when GitHub App is not configured', async () => {

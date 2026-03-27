@@ -302,12 +302,14 @@ export class RuntimeProvider {
   async cleanupIdleRuntimes(idleThresholdMs: number): Promise<number> {
     const lastUsedBefore = new Date(Date.now() - idleThresholdMs);
     const instances = await this.runtimeInstanceDao.getAll({
-      lastUsedBefore,
-      statuses: [
-        RuntimeInstanceStatus.Running,
-        RuntimeInstanceStatus.Starting,
-        RuntimeInstanceStatus.Failed,
-      ],
+      lastUsedAt: { $lt: lastUsedBefore },
+      status: {
+        $in: [
+          RuntimeInstanceStatus.Running,
+          RuntimeInstanceStatus.Starting,
+          RuntimeInstanceStatus.Failed,
+        ],
+      },
     });
 
     return this.stopAndDeleteInstances(instances);
@@ -329,7 +331,7 @@ export class RuntimeProvider {
 
     const instances = await this.runtimeInstanceDao.getAll({
       temporary: true,
-      lastUsedBefore,
+      lastUsedAt: { $lt: lastUsedBefore },
     });
 
     return this.stopAndDeleteInstances(instances);

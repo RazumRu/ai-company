@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { UserPreferencesController } from './controllers/user-preferences.controller';
 import { UserPreferencesDao } from './dao/user-preferences.dao';

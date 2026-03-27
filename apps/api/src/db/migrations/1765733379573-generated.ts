@@ -1,24 +1,22 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1765733379573 implements MigrationInterface {
-  name = 'Generated1765733379573';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1765733379573 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "threads"
             ADD "tokenUsage" jsonb
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "messages"
             ADD "tokenUsage" jsonb
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "messages" DROP COLUMN "tokenUsage"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "threads" DROP COLUMN "tokenUsage"
         `);
   }

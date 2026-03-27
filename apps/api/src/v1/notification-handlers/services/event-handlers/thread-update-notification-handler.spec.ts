@@ -35,22 +35,23 @@ describe('ThreadUpdateNotificationHandler', () => {
 
   const createMockThreadEntity = (
     overrides: Partial<ThreadEntity> = {},
-  ): ThreadEntity => ({
-    id: '11111111-1111-4111-8aaa-111111111111',
-    graphId: mockGraphId,
-    createdBy: mockOwnerId,
-    projectId: 'project-abc',
-    externalThreadId: mockThreadId,
-    metadata: {},
-    source: undefined,
-    name: 'Thread Name',
-    status: ThreadStatus.Running,
-    lastRunId: undefined,
-    createdAt: new Date('2024-01-01T00:00:00Z'),
-    updatedAt: new Date('2024-01-01T00:00:00Z'),
-    deletedAt: null,
-    ...overrides,
-  });
+  ): ThreadEntity =>
+    ({
+      id: '11111111-1111-4111-8aaa-111111111111',
+      graphId: mockGraphId,
+      createdBy: mockOwnerId,
+      projectId: 'project-abc',
+      externalThreadId: mockThreadId,
+      metadata: {},
+      source: undefined,
+      name: 'Thread Name',
+      status: ThreadStatus.Running,
+      lastRunId: undefined,
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      updatedAt: new Date('2024-01-01T00:00:00Z'),
+      deletedAt: null,
+      ...overrides,
+    }) as unknown as ThreadEntity;
 
   const createMockNotification = (
     overrides: Partial<IThreadUpdateNotification> = {},
@@ -63,7 +64,7 @@ describe('ThreadUpdateNotificationHandler', () => {
   });
 
   beforeEach(async () => {
-    const mockGraph: GraphEntity = {
+    const mockGraph = {
       id: mockGraphId,
       createdBy: mockOwnerId,
       projectId: mockProjectId,
@@ -78,7 +79,7 @@ describe('ThreadUpdateNotificationHandler', () => {
       updatedAt: new Date(),
       deletedAt: null,
       error: undefined,
-    };
+    } as unknown as GraphEntity;
 
     threadDtoFactory = (thread: ThreadEntity): ThreadDto => ({
       id: thread.id,
@@ -171,9 +172,7 @@ describe('ThreadUpdateNotificationHandler', () => {
         .spyOn(threadsDao, 'getOne')
         .mockResolvedValueOnce(thread)
         .mockResolvedValueOnce(updatedThread);
-      const updateSpy = vi
-        .spyOn(threadsDao, 'updateById')
-        .mockResolvedValue(updatedThread);
+      const updateSpy = vi.spyOn(threadsDao, 'updateById').mockResolvedValue(1);
 
       const result = await handler.handle(notification);
 
@@ -207,7 +206,7 @@ describe('ThreadUpdateNotificationHandler', () => {
         .spyOn(threadsDao, 'getOne')
         .mockResolvedValueOnce(thread)
         .mockResolvedValueOnce(updatedThread);
-      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(1);
 
       const result = await handler.handle(notification);
 
@@ -287,7 +286,7 @@ describe('ThreadUpdateNotificationHandler', () => {
         .mockResolvedValueOnce(thread)
         .mockResolvedValueOnce(updatedThread);
 
-      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(1);
 
       const result = await handler.handle(notification);
 
@@ -318,9 +317,7 @@ describe('ThreadUpdateNotificationHandler', () => {
         .mockResolvedValueOnce(thread)
         .mockResolvedValueOnce(updatedThread);
 
-      const updateSpy = vi
-        .spyOn(threadsDao, 'updateById')
-        .mockResolvedValue(updatedThread);
+      const updateSpy = vi.spyOn(threadsDao, 'updateById').mockResolvedValue(1);
 
       await handler.handle(notification);
 

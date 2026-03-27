@@ -1,6 +1,6 @@
+import { MikroORM } from '@mikro-orm/postgresql';
 import type { INestApplication } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import { DataSource } from 'typeorm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -24,8 +24,7 @@ describe('UserPreferencesService (integration)', () => {
     app = await createTestModule();
     service = app.get(UserPreferencesService);
     dao = app.get(UserPreferencesDao);
-    const dataSource = app.get(DataSource);
-    await dataSource.synchronize();
+    // Schema is managed by migrations, not schema generator
   }, 120_000);
 
   afterEach(async () => {

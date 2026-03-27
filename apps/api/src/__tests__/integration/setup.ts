@@ -8,25 +8,11 @@ import {
   KeycloakProvider,
 } from '@packages/http-server';
 import { buildMetricExtension } from '@packages/metrics';
-import { buildTypeormExtension } from '@packages/typeorm';
-import { DataSource } from 'typeorm';
+import { buildMikroOrmExtension } from '@packages/mikroorm';
 
 import { AppModule } from '../../app.module';
-import typeormconfig from '../../db/typeormconfig';
+import mikroOrmConfig from '../../db/mikro-orm.config';
 import { environment } from '../../environments';
-import { GraphCheckpointEntity } from '../../v1/agents/entity/graph-chekpoints.entity';
-import { GraphCheckpointWritesEntity } from '../../v1/agents/entity/graph-chekpoints-writes.entity';
-import { GitProviderConnectionEntity } from '../../v1/git-auth/entity/git-provider-connection.entity';
-import { GitRepositoryEntity } from '../../v1/git-repositories/entity/git-repository.entity';
-import { RepoIndexEntity } from '../../v1/git-repositories/entity/repo-index.entity';
-import { GraphEntity } from '../../v1/graphs/entity/graph.entity';
-import { GraphRevisionEntity } from '../../v1/graphs/entity/graph-revision.entity';
-import { KnowledgeDocEntity } from '../../v1/knowledge/entity/knowledge-doc.entity';
-import { ProjectEntity } from '../../v1/projects/entity/project.entity';
-import { RuntimeInstanceEntity } from '../../v1/runtime/entity/runtime-instance.entity';
-import { MessageEntity } from '../../v1/threads/entity/message.entity';
-import { ThreadEntity } from '../../v1/threads/entity/thread.entity';
-import { UserPreferenceEntity } from '../../v1/user-preferences/entities/user-preference.entity';
 
 export const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 export const TEST_ORG_ID = '00000000-0000-0000-0000-000000000001';
@@ -72,28 +58,7 @@ export const createTestModule = async (
 
   testBootstrapper.addExtension(buildMetricExtension());
 
-  testBootstrapper.addExtension(
-    buildTypeormExtension(
-      new DataSource({
-        ...typeormconfig.options,
-        entities: [
-          GraphEntity,
-          ThreadEntity,
-          GraphCheckpointEntity,
-          GraphCheckpointWritesEntity,
-          MessageEntity,
-          GraphRevisionEntity,
-          KnowledgeDocEntity,
-          ProjectEntity,
-          RuntimeInstanceEntity,
-          GitRepositoryEntity,
-          GitProviderConnectionEntity,
-          RepoIndexEntity,
-          UserPreferenceEntity,
-        ],
-      }),
-    ),
-  );
+  testBootstrapper.addExtension(buildMikroOrmExtension(mikroOrmConfig));
 
   testBootstrapper.setupLogger({
     prettyPrint: environment.prettyLog,

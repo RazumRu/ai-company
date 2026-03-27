@@ -1,26 +1,24 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1768926638724 implements MigrationInterface {
-  name = 'Generated1768926638724';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1768926638724 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             CREATE EXTENSION IF NOT EXISTS vector
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "knowledge_chunks" DROP COLUMN "embedding"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "knowledge_chunks"
             ADD "embedding" vector
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "knowledge_chunks" DROP COLUMN "embedding"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "knowledge_chunks"
             ADD "embedding" jsonb
         `);

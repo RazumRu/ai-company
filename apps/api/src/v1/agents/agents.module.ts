@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
 import { LitellmModule } from '../litellm/litellm.module';

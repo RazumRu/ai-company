@@ -1,63 +1,63 @@
-import { TimestampsEntity } from '@packages/typeorm';
 import {
-  Column,
   Entity,
+  Enum,
   Index,
-  JoinColumn,
   ManyToOne,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
 import { RepoIndexStatus } from '../git-repositories.types';
 import { GitRepositoryEntity } from './git-repository.entity';
 
-@Entity('repo_indexes')
-@Index(['status']) // For efficient queries by status (e.g., recovering stuck jobs)
-@Index(['repositoryId', 'branch'], { unique: true })
+@Entity({ tableName: 'repo_indexes' })
+@Index({ properties: ['status'] })
+@Unique({ properties: ['repositoryId', 'branch'] })
 export class RepoIndexEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Property({ type: 'uuid' })
   repositoryId!: string;
 
-  @ManyToOne(() => GitRepositoryEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'repositoryId' })
+  @ManyToOne(() => GitRepositoryEntity, {
+    deleteRule: 'cascade',
+    nullable: true,
+  })
   repository?: GitRepositoryEntity;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   repoUrl!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   branch!: string;
 
-  @Column({
-    type: 'enum',
-    enum: RepoIndexStatus,
-  })
+  @Enum({ items: () => RepoIndexStatus })
   status!: RepoIndexStatus;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   qdrantCollection!: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Property({ type: 'varchar', nullable: true })
   lastIndexedCommit!: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Property({ type: 'varchar', nullable: true })
   embeddingModel!: string | null;
 
-  @Column({ type: 'int', nullable: true })
+  @Property({ type: 'int', nullable: true })
   vectorSize!: number | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Property({ type: 'varchar', nullable: true })
   chunkingSignatureHash!: string | null;
 
-  @Column({ type: 'int', default: 0 })
+  @Property({ type: 'int', default: 0 })
   estimatedTokens!: number;
 
-  @Column({ type: 'int', default: 0 })
+  @Property({ type: 'int', default: 0 })
   indexedTokens!: number;
 
-  @Column({ type: 'text', nullable: true })
+  @Property({ type: 'text', nullable: true })
   errorMessage!: string | null;
 }

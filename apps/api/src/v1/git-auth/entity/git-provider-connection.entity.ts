@@ -1,28 +1,34 @@
-import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import {
+  Entity,
+  Index,
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
 import { GitProvider } from '../git-auth.types';
 
-@Entity('git_provider_connections')
-@Unique(['userId', 'provider', 'accountLogin'])
+@Entity({ tableName: 'git_provider_connections' })
+@Unique({ properties: ['userId', 'provider', 'accountLogin'] })
 export class GitProviderConnectionEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   userId!: string;
 
-  @Column({ type: 'varchar', default: GitProvider.GitHub })
+  @Property({ type: 'varchar', default: GitProvider.GitHub })
   @Index()
   provider!: GitProvider;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   accountLogin!: string;
 
-  @Column({ type: 'jsonb', nullable: true, default: '{}' })
+  @Property({ type: 'jsonb', nullable: true, default: '{}' })
   metadata!: Record<string, unknown>;
 
-  @Column({ type: 'boolean', default: true })
+  @Property({ type: 'boolean', default: true })
   isActive!: boolean;
 }

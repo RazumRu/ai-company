@@ -1,8 +1,7 @@
+import { raw, sql } from '@mikro-orm/core';
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 
-import { GraphEntity } from '../../graphs/entity/graph.entity';
-import { ThreadEntity } from '../../threads/entity/thread.entity';
 import { ProjectEntity } from '../entity/project.entity';
 
 export type ProjectStatRow = {
@@ -13,7 +12,7 @@ export type ProjectStatRow = {
 
 @Injectable()
 export class ProjectsStatsDao {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly em: EntityManager) {}
 
   async countStatsByProjectIds(
     projectIds: string[],
@@ -22,26 +21,25 @@ export class ProjectsStatsDao {
       return [];
     }
 
-    return this.dataSource
-      .createQueryBuilder()
-      .select('p.id', 'projectId')
-      .addSelect('COUNT(DISTINCT g.id)::text', 'graphCount')
-      .addSelect('COUNT(DISTINCT th.id)::text', 'threadCount')
-      .from(ProjectEntity, 'p')
-      .leftJoin(
-        GraphEntity,
-        'g',
-        'g."projectId" = p.id AND g."deletedAt" IS NULL AND g.temporary = :temporary',
-        { temporary: false },
-      )
-      .leftJoin(
-        ThreadEntity,
-        'th',
-        'th."graphId" = g.id AND th."deletedAt" IS NULL',
-      )
-      .where('p.id IN (:...projectIds)', { projectIds })
-      .andWhere('p."deletedAt" IS NULL')
-      .groupBy('p.id')
-      .getRawMany<ProjectStatRow>();
+    const qb = this.em.createQueryBuilder(ProjectEntity, 'p');
+
+    return await qb
+      .select([
+        raw('p.id as "projectId"'),
+        raw('count(distinct g.id)::text as "graphCount"'),
+        raw('count(distinct th.id)::text as "threadCount"'),
+      ])
+      .leftJoin(raw('graphs'), 'g', {
+        project_id: sql.ref('p.id'),
+        deleted_at: null,
+        temporary: false,
+      })
+      .leftJoin(raw('threads'), 'th', {
+        graph_id: sql.ref('g.id'),
+        deleted_at: null,
+      })
+      .where({ id: { $in: projectIds } })
+      .groupBy(raw('p.id'))
+      .execute<ProjectStatRow[]>();
   }
 }

@@ -1,5 +1,5 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
 
 import type { ByGraphRawRow, TokenAggregateRawRow } from './dto/analytics.dto';
 
@@ -14,147 +14,100 @@ type ByGraphParams = DateRangeParams & {
   graphId?: string;
 };
 
+/**
+ * Raw SQL is justified here because:
+ * 1. JSONB ->> path extraction has no MikroORM QueryBuilder equivalent
+ * 2. Cross-entity joins (messages → threads → graphs) use FK columns
+ *    without defined MikroORM relations, so QB join() can't resolve them
+ */
 @Injectable()
 export class AnalyticsDao {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(private readonly em: EntityManager) {}
 
-  /**
-   * Count all threads (including those with zero messages) for the user,
-   * optionally filtered by date range.
-   */
   async countThreads(params: DateRangeParams): Promise<number> {
-    const { where, queryParams } = this.buildThreadConditions(params);
+    const ctx = this.buildBaseContext(params);
+    ctx.addCondition('t.deleted_at IS NULL');
+    ctx.addCondition('g.deleted_at IS NULL');
+    this.applyDateRange(ctx, params);
 
-    const sql = `
-      SELECT COUNT(*)::text AS cnt
-      FROM threads t
-      INNER JOIN graphs g ON g.id = t."graphId"
-      WHERE ${where}
-    `;
-
-    const rows: { cnt: string }[] = await this.dataSource.query(
-      sql,
-      queryParams,
+    const rows = await this.em.getConnection().execute<{ cnt: string }[]>(
+      `SELECT count(*)::text AS cnt
+       FROM threads t
+       INNER JOIN graphs g ON g.id = t.graph_id
+       WHERE ${ctx.where()}`,
+      ctx.params,
     );
     return parseInt(rows[0]!.cnt, 10);
   }
 
-  /**
-   * Aggregate token usage across all messages for the user,
-   * optionally filtered by date range.
-   */
   async getTokenAggregates(
     params: DateRangeParams,
   ): Promise<TokenAggregateRawRow> {
-    const { where, queryParams } = this.buildMessageJoinConditions(params);
+    const ctx = this.buildBaseContext(params);
+    ctx.addCondition('t.deleted_at IS NULL');
+    ctx.addCondition('m.deleted_at IS NULL');
+    ctx.addCondition('g.deleted_at IS NULL');
+    ctx.addCondition('m.request_token_usage IS NOT NULL');
+    this.applyDateRange(ctx, params);
 
-    const sql = `
-      SELECT
-        ${this.tokenSumSelects()}
-      FROM messages m
-      INNER JOIN threads t ON t.id = m."threadId"
-      INNER JOIN graphs g ON g.id = t."graphId"
-      WHERE ${where}
-    `;
-
-    const rows: TokenAggregateRawRow[] = await this.dataSource.query(
-      sql,
-      queryParams,
+    const rows = await this.em.getConnection().execute<TokenAggregateRawRow[]>(
+      `SELECT ${this.tokenSumSelects()}
+       FROM messages m
+       INNER JOIN threads t ON t.id = m.thread_id
+       INNER JOIN graphs g ON g.id = t.graph_id
+       WHERE ${ctx.where()}`,
+      ctx.params,
     );
     return rows[0]!;
   }
 
-  /**
-   * Aggregate token usage grouped by graph, optionally filtered
-   * by date range and/or a specific graph.
-   */
   async getByGraph(params: ByGraphParams): Promise<ByGraphRawRow[]> {
-    const ctx = this.createParamContext(params.createdBy, params.projectId);
+    const ctx = this.buildBaseContext(params);
+    ctx.addCondition('t.deleted_at IS NULL');
+    ctx.addCondition('m.deleted_at IS NULL');
+    ctx.addCondition('g.deleted_at IS NULL');
+    ctx.addCondition('m.request_token_usage IS NOT NULL');
+    this.applyDateRange(ctx, params);
 
-    ctx.addCondition('t."deletedAt" IS NULL');
-    ctx.addCondition('m."deletedAt" IS NULL');
-    ctx.addCondition('g."deletedAt" IS NULL');
-    ctx.addCondition('m."requestTokenUsage" IS NOT NULL');
-    if (params.dateFrom) {
-      ctx.addParam('t."createdAt" >=', params.dateFrom);
-    }
-    if (params.dateTo) {
-      ctx.addParam('t."createdAt" <', params.dateTo);
-    }
     if (params.graphId) {
-      ctx.addParam('t."graphId" =', params.graphId);
+      ctx.addParam('t.graph_id =', params.graphId);
     }
 
-    const sql = `
-      SELECT
-        g.id AS "graphId",
-        g.name AS "graphName",
-        COUNT(DISTINCT t.id)::text AS "totalThreads",
-        ${this.tokenSumSelects()}
-      FROM messages m
-      INNER JOIN threads t ON t.id = m."threadId"
-      INNER JOIN graphs g ON g.id = t."graphId"
-      WHERE ${ctx.where()}
-      GROUP BY g.id, g.name
-      ORDER BY "totalTokens" DESC
-    `;
-
-    return this.dataSource.query(sql, ctx.params);
+    return await this.em.getConnection().execute<ByGraphRawRow[]>(
+      `SELECT g.id AS "graphId", g.name AS "graphName",
+              count(DISTINCT t.id)::text AS "totalThreads",
+              ${this.tokenSumSelects()}
+       FROM messages m
+       INNER JOIN threads t ON t.id = m.thread_id
+       INNER JOIN graphs g ON g.id = t.graph_id
+       WHERE ${ctx.where()}
+       GROUP BY g.id, g.name
+       ORDER BY "totalTokens" DESC`,
+      ctx.params,
+    );
   }
 
-  // ── Private helpers ──────────────────────────────────────────
-
-  private buildThreadConditions(params: DateRangeParams) {
-    const ctx = this.createParamContext(params.createdBy, params.projectId);
-    ctx.addCondition('t."deletedAt" IS NULL');
-    ctx.addCondition('g."deletedAt" IS NULL');
-    if (params.dateFrom) {
-      ctx.addParam('t."createdAt" >=', params.dateFrom);
-    }
-    if (params.dateTo) {
-      ctx.addParam('t."createdAt" <', params.dateTo);
-    }
-
-    return { where: ctx.where(), queryParams: ctx.params };
-  }
-
-  private buildMessageJoinConditions(params: DateRangeParams) {
-    const ctx = this.createParamContext(params.createdBy, params.projectId);
-    ctx.addCondition('t."deletedAt" IS NULL');
-    ctx.addCondition('m."deletedAt" IS NULL');
-    ctx.addCondition('g."deletedAt" IS NULL');
-    ctx.addCondition('m."requestTokenUsage" IS NOT NULL');
-    if (params.dateFrom) {
-      ctx.addParam('t."createdAt" >=', params.dateFrom);
-    }
-    if (params.dateTo) {
-      ctx.addParam('t."createdAt" <', params.dateTo);
-    }
-
-    return { where: ctx.where(), queryParams: ctx.params };
-  }
-
-  private createParamContext(createdBy: string, projectId: string) {
+  private buildBaseContext(params: DateRangeParams) {
     const conditions: string[] = [];
-    const params: string[] = [];
+    const paramValues: string[] = [];
     let idx = 1;
 
-    conditions.push(`t."createdBy" = $${idx}`);
-    params.push(createdBy);
+    conditions.push(`t.created_by = $${idx}`);
+    paramValues.push(params.createdBy);
     idx++;
 
-    conditions.push(`g."projectId" = $${idx}`);
-    params.push(projectId);
+    conditions.push(`g.project_id = $${idx}`);
+    paramValues.push(params.projectId);
     idx++;
 
     return {
-      params,
+      params: paramValues,
       addCondition(condition: string) {
         conditions.push(condition);
       },
       addParam(expr: string, value: string) {
         conditions.push(`${expr} $${idx}`);
-        params.push(value);
+        paramValues.push(value);
         idx++;
       },
       where() {
@@ -163,14 +116,26 @@ export class AnalyticsDao {
     };
   }
 
+  private applyDateRange(
+    ctx: ReturnType<AnalyticsDao['buildBaseContext']>,
+    params: DateRangeParams,
+  ): void {
+    if (params.dateFrom) {
+      ctx.addParam('t.created_at >=', params.dateFrom);
+    }
+    if (params.dateTo) {
+      ctx.addParam('t.created_at <', params.dateTo);
+    }
+  }
+
   private tokenSumSelects(): string {
-    return `
-      COALESCE(SUM((m."requestTokenUsage"->>'inputTokens')::numeric), 0)::text     AS "inputTokens",
-      COALESCE(SUM((m."requestTokenUsage"->>'cachedInputTokens')::numeric), 0)::text AS "cachedInputTokens",
-      COALESCE(SUM((m."requestTokenUsage"->>'outputTokens')::numeric), 0)::text     AS "outputTokens",
-      COALESCE(SUM((m."requestTokenUsage"->>'reasoningTokens')::numeric), 0)::text  AS "reasoningTokens",
-      COALESCE(SUM((m."requestTokenUsage"->>'totalTokens')::numeric), 0)::text      AS "totalTokens",
-      COALESCE(SUM((m."requestTokenUsage"->>'totalPrice')::numeric), 0)::text       AS "totalPrice"
-    `.trim();
+    return [
+      `COALESCE(SUM((m.request_token_usage->>'inputTokens')::numeric), 0)::text AS "inputTokens"`,
+      `COALESCE(SUM((m.request_token_usage->>'cachedInputTokens')::numeric), 0)::text AS "cachedInputTokens"`,
+      `COALESCE(SUM((m.request_token_usage->>'outputTokens')::numeric), 0)::text AS "outputTokens"`,
+      `COALESCE(SUM((m.request_token_usage->>'reasoningTokens')::numeric), 0)::text AS "reasoningTokens"`,
+      `COALESCE(SUM((m.request_token_usage->>'totalTokens')::numeric), 0)::text AS "totalTokens"`,
+      `COALESCE(SUM((m.request_token_usage->>'totalPrice')::numeric), 0)::text AS "totalPrice"`,
+    ].join(', ');
   }
 }

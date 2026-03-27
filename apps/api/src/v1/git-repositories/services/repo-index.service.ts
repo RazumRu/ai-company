@@ -1305,22 +1305,18 @@ export class RepoIndexService implements OnModuleInit {
     repoUrl?: string,
   ): Promise<{ seeded: boolean; donorCommit?: string; donorTokens?: number }> {
     // First try finding a donor by repositoryId (same user's repo entity)
-    let donors = await this.repoIndexDao.getAll({
-      repositoryId,
-      status: RepoIndexStatus.Completed,
-      limit: 1,
-      order: { updatedAt: 'DESC' },
-    });
+    let donors = await this.repoIndexDao.getAll(
+      { repositoryId, status: RepoIndexStatus.Completed },
+      { limit: 1, orderBy: { updatedAt: 'DESC' } },
+    );
 
     // Fallback: find a donor by repoUrl (covers cross-user scenarios where
     // different users have different repositoryId values for the same repo)
     if (donors.length === 0 && repoUrl) {
-      donors = await this.repoIndexDao.getAll({
-        repoUrl,
-        status: RepoIndexStatus.Completed,
-        limit: 1,
-        order: { updatedAt: 'DESC' },
-      });
+      donors = await this.repoIndexDao.getAll(
+        { repoUrl, status: RepoIndexStatus.Completed },
+        { limit: 1, orderBy: { updatedAt: 'DESC' } },
+      );
     }
 
     const donor = donors[0];
@@ -1383,13 +1379,12 @@ export class RepoIndexService implements OnModuleInit {
     };
 
     if (params.existing) {
-      const updated = await this.repoIndexDao.updateById(
-        params.existing.id,
-        payload,
+      await this.repoIndexDao.updateById(params.existing.id, payload);
+      // updateById returns affected row count — refetch the entity
+      const refreshed = await this.repoIndexDao.getById(params.existing.id);
+      return (
+        refreshed ?? ({ ...params.existing, ...payload } as RepoIndexEntity)
       );
-      // updateById returns the refreshed entity from the DB — fall back to
-      // spread only if the DAO returned null (should not happen).
-      return updated ?? ({ ...params.existing, ...payload } as RepoIndexEntity);
     }
 
     // Check for a soft-deleted row with the same (repositoryId, branch).
@@ -1403,12 +1398,13 @@ export class RepoIndexService implements OnModuleInit {
 
     if (softDeleted) {
       await this.repoIndexDao.restoreById(softDeleted.id);
-      const updated = await this.repoIndexDao.updateById(softDeleted.id, {
+      await this.repoIndexDao.updateById(softDeleted.id, {
         repoUrl: params.repoUrl,
         lastIndexedCommit: null,
         ...payload,
       });
-      return updated ?? ({ ...softDeleted, ...payload } as RepoIndexEntity);
+      const refreshed = await this.repoIndexDao.getById(softDeleted.id);
+      return refreshed ?? ({ ...softDeleted, ...payload } as RepoIndexEntity);
     }
 
     return this.repoIndexDao.create({

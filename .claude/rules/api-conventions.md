@@ -12,8 +12,8 @@ Every feature in `apps/api/src/v1/<feature>/` follows: Controller -> Service -> 
 
 - **Controllers** are thin: route + validate + delegate. No business logic. Inject `@CtxStorage() ctx: AppContextStorage` to get the current user/project context.
 - **Services** own all business logic. First parameter is `ctx: AppContextStorage`. Use `ctx.checkSub()` for userId, `ctx.checkProjectId()` for projectId.
-- **DAOs** own all database queries. Extend `BaseDao<Entity, SearchTerms>`. No business logic in DAOs.
-- **Entities** are plain TypeORM-decorated classes. Never import services from entities.
+- **DAOs** own all database queries. Inject `EntityManager` from `@mikro-orm/postgresql`. No business logic in DAOs.
+- **Entities** are MikroORM-decorated classes. Never import services from entities.
 
 ## Auth
 
@@ -36,10 +36,10 @@ export type CreateItemData = z.infer<typeof CreateItemSchema>;
 
 ## Transactions
 
-Use `TypeormService.trx()` for multi-step DB writes. Pass `entityManager` down to DAO methods:
+Use `em.transactional()` for multi-step DB writes. Pass the transactional `EntityManager` down to DAO methods:
 
 ```typescript
-return this.typeorm.trx(async (em) => {
+return await this.em.transactional(async (em) => {
   const row = await this.dao.create(data, em);
   await this.otherDao.create(otherData, em);
   return row;
@@ -67,5 +67,5 @@ Throw custom exceptions from `@packages/common`: `NotFoundException`, `BadReques
 
 ## Imports
 
-- Shared packages: `@packages/common`, `@packages/typeorm`, `@packages/http-server`, `@packages/metrics`.
+- Shared packages: `@packages/common`, `@packages/mikroorm`, `@packages/http-server`, `@packages/metrics`.
 - Relative imports within the same feature module. Avoid deep cross-feature imports; prefer events or shared packages.

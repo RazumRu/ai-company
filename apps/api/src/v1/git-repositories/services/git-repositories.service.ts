@@ -1,3 +1,4 @@
+import { FilterQuery } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
@@ -123,9 +124,13 @@ export class GitRepositoriesService {
       return this.prepareRepositoryResponse(existing);
     }
 
-    const updated = await this.gitRepositoriesDao.updateById(id, updatePayload);
+    await this.gitRepositoriesDao.updateById(
+      id,
+      updatePayload as Partial<GitRepositoryEntity>,
+    );
+    const updated = await this.gitRepositoriesDao.getById(id);
 
-    return this.prepareRepositoryResponse(updated!);
+    return this.prepareRepositoryResponse(updated ?? existing);
   }
 
   async getRepositories(
@@ -134,21 +139,27 @@ export class GitRepositoriesService {
   ): Promise<GitRepositoryDto[]> {
     const userId = ctx.checkSub();
 
-    const searchParams: Parameters<typeof this.gitRepositoriesDao.getAll>[0] = {
+    const whereParams: FilterQuery<GitRepositoryEntity> = {
       createdBy: userId,
-      owner: query.owner,
-      repo: query.repo,
-      provider: query.provider,
-      limit: query.limit,
-      offset: query.offset,
-      order: { createdAt: 'DESC' },
     };
-
+    if (query.owner) {
+      whereParams.owner = query.owner;
+    }
+    if (query.repo) {
+      whereParams.repo = query.repo;
+    }
+    if (query.provider) {
+      whereParams.provider = query.provider;
+    }
     if (query.installationId !== undefined) {
-      searchParams.installationId = query.installationId;
+      whereParams.installationId = query.installationId;
     }
 
-    const repositories = await this.gitRepositoriesDao.getAll(searchParams);
+    const repositories = await this.gitRepositoriesDao.getAll(whereParams, {
+      limit: query.limit,
+      offset: query.offset,
+      orderBy: { createdAt: 'DESC' },
+    });
 
     return repositories.map((repo) => this.prepareRepositoryResponse(repo));
   }
@@ -210,11 +221,10 @@ export class GitRepositoriesService {
 
     // Fetch only the IDs of user-owned repos for a DB-level IN filter,
     // rather than loading full entities and filtering in memory.
-    const userRepos = await this.gitRepositoriesDao.getAll({
-      createdBy: userId,
-      projection: ['id'],
-      rawData: true,
-    });
+    const userRepos = await this.gitRepositoriesDao.getAll(
+      { createdBy: userId },
+      { fields: ['id'] },
+    );
 
     const userRepoIds = userRepos.map((repo) => repo.id);
     if (userRepoIds.length === 0) {
@@ -222,29 +232,29 @@ export class GitRepositoriesService {
     }
 
     // Build search params — filter by repositoryIds at the DB level
-    const searchParams: Parameters<typeof this.repoIndexDao.getAll>[0] = {
-      limit: query.limit,
-      offset: query.offset,
-      order: { createdAt: 'DESC' },
-    };
+    const repoIndexWhere: FilterQuery<RepoIndexEntity> = {};
 
     if (query.repositoryId) {
-      searchParams.repositoryId = query.repositoryId;
+      repoIndexWhere.repositoryId = query.repositoryId;
     } else {
-      searchParams.repositoryIds = userRepoIds;
+      repoIndexWhere.repositoryId = { $in: userRepoIds };
     }
 
     if (query.branches && query.branches.length > 0) {
-      searchParams.branch = query.branches;
+      repoIndexWhere.branch = { $in: query.branches };
     } else if (query.branch) {
-      searchParams.branch = query.branch;
+      repoIndexWhere.branch = query.branch;
     }
 
     if (query.status) {
-      searchParams.status = query.status as RepoIndexStatus;
+      repoIndexWhere.status = query.status as RepoIndexStatus;
     }
 
-    const indexes = await this.repoIndexDao.getAll(searchParams);
+    const indexes = await this.repoIndexDao.getAll(repoIndexWhere, {
+      limit: query.limit,
+      offset: query.offset,
+      orderBy: { createdAt: 'DESC' },
+    });
 
     return indexes.map((index) => this.prepareRepoIndexResponse(index));
   }
@@ -274,11 +284,10 @@ export class GitRepositoriesService {
       });
     } else {
       // No branch specified — return the most recently updated index
-      const indexes = await this.repoIndexDao.getAll({
-        repositoryId,
-        limit: 1,
-        order: { updatedAt: 'DESC' },
-      });
+      const indexes = await this.repoIndexDao.getAll(
+        { repositoryId },
+        { limit: 1, orderBy: { updatedAt: 'DESC' } },
+      );
       index = indexes[0] ?? null;
     }
 
@@ -586,8 +595,8 @@ export class GitRepositoriesService {
 
     const existingRepos = await this.gitRepositoriesDao.getAll({
       createdBy: userId,
-      hasInstallationId: true,
-    });
+      installationId: { $ne: null },
+    } as FilterQuery<GitRepositoryEntity>);
 
     const syncedKeys = new Set(
       allGithubRepos.map((r) => `${r.owner}/${r.repo}`),
@@ -629,7 +638,7 @@ export class GitRepositoriesService {
 
     const repos = await this.gitRepositoriesDao.getAll({
       createdBy: userId,
-      installationIds,
+      installationId: { $in: installationIds },
     });
 
     for (const repo of repos) {
@@ -672,7 +681,7 @@ export class GitRepositoriesService {
     // repository is restored during a future sync. The unique constraint
     // still covers soft-deleted rows, so getOrInitIndexForRepo will restore
     // and reset them when re-indexing is triggered.
-    await this.repoIndexDao.delete({ repositoryId });
+    await this.repoIndexDao.hardDelete({ repositoryId });
   }
 
   private prepareRepositoryResponse(

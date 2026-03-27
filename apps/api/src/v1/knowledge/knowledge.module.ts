@@ -1,6 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { environment } from '../../environments';
 import { LitellmModule } from '../litellm/litellm.module';

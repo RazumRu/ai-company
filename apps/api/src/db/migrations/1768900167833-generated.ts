@@ -1,10 +1,8 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1768900167833 implements MigrationInterface {
-  name = 'Generated1768900167833';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1768900167833 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             CREATE TABLE "knowledge_docs" (
                 "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -18,10 +16,10 @@ export class Generated1768900167833 implements MigrationInterface {
                 CONSTRAINT "PK_bf3d64994678852fb3de0428abe" PRIMARY KEY ("id")
             )
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE INDEX "IDX_68cd1c26fb287057a76150f247" ON "knowledge_docs" ("createdBy")
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE TABLE "knowledge_chunks" (
                 "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
                 "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
@@ -38,28 +36,28 @@ export class Generated1768900167833 implements MigrationInterface {
                 CONSTRAINT "PK_81af684d79d321813c41019a5cd" PRIMARY KEY ("id")
             )
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE INDEX "IDX_b00cc8a813624a42dc9fd5e321" ON "knowledge_chunks" ("docId")
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE UNIQUE INDEX "IDX_a4cfbf5997a69dc9bd11934e7e" ON "knowledge_chunks" ("docId", "chunkIndex")
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             DROP INDEX "public"."IDX_a4cfbf5997a69dc9bd11934e7e"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP INDEX "public"."IDX_b00cc8a813624a42dc9fd5e321"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TABLE "knowledge_chunks"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP INDEX "public"."IDX_68cd1c26fb287057a76150f247"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             DROP TABLE "knowledge_docs"
         `);
   }

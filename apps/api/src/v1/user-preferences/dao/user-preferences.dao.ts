@@ -1,52 +1,28 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
-import { DataSource } from 'typeorm';
+import { BaseDao } from '@packages/mikroorm';
 
 import { UserPreferenceEntity } from '../entities/user-preference.entity';
 import type { UserPreferencesPayload } from '../user-preferences.types';
 
-export type UserPreferenceSearchTerms = Partial<{
-  userId: string;
-}>;
-
 @Injectable()
-export class UserPreferencesDao extends BaseDao<
-  UserPreferenceEntity,
-  UserPreferenceSearchTerms
-> {
-  public get alias() {
-    return 'up';
-  }
-
-  protected get entity() {
-    return UserPreferenceEntity;
-  }
-
-  constructor(dataSource: DataSource) {
-    super(dataSource);
-  }
-
-  protected applySearchParams(
-    builder: BaseQueryBuilder<UserPreferenceEntity>,
-    params?: UserPreferenceSearchTerms,
-  ) {
-    if (params?.userId) {
-      builder.andWhere({ userId: params.userId });
-    }
+export class UserPreferencesDao extends BaseDao<UserPreferenceEntity> {
+  constructor(em: EntityManager) {
+    super(em, UserPreferenceEntity);
   }
 
   async upsertByUserId(
     userId: string,
     preferences: UserPreferencesPayload,
   ): Promise<UserPreferenceEntity> {
-    const results = await this.upsertMany(
-      [{ userId, preferences }],
-      ['userId'],
+    const result = await this.getRepo().upsert(
+      { userId, preferences },
+      {
+        onConflictFields: ['userId'],
+        onConflictAction: 'merge',
+        onConflictMergeFields: ['preferences'],
+      },
     );
-    const result = results[0];
-    if (!result) {
-      throw new Error('Upsert returned no rows');
-    }
     return result;
   }
 }

@@ -1,4 +1,6 @@
 import { HumanMessage } from '@langchain/core/messages';
+import { LockMode } from '@mikro-orm/core';
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
@@ -6,9 +8,7 @@ import {
   DefaultLogger,
   NotFoundException,
 } from '@packages/common';
-import { TypeormService } from '@packages/typeorm';
 import { isEqual } from 'lodash';
-import { EntityManager } from 'typeorm';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
@@ -53,7 +53,7 @@ export class GraphsService {
     private readonly graphCompiler: GraphCompiler,
     private readonly graphRegistry: GraphRegistry,
     private readonly graphRevisionService: GraphRevisionService,
-    private readonly typeorm: TypeormService,
+    private readonly em: EntityManager,
     private readonly notificationsService: NotificationsService,
     private readonly threadsDao: ThreadsDao,
     private readonly eventEmitter: EventEmitter2,
@@ -93,7 +93,7 @@ export class GraphsService {
       throw new NotFoundException('PROJECT_NOT_FOUND');
     }
 
-    return this.typeorm.trx(async (entityManager: EntityManager) => {
+    return await this.em.transactional(async (em: EntityManager) => {
       const initialVersion = '1.0.0';
       const agents = extractAgentsFromSchema(
         data.schema,
@@ -101,7 +101,10 @@ export class GraphsService {
       );
       const row = await this.graphDao.create(
         {
-          ...data,
+          name: data.name,
+          description: data.description,
+          schema: data.schema,
+          metadata: data.metadata,
           projectId,
           status: GraphStatus.Created,
           createdBy: userId,
@@ -109,8 +112,8 @@ export class GraphsService {
           version: initialVersion,
           targetVersion: initialVersion,
           agents,
-        },
-        entityManager,
+        } as Partial<GraphEntity>,
+        em,
       );
 
       return this.prepareResponse(row);
@@ -136,14 +139,14 @@ export class GraphsService {
     query?: GetAllGraphsQueryDto,
   ): Promise<GraphDto[]> {
     const userId = ctx.checkSub();
-    const rows = await this.graphDao.getAll({
-      createdBy: userId,
-      ids: query?.ids,
-      projectId: ctx.checkProjectId(),
-      order: {
-        updatedAt: 'DESC',
+    const rows = await this.graphDao.getAll(
+      {
+        createdBy: userId,
+        ...(query?.ids ? { id: { $in: query.ids } } : {}),
+        projectId: ctx.checkProjectId(),
       },
-    });
+      { orderBy: { updatedAt: 'DESC' } },
+    );
 
     const graphIds = rows.map((r) => r.id);
     const threadCounts = await this.threadsDao.countByGraphIds(graphIds);
@@ -158,12 +161,14 @@ export class GraphsService {
     query?: GetGraphsPreviewQueryDto,
   ): Promise<GraphPreviewDto[]> {
     const userId = ctx.checkSub();
-    const rows = await this.graphDao.getPreview({
-      createdBy: userId,
-      ids: query?.ids,
-      projectId: ctx.checkProjectId(),
-      order: { updatedAt: 'DESC' },
-    });
+    const rows = await this.graphDao.getPreview(
+      {
+        createdBy: userId,
+        ...(query?.ids ? { id: { $in: query.ids } } : {}),
+        projectId: ctx.checkProjectId(),
+      },
+      { orderBy: { updatedAt: 'DESC' } },
+    );
 
     if (rows.length === 0) {
       return [];
@@ -247,16 +252,15 @@ export class GraphsService {
     // Use transaction with row-level locking to prevent simultaneous updates.
     // Post-transaction data (revision to enqueue, notification to emit) is returned
     // from the transaction callback so TypeScript can track it through control flow.
-    const { response, postCommit } = await this.typeorm.trx(
-      async (entityManager: EntityManager) => {
+    const { response, postCommit } = await this.em.transactional(
+      async (em: EntityManager) => {
         // Lock the graph row for update (prevents race conditions)
         const graph = await this.graphDao.getOne(
           {
             id: id,
             createdBy: userId,
-            lock: 'pessimistic_write',
           },
-          entityManager,
+          { lockMode: LockMode.PESSIMISTIC_WRITE },
         );
 
         if (!graph) {
@@ -279,15 +283,12 @@ export class GraphsService {
             graph.version,
           )
         ) {
-          const updated = await this.graphDao.updateById(
+          await this.graphDao.updateById(
             id,
             { targetVersion: graph.version },
-            entityManager,
+            em,
           );
-          if (!updated) {
-            throw new NotFoundException('GRAPH_NOT_FOUND');
-          }
-          graph.targetVersion = updated.targetVersion;
+          graph.targetVersion = graph.version;
         }
 
         // --- Synchronous (in-place) fields: metadata, name, description, temporary ---
@@ -316,14 +317,7 @@ export class GraphsService {
         }
 
         if (Object.keys(syncUpdates).length > 0) {
-          const updated = await this.graphDao.updateById(
-            id,
-            syncUpdates,
-            entityManager,
-          );
-          if (!updated) {
-            throw new NotFoundException('GRAPH_NOT_FOUND');
-          }
+          await this.graphDao.updateById(id, syncUpdates, em);
           Object.assign(graph, syncUpdates);
         }
 
@@ -345,7 +339,7 @@ export class GraphsService {
             graph,
             currentVersion,
             revisionConfig,
-            entityManager,
+            em,
             { enqueueImmediately: false },
           );
 
@@ -437,14 +431,10 @@ export class GraphsService {
     const schema = graph.schema;
 
     // Update status to compiling
-    const compilingUpdate = await this.graphDao.updateById(id, {
+    await this.graphDao.updateById(id, {
       status: GraphStatus.Compiling,
-      error: null,
+      error: undefined,
     });
-
-    if (!compilingUpdate) {
-      throw new NotFoundException('GRAPH_NOT_FOUND');
-    }
 
     await this.notificationsService.emit({
       type: NotificationEvent.Graph,
@@ -468,13 +458,14 @@ export class GraphsService {
       // Graph is already registered by compiler, no need to register again
 
       // Update status to running
-      const updated = await this.graphDao.updateById(id, {
+      await this.graphDao.updateById(id, {
         status: GraphStatus.Running,
-        error: null,
+        error: undefined,
       });
 
+      const updated = await this.graphDao.getOne({ id, createdBy: userId });
       if (!updated) {
-        // If database update fails, cleanup the registry
+        // If database read fails, cleanup the registry
         await this.graphRegistry.destroy(id);
         throw new NotFoundException('GRAPH_NOT_FOUND');
       }
@@ -626,11 +617,12 @@ export class GraphsService {
     }
 
     // Update status to stopped
-    const updated = await this.graphDao.updateById(id, {
+    await this.graphDao.updateById(id, {
       status: GraphStatus.Stopped,
-      error: null,
+      error: undefined,
     });
 
+    const updated = await this.graphDao.getOne({ id, createdBy: userId });
     if (!updated) {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }

@@ -1,0 +1,39 @@
+{
+  "name": "@packages/mikroorm",
+  "version": "1.0.0",
+  "author": "Sergey Razumovskiy <s.razumru@gmail.com>",
+  "dependencies": {
+    "@mikro-orm/core": "^7.0.0",
+    "@mikro-orm/decorators": "^7.0.0",
+    "@mikro-orm/nestjs": "^7.0.0",
+    "@mikro-orm/postgresql": "^7.0.0",
+    "@mikro-orm/migrations": "^7.0.0",
+    "@nestjs/common": "^11.1.17",
+    "@nestjs/core": "^11.1.17",
+    "@packages/common": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "eslint": "^10.1.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.1"
+  },
+  "license": "ISC",
+  "main": "dist/index.js",
+  "peerDependencies": {
+    "@mikro-orm/core": "^7.0.0",
+    "@mikro-orm/postgresql": "^7.0.0",
+    "@nestjs/common": "^11.1.8",
+    "@nestjs/core": "^11.1.8",
+    "@packages/common": "workspace:*"
+  },
+  "scripts": {
+    "lint:fix": "pnpm run lint --fix",
+    "lint": "pnpm eslint src",
+    "build": "tsc -p tsconfig.build.json",
+    "prebuild": "rm -rf ./dist || true",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests --fileParallelism"
+  },
+  "types": "dist/index.d.ts"
+}

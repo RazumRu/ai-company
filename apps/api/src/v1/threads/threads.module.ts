@@ -1,5 +1,5 @@
 import { forwardRef, Module } from '@nestjs/common';
-import { registerEntities } from '@packages/typeorm';
+import { registerEntities } from '@packages/mikroorm';
 
 import { AgentsModule } from '../agents/agents.module';
 import { GraphsModule } from '../graphs/graphs.module';

@@ -1,11 +1,9 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterface {
-  name = 'RenameDockRuntimeToRuntime1771700000001';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
+export class RenameDockRuntimeToRuntime1771700000001 extends Migration {
+  override async up(): Promise<void> {
     // 1. Update graphs.schema — nodes[].template
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graphs"
       SET "schema" = (
         SELECT jsonb_set(
@@ -28,7 +26,7 @@ export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterfa
     `);
 
     // 2. Update graph_revisions.clientConfig — clientConfig.schema.nodes[].template
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
       SET "clientConfig" = jsonb_set(
         "clientConfig",
@@ -49,7 +47,7 @@ export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterfa
     `);
 
     // 3. Update graph_revisions.newConfig — newConfig.schema.nodes[].template
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
       SET "newConfig" = jsonb_set(
         "newConfig",
@@ -72,7 +70,7 @@ export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterfa
 
     // 4. Update graph_revisions.configDiff — JSON Patch ops that reference template paths
     //    Replace string occurrences of "docker-runtime" within the configDiff JSONB
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
       SET "configDiff" = regexp_replace(
         "configDiff"::text,
@@ -85,11 +83,11 @@ export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterfa
     `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
+  override async down(): Promise<void> {
     // Reverse: rename 'runtime' back to 'docker-runtime'
 
     // 1. graphs.schema
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graphs"
       SET "schema" = (
         SELECT jsonb_set(
@@ -112,7 +110,7 @@ export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterfa
     `);
 
     // 2. graph_revisions.clientConfig
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
       SET "clientConfig" = jsonb_set(
         "clientConfig",
@@ -133,7 +131,7 @@ export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterfa
     `);
 
     // 3. graph_revisions.newConfig
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
       SET "newConfig" = jsonb_set(
         "newConfig",
@@ -155,7 +153,7 @@ export class RenameDockRuntimeToRuntime1771700000001 implements MigrationInterfa
     `);
 
     // 4. graph_revisions.configDiff
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
       SET "configDiff" = regexp_replace(
         "configDiff"::text,

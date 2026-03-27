@@ -1,78 +1,14 @@
+import { EntityManager, FilterQuery, FindOptions } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
-import { isBoolean } from 'lodash';
-import { DataSource, In } from 'typeorm';
+import { BaseDao } from '@packages/mikroorm';
 
 import { GraphEntity } from '../entity/graph.entity';
-import { type GraphAgentInfo, GraphStatus } from '../graphs.types';
-
-export type SearchTerms = Partial<{
-  id: string;
-  createdBy: string;
-  ids: string[];
-  status: GraphStatus;
-  statuses: GraphStatus[];
-  temporary: boolean;
-  projectId: string;
-}>;
+import { type GraphAgentInfo } from '../graphs.types';
 
 @Injectable()
-export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
-  public get alias() {
-    return 'g';
-  }
-
-  protected get entity() {
-    return GraphEntity;
-  }
-
-  constructor(dataSource: DataSource) {
-    super(dataSource);
-  }
-
-  protected applySearchParams(
-    builder: BaseQueryBuilder<GraphEntity>,
-    params?: SearchTerms,
-  ) {
-    if (params?.ids && params.ids.length > 0) {
-      builder.andWhere({
-        id: In(params?.ids),
-      });
-    }
-
-    if (params?.id) {
-      builder.andWhere({
-        id: params.id,
-      });
-    }
-
-    if (isBoolean(params?.temporary)) {
-      builder.andWhere({
-        temporary: params.temporary,
-      });
-    }
-
-    if (params?.statuses && params.statuses.length > 0) {
-      builder.andWhere(`${this.alias}.status IN (:...statuses)`, {
-        statuses: params.statuses,
-      });
-    } else if (params?.status) {
-      builder.andWhere({
-        status: params.status,
-      });
-    }
-
-    if (params?.createdBy) {
-      builder.andWhere({
-        createdBy: params.createdBy,
-      });
-    }
-
-    if (params?.projectId) {
-      builder.andWhere({
-        projectId: params.projectId,
-      });
-    }
+export class GraphDao extends BaseDao<GraphEntity> {
+  constructor(em: EntityManager) {
+    super(em, GraphEntity);
   }
 
   async getAgentsByGraphIds(
@@ -82,10 +18,10 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
     if (graphIds.length === 0) {
       return result;
     }
-    const rows = await this.getQueryBuilder()
-      .select([`${this.alias}.id`, `${this.alias}.agents`])
-      .where(`${this.alias}.id IN (:...graphIds)`, { graphIds })
-      .getMany();
+    const rows = await this.getAll(
+      { id: { $in: graphIds } },
+      { fields: ['id', 'agents'] },
+    );
     for (const row of rows) {
       result.set(row.id, row.agents ?? []);
     }
@@ -93,54 +29,26 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
   }
 
   async getPreview(
-    params?: SearchTerms & { order?: Record<string, 'ASC' | 'DESC'> },
-  ): Promise<
-    Pick<
-      GraphEntity,
-      | 'id'
-      | 'name'
-      | 'description'
-      | 'error'
-      | 'version'
-      | 'targetVersion'
-      | 'status'
-      | 'temporary'
-      | 'createdBy'
-      | 'projectId'
-      | 'createdAt'
-      | 'updatedAt'
-    >[]
-  > {
-    const builder = this.getQueryBuilder().select([
-      `${this.alias}.id`,
-      `${this.alias}.name`,
-      `${this.alias}.description`,
-      `${this.alias}.error`,
-      `${this.alias}.version`,
-      `${this.alias}.targetVersion`,
-      `${this.alias}.status`,
-      `${this.alias}.temporary`,
-      `${this.alias}.createdBy`,
-      `${this.alias}.projectId`,
-      `${this.alias}.createdAt`,
-      `${this.alias}.updatedAt`,
-    ]);
-
-    this.applySearchParams(builder, params);
-
-    if (params?.order) {
-      const entries = Object.entries(params.order);
-      for (let i = 0; i < entries.length; i++) {
-        const [field, dir] = entries[i]!;
-        if (i === 0) {
-          builder.orderBy(`${this.alias}.${field}`, dir);
-        } else {
-          builder.addOrderBy(`${this.alias}.${field}`, dir);
-        }
-      }
-    }
-
-    return builder.getMany();
+    where: FilterQuery<GraphEntity>,
+    options?: FindOptions<GraphEntity, never, keyof GraphEntity & string>,
+  ) {
+    return await this.getAll(where, {
+      fields: [
+        'id',
+        'name',
+        'description',
+        'error',
+        'version',
+        'targetVersion',
+        'status',
+        'temporary',
+        'createdBy',
+        'projectId',
+        'createdAt',
+        'updatedAt',
+      ],
+      ...options,
+    });
   }
 
   async getSchemaAndMetadata(
@@ -153,15 +61,10 @@ export class GraphDao extends BaseDao<GraphEntity, SearchTerms> {
     if (graphIds.length === 0) {
       return result;
     }
-    const rows = await this.getQueryBuilder()
-      .select([
-        `${this.alias}.id`,
-        `${this.alias}.schema`,
-        `${this.alias}.metadata`,
-        `${this.alias}.agents`,
-      ])
-      .where(`${this.alias}.id IN (:...graphIds)`, { graphIds })
-      .getMany();
+    const rows = await this.getAll(
+      { id: { $in: graphIds } },
+      { fields: ['id', 'schema', 'metadata', 'agents'] },
+    );
     for (const row of rows) {
       result.set(row.id, {
         schema: row.schema,

@@ -1,17 +1,15 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1772184988783 implements MigrationInterface {
-  name = 'Generated1772184988783';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
+export class Generated1772184988783 extends Migration {
+  override async up(): Promise<void> {
     // Add projectId as nullable first so existing rows don't violate NOT NULL
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "threads"
             ADD "projectId" uuid
         `);
 
     // Populate projectId for existing threads from their associated graph
-    await queryRunner.query(`
+    this.addSql(`
             UPDATE "threads"
             SET "projectId" = "graphs"."projectId"
             FROM "graphs"
@@ -19,21 +17,21 @@ export class Generated1772184988783 implements MigrationInterface {
         `);
 
     // Now set NOT NULL after all rows are populated
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "threads"
             ALTER COLUMN "projectId" SET NOT NULL
         `);
 
-    await queryRunner.query(`
+    this.addSql(`
             CREATE INDEX "IDX_3acbab3c91ef7c75eb0709f44f" ON "threads" ("projectId")
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             DROP INDEX "public"."IDX_3acbab3c91ef7c75eb0709f44f"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "threads" DROP COLUMN "projectId"
         `);
   }

@@ -1,45 +1,49 @@
-import { TimestampsEntity } from '@packages/typeorm';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Entity,
+  Enum,
+  Index,
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 
 import { GitRepositoryProvider } from '../git-repositories.types';
 
-@Entity('git_repositories')
-@Index(['owner', 'repo', 'createdBy', 'provider'], { unique: true })
+@Entity({ tableName: 'git_repositories' })
+@Unique({ properties: ['owner', 'repo', 'createdBy', 'provider'] })
 export class GitRepositoryEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   createdBy!: string;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Property({ type: 'uuid', nullable: true })
   @Index()
   projectId!: string | null;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   owner!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   repo!: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   url!: string;
 
-  @Column({
-    type: 'enum',
-    enum: GitRepositoryProvider,
-  })
+  @Enum({ items: () => GitRepositoryProvider })
   provider!: GitRepositoryProvider;
 
-  @Column({ type: 'varchar', default: 'main' })
+  @Property({ type: 'varchar', default: 'main' })
   defaultBranch!: string;
 
-  @Column({ type: 'int', nullable: true })
+  @Property({ type: 'int', nullable: true })
   installationId!: number | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Property({ type: 'timestamptz', nullable: true })
   syncedAt!: Date | null;
 }

@@ -1,51 +1,49 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1762963411077 implements MigrationInterface {
-  name = 'Generated1762963411077';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class Generated1762963411077 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "fromVersion"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "baseVersion" character varying(50)
         `);
 
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
         SET "baseVersion"="toVersion"
     `);
 
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "graph_revisions"
         ALTER COLUMN "baseVersion" SET NOT NULL
     `);
 
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "schemaSnapshot" jsonb
         `);
 
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "graph_revisions"
       SET "schemaSnapshot"='{}'
     `);
 
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "graph_revisions"
         ALTER COLUMN "schemaSnapshot" SET NOT NULL
     `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "schemaSnapshot"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions" DROP COLUMN "baseVersion"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "graph_revisions"
             ADD "fromVersion" character varying(50) NOT NULL
         `);

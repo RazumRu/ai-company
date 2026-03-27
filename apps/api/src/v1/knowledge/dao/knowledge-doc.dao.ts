@@ -1,108 +1,70 @@
+import { EntityManager, FilterQuery, FindOptions } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import {
-  BaseDao,
-  BaseQueryBuilder,
-  EntityAttributesOmit,
-} from '@packages/typeorm';
-import { Brackets, DataSource, In } from 'typeorm';
+import { BaseDao } from '@packages/mikroorm';
 
 import { KnowledgeDocEntity } from '../entity/knowledge-doc.entity';
 import { escapeIlike } from '../knowledge.utils';
 
-export type KnowledgeDocSearchTerms = Partial<{
-  id: string;
-  ids: string[];
-  publicId: number;
-  publicIds: number[];
-  createdBy: string;
-  tags: string[];
-  search: string;
-  projectId: string;
-}>;
-
-type KnowledgeDocEntityInput = EntityAttributesOmit<
-  KnowledgeDocEntity,
-  'publicId'
->;
-
 @Injectable()
-export class KnowledgeDocDao extends BaseDao<
-  KnowledgeDocEntity,
-  KnowledgeDocSearchTerms,
-  KnowledgeDocEntityInput
-> {
-  public get alias() {
-    return 'kd';
+export class KnowledgeDocDao extends BaseDao<KnowledgeDocEntity> {
+  constructor(em: EntityManager) {
+    super(em, KnowledgeDocEntity);
   }
 
-  protected get entity() {
-    return KnowledgeDocEntity;
-  }
+  /**
+   * Search knowledge docs with ILIKE across title, summary, and content.
+   * Also supports filtering by tags using the PostgreSQL ?| operator.
+   */
+  async search(
+    where: FilterQuery<KnowledgeDocEntity>,
+    search?: string,
+    tags?: string[],
+    options?: FindOptions<KnowledgeDocEntity>,
+  ): Promise<KnowledgeDocEntity[]> {
+    const filters: FilterQuery<KnowledgeDocEntity>[] = [where];
 
-  constructor(dataSource: DataSource) {
-    super(dataSource);
-  }
-
-  protected applySearchParams(
-    builder: BaseQueryBuilder<KnowledgeDocEntity>,
-    params?: KnowledgeDocSearchTerms,
-  ) {
-    if (params?.ids && params.ids.length > 0) {
-      builder.andWhere({ id: In(params.ids) });
-    }
-
-    if (params?.id) {
-      builder.andWhere({ id: params.id });
-    }
-
-    if (typeof params?.publicId === 'number') {
-      builder.andWhere({ publicId: params.publicId });
-    }
-
-    if (params?.publicIds && params.publicIds.length > 0) {
-      builder.andWhere({ publicId: In(params.publicIds) });
-    }
-
-    if (params?.createdBy) {
-      builder.andWhere({ createdBy: params.createdBy });
-    }
-
-    if (params?.tags && params.tags.length > 0) {
-      builder.andWhere(`${this.alias}.tags ?| array[:...tags]`, {
-        tags: params.tags,
+    if (search && search.trim().length > 0) {
+      const query = `%${escapeIlike(search.trim())}%`;
+      filters.push({
+        $or: [
+          { title: { $ilike: query } },
+          { summary: { $ilike: query } },
+          { content: { $ilike: query } },
+        ],
       });
     }
 
-    if (params?.projectId) {
-      builder.andWhere({ projectId: params.projectId });
+    if (tags && tags.length > 0) {
+      const placeholders = tags.map((_, i) => `$${i + 1}`).join(',');
+      const taggedIds = await this.em
+        .getConnection()
+        .execute<
+          { id: string }[]
+        >(`SELECT id FROM knowledge_docs WHERE tags ?| array[${placeholders}] AND "deleted_at" IS NULL`, tags);
+      const ids = taggedIds.map((r) => r.id);
+      if (ids.length === 0) {
+        return [];
+      }
+      filters.push({ id: { $in: ids } });
     }
 
-    if (params?.search && params.search.trim().length > 0) {
-      const query = `%${escapeIlike(params.search.trim())}%`;
-      builder.andWhere(
-        new Brackets((qb) => {
-          qb.where(`${this.alias}.title ILIKE :query ESCAPE '\\'`, { query })
-            .orWhere(`${this.alias}.summary ILIKE :query ESCAPE '\\'`, {
-              query,
-            })
-            .orWhere(`${this.alias}.content ILIKE :query ESCAPE '\\'`, {
-              query,
-            });
-        }),
-      );
-    }
+    const combinedWhere: FilterQuery<KnowledgeDocEntity> =
+      filters.length === 1 ? filters[0]! : { $and: filters };
+
+    return await this.getRepo().find(combinedWhere, options);
   }
 
   async getEmbeddingModelMismatches(
     currentModel: string,
   ): Promise<KnowledgeDocEntity[]> {
-    const builder = this.getQueryBuilder();
-
-    builder.where(`${this.alias}.embeddingModel IS NULL`);
-    builder.orWhere(`${this.alias}.embeddingModel != :currentModel`, {
-      currentModel,
-    });
-
-    return builder.getMany();
+    return await this.getRepo().find(
+      {
+        $or: [
+          { embeddingModel: null },
+          { embeddingModel: { $ne: currentModel } },
+        ],
+      },
+      { filters: { softDelete: false } },
+    );
   }
 }

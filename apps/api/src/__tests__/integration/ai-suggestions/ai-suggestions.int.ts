@@ -174,7 +174,7 @@ describe('AiSuggestionsService (integration)', () => {
 
   afterEach(async () => {
     for (const threadId of createdThreads) {
-      await messagesDao.delete({ threadId });
+      await messagesDao.hardDelete({ threadId });
       await threadsDao.deleteById(threadId);
     }
     createdThreads.length = 0;
@@ -198,7 +198,7 @@ describe('AiSuggestionsService (integration)', () => {
       const graph = await graphDao.create({
         name: 'ai-suggestions-graph',
         description: 'test graph',
-        error: null,
+        error: undefined,
         version: '1.0.0',
         targetVersion: '1.0.0',
         schema: {
@@ -279,7 +279,7 @@ describe('AiSuggestionsService (integration)', () => {
         projectId: serviceTestProjectId,
         externalThreadId: `ext-thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         metadata: {},
-        source: null,
+        source: undefined,
         name: 'Test thread',
         status: ThreadStatus.Running,
       });

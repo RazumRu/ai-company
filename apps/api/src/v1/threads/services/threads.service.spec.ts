@@ -37,19 +37,20 @@ describe('ThreadsService', () => {
 
   const createMockThreadEntity = (
     overrides: Partial<ThreadEntity> = {},
-  ): ThreadEntity => ({
-    id: mockThreadId,
-    graphId: mockGraphId,
-    createdBy: mockUserId,
-    projectId: 'project-abc',
-    externalThreadId: 'external-thread-123',
-    metadata: { nodeId: 'node-1' },
-    createdAt: new Date('2024-01-01T00:00:00Z'),
-    updatedAt: new Date('2024-01-01T00:00:00Z'),
-    deletedAt: null,
-    status: ThreadStatus.Running,
-    ...overrides,
-  });
+  ): ThreadEntity =>
+    ({
+      id: mockThreadId,
+      graphId: mockGraphId,
+      createdBy: mockUserId,
+      projectId: 'project-abc',
+      externalThreadId: 'external-thread-123',
+      metadata: { nodeId: 'node-1' },
+      createdAt: new Date('2024-01-01T00:00:00Z'),
+      updatedAt: new Date('2024-01-01T00:00:00Z'),
+      deletedAt: null,
+      status: ThreadStatus.Running,
+      ...overrides,
+    }) as unknown as ThreadEntity;
 
   const createMockMessageEntity = (
     overrides: Partial<MessageEntity> = {},
@@ -94,6 +95,7 @@ describe('ThreadsService', () => {
           useValue: {
             getAll: vi.fn(),
             getOne: vi.fn(),
+            getById: vi.fn(),
             create: vi.fn(),
             updateById: vi.fn(),
             deleteById: vi.fn(),
@@ -105,7 +107,7 @@ describe('ThreadsService', () => {
             getAll: vi.fn(),
             getOne: vi.fn(),
             create: vi.fn(),
-            delete: vi.fn(),
+            hardDelete: vi.fn(),
           },
         },
         {
@@ -161,13 +163,15 @@ describe('ThreadsService', () => {
       const result = await service.getThreads(mockCtx, query);
 
       expect(mockCtx.checkSub).toHaveBeenCalled();
-      expect(threadsDao.getAll).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-        graphId: mockGraphId,
-        limit: 50,
-        offset: 0,
-        order: { updatedAt: 'DESC' },
-      });
+      expect(threadsDao.getAll).toHaveBeenCalledWith(
+        {
+          createdBy: mockUserId,
+          graphId: mockGraphId,
+          limit: 50,
+          offset: 0,
+        },
+        { orderBy: { updatedAt: 'DESC' } },
+      );
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
         id: mockThreadId,
@@ -195,14 +199,16 @@ describe('ThreadsService', () => {
 
       await service.getThreads(mockCtx, query);
 
-      expect(threadsDao.getAll).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-        graphId: mockGraphId,
-        statuses: [ThreadStatus.Done],
-        limit: 50,
-        offset: 0,
-        order: { updatedAt: 'DESC' },
-      });
+      expect(threadsDao.getAll).toHaveBeenCalledWith(
+        {
+          createdBy: mockUserId,
+          graphId: mockGraphId,
+          statuses: [ThreadStatus.Done],
+          limit: 50,
+          offset: 0,
+        },
+        { orderBy: { updatedAt: 'DESC' } },
+      );
     });
 
     it('should return threads across all graphs when graphId is omitted', async () => {
@@ -221,12 +227,14 @@ describe('ThreadsService', () => {
       const result = await service.getThreads(mockCtx, query);
 
       expect(mockCtx.checkSub).toHaveBeenCalled();
-      expect(threadsDao.getAll).toHaveBeenCalledWith({
-        createdBy: mockUserId,
-        limit: 25,
-        offset: 5,
-        order: { updatedAt: 'DESC' },
-      });
+      expect(threadsDao.getAll).toHaveBeenCalledWith(
+        {
+          createdBy: mockUserId,
+          limit: 25,
+          offset: 5,
+        },
+        { orderBy: { updatedAt: 'DESC' } },
+      );
       expect(result).toHaveLength(2);
     });
 
@@ -410,12 +418,14 @@ describe('ThreadsService', () => {
         id: mockThreadId,
         createdBy: mockUserId,
       });
-      expect(messagesDao.getAll).toHaveBeenCalledWith({
-        threadId: mockThreadId,
-        limit: 100,
-        offset: 0,
-        order: { createdAt: 'DESC' },
-      });
+      expect(messagesDao.getAll).toHaveBeenCalledWith(
+        {
+          threadId: mockThreadId,
+          limit: 100,
+          offset: 0,
+        },
+        { orderBy: { createdAt: 'DESC' } },
+      );
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
         id: 'message-123',
@@ -439,13 +449,15 @@ describe('ThreadsService', () => {
 
       await service.getThreadMessages(mockCtx, mockThreadId, query);
 
-      expect(messagesDao.getAll).toHaveBeenCalledWith({
-        threadId: mockThreadId,
-        nodeId: 'node-1',
-        limit: 100,
-        offset: 0,
-        order: { createdAt: 'DESC' },
-      });
+      expect(messagesDao.getAll).toHaveBeenCalledWith(
+        {
+          threadId: mockThreadId,
+          nodeId: 'node-1',
+          limit: 100,
+          offset: 0,
+        },
+        { orderBy: { createdAt: 'DESC' } },
+      );
     });
 
     it('should throw error if thread not found', async () => {
@@ -467,7 +479,7 @@ describe('ThreadsService', () => {
       const mockThread = createMockThreadEntity();
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(messagesDao, 'delete').mockResolvedValue(undefined);
+      vi.spyOn(messagesDao, 'hardDelete').mockResolvedValue(undefined);
       vi.spyOn(threadsDao, 'deleteById').mockResolvedValue(undefined);
 
       await service.deleteThread(mockCtx, mockThreadId);
@@ -477,7 +489,7 @@ describe('ThreadsService', () => {
         id: mockThreadId,
         createdBy: mockUserId,
       });
-      expect(messagesDao.delete).toHaveBeenCalledWith({
+      expect(messagesDao.hardDelete).toHaveBeenCalledWith({
         threadId: mockThreadId,
       });
       expect(notificationsService.emit).toHaveBeenCalledWith({
@@ -502,7 +514,7 @@ describe('ThreadsService', () => {
         id: mockThreadId,
         createdBy: mockUserId,
       });
-      expect(messagesDao.delete).not.toHaveBeenCalled();
+      expect(messagesDao.hardDelete).not.toHaveBeenCalled();
       expect(notificationsService.emit).not.toHaveBeenCalled();
       expect(threadsDao.deleteById).not.toHaveBeenCalled();
     });
@@ -516,7 +528,8 @@ describe('ThreadsService', () => {
       });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(undefined as never);
+      vi.spyOn(threadsDao, 'getById').mockResolvedValue(updatedThread);
 
       const result = await service.setMetadata(mockCtx, mockThreadId, {
         metadata: { key: 'value', count: 42 },
@@ -550,7 +563,8 @@ describe('ThreadsService', () => {
       const updatedThread = createMockThreadEntity({ metadata: {} });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(undefined as never);
+      vi.spyOn(threadsDao, 'getById').mockResolvedValue(updatedThread);
 
       const result = await service.setMetadata(mockCtx, mockThreadId, {
         metadata: {},
@@ -573,7 +587,8 @@ describe('ThreadsService', () => {
       });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadsDao, 'updateById').mockResolvedValue(undefined as never);
+      vi.spyOn(threadsDao, 'getById').mockResolvedValue(updatedThread);
 
       const result = await service.setMetadataByExternalId(
         mockCtx,
@@ -733,22 +748,24 @@ describe('ThreadsService', () => {
         id: mockThreadId,
         createdBy: mockUserId,
       });
-      expect(messagesDao.getAll).toHaveBeenCalledWith({
-        threadId: mockThreadId,
-        order: { createdAt: 'ASC' },
-        projection: [
-          'id',
-          'nodeId',
-          'role',
-          'name',
-          'requestTokenUsage',
-          'toolCallNames',
-          'answeredToolCallNames',
-          'additionalKwargs',
-          'toolCallIds',
-          'toolTokenUsage',
-        ],
-      });
+      expect(messagesDao.getAll).toHaveBeenCalledWith(
+        { threadId: mockThreadId },
+        {
+          orderBy: { createdAt: 'ASC' },
+          fields: [
+            'id',
+            'nodeId',
+            'role',
+            'name',
+            'requestTokenUsage',
+            'toolCallNames',
+            'answeredToolCallNames',
+            'additionalKwargs',
+            'toolCallIds',
+            'toolTokenUsage',
+          ],
+        },
+      );
 
       // Check total (only from requestTokenUsage)
       expect(result.total).toMatchObject({
@@ -1416,7 +1433,8 @@ describe('ThreadsService', () => {
 
       vi.mocked(threadsDao.getOne).mockResolvedValue(thread);
       vi.mocked(graphsService.stopThreadExecution).mockResolvedValue(false);
-      vi.mocked(threadsDao.updateById).mockResolvedValue(updatedThread);
+      vi.mocked(threadsDao.updateById).mockResolvedValue(undefined as never);
+      vi.mocked(threadsDao.getById).mockResolvedValue(updatedThread);
 
       const result = await service.stopThread(mockCtx, mockThreadId);
 
@@ -1445,7 +1463,8 @@ describe('ThreadsService', () => {
       vi.mocked(graphsService.stopThreadExecution).mockRejectedValue(
         new Error('Graph runtime error'),
       );
-      vi.mocked(threadsDao.updateById).mockResolvedValue(updatedThread);
+      vi.mocked(threadsDao.updateById).mockResolvedValue(undefined as never);
+      vi.mocked(threadsDao.getById).mockResolvedValue(updatedThread);
 
       const result = await service.stopThread(mockCtx, mockThreadId);
 

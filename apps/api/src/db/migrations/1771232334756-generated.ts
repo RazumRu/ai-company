@@ -1,12 +1,10 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class Generated1771232334756 implements MigrationInterface {
-  name = 'Generated1771232334756';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
+export class Generated1771232334756 extends Migration {
+  override async up(): Promise<void> {
     // Convert simple-array (comma-separated text) to native PostgreSQL text[] arrays.
     // USING clause converts existing comma-separated values to proper arrays.
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "messages"
         ALTER COLUMN "toolCallNames" TYPE text[]
           USING CASE
@@ -15,7 +13,7 @@ export class Generated1771232334756 implements MigrationInterface {
             ELSE string_to_array("toolCallNames", ',')
           END
     `);
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "messages"
         ALTER COLUMN "answeredToolCallNames" TYPE text[]
           USING CASE
@@ -24,7 +22,7 @@ export class Generated1771232334756 implements MigrationInterface {
             ELSE string_to_array("answeredToolCallNames", ',')
           END
     `);
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "messages"
         ALTER COLUMN "toolCallIds" TYPE text[]
           USING CASE
@@ -35,19 +33,19 @@ export class Generated1771232334756 implements MigrationInterface {
     `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
+  override async down(): Promise<void> {
     // Revert text[] arrays back to comma-separated text (simple-array format)
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "messages"
         ALTER COLUMN "toolCallIds" TYPE text
           USING array_to_string("toolCallIds", ',')
     `);
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "messages"
         ALTER COLUMN "answeredToolCallNames" TYPE text
           USING array_to_string("answeredToolCallNames", ',')
     `);
-    await queryRunner.query(`
+    this.addSql(`
       ALTER TABLE "messages"
         ALTER COLUMN "toolCallNames" TYPE text
           USING array_to_string("toolCallNames", ',')

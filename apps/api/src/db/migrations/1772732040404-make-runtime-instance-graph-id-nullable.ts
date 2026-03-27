@@ -1,31 +1,29 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class MakeRuntimeInstanceGraphIdNullable1772732040404 implements MigrationInterface {
-  name = 'MakeRuntimeInstanceGraphIdNullable1772732040404';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class MakeRuntimeInstanceGraphIdNullable1772732040404 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
             DROP INDEX "public"."IDX_edbcf394ee253b1671a282b5ec"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "runtime_instances"
             ALTER COLUMN "graphId" DROP NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE UNIQUE INDEX "IDX_edbcf394ee253b1671a282b5ec" ON "runtime_instances" ("graphId", "nodeId", "threadId") NULLS NOT DISTINCT
         `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
             DROP INDEX "public"."IDX_edbcf394ee253b1671a282b5ec"
         `);
-    await queryRunner.query(`
+    this.addSql(`
             ALTER TABLE "runtime_instances"
             ALTER COLUMN "graphId"
             SET NOT NULL
         `);
-    await queryRunner.query(`
+    this.addSql(`
             CREATE UNIQUE INDEX "IDX_edbcf394ee253b1671a282b5ec" ON "runtime_instances" ("graphId", "nodeId", "threadId")
         `);
   }

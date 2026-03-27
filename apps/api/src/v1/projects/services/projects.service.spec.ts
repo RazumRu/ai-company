@@ -1,7 +1,7 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@packages/common';
-import { TypeormService } from '@packages/typeorm';
 import type { FastifyRequest } from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,7 +17,7 @@ describe('ProjectsService', () => {
   let service: ProjectsService;
   let projectsDao: ProjectsDao;
   let projectsStatsDao: ProjectsStatsDao;
-  let typeorm: TypeormService;
+  let em: EntityManager;
   let eventEmitter: EventEmitter2;
 
   const mockUserId = 'user-123';
@@ -63,9 +63,9 @@ describe('ProjectsService', () => {
           },
         },
         {
-          provide: TypeormService,
+          provide: EntityManager,
           useValue: {
-            trx: vi.fn(),
+            transactional: vi.fn(),
           },
         },
         {
@@ -80,10 +80,12 @@ describe('ProjectsService', () => {
     service = module.get<ProjectsService>(ProjectsService);
     projectsDao = module.get<ProjectsDao>(ProjectsDao);
     projectsStatsDao = module.get<ProjectsStatsDao>(ProjectsStatsDao);
-    typeorm = module.get<TypeormService>(TypeormService);
+    em = module.get<EntityManager>(EntityManager);
     eventEmitter = module.get<EventEmitter2>(EventEmitter2);
 
-    vi.mocked(typeorm.trx).mockImplementation(async (cb) => cb({} as never));
+    vi.mocked(em.transactional).mockImplementation(async (cb) =>
+      cb({} as never),
+    );
   });
 
   describe('create', () => {
@@ -175,6 +177,7 @@ describe('ProjectsService', () => {
       expect(result[0]?.threadCount).toBe(0);
       expect(projectsDao.getAll).toHaveBeenCalledWith(
         expect.objectContaining({ createdBy: mockUserId }),
+        expect.anything(),
       );
     });
 
@@ -236,8 +239,10 @@ describe('ProjectsService', () => {
       const existingEntity = createMockProjectEntity();
       const updatedEntity = createMockProjectEntity({ name: 'Updated Name' });
 
-      vi.mocked(projectsDao.getOne).mockResolvedValue(existingEntity);
-      vi.mocked(projectsDao.updateById).mockResolvedValue(updatedEntity);
+      vi.mocked(projectsDao.getOne)
+        .mockResolvedValueOnce(existingEntity)
+        .mockResolvedValueOnce(updatedEntity);
+      vi.mocked(projectsDao.updateById).mockResolvedValue(1);
 
       const result = await service.update(mockCtx, mockProjectId, dto);
 

@@ -53,7 +53,7 @@ describe('Web search tool integration', () => {
     const graph = await graphDao.create({
       name: 'web-search-tool-test-graph',
       description: 'Integration test graph for web search tool',
-      error: null,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
@@ -72,6 +72,7 @@ describe('Web search tool integration', () => {
       externalThreadId: `ext-${Date.now()}`,
       status: ThreadStatus.Running,
       metadata: {},
+      source: undefined,
     });
 
     createdThreadId = thread.id;
@@ -79,8 +80,8 @@ describe('Web search tool integration', () => {
 
   afterAll(async () => {
     if (createdThreadId) {
-      await messagesDao.delete({ threadId: createdThreadId });
-      await threadsDao.delete({ id: createdThreadId });
+      await messagesDao.hardDelete({ threadId: createdThreadId });
+      await threadsDao.hardDeleteById(createdThreadId);
     }
     if (createdGraphId) {
       await graphDao.deleteById(createdGraphId);

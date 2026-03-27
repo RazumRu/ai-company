@@ -1,16 +1,14 @@
-import { type MigrationInterface, type QueryRunner } from 'typeorm';
+import { Migration } from '@mikro-orm/migrations';
 
-export class AddToolCallNamesToMessages1768209000000 implements MigrationInterface {
-  name = 'AddToolCallNamesToMessages1768209000000';
-
-  public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+export class AddToolCallNamesToMessages1768209000000 extends Migration {
+  override async up(): Promise<void> {
+    this.addSql(`
       ALTER TABLE "messages"
       ADD COLUMN "toolCallNames" text
     `);
 
     // Populate toolCallNames for existing AI messages with tool calls
-    await queryRunner.query(`
+    this.addSql(`
       UPDATE "messages"
       SET "toolCallNames" = (
         SELECT string_agg(tool_call->>'name', ',')
@@ -23,8 +21,8 @@ export class AddToolCallNamesToMessages1768209000000 implements MigrationInterfa
     `);
   }
 
-  public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`
+  override async down(): Promise<void> {
+    this.addSql(`
       ALTER TABLE "messages"
       DROP COLUMN "toolCallNames"
     `);

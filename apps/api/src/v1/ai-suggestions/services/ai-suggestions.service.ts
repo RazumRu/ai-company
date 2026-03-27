@@ -195,10 +195,10 @@ export class AiSuggestionsService {
       );
     }
 
-    const messages = await this.messagesDao.getAll({
-      threadId: thread.id,
-      order: { createdAt: 'ASC' },
-    });
+    const messages = await this.messagesDao.getAll(
+      { threadId: thread.id },
+      { orderBy: { createdAt: 'ASC' } },
+    );
 
     const sanitizedMessages = this.sanitizeMessages(
       messages.map((m) => ({ message: m.message, from: m.nodeId })),

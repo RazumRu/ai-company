@@ -130,20 +130,21 @@ export class KnowledgeSearchDocsTool extends BaseTool<
 
     const tagsFilter = normalizeFilterTags(config.tags);
 
-    const docs = await this.docDao.getAll({
-      createdBy: graphCreatedBy,
-      tags: tagsFilter,
-      projection: [
-        'id',
-        'publicId',
-        'title',
-        'summary',
-        'politic',
-        'tags',
-        'updatedAt',
-      ],
-      order: { updatedAt: 'DESC' },
-    });
+    const docs = await this.docDao.getAll(
+      { createdBy: graphCreatedBy },
+      {
+        fields: [
+          'id',
+          'publicId',
+          'title',
+          'summary',
+          'politic',
+          'tags',
+          'updatedAt',
+        ],
+        orderBy: { updatedAt: 'DESC' },
+      },
+    );
 
     if (docs.length === 0) {
       return {

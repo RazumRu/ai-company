@@ -35,7 +35,7 @@ export class GraphRestorationService {
 
     // Restore permanent graphs (both running and compiling)
     const graphsToRestore = await this.graphDao.getAll({
-      statuses: [GraphStatus.Running, GraphStatus.Compiling],
+      status: { $in: [GraphStatus.Running, GraphStatus.Compiling] },
     });
 
     this.logger.debug('Restoring graphs after restart', {

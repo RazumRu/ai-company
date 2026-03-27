@@ -1,6 +1,12 @@
-import { TimestampsEntity } from '@packages/typeorm';
+import {
+  Entity,
+  Enum,
+  Index,
+  PrimaryKey,
+  Property,
+} from '@mikro-orm/decorators/legacy';
+import { TimestampsEntity } from '@packages/mikroorm';
 import type { Operation } from 'fast-json-patch';
-import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 import type { GraphSchemaType } from '../graphs.types';
 import { GraphRevisionStatus } from '../graphs.types';
@@ -12,43 +18,42 @@ export type GraphRevisionConfig = {
   temporary: boolean;
 };
 
-@Entity('graph_revisions')
-@Index(['graphId', 'toVersion']) // For finding revisions by version
+@Entity({ tableName: 'graph_revisions' })
+@Index({ properties: ['graphId', 'toVersion'] })
 export class GraphRevisionEntity extends TimestampsEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Property({ type: 'uuid' })
   @Index()
   graphId!: string;
 
-  @Column({ type: 'varchar', length: 50 })
+  @Property({ length: 50 })
   baseVersion!: string;
 
-  @Column({ type: 'varchar', length: 50 })
+  @Property({ length: 50 })
   toVersion!: string;
 
-  @Column({ type: 'jsonb' })
+  @Property({ type: 'jsonb' })
   configDiff!: Operation[];
 
-  @Column({ type: 'jsonb' })
+  @Property({ type: 'jsonb' })
   clientConfig!: GraphRevisionConfig;
 
-  @Column({ type: 'jsonb' })
+  @Property({ type: 'jsonb' })
   newConfig!: GraphRevisionConfig;
 
-  @Column({
-    type: 'enum',
-    enum: GraphRevisionStatus,
+  @Enum({
+    items: () => GraphRevisionStatus,
     default: GraphRevisionStatus.Pending,
   })
   @Index()
   status!: GraphRevisionStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Property({ type: 'text', nullable: true })
   error?: string;
 
-  @Column({ type: 'varchar' })
+  @Property({ type: 'varchar' })
   @Index()
   createdBy!: string;
 }

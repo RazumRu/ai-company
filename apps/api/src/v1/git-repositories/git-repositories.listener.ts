@@ -19,7 +19,7 @@ export class GitRepositoriesListener {
       this.logger.log(
         `Deleting git repositories for project ${event.projectId} by user ${event.userId}`,
       );
-      await this.gitRepositoriesDao.delete({
+      await this.gitRepositoriesDao.hardDelete({
         projectId: event.projectId,
         createdBy: event.userId,
       });

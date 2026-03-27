@@ -1,29 +1,31 @@
 import {
-  Column,
-  CreateDateColumn,
   Entity,
-  Index,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+  PrimaryKey,
+  Property,
+  Unique,
+} from '@mikro-orm/decorators/legacy';
 
 import type { UserPreferencesPayload } from '../user-preferences.types';
 
-@Entity('user_preference')
+@Entity({ tableName: 'user_preference' })
 export class UserPreferenceEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Column({ type: 'varchar' })
-  @Index({ unique: true })
+  @Property({ type: 'varchar' })
+  @Unique()
   userId!: string;
 
-  @Column({ type: 'jsonb', default: () => "'{}'" })
+  @Property({ type: 'jsonb', default: '{}' })
   preferences!: UserPreferencesPayload;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  createdAt!: Date;
+  @Property({ type: 'timestamptz', defaultRaw: 'now()' })
+  createdAt: Date = new Date();
 
-  @UpdateDateColumn({ type: 'timestamptz' })
-  updatedAt!: Date;
+  @Property({
+    type: 'timestamptz',
+    defaultRaw: 'now()',
+    onUpdate: () => new Date(),
+  })
+  updatedAt: Date = new Date();
 }

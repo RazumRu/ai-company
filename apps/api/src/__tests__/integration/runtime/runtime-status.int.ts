@@ -83,7 +83,7 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
     const graph = await graphDao.create({
       name,
       description: 'runtime-status integration test',
-      error: null,
+      error: undefined,
       version: '1.0.0',
       targetVersion: '1.0.0',
       schema: { nodes: [], edges: [] },
@@ -104,8 +104,8 @@ describe('RuntimeService - getRuntimesForThread (integration)', () => {
       projectId: testProjectId,
       externalThreadId: `runtime-status-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       metadata: {},
-      source: null,
-      name: null,
+      source: undefined,
+      name: undefined,
       status: ThreadStatus.Done,
     });
     createdThreadIds.push(thread.id);

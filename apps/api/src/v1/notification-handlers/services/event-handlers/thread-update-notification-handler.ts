@@ -54,9 +54,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       return [];
     }
 
-    const updates: Partial<Pick<ThreadEntity, 'status'>> & {
-      name?: string | null;
-    } = {};
+    const updates: Partial<Pick<ThreadEntity, 'status' | 'name'>> = {};
 
     if (data.status !== undefined) {
       updates.status = data.status;
@@ -64,7 +62,7 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
 
     // Only update thread name if it doesn't already exist (set once)
     if (data.name !== undefined && !thread.name) {
-      updates.name = data.name ?? null;
+      updates.name = data.name ?? undefined;
     }
 
     if (Object.keys(updates).length > 0) {

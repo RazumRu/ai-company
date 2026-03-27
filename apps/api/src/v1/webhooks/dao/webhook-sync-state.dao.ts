@@ -1,42 +1,18 @@
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-import { BaseDao, BaseQueryBuilder } from '@packages/typeorm';
-import { DataSource } from 'typeorm';
+import { BaseDao } from '@packages/mikroorm';
 
 import { WebhookSyncStateEntity } from '../entities/webhook-sync-state.entity';
 import { type WebhookSubscriberType } from '../webhooks.types';
 
-type WebhookSyncStateSearchTerms = {
-  type?: WebhookSubscriberType;
-};
-
 @Injectable()
-export class WebhookSyncStateDao extends BaseDao<
-  WebhookSyncStateEntity,
-  WebhookSyncStateSearchTerms
-> {
-  public get alias() {
-    return 'wss';
-  }
-
-  protected get entity() {
-    return WebhookSyncStateEntity;
-  }
-
-  constructor(dataSource: DataSource) {
-    super(dataSource);
-  }
-
-  protected applySearchParams(
-    builder: BaseQueryBuilder<WebhookSyncStateEntity>,
-    params?: WebhookSyncStateSearchTerms,
-  ): void {
-    if (params?.type) {
-      builder.andWhere({ type: params.type });
-    }
+export class WebhookSyncStateDao extends BaseDao<WebhookSyncStateEntity> {
+  constructor(em: EntityManager) {
+    super(em, WebhookSyncStateEntity);
   }
 
   async getLastSyncDate(type: WebhookSubscriberType): Promise<Date | null> {
-    const record = await this.getOne({ type });
+    const record = await this.getRepo().findOne({ type });
     return record?.lastSyncDate ?? null;
   }
 
@@ -44,6 +20,13 @@ export class WebhookSyncStateDao extends BaseDao<
     type: WebhookSubscriberType,
     date: Date,
   ): Promise<void> {
-    await this.upsertMany([{ type, lastSyncDate: date }], ['type']);
+    await this.getRepo().upsert(
+      { type, lastSyncDate: date },
+      {
+        onConflictFields: ['type'],
+        onConflictAction: 'merge',
+        onConflictMergeFields: ['lastSyncDate'],
+      },
+    );
   }
 }

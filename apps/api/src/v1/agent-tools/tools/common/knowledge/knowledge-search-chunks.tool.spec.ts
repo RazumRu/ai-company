@@ -46,13 +46,10 @@ describe('KnowledgeSearchChunksTool', () => {
       },
     );
 
-    expect(docDao.getAll).toHaveBeenCalledWith({
-      createdBy: 'user-1',
-      publicIds: [101],
-      tags: undefined,
-      projection: ['id', 'publicId'],
-      order: { updatedAt: 'DESC' },
-    });
+    expect(docDao.getAll).toHaveBeenCalledWith(
+      { createdBy: 'user-1', publicId: { $in: [101] } },
+      { fields: ['id', 'publicId'], orderBy: { updatedAt: 'DESC' } },
+    );
     expect(knowledgeChunksService.searchChunks).toHaveBeenCalledWith({
       docIds: ['doc-1'],
       query: 'rate limits',
