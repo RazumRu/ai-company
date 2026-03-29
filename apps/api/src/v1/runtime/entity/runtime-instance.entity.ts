@@ -33,7 +33,7 @@ export class RuntimeInstanceEntity extends TimestampsEntity {
   @Enum({ items: () => RuntimeType })
   type!: RuntimeType;
 
-  @Property({ length: 255 })
+  @Property({ type: 'varchar', length: 255 })
   containerName!: string;
 
   @Enum({

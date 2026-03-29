@@ -35,10 +35,10 @@ export class GraphCheckpointEntity {
   @Property({ type: 'varchar' })
   type!: string;
 
-  @Property({ columnType: 'bytea' })
+  @Property({ type: 'blob', columnType: 'bytea' })
   checkpoint!: Buffer;
 
-  @Property({ columnType: 'bytea' })
+  @Property({ type: 'blob', columnType: 'bytea' })
   metadata!: Buffer;
 
   @Property({ type: 'timestamptz', defaultRaw: 'now()' })

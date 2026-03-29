@@ -36,7 +36,6 @@ export const environment = () =>
     postgresDatabase: getEnv('POSTGRES_DATABASE'),
     postgresSchema: getEnv('POSTGRES_SCHEMA'),
     postgresSsl: getEnv('POSTGRES_SSL', false),
-    postgresRunMigrations: getEnv('POSTGRES_RUN_MIGRATIONS', true),
     llmBaseUrl: getEnv('LLM_BASE_URL'),
     redisUrl: getEnv('REDIS_URL'),
     qdrantUrl: getEnv('QDRANT_URL'),

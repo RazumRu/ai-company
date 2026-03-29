@@ -28,10 +28,10 @@ export class GraphRevisionEntity extends TimestampsEntity {
   @Index()
   graphId!: string;
 
-  @Property({ length: 50 })
+  @Property({ type: 'varchar', length: 50 })
   baseVersion!: string;
 
-  @Property({ length: 50 })
+  @Property({ type: 'varchar', length: 50 })
   toVersion!: string;
 
   @Property({ type: 'jsonb' })

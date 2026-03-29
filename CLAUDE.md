@@ -69,6 +69,7 @@ pnpm run full-check                   # build + build:tests + lint:fix + unit te
 ```bash
 cd apps/api
 pnpm run migration:generate           # Auto-generate migration from entity changes — NEVER hand-write migrations
+pnpm migration:run                    # Run all pending migrations (run before start:dev after pulling new code)
 pnpm migration:revert                 # Revert last migration
 pnpm seed:create                      # Create a new seed file
 pnpm seed:run-all                     # Run all seeds in timestamp order
@@ -198,7 +199,7 @@ When all four are set, the `GET /api/system/settings` endpoint returns `githubAp
 - **No inline imports** — all imports at the top of the file.
 - **Naming**: PascalCase for classes/interfaces/enums/types; camelCase for variables/functions; PascalCase for enum members.
 - **Errors**: Throw custom exceptions from `@packages/common` (e.g. `NotFoundException`, `BadRequestException`). Never swallow errors silently.
-- **Migrations**: Always `pnpm run migration:generate`. Never hand-write or use `migration:create`.
+- **Migrations**: Always `pnpm run migration:generate`. Never hand-write migration files. Run `pnpm migration:run` to apply pending migrations.
 - **Generated files**: Never manually edit `cypress/api-definitions/` — regenerate with `pnpm test:e2e:generate-api`.
 - **Imports**: Shared packages are aliased as `@packages/*` (e.g. `import { … } from '@packages/common'`).
 - **Agent tool definitions**: All tools in `agent-tools/` must follow the best practices in `/docs/tool-definitions-best-practices.md` and the [official Anthropic tool use guide](https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#best-practices-for-tool-definitions). Descriptions must be detailed (3-4+ sentences), parameters must have clear `.describe()` strings, and `getDetailedInstructions()` must carry all heavy guidance. Read the docs file before creating or modifying any tool.

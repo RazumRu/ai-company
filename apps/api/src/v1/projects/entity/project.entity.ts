@@ -11,16 +11,16 @@ export class ProjectEntity extends TimestampsEntity {
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string;
 
-  @Property({ length: 255 })
+  @Property({ type: 'varchar', length: 255 })
   name!: string;
 
   @Property({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Property({ length: 50, nullable: true })
+  @Property({ type: 'varchar', length: 50, nullable: true })
   icon?: string | null;
 
-  @Property({ length: 20, nullable: true })
+  @Property({ type: 'varchar', length: 20, nullable: true })
   color?: string | null;
 
   @Property({ type: 'jsonb', default: '{}' })

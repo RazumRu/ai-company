@@ -1,25 +1,55 @@
+import { join } from 'node:path';
+
 import { Migrator } from '@mikro-orm/migrations';
 import { defineConfig, UnderscoreNamingStrategy } from '@mikro-orm/postgresql';
+import { SeedManager } from '@mikro-orm/seeder';
 
 import { environment } from '../environments';
 
 const config = defineConfig({
   clientUrl: environment.postgresUrl || undefined,
   host: environment.postgresHost || undefined,
-  port: Number(environment.postgresPort ?? 5432),
+  port: environment.postgresPort ? Number(environment.postgresPort) : undefined,
   user: environment.postgresUsername || undefined,
   dbName: environment.postgresDatabase || undefined,
   password: environment.postgresPassword || undefined,
   schema: environment.postgresSchema || undefined,
-  entities: ['dist/**/*.entity.js'],
-  entitiesTs: ['src/**/*.entity.ts'],
+  entities: [join(__dirname, '..', '**/*.entity.js')],
+  entitiesTs: [join(__dirname, '..', '**/*.entity.ts')],
+  // MikroORM v7 (ESM) uses dynamic import() for entity discovery, which bypasses
+  // ts-node-dev's CJS require hooks and fails on .ts files. This provider falls
+  // back to require() for .ts files so ts-node-dev can compile them.
+  dynamicImportProvider: async (id: string) => {
+    if (id.endsWith('.ts') || id.includes('.ts?')) {
+      const path = id.startsWith('file://') ? new URL(id).pathname : id;
+      return require(path);
+    }
+
+    return import(id);
+  },
+  // MikroORM v7 disallows global EM by default. NestJS request-scoping via
+  // middleware handles context isolation, so global access is safe here.
+  allowGlobalContext: true,
+  // MikroORM v7 tries to verify/create the DB on init via a separate connection.
+  // The DB is managed by docker-compose, so skip this check.
+  ensureDatabase: false,
+  // TODO: Remove once all entities migrate from dual scalar+relation FK pattern
+  // to MikroORM v7's single @ManyToOne pattern (e.g. threadId + thread -> thread only)
+  discovery: {
+    checkDuplicateFieldNames: false,
+  },
   namingStrategy: UnderscoreNamingStrategy,
-  extensions: [Migrator],
+  extensions: [Migrator, SeedManager],
   migrations: {
-    path: 'dist/db/migrations',
-    pathTs: 'src/db/migrations',
+    path: join(__dirname, 'migrations'),
+    pathTs: join(__dirname, 'migrations'),
     tableName: 'mikro_orm_migrations',
     transactional: true,
+    snapshot: false,
+  },
+  seeder: {
+    path: join(__dirname, 'seeders'),
+    pathTs: join(__dirname, 'seeders'),
   },
   driverOptions: environment.postgresSsl
     ? { connection: { ssl: true } }

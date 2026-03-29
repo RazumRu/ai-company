@@ -436,6 +436,7 @@ Database migrations are auto-generated from entity changes:
 ```bash
 cd apps/api
 pnpm run migration:generate    # Generate migration from entity diff
+pnpm migration:run             # Apply pending migrations
 pnpm run migration:revert      # Revert last migration
 ```
 

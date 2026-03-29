@@ -98,7 +98,6 @@
     "vite": "^8.0.2"
   },
   "scripts": {
-    "full-check": "pnpm -s build && pnpm -s lint:fix",
     "dev": "vite --port 5174",
     "build": "tsc && vite build",
     "lint:fix": "pnpm prettier --write . && pnpm eslint src --fix",

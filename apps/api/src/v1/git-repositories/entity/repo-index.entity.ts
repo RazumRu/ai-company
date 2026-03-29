@@ -20,6 +20,7 @@ export class RepoIndexEntity extends TimestampsEntity {
   id!: string;
 
   @Property({ type: 'uuid' })
+  @Index()
   repositoryId!: string;
 
   @ManyToOne(() => GitRepositoryEntity, {

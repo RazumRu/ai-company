@@ -89,7 +89,16 @@ Check current state: branch, recent commits, working tree status.
 
 ### Step 4: Present All Setup Questions
 
-Use a single `AskUserQuestion` call:
+**When recommending fast-path:** Present the proposed fix (a concise numbered list of what you'll do) followed by a single `AskUserQuestion` with header "This is a fast-path fix: <one-line summary>. Work on current branch?":
+
+1. **"Fast-path, current branch" (Recommended)** — Straightforward fix, no new branch needed
+2. **"New branch"** — Create a feature branch for these changes
+3. **"Refine proposed fix"** — Let the user adjust the approach before execution (e.g., change a step, drop a step, add a step). After refinement, re-present the updated proposed fix with the same options.
+4. **"Chat about this"** — Open-ended discussion. Answer questions, explain trade-offs, or explore alternatives. After the conversation, re-present the (potentially updated) proposed fix with the same options.
+
+After option 1 or 2 is selected: create branch if needed, then proceed to Implementation.
+
+**When recommending full pipeline:** Use a single `AskUserQuestion` call:
 
 1. **Pipeline**: Recommend based on criteria assessment. Options: "Full pipeline" / "Fast-path" / "Adjust"
 2. **Scope**: Recommend based on detection. Options: "API-only" / "Web-only" / "Full-stack"

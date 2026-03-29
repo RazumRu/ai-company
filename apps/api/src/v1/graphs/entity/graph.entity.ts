@@ -24,7 +24,7 @@ export class GraphEntity extends AuditEntity {
   @OneToMany(() => ThreadEntity, (t) => t.graph)
   threads?: Collection<ThreadEntity>;
 
-  @Property({ length: 255 })
+  @Property({ type: 'varchar', length: 255 })
   name!: string;
 
   @Property({ type: 'text', nullable: true })
@@ -33,10 +33,10 @@ export class GraphEntity extends AuditEntity {
   @Property({ type: 'text', nullable: true })
   error?: string;
 
-  @Property({ length: 50 })
+  @Property({ type: 'varchar', length: 50 })
   version!: string;
 
-  @Property({ length: 50 })
+  @Property({ type: 'varchar', length: 50 })
   targetVersion!: string;
 
   @Property({ type: 'jsonb' })
