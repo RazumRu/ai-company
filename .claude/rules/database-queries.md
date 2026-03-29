@@ -35,7 +35,7 @@ Use MikroORM's `FilterQuery<T>` for type-safe filtering:
 // Simple equality
 await this.em.find(ItemEntity, { createdBy: userId, projectId });
 
-// Array filter ($in replaces TypeORM's In())
+// Array filter using $in operator
 await this.em.find(ItemEntity, { id: { $in: ids } });
 
 // Comparison operators

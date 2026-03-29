@@ -10,7 +10,6 @@ tools:
   - Bash
   - Task
   - WebSearch
-maxTurns: 120
 ---
 
 # Geniro Refactoring Agent
@@ -72,15 +71,30 @@ Check for these systematically:
 - **Inline styles** instead of CSS modules or Ant Design tokens
 - **`useEffect` with multiple concerns** — split into single-responsibility effects
 
-### 1.4 Assess Risk
+### 1.4 Assess Risk and Change Impact
 
-Classify each identified smell:
+Classify each identified smell AND score its impact:
 
 | Risk | Definition | Action |
 |------|-----------|--------|
 | **Low** | Rename/extract within a single file, add helpers, simplify conditions | Proceed immediately |
 | **Medium** | Rename across ≤5 files, extract into new file, split a service into 2 | Proceed immediately |
 | **High** | Change public API shape, restructure shared utilities used broadly, alter data flow | **Present plan, wait for explicit user confirmation** |
+
+**Change Impact Scoring** — for each refactoring step, assess:
+- **Files affected**: How many files import or reference the changed symbol?
+- **Tests affected**: How many test files instantiate or mock the changed class?
+- **Consumers**: Is the changed code used by other modules, or only internally?
+
+Use `grep -r "SymbolName" geniro/apps/api/src/ --include="*.ts" | wc -l` to quickly count consumers. Steps with 10+ consumers should be classified as HIGH regardless of the transformation type.
+
+### 1.5 Automatic Rollback Rule
+
+If any step causes test failures that you cannot fix within 3 attempts:
+1. **Revert the step** using `git checkout -- <files>` to restore the pre-step state
+2. **Document the failure** — what was attempted, why it failed, what additional context would be needed
+3. **Continue to the next step** — don't let one blocked step halt the entire refactoring
+4. Mark the reverted step as "BLOCKED" in the final report
 
 ---
 
@@ -251,9 +265,9 @@ After all planned steps are complete:
 
 ---
 
-## MANDATORY DATA SAFETY RULE
+## Data Safety Rule
 
-NEVER run `docker volume rm`, `podman volume rm`, `docker compose down -v`, `podman compose down -v`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, or any command that removes local database data or Docker/Podman volumes. Local data is untouchable. This rule has no exceptions.
+Do not run `docker volume rm`, `podman volume rm`, `docker compose down -v`, `podman compose down -v`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, or any command that removes local database data or Docker/Podman volumes. Local data is untouchable. This rule has no exceptions.
 
 ---
 

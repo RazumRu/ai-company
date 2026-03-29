@@ -55,14 +55,14 @@ Fix any issues and re-run until it passes.
 
 ### Step 3: Archive completed feature (if from backlog)
 
-If `$ARGUMENTS` references a feature from `.generated/project-features/` (e.g., starts with `feature:` followed by a name), archive it after successful completion:
+If `$ARGUMENTS` references a feature from `.claude/.generated/project-features/` (e.g., starts with `feature:` followed by a name), archive it after successful completion:
 
-1. Find the feature file: `.generated/project-features/<name>.md`
+1. Find the feature file: `.claude/.generated/project-features/<name>.md`
 2. Update YAML frontmatter: set `status: completed` and `updated: <today's date>` using the Edit tool
 3. Move to completed:
    ```bash
-   mkdir -p .generated/project-features/completed
-   mv .generated/project-features/<name>.md .generated/project-features/completed/<name>.md
+   mkdir -p .claude/.generated/project-features/completed
+   mv .claude/.generated/project-features/<name>.md .claude/.generated/project-features/completed/<name>.md
    ```
 
 Skip this step if the task is not from the feature backlog (ad-hoc description).

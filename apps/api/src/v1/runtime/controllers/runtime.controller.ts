@@ -3,7 +3,12 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { GetRuntimesQueryDto, RuntimeInstanceDto } from '../dto/runtime.dto';
+import {
+  GetRuntimesQueryDto,
+  RuntimeHealthDto,
+  RuntimeInstanceDto,
+} from '../dto/runtime.dto';
+import { RuntimeType } from '../runtime.types';
 import { RuntimeService } from '../services/runtime.service';
 
 @ApiTags('runtimes')
@@ -13,11 +18,16 @@ import { RuntimeService } from '../services/runtime.service';
 export class RuntimeController {
   constructor(private readonly runtimeService: RuntimeService) {}
 
+  @Get('health')
+  async checkHealth(): Promise<RuntimeHealthDto> {
+    return await this.runtimeService.checkHealth(RuntimeType.Daytona);
+  }
+
   @Get()
   async getRuntimes(
     @Query() query: GetRuntimesQueryDto,
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<RuntimeInstanceDto[]> {
-    return this.runtimeService.getRuntimesForThread(ctx, query);
+    return await this.runtimeService.getRuntimesForThread(ctx, query);
   }
 }

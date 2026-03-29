@@ -24,7 +24,7 @@ $ARGUMENTS
 ## Context
 
 The Geniro platform consists of two repositories:
-- **geniro/** — NestJS API backend (TypeORM, BullMQ, Socket.IO, Zod DTOs)
+- **geniro/** — NestJS API backend (MikroORM, BullMQ, Socket.IO, Zod DTOs)
 - **geniro/apps/web/** — React frontend (Vite, Ant Design, Refine, @xyflow/react)
 
 ## Your Task

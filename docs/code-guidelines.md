@@ -145,7 +145,7 @@ class UserDao {
 ### DAO Best Practices
 
 - Keep database queries in DAOs, not in services
-- Use TypeORM query builder
+- Use MikroORM query builder
 - Handle database errors appropriately
 - Use transactions when needed
 

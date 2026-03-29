@@ -108,13 +108,21 @@ export class ProjectsService {
     const userId = ctx.checkSub();
 
     return await this.em.transactional(async (em: EntityManager) => {
-      const existing = await this.projectsDao.getOne({ id, createdBy: userId });
+      const existing = await this.projectsDao.getOne(
+        { id, createdBy: userId },
+        undefined,
+        em,
+      );
       if (!existing) {
         throw new NotFoundException('PROJECT_NOT_FOUND');
       }
 
       await this.projectsDao.updateById(id, dto, em);
-      const updated = await this.projectsDao.getOne({ id, createdBy: userId });
+      const updated = await this.projectsDao.getOne(
+        { id, createdBy: userId },
+        undefined,
+        em,
+      );
       if (!updated) {
         throw new NotFoundException('PROJECT_NOT_FOUND');
       }

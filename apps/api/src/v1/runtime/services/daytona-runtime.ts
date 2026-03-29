@@ -84,6 +84,30 @@ export class DaytonaRuntime extends BaseRuntime {
     };
   }
 
+  /**
+   * Checks whether the Daytona API is reachable and responsive.
+   * Performs a lightweight sandbox list call to verify connectivity.
+   */
+  static async checkHealth(
+    config: DaytonaRuntimeConfig,
+  ): Promise<{ healthy: boolean; error?: string }> {
+    try {
+      const daytona = new Daytona({
+        apiKey: config.apiKey || undefined,
+        apiUrl: config.apiUrl || undefined,
+        target: config.target || undefined,
+      });
+      // Lightweight call — fetch 1 sandbox to verify API connectivity
+      await daytona.list({}, 1, 1);
+      return { healthy: true };
+    } catch (error) {
+      return {
+        healthy: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   static async stopByName(
     name: string,
     config?: DaytonaRuntimeConfig,

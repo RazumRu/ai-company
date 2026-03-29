@@ -104,7 +104,7 @@ export class KnowledgeSearchDocsTool extends BaseTool<
 
     ### Examples
     \`\`\`json
-    {"task": "Prepare a database migration checklist for schema changes. Stack: NestJS + TypeScript + TypeORM"}
+    {"task": "Prepare a database migration checklist for schema changes. Stack: NestJS + TypeScript + MikroORM"}
     \`\`\`
   `;
   }

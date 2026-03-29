@@ -612,7 +612,11 @@ export class GraphRevisionService {
   ): Promise<void> {
     // Phase 1: Short DB transaction -- re-merge and validate only
     await this.em.transactional(async (em) => {
-      const graph = await this.graphDao.getOne({ id: revision.graphId });
+      const graph = await this.graphDao.getOne(
+        { id: revision.graphId },
+        undefined,
+        em,
+      );
 
       if (!graph) {
         throw new NotFoundException('GRAPH_NOT_FOUND');
@@ -642,7 +646,11 @@ export class GraphRevisionService {
 
     // Phase 3: Short DB transaction to finalize
     await this.em.transactional(async (em) => {
-      const graph = await this.graphDao.getOne({ id: revision.graphId });
+      const graph = await this.graphDao.getOne(
+        { id: revision.graphId },
+        undefined,
+        em,
+      );
 
       if (!graph) {
         throw new NotFoundException('GRAPH_NOT_FOUND');
@@ -731,7 +739,11 @@ export class GraphRevisionService {
     revision: GraphRevisionEntity,
     entityManager: EntityManager,
   ): Promise<void> {
-    const graph = await this.graphDao.getOne({ id: revision.graphId });
+    const graph = await this.graphDao.getOne(
+      { id: revision.graphId },
+      undefined,
+      entityManager,
+    );
 
     if (graph && graph.targetVersion === revision.toVersion) {
       await this.graphDao.updateById(

@@ -17,7 +17,7 @@ geniro/
 │   ├── cypress/         # Cypress testing utilities
 │   ├── http-server/     # HTTP server setup and middleware
 │   ├── metrics/         # Metrics and monitoring
-│   └── typeorm/         # TypeORM utilities and configurations
+│   └── mikroorm/        # MikroORM utilities and configurations
 ├── scripts/             # Utility scripts
 └── .docker/             # Docker configuration files
 ```
@@ -41,7 +41,7 @@ The API follows a layered architecture pattern:
 ### 3. DAOs (Data Access Objects)
 - Handle database operations
 - Located in feature directories (e.g., `src/v1/users/users.dao.ts`)
-- Use TypeORM repositories
+- Use MikroORM EntityManager
 - Provide methods for CRUD operations and queries
 
 ### 4. DTOs (Data Transfer Objects)
@@ -54,7 +54,7 @@ The API follows a layered architecture pattern:
 ### 5. Entities
 - Define database table structures
 - Located in feature directories (e.g., `src/v1/users/entities/`)
-- Use TypeORM decorators for ORM mapping
+- Use MikroORM decorators for ORM mapping
 - Represent database tables
 
 ### 6. Modules
@@ -119,7 +119,7 @@ pnpm build:packages
 
 ### Migrations
 
-The project uses TypeORM for database management. When schema changes are introduced you **must** generate migrations via the script – do not hand-write them or run raw TypeORM `migration:create` commands.
+The project uses MikroORM for database management. When schema changes are introduced you **must** generate migrations via the script – do not hand-write them or run raw `migration:create` commands.
 
 - Generate a migration from schema changes (required workflow):
   ```bash

@@ -261,6 +261,7 @@ export class GraphsService {
             createdBy: userId,
           },
           { lockMode: LockMode.PESSIMISTIC_WRITE },
+          em,
         );
 
         if (!graph) {

@@ -13,11 +13,11 @@ argument-hint: "[fix|report] — 'report' for dry-run (default), 'fix' to auto-r
 
 # Knowledge Base Validator
 
-Validate the Geniro knowledge base in `.generated/project-knowledge/`:
-- `.generated/project-knowledge/api-learnings.md`
-- `.generated/project-knowledge/web-learnings.md`
-- `.generated/project-knowledge/architecture-decisions.md`
-- `.generated/project-knowledge/review-feedback.md`
+Validate the Geniro knowledge base in `.claude/.generated/project-knowledge/`:
+- `.claude/.generated/project-knowledge/api-learnings.md`
+- `.claude/.generated/project-knowledge/web-learnings.md`
+- `.claude/.generated/project-knowledge/architecture-decisions.md`
+- `.claude/.generated/project-knowledge/review-feedback.md`
 
 ## Mode
 
@@ -52,7 +52,7 @@ Flag entries that describe generic framework behavior rather than Geniro-specifi
 **Examples of generic knowledge (should be removed):**
 - "NestJS modules need to import providers" — framework basics
 - "React hooks must be called at the top level" — standard React rules
-- "TypeORM entities need `@Entity()` decorator" — ORM basics
+- "MikroORM entities need `@Entity()` decorator" — ORM basics
 - "Use `async/await` instead of callbacks" — language basics
 
 **Examples of Geniro-specific knowledge (should be kept):**

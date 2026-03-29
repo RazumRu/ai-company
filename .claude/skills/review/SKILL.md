@@ -21,7 +21,7 @@ $ARGUMENTS
 ## Context
 
 The Geniro platform consists of two repositories:
-- **geniro/** — NestJS API backend (TypeORM, Vitest, Zod DTOs)
+- **geniro/** — NestJS API backend (MikroORM, Vitest, Zod DTOs)
 - **geniro/apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
 
 ## Your Role — Orchestrate, Don't Explore
@@ -40,7 +40,7 @@ Review the following in the Geniro codebase:
 $ARGUMENTS
 
 The Geniro platform consists of two repositories:
-- **geniro/** — NestJS API backend (TypeORM, Vitest, Zod DTOs)
+- **geniro/** — NestJS API backend (MikroORM, Vitest, Zod DTOs)
 - **geniro/apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
 
 1. Identify what changed — use `git diff`, `git status`, or read the specific files/areas mentioned.

@@ -36,5 +36,15 @@ export const RuntimeInstanceSchema = z.object({
   updatedAt: z.iso.datetime().describe('Last update timestamp'),
 });
 
+export const RuntimeHealthSchema = z.object({
+  healthy: z.boolean().describe('Whether the runtime backend is reachable'),
+  type: z.nativeEnum(RuntimeType).describe('Runtime type checked'),
+  error: z
+    .string()
+    .optional()
+    .describe('Error message if the runtime is unhealthy'),
+});
+
 export class GetRuntimesQueryDto extends createZodDto(GetRuntimesQuerySchema) {}
 export class RuntimeInstanceDto extends createZodDto(RuntimeInstanceSchema) {}
+export class RuntimeHealthDto extends createZodDto(RuntimeHealthSchema) {}

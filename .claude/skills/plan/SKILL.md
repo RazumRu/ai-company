@@ -23,7 +23,7 @@ $ARGUMENTS
 ## Context
 
 The Geniro platform consists of two repositories:
-- **geniro/** — NestJS API backend (TypeORM, Vitest, Zod DTOs)
+- **geniro/** — NestJS API backend (MikroORM, Vitest, Zod DTOs)
 - **geniro/apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
 
 ## Your Task

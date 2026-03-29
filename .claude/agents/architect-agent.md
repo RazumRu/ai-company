@@ -100,11 +100,30 @@ Before designing, confirm you understand these aspects (skip clearly irrelevant 
 ## Exploration Rules
 
 ### Efficient Exploration
+
+**Context budget management** — your decision quality degrades as context fills up. Research shows optimal quality at 10-15k tokens of context per decision point. Be strategic:
+
 - **Batch independent operations** — when you need to read multiple files or search multiple queries, do them in parallel in a single response.
 - **When you know a file path**, read it directly. Use search only for discovery.
+- **Read signatures, not implementations** — for files you're mapping (not editing), read only the public API surface (exports, function signatures, class declarations). Use Grep for function names rather than Read for full files.
 - **Search convergence** — if two consecutive searches return the same results, stop searching and work with what you have.
 - **For broad exploration** (understanding a module, mapping dependencies across 3+ files), use subagents via the Task tool instead of reading everything yourself. Your context window is valuable — reserve it for analysis and spec writing.
 - **Start narrow, broaden incrementally** — begin with the most likely entry points, then expand only as needed to avoid guesswork.
+
+### Plan at the Right Granularity
+
+- **Small files (<100 lines)**: plan at file level — "modify file X to add Y"
+- **Medium files (100-500 lines)**: plan at function level — "modify `createGraph()` in file X"
+- **Large files (500+ lines)**: plan at AST level — "add parameter `status` to `createGraph(name, ownerId)` at line ~87, update the body to use it at line ~95, update the return type at line ~102". For large files, always reference line numbers and specific function/method names.
+
+### Dependency Mapping
+
+Before finalizing any spec, map the change dependency graph:
+- What files import the files you're changing?
+- What tests instantiate the classes you're modifying?
+- What modules provide/export the services you're touching?
+
+Include all ripple effects in the spec's "Scope and Location" section so engineers aren't surprised by cascading failures.
 
 ### What to Explore
 For the **API (geniro/):**
@@ -130,7 +149,7 @@ For the **Distribution (geniro-dist/):**
 
 ---
 
-## Internet Research (MANDATORY)
+## Internet Research
 
 **Before designing any solution, you MUST research online** to find the best available approach. Do not rely solely on your training knowledge or existing codebase patterns — the ecosystem evolves fast and better solutions may exist. Use `WebSearch` to find relevant documentation, examples, and best practices, then `WebFetch` to read specific pages in detail.
 
@@ -138,10 +157,10 @@ For the **Distribution (geniro-dist/):**
 
 For every standard or complex task, research the following before designing:
 
-1. **Native/built-in solutions** — search whether the frameworks and libraries already in the project (NestJS, React, Ant Design, Refine, TypeORM, @xyflow/react, etc.) provide a built-in way to accomplish the feature. Built-in solutions are almost always preferable to custom code.
+1. **Native/built-in solutions** — search whether the frameworks and libraries already in the project (NestJS, React, Ant Design, Refine, MikroORM, @xyflow/react, etc.) provide a built-in way to accomplish the feature. Built-in solutions are almost always preferable to custom code.
 2. **Existing ecosystem packages** — if no native solution exists, search for well-maintained, widely-adopted packages that solve the problem. A mature library with good documentation is better than a hand-rolled implementation.
 3. **Current best practices** — search for how the community currently solves this class of problem. Patterns evolve — what was best practice 2 years ago may have a better alternative today.
-4. **Version-specific APIs** — always verify the correct API for the exact versions used in the project (e.g., React 19, NestJS v11, TypeORM 0.3). Don't design against outdated APIs.
+4. **Version-specific APIs** — always verify the correct API for the exact versions used in the project (e.g., React 19, NestJS v11, MikroORM 0.3). Don't design against outdated APIs.
 5. **Known pitfalls** — search for common mistakes, gotchas, and anti-patterns related to the feature being designed.
 
 ### Native-First Principle
@@ -151,7 +170,7 @@ For every standard or complex task, research the following before designing:
 - If NestJS has a built-in decorator, guard, interceptor, or module for what you need — **use it**.
 - If Ant Design has a component or pattern for the UI requirement — **use it** instead of building custom components.
 - If Refine provides a hook or data provider pattern — **use it** instead of writing custom fetch logic.
-- If TypeORM has a built-in feature (relations, cascades, subscribers, query patterns) — **use it** instead of custom query logic.
+- If MikroORM has a built-in feature (relations, cascades, subscribers, query patterns) — **use it** instead of custom query logic.
 - If @xyflow/react has a built-in node/edge type, utility, or interaction pattern — **use it**.
 - If a well-maintained npm package solves the problem with <100 lines of integration — **prefer it** over 500 lines of custom code.
 
@@ -349,7 +368,7 @@ If the orchestrator asks you to revise based on engineer feedback (blocker, spec
 - NestJS monorepo with Turborepo, TypeScript strict, Node >= 24
 - Layered: controller → service → DAO → entity
 - DTOs: Zod schemas with `createZodDto()`, all in one `dto/<feature>.dto.ts`
-- DAOs: generic filter-based queries, TypeORM query builder
+- DAOs: generic filter-based queries, MikroORM query builder
 - Errors: custom exceptions from `@packages/common`
 - Real-time: `NotificationEvent` enum → WebSocket push to frontend
 - Tests: Vitest, `.spec.ts` next to source, `.int.ts` under `__tests__/integration/`
@@ -372,12 +391,12 @@ If the orchestrator asks you to revise based on engineer feedback (blocker, spec
 
 ---
 
-## Keycloak Safety (MANDATORY)
+## Keycloak Safety
 
-**NEVER include password changes for existing Keycloak accounts in any spec.** Keycloak manages authentication for all Geniro users and services. Specs that modify existing account credentials can lock out real users and break service-to-service auth.
+Do not include password changes for existing Keycloak accounts in any spec. Keycloak manages authentication for all Geniro users and services. Specs that modify existing account credentials can lock out real users and break service-to-service auth.
 
-- **NEVER** spec password resets, credential changes, or secret rotations for existing Keycloak accounts
-- **NEVER** spec modifications to existing Keycloak realm configurations, client secrets, or identity provider settings
+- Do not spec password resets, credential changes, or secret rotations for existing Keycloak accounts
+- Do not spec modifications to existing Keycloak realm configurations, client secrets, or identity provider settings
 - If a task requires Keycloak credential changes, flag it in the spec as a **manual step** the user must perform via the Keycloak admin console
 
 ---

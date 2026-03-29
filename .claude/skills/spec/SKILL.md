@@ -1,187 +1,220 @@
 ---
 name: spec
-description: "Conduct a structured requirements interview before architecture. Three rounds: general understanding, code-informed questions, edge cases. Produces a clear requirements spec that validates completeness before proceeding to architecture. Use before /orchestrate or /plan for non-trivial features."
+description: "Gather requirements through adaptive questioning, scout the codebase for context, and produce a complete feature spec. Combines structured interview with gray-area discovery inspired by GSD discuss-phase. Saves specs to .claude/.generated/project-features/. Use before /implement for non-trivial features."
 allowed-tools:
   - Read
   - Glob
   - Grep
   - Bash
   - Task
+  - Write
+  - Edit
   - AskUserQuestion
 argument-hint: "[feature or problem description]"
 ---
 
-# Requirements Gathering — Structured Interview
+# Requirements Gathering — Adaptive Spec Builder
 
-You are conducting a structured requirements interview for the Geniro platform. Your goal is to produce a complete, unambiguous requirements specification before any architecture or implementation begins.
+You are gathering requirements for the Geniro platform. Your goal is to produce a complete, unambiguous feature specification through adaptive questioning — ask only what the codebase and description can't answer, stop when you have enough to architect.
+
+User = visionary. You = thinking partner. Don't interview — collaborate.
 
 ## Feature Request
 
 $ARGUMENTS
 
-## Interview Protocol
+## Phase 0: Initialize
 
-### CRITICAL: Use AskUserQuestion for ALL questions (with fallback)
+1. **Create the features directory** if it doesn't exist:
+   ```bash
+   mkdir -p .claude/.generated/project-features/completed
+   ```
 
-**Try `AskUserQuestion` first.** Always attempt to use the tool so the user can select from predefined choices.
+2. **Propose a kebab-case name** for this feature based on the description (e.g., `graph-template-marketplace`, `thread-auto-naming`). Ask the user to confirm or suggest a different name.
 
-For every question you ask:
-1. **Formulate 2–4 concrete answer options** based on your understanding of the feature and codebase patterns
-2. **Use short, descriptive labels** for each option (1–5 words)
-3. **Add a description** explaining the implications of each choice
-4. **Use `multiSelect: true`** when multiple options can apply simultaneously
-5. **Always include a meaningful "Other" implicitly** — the tool adds it automatically for custom input
-6. **Group related questions** — you can ask up to 4 questions per `AskUserQuestion` call
-7. **Use the `header` field** for a short category label (e.g., "Scope", "Priority", "Data model")
+3. **Check for existing feature** with the same name:
+   ```bash
+   ls .claude/.generated/project-features/*.md 2>/dev/null
+   ```
+   If a feature with this name already exists, warn the user and ask if they want to update it or choose a different name.
 
-**Example — instead of asking:**
-> "Should this feature support real-time updates via WebSocket, or is polling sufficient?"
+4. **Load prior context** — check for existing specs to avoid re-asking settled decisions:
+   ```bash
+   ls .claude/.generated/project-features/*.md 2>/dev/null | head -20
+   ```
+   Scan existing specs for patterns and decisions that carry forward. Build an internal list of prior decisions to reference (don't re-ask what's already decided).
 
-**Use AskUserQuestion with options:**
-- Label: "WebSocket (real-time)", Description: "Push updates instantly via existing Socket.IO infrastructure"
-- Label: "Polling", Description: "Client polls API periodically, simpler but adds latency"
-- Label: "Both", Description: "WebSocket primary, polling as fallback"
+## Phase 1: Codebase Scout
 
-### FALLBACK: Empty Answer Detection
+Before asking a single question, explore the codebase to understand what already exists. This takes ~10% of your effort but prevents 50% of unnecessary questions.
 
-**After every `AskUserQuestion` call, check if the answers are empty.** The tool sometimes auto-completes without the user actually selecting anything. Signs of empty/auto-completed answers:
-- The tool result says "User has answered your questions" but contains no actual selections
-- All answer values are empty strings, null, or missing
-- The answers object has no meaningful content
+### Step 1: Scope Detection
 
-**If answers are empty, IMMEDIATELY fall back to plain text:**
-1. Present the SAME questions as a numbered list with lettered options
-2. Clearly label which option you recommend with "(Recommended)"
-3. Ask the user to reply with their choices (e.g., "1A, 2B, 3C" or just describe their preference)
-4. **Do NOT proceed without real answers** — wait for the user to respond
+Infer scope from the description:
+- Mentions entities, endpoints, services, migrations, DTOs → **API** (`apps/api/`)
+- Mentions pages, components, hooks, UI, routes → **Web** (`apps/web/`)
+- Both or unclear → **Full-stack** (both)
 
-**Plain text fallback format:**
+### Step 2: Targeted Exploration
+
+Search for terms from the feature description in the relevant scope:
+
+**API scope:**
+- Existing entities, services, controllers related to the feature
+- Database schema implications (related entities, FK relationships)
+- Existing notification/WebSocket patterns if relevant
+- Similar features already implemented
+
+**Web scope:**
+- Existing pages, components, hooks related to the feature
+- Available API types in `src/autogenerated/`
+- Existing state management patterns
+- Similar UI patterns already built
+
+Store findings internally as `<codebase_context>` — you'll use this to:
+- Annotate questions with "you already have X"
+- Skip questions the code answers
+- Propose informed default options
+
+## Phase 2: Gray Area Analysis
+
+Analyze the feature against your codebase findings. Identify **gray areas** — implementation decisions that could go multiple ways and would change the result.
+
+### What makes a good gray area:
+- Specific to THIS feature, not generic categories
+- Could genuinely go multiple ways
+- The answer changes what gets built
+- Can't be resolved by reading the code alone
+
+### What is NOT a gray area:
+- Questions the description already answers
+- Questions the codebase answers (existing patterns to follow)
+- Generic concerns that apply to everything ("should we add tests?")
+- Scope expansion (that's a different feature)
+
+### Categorize gray areas by topic:
+- **Scope boundaries** — what's in vs out
+- **Data model** — entity structure, relationships
+- **API surface** — endpoints, request/response shapes
+- **UI behavior** — interaction patterns, layout, empty states
+- **Edge cases** — error handling, concurrent access, permissions
+- **Integration** — how this connects to existing features
+- **Migration** — how existing data/users transition
+
+## Phase 3: Adaptive Questioning
+
+### Step 1: Present Gray Areas (or Auto-Proceed)
+
+**If no gray areas found** (description + codebase patterns resolve everything):
+Auto-proceed to spec generation. Output: "No ambiguities found — codebase patterns are clear. Proceeding to generate spec."
+
+**If gray areas found:**
+Present them via `AskUserQuestion` with `multiSelect: true`. For each gray area, annotate with codebase context:
+
 ```
-It looks like the question picker didn't capture your answers. Let me ask as plain text instead:
+Which areas should we discuss? (select all that apply)
+
+- Layout style — Cards vs list vs timeline?
+  (You already have a Card component with shadow/rounded variants in src/components/ui/)
+
+- Loading behavior — Infinite scroll or pagination?
+  (Similar pages use Refine's useTable with server-side pagination)
+
+- Permission model — Per-graph or per-project?
+  (Current auth uses Keycloak roles, no per-resource permissions yet)
+```
+
+The user selects which areas to discuss. Unselected areas = you decide based on codebase patterns.
+
+### Step 2: Discuss Selected Areas
+
+For each selected area, use `AskUserQuestion`:
+
+1. **Formulate 2-4 concrete options** based on codebase patterns and best practices
+2. **Lead with your recommendation** — mark it "(Recommended)" with a description explaining why
+3. **Use short labels** (1-5 words) with descriptions explaining implications
+4. **Group related questions** — up to 4 per `AskUserQuestion` call
+5. **Use `multiSelect: true`** when multiple options can apply
+
+**After every `AskUserQuestion`, check for empty answers.** If answers are empty/auto-completed, immediately fall back to plain text:
+```
+It seems the picker didn't capture your answers. Let me ask as plain text:
 
 **1. [Question text]**
-   a) [Option 1 label] — [description]
-   b) [Option 2 label] — [description]
-   c) [Option 3 label] — [description]
+   a) [Option 1] — [description] (Recommended)
+   b) [Option 2] — [description]
+   c) [Option 3] — [description]
 
-**2. [Question text]**
-   a) [Option 1 label] — [description]
-   b) [Option 2 label] — [description]
-
-Please reply with your choices (e.g., "1a, 2b") or describe your preference.
+Reply with your choices (e.g., "1a, 2b") or describe your preference.
 ```
 
-### Round 1: General Understanding
+### Step 3: Follow-Up (if needed)
 
-Based on the feature description, ask the user clarifying questions about:
+After discussing selected areas, assess completeness. Run follow-ups if:
+- A user answer was ambiguous or contradictory
+- User selected "Other" with custom input raising new questions
+- Codebase exploration revealed complexities not yet addressed
+- You can't confidently fill a required spec section
 
-- **Goals**: What problem does this solve? Who benefits?
-- **Scope**: What's in scope vs explicitly out of scope?
-- **Success criteria**: How do we know this is done correctly?
-- **Priority**: Must-have vs nice-to-have aspects
-- **Constraints**: Performance requirements, backward compatibility, deadlines
-
-Present **3–7 focused questions** via `AskUserQuestion`. Do not ask obvious questions the description already answers. Do not ask questions you can answer yourself by reading the codebase. Provide concrete answer choices for each question based on common patterns.
-
-Wait for the user to respond before proceeding to Round 2.
-
-### Round 2: Code-Informed Questions
-
-After Round 1 answers, **explore the relevant parts of both codebases**:
-
-**API (geniro/):**
-- Search for existing features similar to what's being requested
-- Check relevant entities, services, and controllers
-- Look at database schema implications
-- Check existing notification/WebSocket patterns if relevant
-
-**Web (geniro/apps/web/):**
-- Search for existing UI patterns similar to what's being requested
-- Check relevant pages, components, and hooks
-- Look at `src/autogenerated/` for available API types
-- Check existing state management patterns
-
-Based on what you find in the code, ask the user questions about:
-
-- **Integration points**: How this connects to existing features you found
-- **Data model**: What entities/fields are involved (informed by actual schema)
-- **UI/UX**: Specific interaction patterns, where in the app this lives
-- **Migration**: How existing data/users transition to the new behavior
-- **Existing patterns**: Whether to reuse or diverge from patterns you found
-
-Present **3–5 code-informed questions** via `AskUserQuestion`. Reference specific files/patterns you found. Use your codebase findings to create informed answer choices (e.g., "Reuse GraphEntity pattern" vs "New standalone entity").
-
-Wait for the user to respond before proceeding to Round 3.
-
-### Round 3: Edge Cases
-
-After Round 2 answers, present a comprehensive edge case checklist via `AskUserQuestion` with `multiSelect: true`. Group related edge cases and let the user select which ones apply:
-
-- **Error states**: What happens when things fail (network, validation, permissions)
-- **Concurrent access**: Multiple users/agents operating on the same resource
-- **Permission/auth**: Who can do what, access control boundaries
-- **Empty/null/boundary**: No data, maximum data, first-time experience
-- **Backward compatibility**: How existing data, API clients, and users are affected
-- **Real-time sync**: WebSocket event implications, race conditions
-
-For each question, propose your recommended handling as the first option (with "(Recommended)" suffix), and offer alternatives. The user picks which approach they prefer.
-
-Wait for the user to respond before continuing.
-
-### Follow-Up Rounds (as many as needed)
-
-After Round 3, **assess whether you have enough information to write a complete spec.** If any of the following are true, run additional follow-up rounds before producing the spec:
-
-- A user answer was ambiguous, vague, or contradictory — ask for clarification
-- The user selected "Other" and provided a custom answer that raises new questions
-- Codebase exploration revealed complexities the user hasn't addressed yet
-- You cannot confidently fill a required spec section (Requirements, Data Model, API Changes, UI Changes, Edge Cases)
-- The user's answers in one round conflict with answers from a previous round
-
-**For each follow-up round:**
-1. Explain briefly (1 sentence) what's still unclear and why
-2. Ask **1–4 targeted questions** via `AskUserQuestion` to resolve the gaps
-3. Wait for the user to respond
-4. Re-assess — if gaps remain, run another follow-up round
-
-**Stop asking follow-up questions when:**
+**Stop asking when:**
 - You can confidently write every section of the spec
-- The user signals they want to wrap up ("that's enough", "just write it", "move on")
-- You've done 3+ follow-up rounds — at that point, make your best judgment for remaining gaps and note assumptions in the "Open Questions" section
+- User signals "that's enough", "just write it", "move on"
+- You've done 3+ follow-up rounds — make your best judgment and note assumptions
 
-## Output: Requirements Specification
+### Scope Creep Guardrail
 
-After all rounds are complete and you have sufficient clarity, produce the final spec:
+If the user introduces new capability during discussion (not a clarification of existing scope):
+1. Capture it: "Noted as a deferred idea: [description]"
+2. Redirect to current scope
+3. If user insists, ask: "Should we expand scope? This changes the feature size."
+4. Include deferred ideas in the spec's "Out of Scope" section
+
+## Phase 4: Generate Spec
+
+After all questions resolved, produce the spec and save to `.claude/.generated/project-features/<feature-name>.md`:
 
 ```markdown
-# Requirements Spec: [Feature Name]
+---
+name: <feature-name>
+status: approved
+created: <today's date>
+updated: <today's date>
+size: S|M|L
+type: feature|bugfix|refactor|task
+---
 
-**Date**: [today's date]
-**Status**: Draft — pending user confirmation
+# <Feature Title>
 
 ## Problem Statement
-[1-2 sentences describing the problem and who it affects]
+[1-2 sentences: what problem, who it affects]
 
 ## Requirements
 
 ### Must-Have
 1. [R1: requirement with clear acceptance criterion]
 2. [R2: requirement with clear acceptance criterion]
-...
 
 ### Nice-to-Have
 1. [requirement with acceptance criterion]
-...
 
 ## Scope
 
 ### In Scope
 - [specific deliverable]
-...
 
 ### Out of Scope
 - [explicitly excluded item with reason]
-...
+- [deferred ideas from discussion]
+
+## Implementation Decisions
+[Decisions locked during discussion — downstream agents follow these]
+
+### [Area 1 name]
+- **D-01:** [Specific decision with rationale]
+- **D-02:** [Another decision]
+
+### Claude's Discretion
+[Areas where user said "you decide" — document what you'll choose and why]
 
 ## Data Model Impact
 - [entity changes, new fields, migrations needed]
@@ -194,26 +227,48 @@ After all rounds are complete and you have sufficient clarity, produce the final
 
 ## Edge Cases & Error Handling
 1. [edge case] — [expected behavior]
-2. ...
 
 ## Success Criteria
 1. [measurable, testable criterion]
-2. ...
 
 ## Constraints
 - [technical, timeline, or compatibility constraints]
+
+## Code Research Findings
+- [key codebase findings that inform implementation]
+- [existing patterns to reuse, relevant files, integration points]
+- [reusable assets discovered during scout]
 
 ## Open Questions
 - [anything still unresolved — should be empty if interview was thorough]
 ```
 
-Present the spec to the user for final confirmation. If they approve, it's ready to pass to `/orchestrate` or `/plan`.
+## Phase 5: Save & Confirm
+
+1. **Write the spec** to `.claude/.generated/project-features/<feature-name>.md`
+
+2. **Show the user the saved spec** and confirm:
+   ```
+   Feature spec saved to: .claude/.generated/project-features/<feature-name>.md
+
+   Status: approved | Size: [S/M/L]
+
+   To implement: /implement feature: <feature-name>
+   To see all features: /features list
+   ```
+
+3. **If the user wants changes**, edit the file and re-confirm.
 
 ## Rules
 
-- **Try AskUserQuestion first, fall back to plain text** — attempt the tool for every question. If answers come back empty, immediately re-present as numbered plain-text questions and wait for the user to reply
-- **Be concise in questions** — 1-2 sentences per question, not paragraphs
-- **Don't repeat information** — if the user already stated something, reference it, don't ask again
-- **Don't over-interview** — if the feature is straightforward, skip unnecessary rounds
-- **Be opinionated** — propose sensible defaults as the first option (with "(Recommended)") instead of asking open-ended "what should happen here?"
-- **Ground questions in code** — Round 2 questions should reference actual files and patterns you found, not hypothetical concerns
+- **Scout before asking** — never ask what the codebase can answer
+- **Annotate with context** — every option should reference what exists ("you have X", "similar to Y pattern")
+- **Be opinionated** — always lead with a recommendation, not open-ended "what do you want?"
+- **Try AskUserQuestion first, fall back to plain text** — check for empty answers after every call
+- **Be concise** — 1-2 sentences per question, not paragraphs
+- **Don't repeat** — if the user already stated something, reference it, don't re-ask
+- **Don't over-interview** — for simple features, compress or skip rounds
+- **Ground in code** — questions reference actual files, patterns, and entities you found
+- **Always save to file** — even simple specs get saved for tracking
+- **Set status to approved** — the interview itself is the approval
+- **Lock decisions** — the Implementation Decisions section is authoritative for downstream agents

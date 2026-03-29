@@ -526,7 +526,7 @@ it('should create and retrieve a graph', async () => {
 
   const retrieved = await graphsService.findById(graph.id);
 
-  expect(retrieved.id).toBe(graph.id); // So what? This just tests TypeORM works
+  expect(retrieved.id).toBe(graph.id); // So what? This just tests MikroORM works
   expect(retrieved.name).toBe(graph.name); // Not testing any business rules
 });
 ```

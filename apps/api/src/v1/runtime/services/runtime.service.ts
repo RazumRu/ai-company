@@ -5,8 +5,14 @@ import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
-import { GetRuntimesQueryDto, RuntimeInstanceDto } from '../dto/runtime.dto';
+import {
+  GetRuntimesQueryDto,
+  RuntimeHealthDto,
+  RuntimeInstanceDto,
+} from '../dto/runtime.dto';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
+import { RuntimeType } from '../runtime.types';
+import { DaytonaRuntime, DaytonaRuntimeConfig } from './daytona-runtime';
 
 @Injectable()
 export class RuntimeService {
@@ -36,6 +42,21 @@ export class RuntimeService {
     });
 
     return instances.map((inst) => this.toDto(inst));
+  }
+
+  async checkHealth(type: RuntimeType): Promise<RuntimeHealthDto> {
+    if (type === RuntimeType.Daytona) {
+      const config: DaytonaRuntimeConfig = {
+        apiKey: environment.daytonaApiKey as string,
+        apiUrl: environment.daytonaApiUrl as string,
+        target: environment.daytonaTarget as string,
+      };
+      const result = await DaytonaRuntime.checkHealth(config);
+      return { ...result, type };
+    }
+
+    // Docker runtime — no remote health check, always report healthy
+    return { healthy: true, type };
   }
 
   private toDto(instance: RuntimeInstanceEntity): RuntimeInstanceDto {

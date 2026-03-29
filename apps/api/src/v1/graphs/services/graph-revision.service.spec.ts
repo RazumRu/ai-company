@@ -1176,33 +1176,17 @@ describe('GraphRevisionService', () => {
         targetVersion: '1.0.1',
       });
 
-      const mockEntityManager = {
-        getRepository: vi.fn().mockReturnValue({
-          createQueryBuilder: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnThis(),
-            where: vi.fn().mockReturnThis(),
-            orderBy: vi.fn().mockReturnThis(),
-            limit: vi.fn().mockReturnThis(),
-            getMany: vi.fn().mockRejectedValue(new Error('DB connection lost')),
-            delete: vi.fn().mockReturnThis(),
-            from: vi.fn().mockReturnThis(),
-            andWhere: vi.fn().mockReturnThis(),
-            execute: vi.fn().mockResolvedValue(undefined),
-          }),
-        }),
-      } as unknown as EntityManager;
+      const mockEntityManager = {} as unknown as EntityManager;
 
       vi.mocked(graphDao.updateById).mockResolvedValue(1);
       vi.mocked(graphUpdateDao.updateById).mockResolvedValue(1);
 
       // Should not throw even though pruning will fail internally
-      await expect(
-        (service as any).finalizeAppliedRevision(
-          graph,
-          revision,
-          mockEntityManager,
-        ),
-      ).resolves.not.toThrow();
+      await (service as any).finalizeAppliedRevision(
+        graph,
+        revision,
+        mockEntityManager,
+      );
 
       // Graph and revision should still be updated (finalization succeeded)
       expect(graphDao.updateById).toHaveBeenCalledWith(

@@ -17,16 +17,16 @@ You manage the Geniro agents' accumulated knowledge stored in project-specific d
 
 ## Knowledge Files
 
-All knowledge files live in `.generated/project-knowledge/`:
+All knowledge files live in `.claude/.generated/project-knowledge/`:
 
-- `.generated/project-knowledge/api-learnings.md` — API backend patterns, gotchas, test patterns, useful commands
-- `.generated/project-knowledge/web-learnings.md` — Web frontend patterns, gotchas, component patterns, useful commands
-- `.generated/project-knowledge/architecture-decisions.md` — Significant design choices with context and rationale
-- `.generated/project-knowledge/review-feedback.md` — Recurring reviewer feedback patterns and quality trends
+- `.claude/.generated/project-knowledge/api-learnings.md` — API backend patterns, gotchas, test patterns, useful commands
+- `.claude/.generated/project-knowledge/web-learnings.md` — Web frontend patterns, gotchas, component patterns, useful commands
+- `.claude/.generated/project-knowledge/architecture-decisions.md` — Significant design choices with context and rationale
+- `.claude/.generated/project-knowledge/review-feedback.md` — Recurring reviewer feedback patterns and quality trends
 
 **On first use**, create the directory if it doesn't exist:
 ```bash
-mkdir -p .generated/project-knowledge
+mkdir -p .claude/.generated/project-knowledge
 ```
 
 ## Commands
@@ -50,7 +50,7 @@ Interactively add a new knowledge entry:
 ### `search <query>`
 Search across all knowledge files for entries matching the query:
 ```bash
-grep -rin -B2 -A5 "<query>" .generated/project-knowledge/ 2>/dev/null
+grep -rin -B2 -A5 "<query>" .claude/.generated/project-knowledge/ 2>/dev/null
 ```
 Present results grouped by file. Show the full entry (from `### [` header to the next `###` or end of section) for each match.
 
@@ -106,7 +106,7 @@ When adding entries:
 Always use the section's comment template. Example for a gotcha:
 
 ```markdown
-### [2025-01-15] Gotcha: TypeORM migration ordering
+### [2025-01-15] Gotcha: MikroORM migration ordering
 - **What happened**: Migration failed because column was referenced before creation
 - **Root cause**: Two migrations generated in wrong order due to entity circular dependency
 - **Fix/Workaround**: Manually reorder migration timestamps
