@@ -72,7 +72,9 @@
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
-    "tailwindcss": "^4.2.2"
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.2",
+    "@vitejs/plugin-react": "^6.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -83,7 +85,6 @@
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.1",
     "baseline-browser-mapping": "^2.10.10",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -94,8 +95,7 @@
     "semantic-release": "^25.0.3",
     "type-fest": "^5.5.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.2",
-    "vite": "^8.0.2"
+    "typescript-eslint": "^8.57.2"
   },
   "scripts": {
     "dev": "vite --port 5174",
