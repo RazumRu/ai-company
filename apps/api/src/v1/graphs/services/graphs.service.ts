@@ -587,8 +587,7 @@ export class GraphsService {
 
     const results = await Promise.allSettled(
       agentNodes.map(async (node) => {
-        await node.instance.stopThread(externalThreadId, reason);
-        return true;
+        return await node.instance.stopThread(externalThreadId, reason);
       }),
     );
 
@@ -716,20 +715,26 @@ export class GraphsService {
 
     // Eagerly create thread to avoid race condition with async notification handler.
     // The handler's check-then-create pattern will find this thread and enter the update path.
-    const existingThread = await this.threadsDao.getOne({
-      externalThreadId,
-      graphId,
-    });
+    // Use a forked EM so a unique-constraint failure doesn't pollute the global Unit of Work.
+    const forkedEm = this.em.fork();
+    const existingThread = await this.threadsDao.getOne(
+      { externalThreadId, graphId },
+      undefined,
+      forkedEm,
+    );
     if (!existingThread) {
       try {
-        await this.threadsDao.create({
-          graphId,
-          createdBy: userId,
-          projectId: graph.projectId,
-          externalThreadId,
-          status: ThreadStatus.Running,
-          ...(dto.metadata ? { metadata: dto.metadata } : {}),
-        });
+        await this.threadsDao.create(
+          {
+            graphId,
+            createdBy: userId,
+            projectId: graph.projectId,
+            externalThreadId,
+            status: ThreadStatus.Running,
+            ...(dto.metadata ? { metadata: dto.metadata } : {}),
+          },
+          forkedEm,
+        );
       } catch (error: unknown) {
         const isUniqueViolation =
           error instanceof Error &&

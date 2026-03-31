@@ -56,6 +56,7 @@ docs/OAuthLinkRequestDto.md
 docs/ProjectDto.md
 docs/ProjectsApi.md
 docs/RepoIndexDto.md
+docs/RuntimeHealthDto.md
 docs/RuntimeInstanceDto.md
 docs/RuntimesApi.md
 docs/SetThreadMetadataDto.md

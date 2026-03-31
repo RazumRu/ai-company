@@ -237,114 +237,40 @@ For standard tasks, skip Phase 1 and deliver the full specification directly.
 
 ## Specification Output Format
 
-Structure every specification as follows:
+Structure every specification with these 6 sections. Include only sections that add value for the specific task — don't force empty sections.
 
-### 1. High-Level Checklist
-3–7 bullet conceptual steps.
+### 1. Summary
+3–7 bullet conceptual steps of what will be built.
 
-### 2. Risk Assessment
-- **Scope**: How many files/modules are affected
-- **Breaking changes**: Whether this changes API contracts, database schemas, or external interfaces
-- **Confidence**: High/Medium/Low — how confident the plan is correct based on exploration
-- **Rollback**: How to undo the change if something goes wrong
+### 2. Approach & Rationale
+Why this is the **best** approach — evaluated on correctness, maintainability, and long-term quality. List alternatives considered with honest tradeoffs. Include research findings: what native/built-in solutions exist, what was chosen and why.
 
-### 3. Scope and Location
+### 3. Scope & Implementation Plan
 
-**Direct changes** — files to edit/add/remove, with full paths:
-- `geniro/path/to/file.ts` (new / edit / remove)
-- `geniro/apps/web/path/to/file.tsx` (new / edit / remove)
-- `geniro-dist/helm/geniro/path/to/file.yaml` (new / edit / remove) — if infrastructure changes needed
+**Files to change** (full paths, new/edit/remove):
+- Direct changes with specific functions/areas to modify
+- Ripple effects (imports, re-exports, constructor updates)
 
-**Ripple effects** — files that must change as a consequence (imports, re-exports, constructor updates in test files, index barrels):
-- `geniro/path/to/affected.ts` — reason it's affected
-
-### 4. Rationale
-Why this is the **best** approach — evaluated on correctness, maintainability, and long-term quality. If the recommended approach diverges from current patterns, explain why the divergence is worth it. List alternatives considered (including "fit current patterns" if it was rejected) with honest tradeoffs for each.
-
-**Research Findings** (required for standard/complex tasks):
-- What native/built-in solutions were found and whether they apply
-- What ecosystem packages were evaluated (if any)
-- Links to official documentation that informed the design
-- Why native was chosen, or why custom was necessary despite native options existing
-
-### 5. Engineer Research Guidelines
-What each engineer (API/Web/Dist) should inspect before coding, assumptions to confirm, key risks to watch for.
-
-### 6. Step-by-Step Implementation Plan
-
-Separate plans for API, Web, and Dist (when multiple are affected). Each step includes:
-- **Agent**: `api-agent`, `web-agent`, or `dist-agent`
-- **Files to edit** (full paths), specific functions/areas to change
+**Step-by-step plan** — separate plans for API and Web when both are affected. Each step includes:
+- **Agent**: `api-agent` or `web-agent`
+- **Files to edit**, specific functions/areas to change
 - **What to do** — concrete description with code snippets where helpful
-- **Verify**: inline verification action (e.g., "build compiles", "test passes", "server starts")
+- **Verify**: inline verification action
 
-Order steps so dependencies are respected. Mark which steps can run in parallel.
+Order steps so dependencies are respected. Mark which steps can run in parallel (waves). For small tasks, a single sequential list is fine.
 
-### 7. Execution Plan (Waves & Dependencies)
+### 4. Key Test Scenarios
+Per scenario: name, setup/input, expected behavior, edge case rationale. Minimum: 1 happy-path, 2–3 edge/error cases.
 
-Organize the implementation steps into parallelizable waves. This helps the orchestrator know which agents can run concurrently.
+### 5. Risk Assessment
+- **Scope**: files/modules affected
+- **Breaking changes**: API contracts, database schemas, external interfaces
+- **Confidence**: High/Medium/Low
+- **Assumptions**: explicit assumptions and open questions
+- **Rollback**: how to undo the change
 
-**Wave 1** (no dependencies — can start immediately):
-- Step N: [description] — `api-agent`
-- Step M: [description] — `web-agent` (if independent of API)
-
-**Wave 2** (depends on Wave 1):
-- Step P: [description] — `web-agent`
-  - **Depends on**: Step N (needs API types/endpoint from Wave 1)
-  - **Blocker type**: Hard (cannot start without dependency) | Soft (can start early, needs dependency for testing)
-
-**Cross-repo dependencies** (explicitly list):
-- Web → API: [specific types, endpoints, or events Web needs from API]
-- Dist → API/Web: [new env vars, ports, or services that need Helm template updates]
-- API → Web: [rarely needed, but note if applicable]
-
-**Critical path**: The longest sequential chain of dependent steps.
-
-For small tasks (1–2 steps, single agent), this section can be a single sentence: "Single wave — all steps are sequential within one agent."
-
-### 8. Key Test Scenarios
-
-For each scenario specify:
-- **Scenario name**: descriptive one-liner
-- **Setup/Input**: preconditions or input data
-- **Expected behavior**: what should happen
-- **Edge case rationale**: why this scenario matters
-
-Minimum: 1 happy-path, 2–3 edge/error cases per agent.
-
-### 9. Explored Files
-List every file explored during research with:
-- Full path
-- Line ranges inspected
-- One-line summary of what was found
-
-This is critical — engineers use this to skip redundant reads, saving significant context.
-
-### 10. Repository Commands
-Exact build/test/lint commands for each repo:
-
-**API (geniro/):**
-- `pnpm run full-check` — builds, compiles tests, lints, runs unit tests
-- `pnpm test:unit` — unit tests only
-- `pnpm test:integration <file>` — specific integration test
-
-**Web (geniro/apps/web/):**
-- `cd geniro && pnpm run full-check` — builds and lints (covers web via turbo)
-- `cd geniro/apps/web && pnpm generate:api` — regenerate API client after backend changes
-
-### 11. Architecture Decision Record
-If this task involves a significant design choice (new pattern, technology decision, structural change), document it:
-- **Decision**: what was decided
-- **Alternatives**: what else was considered
-- **Rationale**: why this choice
-- **Consequences**: what this means for future work
-
-(The orchestrator will save this to `knowledge/architecture-decisions.md`.)
-
-### 12. Assumptions, Risks & Rollback
-- **Assumptions**: explicit assumptions, open questions, follow-ups
-- **Failure modes**: what could go wrong at runtime and expected system behavior
-- **Rollback plan**: how to undo the change
+### 6. Open Questions
+Unresolved ambiguities, follow-ups for the user, or decisions deferred to implementation.
 
 ---
 

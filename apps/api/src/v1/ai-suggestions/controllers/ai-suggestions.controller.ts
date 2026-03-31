@@ -23,7 +23,7 @@ import { AiSuggestionsService } from '../services/ai-suggestions.service';
 export class AiSuggestionsController {
   constructor(private readonly aiSuggestionsService: AiSuggestionsService) {}
 
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Post('graphs/:graphId/nodes/:nodeId/suggest-instructions')
   async suggestAgentInstructions(
     @Param('graphId') graphId: string,
@@ -34,7 +34,7 @@ export class AiSuggestionsController {
     return await this.aiSuggestionsService.suggest(ctx, graphId, nodeId, dto);
   }
 
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Post('graphs/:graphId/suggest-instructions')
   async suggestGraphInstructions(
     @Param('graphId') graphId: string,
@@ -48,7 +48,7 @@ export class AiSuggestionsController {
     );
   }
 
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Post('threads/:threadId/analyze')
   async analyzeThread(
     @Param('threadId') threadId: string,
@@ -58,7 +58,7 @@ export class AiSuggestionsController {
     return this.aiSuggestionsService.analyzeThread(ctx, threadId, payload);
   }
 
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Post('knowledge-docs/suggest')
   async suggestKnowledgeContent(
     @Body() payload: KnowledgeContentSuggestionRequestDto,

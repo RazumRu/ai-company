@@ -1,6 +1,6 @@
 ---
 name: refactor
-description: "Analyze code for smells and improvement opportunities, then implement safe, incremental refactoring with continuous test verification. Supports extract/rename/move/split/deduplicate transformations in geniro/ (NestJS) and geniro/apps/web/ (React). Zero behavior change guaranteed."
+description: "Analyze code for smells and improvement opportunities, then implement safe, incremental refactoring with continuous test verification. Supports extract/rename/move/split/deduplicate transformations in apps/api/ (NestJS) and apps/web/ (React). Zero behavior change guaranteed."
 context: fork
 agent: refactor-agent
 allowed-tools:
@@ -23,13 +23,13 @@ $ARGUMENTS
 
 ## Context
 
-The Geniro platform consists of two repositories:
-- **geniro/** — NestJS API backend (MikroORM, BullMQ, Socket.IO, Zod DTOs)
-- **geniro/apps/web/** — React frontend (Vite, Ant Design, Refine, @xyflow/react)
+The Geniro platform is a monorepo with two apps:
+- **apps/api/** — NestJS API backend (MikroORM, BullMQ, Socket.IO, Zod DTOs)
+- **apps/web/** — React frontend (Vite, Ant Design, Refine, @xyflow/react)
 
 ## Your Task
 
-1. **Read project standards** — `geniro/docs/code-guidelines.md`, `geniro/docs/project-structure.md` for API; `geniro/apps/web/claude.md` for Web.
+1. **Read project standards** — `docs/code-guidelines.md`, `docs/project-structure.md` for API; `apps/web/CLAUDE.md` for Web.
 2. **Analyze the target code** — identify all code smells (structure, duplication, naming, architecture).
 3. **Plan the refactoring** — produce an ordered list of incremental, safe steps. Present and wait for user confirmation on HIGH RISK steps.
 4. **Implement each step** — make one logical change at a time, run `pnpm run full-check` after each, revert if tests break.

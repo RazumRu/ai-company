@@ -35,7 +35,7 @@ export class KnowledgeDocDao extends BaseDao<KnowledgeDocEntity> {
     }
 
     if (tags && tags.length > 0) {
-      const placeholders = tags.map((_, i) => `$${i + 1}`).join(',');
+      const placeholders = tags.map(() => '?').join(',');
       const taggedIds = await this.em
         .getConnection()
         .execute<

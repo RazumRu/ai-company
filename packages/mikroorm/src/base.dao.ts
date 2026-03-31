@@ -71,6 +71,20 @@ export abstract class BaseDao<T extends object> {
     );
   }
 
+  async updateAndReturn(
+    id: string,
+    data: Partial<T>,
+    txEm?: EntityManager,
+  ): Promise<T> {
+    const em = txEm ?? this.em;
+    const entity = await this.getRepo(txEm).findOneOrFail({
+      id,
+    } as FilterQuery<T>);
+    Object.assign(entity, data);
+    await em.flush();
+    return entity;
+  }
+
   async deleteById(id: string, txEm?: EntityManager): Promise<void> {
     await this.getRepo(txEm).nativeUpdate(
       { id } as FilterQuery<T>,

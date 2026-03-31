@@ -9,6 +9,8 @@ import type {
 import type {
   AnalyzeThreadData,
   AnalyzeThreadResponses,
+  CheckHealthData,
+  CheckHealthResponses,
   CreateCredentialData,
   CreateCredentialResponses,
   CreateDocData,
@@ -167,6 +169,15 @@ export type Options<
    */
   meta?: Record<string, unknown>;
 };
+
+export const checkHealth = <ThrowOnError extends boolean = false>(
+  options?: Options<CheckHealthData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<CheckHealthResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/runtimes/health',
+    ...options,
+  });
 
 export const getRuntimes = <ThrowOnError extends boolean = false>(
   options: Options<GetRuntimesData, ThrowOnError>,

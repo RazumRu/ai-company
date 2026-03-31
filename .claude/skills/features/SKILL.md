@@ -1,6 +1,6 @@
 ---
 name: features
-description: "Manage the feature backlog. List all features with status, show next pending feature, mark features as complete, or update status. Features are stored in .claude/.generated/project-features/."
+description: "Manage the feature backlog. List all features with status, show next pending feature, mark features as complete, or update status. Features are stored in .claude/.artifacts/project-features/."
 model: haiku
 allowed-tools:
   - Read
@@ -13,7 +13,7 @@ argument-hint: "[list|next|complete <name>|status <name> <new-status>]"
 
 # Feature Backlog Manager
 
-Manage the Geniro feature backlog stored in `.claude/.generated/project-features/`.
+Manage the Geniro feature backlog stored in `.claude/.artifacts/project-features/`.
 
 ## Command
 
@@ -27,7 +27,7 @@ List all features with their status, size, and creation date.
 
 ```bash
 # Check if directory exists
-ls .claude/.generated/project-features/*.md 2>/dev/null
+ls .claude/.artifacts/project-features/*.md 2>/dev/null
 ```
 
 For each `.md` file found (excluding the `completed/` subdirectory), read the YAML frontmatter and extract:
@@ -42,12 +42,12 @@ For each `.md` file found (excluding the `completed/` subdirectory), read the YA
 1. Update `updated` to today's date if not already set
 2. Move the file:
    ```bash
-   mkdir -p .claude/.generated/project-features/completed
-   mv .claude/.generated/project-features/<name>.md .claude/.generated/project-features/completed/<name>.md
+   mkdir -p .claude/.artifacts/project-features/completed
+   mv .claude/.artifacts/project-features/<name>.md .claude/.artifacts/project-features/completed/<name>.md
    ```
 3. Report: `Auto-archived <name> to completed/ (status was already 'completed')`
 
-Also check `.claude/.generated/project-features/completed/` for recently completed features.
+Also check `.claude/.artifacts/project-features/completed/` for recently completed features.
 
 **Present as a formatted table:**
 
@@ -86,7 +86,7 @@ Create one with: /spec <description>
 
 Find the next feature ready for implementation:
 
-1. Read all `.md` files in `.claude/.generated/project-features/` (not `completed/`)
+1. Read all `.md` files in `.claude/.artifacts/project-features/` (not `completed/`)
 2. Filter for `status: approved` (ready to implement)
 3. Sort by creation date (oldest first)
 4. Show the first match with its full spec
@@ -108,25 +108,25 @@ To implement:
 
 Move a feature to the completed folder:
 
-1. Find `.claude/.generated/project-features/<name>.md`
+1. Find `.claude/.artifacts/project-features/<name>.md`
 2. Update the YAML frontmatter:
    - Set `status: completed`
    - Set `updated: <today's date>`
-3. Move the file to `.claude/.generated/project-features/completed/<name>.md`:
+3. Move the file to `.claude/.artifacts/project-features/completed/<name>.md`:
    ```bash
-   mkdir -p .claude/.generated/project-features/completed
-   mv .claude/.generated/project-features/<name>.md .claude/.generated/project-features/completed/<name>.md
+   mkdir -p .claude/.artifacts/project-features/completed
+   mv .claude/.artifacts/project-features/<name>.md .claude/.artifacts/project-features/completed/<name>.md
    ```
 4. Confirm:
    ```
-   ✅ Feature "<name>" marked as completed and moved to .claude/.generated/project-features/completed/
+   ✅ Feature "<name>" marked as completed and moved to .claude/.artifacts/project-features/completed/
    ```
 
 ### `status <name> <new-status>`
 
 Update a feature's status without moving it:
 
-1. Find `.claude/.generated/project-features/<name>.md`
+1. Find `.claude/.artifacts/project-features/<name>.md`
 2. Valid statuses: `draft`, `approved`, `in-progress`, `completed`
 3. Update the `status` and `updated` fields in the YAML frontmatter using the Edit tool
 4. If new status is `completed`, also move to `completed/` subdirectory (same as `complete` command)
@@ -136,12 +136,12 @@ Update a feature's status without moving it:
 
 Show the full spec for a specific feature:
 
-1. Find `.claude/.generated/project-features/<name>.md` (check both active and completed dirs)
+1. Find `.claude/.artifacts/project-features/<name>.md` (check both active and completed dirs)
 2. Read and display the full content
 3. Show implementation instructions if status is `approved`
 
 ## Rules
 
-- **Always check if the directory exists** before trying to read files. If `.claude/.generated/project-features/` doesn't exist, tell the user to create a feature first with `/spec`.
+- **Always check if the directory exists** before trying to read files. If `.claude/.artifacts/project-features/` doesn't exist, tell the user to create a feature first with `/spec`.
 - **Fuzzy name matching** — if the user types a partial name, try to match it (e.g., `thread` matches `thread-auto-naming.md`).
 - **Be concise** — this is a management tool, not an analyzer. Show formatted output quickly.

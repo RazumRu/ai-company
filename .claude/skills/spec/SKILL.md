@@ -1,6 +1,6 @@
 ---
 name: spec
-description: "Gather requirements through adaptive questioning, scout the codebase for context, and produce a complete feature spec. Combines structured interview with gray-area discovery inspired by GSD discuss-phase. Saves specs to .claude/.generated/project-features/. Use before /implement for non-trivial features."
+description: "Gather requirements through adaptive questioning, scout the codebase for context, and produce a complete feature spec. Combines structured interview with gray-area discovery inspired by GSD discuss-phase. Saves specs to .claude/.artifacts/project-features/. Use before /implement for non-trivial features."
 allowed-tools:
   - Read
   - Glob
@@ -27,20 +27,20 @@ $ARGUMENTS
 
 1. **Create the features directory** if it doesn't exist:
    ```bash
-   mkdir -p .claude/.generated/project-features/completed
+   mkdir -p .claude/.artifacts/project-features/completed
    ```
 
 2. **Propose a kebab-case name** for this feature based on the description (e.g., `graph-template-marketplace`, `thread-auto-naming`). Ask the user to confirm or suggest a different name.
 
 3. **Check for existing feature** with the same name:
    ```bash
-   ls .claude/.generated/project-features/*.md 2>/dev/null
+   ls .claude/.artifacts/project-features/*.md 2>/dev/null
    ```
    If a feature with this name already exists, warn the user and ask if they want to update it or choose a different name.
 
 4. **Load prior context** — check for existing specs to avoid re-asking settled decisions:
    ```bash
-   ls .claude/.generated/project-features/*.md 2>/dev/null | head -20
+   ls .claude/.artifacts/project-features/*.md 2>/dev/null | head -20
    ```
    Scan existing specs for patterns and decisions that carry forward. Build an internal list of prior decisions to reference (don't re-ask what's already decided).
 
@@ -171,7 +171,7 @@ If the user introduces new capability during discussion (not a clarification of 
 
 ## Phase 4: Generate Spec
 
-After all questions resolved, produce the spec and save to `.claude/.generated/project-features/<feature-name>.md`:
+After all questions resolved, produce the spec and save to `.claude/.artifacts/project-features/<feature-name>.md`:
 
 ```markdown
 ---
@@ -245,11 +245,11 @@ type: feature|bugfix|refactor|task
 
 ## Phase 5: Save & Confirm
 
-1. **Write the spec** to `.claude/.generated/project-features/<feature-name>.md`
+1. **Write the spec** to `.claude/.artifacts/project-features/<feature-name>.md`
 
 2. **Show the user the saved spec** and confirm:
    ```
-   Feature spec saved to: .claude/.generated/project-features/<feature-name>.md
+   Feature spec saved to: .claude/.artifacts/project-features/<feature-name>.md
 
    Status: approved | Size: [S/M/L]
 

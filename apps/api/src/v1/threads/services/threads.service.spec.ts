@@ -167,10 +167,8 @@ describe('ThreadsService', () => {
         {
           createdBy: mockUserId,
           graphId: mockGraphId,
-          limit: 50,
-          offset: 0,
         },
-        { orderBy: { updatedAt: 'DESC' } },
+        { orderBy: { updatedAt: 'DESC' }, limit: 50, offset: 0 },
       );
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
@@ -203,11 +201,9 @@ describe('ThreadsService', () => {
         {
           createdBy: mockUserId,
           graphId: mockGraphId,
-          statuses: [ThreadStatus.Done],
-          limit: 50,
-          offset: 0,
+          status: { $in: [ThreadStatus.Done] },
         },
-        { orderBy: { updatedAt: 'DESC' } },
+        { orderBy: { updatedAt: 'DESC' }, limit: 50, offset: 0 },
       );
     });
 
@@ -230,10 +226,8 @@ describe('ThreadsService', () => {
       expect(threadsDao.getAll).toHaveBeenCalledWith(
         {
           createdBy: mockUserId,
-          limit: 25,
-          offset: 5,
         },
-        { orderBy: { updatedAt: 'DESC' } },
+        { orderBy: { updatedAt: 'DESC' }, limit: 25, offset: 5 },
       );
       expect(result).toHaveLength(2);
     });
@@ -421,10 +415,8 @@ describe('ThreadsService', () => {
       expect(messagesDao.getAll).toHaveBeenCalledWith(
         {
           threadId: mockThreadId,
-          limit: 100,
-          offset: 0,
         },
-        { orderBy: { createdAt: 'DESC' } },
+        { orderBy: { createdAt: 'DESC' }, limit: 100, offset: 0 },
       );
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
@@ -453,10 +445,8 @@ describe('ThreadsService', () => {
         {
           threadId: mockThreadId,
           nodeId: 'node-1',
-          limit: 100,
-          offset: 0,
         },
-        { orderBy: { createdAt: 'DESC' } },
+        { orderBy: { createdAt: 'DESC' }, limit: 100, offset: 0 },
       );
     });
 

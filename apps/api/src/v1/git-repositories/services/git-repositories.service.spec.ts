@@ -74,6 +74,7 @@ describe('GitRepositoriesService', () => {
             getOne: vi.fn(),
             create: vi.fn(),
             updateById: vi.fn(),
+            updateAndReturn: vi.fn(),
             getById: vi.fn(),
             deleteById: vi.fn(),
             upsertMany: vi.fn(),
@@ -212,8 +213,7 @@ describe('GitRepositoriesService', () => {
       };
 
       vi.spyOn(dao, 'getOne').mockResolvedValue(existing);
-      vi.spyOn(dao, 'updateById').mockResolvedValue(undefined as never);
-      vi.spyOn(dao, 'getById').mockResolvedValue({
+      vi.spyOn(dao, 'updateAndReturn').mockResolvedValue({
         ...existing,
         url: 'https://github.com/octocat/Hello-World-New.git',
       });
@@ -228,7 +228,10 @@ describe('GitRepositoriesService', () => {
         id: mockRepositoryId,
         createdBy: mockUserId,
       });
-      expect(dao.updateById).toHaveBeenCalledWith(mockRepositoryId, updateData);
+      expect(dao.updateAndReturn).toHaveBeenCalledWith(
+        mockRepositoryId,
+        updateData,
+      );
       expect(result.url).toBe('https://github.com/octocat/Hello-World-New.git');
     });
 

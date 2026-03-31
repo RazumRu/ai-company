@@ -22,8 +22,9 @@ export class GraphCheckpointsWritesDao extends BaseDao<GraphCheckpointWritesEnti
       | 'type'
       | 'value'
     >,
+    txEm?: EntityManager,
   ): Promise<void> {
-    await this.getRepo().upsert(data, {
+    await this.getRepo(txEm).upsert(data, {
       onConflictFields: [
         'threadId',
         'checkpointNs',

@@ -46,9 +46,14 @@ export class ThreadsService {
   ): Promise<ThreadDto[]> {
     const userId = ctx.checkSub();
 
+    const { limit, offset, statuses, ...filter } = query;
     const threads = await this.threadDao.getAll(
-      { createdBy: userId, ...query },
-      { orderBy: { updatedAt: 'DESC' } },
+      {
+        createdBy: userId,
+        ...filter,
+        ...(statuses ? { status: { $in: statuses } } : {}),
+      },
+      { orderBy: { updatedAt: 'DESC' }, limit, offset },
     );
 
     return await this.prepareThreadsResponse(threads);
@@ -107,9 +112,10 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
+    const { limit, offset, ...filter } = query ?? {};
     const messages = await this.messagesDao.getAll(
-      { threadId, ...(query || {}) },
-      { orderBy: { createdAt: 'DESC' } },
+      { threadId, ...filter },
+      { orderBy: { createdAt: 'DESC' }, limit, offset },
     );
 
     return messages.map((msg) => this.prepareMessageResponse(msg));

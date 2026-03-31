@@ -1,4 +1,4 @@
-import { FilterQuery } from '@mikro-orm/postgresql';
+import type { FilterQuery } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import {
@@ -124,13 +124,12 @@ export class GitRepositoriesService {
       return this.prepareRepositoryResponse(existing);
     }
 
-    await this.gitRepositoriesDao.updateById(
+    const updated = await this.gitRepositoriesDao.updateAndReturn(
       id,
       updatePayload as Partial<GitRepositoryEntity>,
     );
-    const updated = await this.gitRepositoriesDao.getById(id);
 
-    return this.prepareRepositoryResponse(updated ?? existing);
+    return this.prepareRepositoryResponse(updated);
   }
 
   async getRepositories(
@@ -322,11 +321,10 @@ export class GitRepositoriesService {
 
     // Check if indexing is already in progress. Include soft-deleted rows
     // so we can restore them instead of hitting a unique constraint violation.
-    const existingIndex = await this.repoIndexDao.getOne({
-      repositoryId: data.repositoryId,
-      branch,
-      withDeleted: true,
-    } as Parameters<typeof this.repoIndexDao.getOne>[0]);
+    const existingIndex = await this.repoIndexDao.getOne(
+      { repositoryId: data.repositoryId, branch },
+      { filters: { softDelete: false } },
+    );
 
     const isSoftDeleted = existingIndex?.deletedAt != null;
 

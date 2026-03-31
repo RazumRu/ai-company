@@ -97,10 +97,6 @@ export class GitHubWebhookSubscriptionService
 
     const payload = JSON.parse(rawBody.toString()) as GitHubIssuePayload;
 
-    this.logger.debug(
-      `[handleWebhook] event=${eventType} action=${payload.action} issue=#${payload.issue?.number} repo=${payload.repository?.full_name}`,
-    );
-
     void this.dispatch(eventType, payload).catch((error: unknown) => {
       this.logger.error(
         `Webhook dispatch failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -142,10 +138,6 @@ export class GitHubWebhookSubscriptionService
   private async pollAllInstallations(
     since: Date,
   ): Promise<GitHubIssuePayload[]> {
-    this.logger.debug(
-      `[pollAllInstallations] triggers count=${this.triggers.size} since=${since.toISOString()}`,
-    );
-
     const installationRepos = new Map<number, Set<string>>();
 
     for (const entry of this.triggers.values()) {
@@ -189,10 +181,6 @@ export class GitHubWebhookSubscriptionService
 
     for (const repoFullName of repos) {
       const [owner, name] = repoFullName.split('/');
-
-      this.logger.debug(
-        `[fetchRecentIssues] repo=${repoFullName} since=${sinceISO}`,
-      );
 
       const query = `
         query($owner: String!, $name: String!, $since: DateTime!) {
@@ -254,8 +242,8 @@ export class GitHubWebhookSubscriptionService
       }
 
       if (result.data.rateLimit.remaining < RATE_LIMIT_THRESHOLD) {
-        this.logger.debug(
-          `GitHub rate limit low (${result.data.rateLimit.remaining} remaining, resets at ${result.data.rateLimit.resetAt}). Future reconciliation cycles may be throttled.`,
+        this.logger.warn(
+          `GitHub rate limit low (${result.data.rateLimit.remaining} remaining, resets at ${result.data.rateLimit.resetAt})`,
         );
       }
 
@@ -268,10 +256,6 @@ export class GitHubWebhookSubscriptionService
           owner: { login: repoData.owner.login },
         },
       }));
-
-      this.logger.debug(
-        `[fetchRecentIssues] repo=${repoFullName} nodes count=${nodes.length}: ${JSON.stringify(nodes.map((n) => ({ number: n.number, state: n.state, updatedAt: n.updatedAt, labels: n.labels.nodes.map((l) => l.name) })))}`,
-      );
 
       allNodes.push(...nodes);
     }

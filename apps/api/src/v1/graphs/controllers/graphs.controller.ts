@@ -98,7 +98,7 @@ export class GraphsController {
     await this.graphsService.delete(contextDataStorage, params.id);
   }
 
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Post(':id/run')
   async runGraph(
     @Param() params: EntityUUIDDto,
@@ -115,7 +115,7 @@ export class GraphsController {
     return await this.graphsService.destroy(contextDataStorage, params.id);
   }
 
-  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Post(':graphId/triggers/:triggerId/execute')
   async executeTrigger(
     @Param('graphId') graphId: string,

@@ -35,7 +35,7 @@ describe('Analytics E2E', () => {
 
   describe('GET /v1/analytics/overview', () => {
     it('should return 200 with valid analytics shape', () => {
-      getAnalyticsOverview().then((response) => {
+      getAnalyticsOverview({}, projectHeaders).then((response) => {
         expect(response.status).to.equal(200);
         expect(response.body).to.have.property('totalThreads');
         expect(response.body).to.have.property('totalTokens');
@@ -52,10 +52,13 @@ describe('Analytics E2E', () => {
     });
 
     it('should accept date range query parameters', () => {
-      getAnalyticsOverview({
-        dateFrom: '2020-01-01T00:00:00Z',
-        dateTo: '2099-12-31T23:59:59Z',
-      }).then((response) => {
+      getAnalyticsOverview(
+        {
+          dateFrom: '2020-01-01T00:00:00Z',
+          dateTo: '2099-12-31T23:59:59Z',
+        },
+        projectHeaders,
+      ).then((response) => {
         expect(response.status).to.equal(200);
         expect(response.body.totalThreads).to.be.a('number');
       });
@@ -69,10 +72,13 @@ describe('Analytics E2E', () => {
         Date.now() + 730 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      getAnalyticsOverview({
-        dateFrom: futureDate,
-        dateTo: farFuture,
-      }).then((response) => {
+      getAnalyticsOverview(
+        {
+          dateFrom: futureDate,
+          dateTo: farFuture,
+        },
+        projectHeaders,
+      ).then((response) => {
         expect(response.status).to.equal(200);
         expect(response.body.totalThreads).to.equal(0);
         expect(response.body.totalTokens).to.equal(0);
@@ -91,7 +97,7 @@ describe('Analytics E2E', () => {
     });
 
     it('should isolate data between users', () => {
-      const otherUserHeaders = buildAuthHeaders({
+      const otherUserHeaders = buildAuthHeadersWithProject(testProjectId, {
         userId: 'e1e1e1e1-e1e1-e1e1-e1e1-e1e1e1e1e1e1',
       });
 
@@ -106,7 +112,7 @@ describe('Analytics E2E', () => {
 
   describe('GET /v1/analytics/by-graph', () => {
     it('should return 200 with valid analytics shape', () => {
-      getAnalyticsByGraph().then((response) => {
+      getAnalyticsByGraph({}, projectHeaders).then((response) => {
         expect(response.status).to.equal(200);
         expect(response.body).to.have.property('graphs');
         expect(response.body.graphs).to.be.an('array');
@@ -125,10 +131,12 @@ describe('Analytics E2E', () => {
     it('should accept graphId filter', () => {
       const nonExistentId = generateRandomUUID();
 
-      getAnalyticsByGraph({ graphId: nonExistentId }).then((response) => {
-        expect(response.status).to.equal(200);
-        expect(response.body.graphs).to.have.length(0);
-      });
+      getAnalyticsByGraph({ graphId: nonExistentId }, projectHeaders).then(
+        (response) => {
+          expect(response.status).to.equal(200);
+          expect(response.body.graphs).to.have.length(0);
+        },
+      );
     });
 
     it('should return 401 without auth headers', () => {
@@ -178,14 +186,14 @@ describe('Analytics E2E', () => {
         })
         .then(() => {
           // Now check analytics overview — should have at least 1 thread
-          return getAnalyticsOverview();
+          return getAnalyticsOverview({}, projectHeaders);
         })
         .then((overviewResponse) => {
           expect(overviewResponse.status).to.equal(200);
           expect(overviewResponse.body.totalThreads).to.be.greaterThan(0);
 
           // Check by-graph filtered to our test graph
-          return getAnalyticsByGraph({ graphId: testGraphId });
+          return getAnalyticsByGraph({ graphId: testGraphId }, projectHeaders);
         })
         .then((byGraphResponse) => {
           expect(byGraphResponse.status).to.equal(200);

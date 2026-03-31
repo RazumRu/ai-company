@@ -580,7 +580,23 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     });
   }
 
-  private clearReasoningState(threadId: string) {
+  /**
+   * Clears the in-memory reasoning chunk state for a thread.
+   *
+   * @param threadId The external thread ID
+   * @param options.persist When true, emits accumulated reasoning as a
+   *   persisted message before clearing. Used during abort/stop so partial
+   *   reasoning survives page reloads.
+   * @param options.config RunnableConfig required when persist is true
+   *   (provides run metadata for the emitted message).
+   */
+  private clearReasoningState(
+    threadId: string,
+    options?: {
+      persist?: boolean;
+      config?: RunnableConfig<BaseAgentConfigurable>;
+    },
+  ) {
     if (!this.graphThreadState) {
       return;
     }
@@ -589,6 +605,34 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     if (!reasoningChunks.size) {
       return;
+    }
+
+    // Persist accumulated reasoning so it survives page reloads after stop.
+    if (options?.persist && options.config) {
+      const combinedContent = Array.from(reasoningChunks.values())
+        .map((msg) => (typeof msg.content === 'string' ? msg.content : ''))
+        .join('');
+
+      if (combinedContent.length > 0) {
+        // Use the first chunk's original message ID for a stable reasoningId
+        const firstEntry = reasoningChunks.entries().next().value;
+        const parentId = firstEntry
+          ? (firstEntry[1].id ?? undefined)
+          : undefined;
+        const reasoningMsg = buildReasoningMessage(combinedContent, parentId);
+        const tagged = updateMessagesListWithMetadata(
+          [reasoningMsg],
+          options.config,
+        );
+        this.emit({
+          type: 'message',
+          data: {
+            threadId,
+            messages: tagged,
+            config: options.config,
+          },
+        });
+      }
     }
 
     this.graphThreadState.applyForThread(threadId, {
@@ -995,7 +1039,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       }
     } finally {
       this.activeRuns.delete(runId);
-      this.clearReasoningState(threadId);
+      // Persist partial reasoning so it survives page reloads after stop/abort.
+      // Normal completion already emits reasoning via invoke_llm state changes,
+      // so persist=true only matters when the run was interrupted.
+      this.clearReasoningState(threadId, {
+        persist: true,
+        config: mergedConfig,
+      });
     }
 
     const result = {
@@ -1091,7 +1141,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
    * Stop execution for a specific thread (best effort).
    * This aborts any active runs whose thread_id or parent_thread_id matches the provided threadId.
    */
-  public async stopThread(threadId: string, reason?: string): Promise<void> {
+  public async stopThread(threadId: string, reason?: string): Promise<boolean> {
+    let stopped = false;
+
     for (const [_runId, run] of this.activeRuns.entries()) {
       const cfg = run.runnableConfig?.configurable;
       const runThreadId = run.threadId;
@@ -1101,6 +1153,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       if (!matches) {
         continue;
       }
+
+      stopped = true;
 
       const isDone =
         FinishTool.getStateFromToolsMetadata(run.lastState.toolsMetadata)
@@ -1178,6 +1232,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         // noop
       }
     }
+
+    return stopped;
   }
 
   /**

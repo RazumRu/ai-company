@@ -1,3 +1,4 @@
+import { raw } from '@mikro-orm/core';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { BaseDao } from '@packages/mikroorm';
@@ -25,7 +26,7 @@ export class ThreadsDao extends BaseDao<ThreadEntity> {
 
     const qb = this.em.createQueryBuilder(ThreadEntity, 't');
     const rows = await qb
-      .select(['t.graphId', 't.status', 'count(*) as cnt'])
+      .select(['t.graphId', 't.status', raw('count(*) as cnt')])
       .where({ graphId: { $in: graphIds } })
       .groupBy(['t.graphId', 't.status'])
       .execute<{ graphId: string; status: string; cnt: string }[]>();

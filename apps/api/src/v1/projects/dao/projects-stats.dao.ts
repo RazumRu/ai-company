@@ -1,8 +1,5 @@
-import { raw, sql } from '@mikro-orm/core';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
-
-import { ProjectEntity } from '../entity/project.entity';
 
 export type ProjectStatRow = {
   projectId: string;
@@ -21,25 +18,22 @@ export class ProjectsStatsDao {
       return [];
     }
 
-    const qb = this.em.createQueryBuilder(ProjectEntity, 'p');
+    const placeholders = projectIds.map(() => '?').join(', ');
 
-    return await qb
-      .select([
-        raw('p.id as "projectId"'),
-        raw('count(distinct g.id)::text as "graphCount"'),
-        raw('count(distinct th.id)::text as "threadCount"'),
-      ])
-      .leftJoin(raw('graphs'), 'g', {
-        project_id: sql.ref('p.id'),
-        deleted_at: null,
-        temporary: false,
-      })
-      .leftJoin(raw('threads'), 'th', {
-        graph_id: sql.ref('g.id'),
-        deleted_at: null,
-      })
-      .where({ id: { $in: projectIds } })
-      .groupBy(raw('p.id'))
-      .execute<ProjectStatRow[]>();
+    const rows = await this.em.getConnection().execute<ProjectStatRow[]>(
+      `SELECT p.id AS "projectId",
+              count(DISTINCT g.id)::text AS "graphCount",
+              count(DISTINCT th.id)::text AS "threadCount"
+         FROM projects p
+         LEFT JOIN graphs g
+           ON g.project_id = p.id AND g.deleted_at IS NULL AND g.temporary = false
+         LEFT JOIN threads th
+           ON th.graph_id = g.id AND th.deleted_at IS NULL
+        WHERE p.id IN (${placeholders})
+        GROUP BY p.id`,
+      projectIds,
+    );
+
+    return rows;
   }
 }

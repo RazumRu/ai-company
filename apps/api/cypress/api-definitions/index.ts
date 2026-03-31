@@ -2,6 +2,7 @@
 
 export {
   analyzeThread,
+  checkHealth,
   createCredential,
   createDoc,
   createGraph,
@@ -81,6 +82,9 @@ export type {
   AnalyzeThreadResponse,
   AnalyzeThreadResponses,
   AuthConfigResponseDto,
+  CheckHealthData,
+  CheckHealthResponse,
+  CheckHealthResponses,
   ClientOptions,
   CreateCredentialData,
   CreateCredentialResponses,
@@ -257,6 +261,7 @@ export type {
   RunGraphData,
   RunGraphResponse,
   RunGraphResponses,
+  RuntimeHealthDto,
   RuntimeInstanceDto,
   SetThreadMetadataByExternalIdData,
   SetThreadMetadataByExternalIdResponse,

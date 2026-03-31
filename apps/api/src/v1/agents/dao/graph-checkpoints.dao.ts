@@ -1,4 +1,4 @@
-import { EntityManager } from '@mikro-orm/postgresql';
+import { EntityManager, QueryOrder } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { BaseDao } from '@packages/mikroorm';
 
@@ -8,6 +8,23 @@ import { GraphCheckpointEntity } from '../entity/graph-chekpoints.entity';
 export class GraphCheckpointsDao extends BaseDao<GraphCheckpointEntity> {
   constructor(em: EntityManager) {
     super(em, GraphCheckpointEntity);
+  }
+
+  async getNestedExcludingPrefix(
+    parentThreadId: string,
+    checkpointNs: string,
+    threadIdPrefix: string,
+    txEm?: EntityManager,
+  ): Promise<GraphCheckpointEntity[]> {
+    return await this.getRepo(txEm)
+      .createQueryBuilder('c')
+      .where({
+        parentThreadId,
+        checkpointNs,
+      })
+      .andWhere('c.thread_id not like ?', [`${threadIdPrefix}%`])
+      .orderBy({ checkpointId: QueryOrder.DESC })
+      .getResultList();
   }
 
   async upsertByCheckpointKey(
@@ -23,8 +40,9 @@ export class GraphCheckpointsDao extends BaseDao<GraphCheckpointEntity> {
       | 'checkpoint'
       | 'metadata'
     >,
+    txEm?: EntityManager,
   ): Promise<void> {
-    await this.getRepo().upsert(data, {
+    await this.getRepo(txEm).upsert(data, {
       onConflictFields: ['threadId', 'checkpointNs', 'checkpointId'],
       onConflictAction: 'merge',
       onConflictMergeFields: [

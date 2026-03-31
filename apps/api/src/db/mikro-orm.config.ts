@@ -1,6 +1,9 @@
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 import { Migrator } from '@mikro-orm/migrations';
+
+const esmRequire = createRequire(__filename);
 import { defineConfig, UnderscoreNamingStrategy } from '@mikro-orm/postgresql';
 import { SeedManager } from '@mikro-orm/seeder';
 
@@ -19,14 +22,19 @@ const config = defineConfig({
   // MikroORM v7 (ESM) uses dynamic import() for entity discovery, which bypasses
   // ts-node-dev's CJS require hooks and fails on .ts files. This provider falls
   // back to require() for .ts files so ts-node-dev can compile them.
+
   dynamicImportProvider: async (id: string) => {
     if (id.endsWith('.ts') || id.includes('.ts?')) {
       const path = id.startsWith('file://') ? new URL(id).pathname : id;
-      return require(path);
+      return esmRequire(path);
     }
 
     return import(id);
   },
+  // Ignore undefined values in find queries instead of treating them as NULL.
+  // This allows safely spreading optional DTO fields into FilterQuery without
+  // generating unwanted IS NULL conditions.
+  ignoreUndefinedInQuery: true,
   // MikroORM v7 disallows global EM by default. NestJS request-scoping via
   // middleware handles context isolation, so global access is safe here.
   allowGlobalContext: true,

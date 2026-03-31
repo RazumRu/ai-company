@@ -253,8 +253,9 @@ Do not start, stop, or manage Docker/Podman containers yourself. The Geniro proj
    ```
 3. **If services are NOT running**, report this to the orchestrator: "Required services (Postgres/Redis/etc.) are not running. The user needs to run `pnpm deps:up` manually."
 4. Do not run `docker`/`podman` commands directly — no `docker run`, `docker start`, `docker compose`, `podman run`, etc. Container management is the user's responsibility.
-5. Do not attempt to start `pnpm deps:up` — this starts container infrastructure and requires the correct runtime (Docker/Podman) configured on the host.
-6. For integration tests that use the Docker runtime module (`runtime/`), the containers are **lazy-started by the application** — you don't manage them. If tests timeout due to container cold-start, increase the test timeout rather than trying to pre-start containers.
+5. Do not run destructive data commands — no `docker volume rm`, `podman volume rm`, `docker compose down -v`, `podman compose down -v`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, or any command that removes local database data or container volumes.
+6. Do not attempt to start `pnpm deps:up` — this starts container infrastructure and requires the correct runtime (Docker/Podman) configured on the host.
+7. For integration tests that use the Docker runtime module (`runtime/`), the containers are **lazy-started by the application** — you don't manage them. If tests timeout due to container cold-start, increase the test timeout rather than trying to pre-start containers.
 
 ---
 

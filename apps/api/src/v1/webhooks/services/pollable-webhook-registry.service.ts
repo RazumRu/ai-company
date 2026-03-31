@@ -66,15 +66,7 @@ export class PollableWebhookRegistry implements OnModuleInit, OnModuleDestroy {
       );
       const since = lastSyncDate ?? new Date();
 
-      this.logger.debug(
-        `[reconcile] subscriber=${subscriber.subscriberKey} lastSyncDate=${lastSyncDate?.toISOString() ?? 'null'} since=${since.toISOString()}`,
-      );
-
       const events = await subscriber.pollFn(since);
-
-      this.logger.debug(
-        `[reconcile] subscriber=${subscriber.subscriberKey} fetched ${events.length} events`,
-      );
 
       const now = new Date();
       for (const event of events) {
@@ -84,16 +76,10 @@ export class PollableWebhookRegistry implements OnModuleInit, OnModuleDestroy {
           const alreadyProcessed =
             await this.webhookProcessedEventDao.exists(dedupKey);
           if (alreadyProcessed) {
-            this.logger.debug(
-              `[reconcile] skipping already-processed event dedupKey=${dedupKey}`,
-            );
             continue;
           }
         }
 
-        this.logger.debug(
-          `[reconcile] dispatching event: ${JSON.stringify(event).slice(0, 300)}`,
-        );
         await subscriber.onEvent(event);
 
         if (dedupKey !== null) {
@@ -104,10 +90,6 @@ export class PollableWebhookRegistry implements OnModuleInit, OnModuleDestroy {
       await this.webhookSyncStateDao.upsertLastSyncDate(
         subscriber.subscriberKey,
         now,
-      );
-
-      this.logger.debug(
-        `[reconcile] subscriber=${subscriber.subscriberKey} upserted lastSyncDate=${now.toISOString()}`,
       );
     } catch (error) {
       this.logger.error(

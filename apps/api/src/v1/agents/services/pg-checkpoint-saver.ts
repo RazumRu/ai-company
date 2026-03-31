@@ -8,6 +8,7 @@ import {
   type PendingWrite,
   type SerializerProtocol,
 } from '@langchain/langgraph-checkpoint';
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable, Optional, Scope } from '@nestjs/common';
 import { ValidationException } from '@packages/common';
 
@@ -22,9 +23,19 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
   constructor(
     private readonly graphCheckpointsDao: GraphCheckpointsDao,
     private readonly graphCheckpointsWritesDao: GraphCheckpointsWritesDao,
+    private readonly em: EntityManager,
     @Optional() serde?: SerializerProtocol,
   ) {
     super(serde);
+  }
+
+  /**
+   * Fork the EntityManager to get an isolated connection context.
+   * This prevents a failed query from poisoning subsequent operations
+   * (PostgreSQL aborts all commands in a transaction after an error).
+   */
+  private fork(): EntityManager {
+    return this.em.fork();
   }
 
   private k(cfg: RunnableConfig): Keys {
@@ -58,6 +69,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
 
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const { threadId, checkpointNs, checkpointId } = this.k(config);
+    const forkedEm = this.fork();
     const doc = await this.graphCheckpointsDao.getOne(
       {
         threadId,
@@ -68,12 +80,13 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
         ...(checkpointId ? {} : { orderBy: { checkpointId: 'DESC' } }),
         limit: 1,
       },
+      forkedEm,
     );
     if (!doc) {
       return undefined;
     }
 
-    return this.buildCheckpointTuple(doc, true);
+    return this.buildCheckpointTuple(doc, true, forkedEm);
   }
 
   /**
@@ -90,10 +103,13 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     checkpointNs = '',
     includeWrites = false,
   ): Promise<(CheckpointTuple & { nodeId?: string })[]> {
+    const forkedEm = this.fork();
+
     // Get all checkpoints for this thread
     const checkpoints = await this.graphCheckpointsDao.getAll(
       { threadId, checkpointNs },
       { orderBy: { checkpointId: 'DESC' } },
+      forkedEm,
     );
 
     // Also get checkpoints where this threadId is the parent (nested agent runs
@@ -101,14 +117,13 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
     // Subagent checkpoints (threadId starts with "subagent-") are excluded
     // because their token usage is already folded into the parent
     // checkpoint by tool-executor-node's aggregatedToolUsage spread.
-    const nestedCheckpoints = await this.graphCheckpointsDao.getAll(
-      {
-        parentThreadId: threadId,
+    const nestedCheckpoints =
+      await this.graphCheckpointsDao.getNestedExcludingPrefix(
+        threadId,
         checkpointNs,
-        threadId: { $not: { $like: `${SUBAGENT_THREAD_PREFIX}%` } },
-      },
-      { orderBy: { checkpointId: 'DESC' } },
-    );
+        SUBAGENT_THREAD_PREFIX,
+        forkedEm,
+      );
 
     // Combine and deduplicate - keep latest checkpoint per unique threadId
     const allCheckpoints = [...checkpoints, ...nestedCheckpoints];
@@ -126,7 +141,11 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
 
     for (const doc of latestByThread.values()) {
       try {
-        const tuple = await this.buildCheckpointTuple(doc, includeWrites);
+        const tuple = await this.buildCheckpointTuple(
+          doc,
+          includeWrites,
+          forkedEm,
+        );
         tuples.push({
           ...tuple,
           nodeId: doc.nodeId ?? undefined,
@@ -147,6 +166,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
   private async buildCheckpointTuple(
     doc: Awaited<ReturnType<typeof this.graphCheckpointsDao.getOne>>,
     includeWrites = true,
+    forkedEm?: EntityManager,
   ): Promise<CheckpointTuple> {
     if (!doc) {
       throw new Error('Document is null or undefined');
@@ -164,6 +184,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
               checkpointId: doc.checkpointId,
             },
             { orderBy: { taskId: 'ASC', idx: 'ASC' } },
+            forkedEm,
           );
 
           return Promise.all(
@@ -223,6 +244,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       options?.before?.configurable as Record<string, unknown> | undefined
     )?.checkpoint_id;
     const beforeId = typeof before === 'string' ? before : undefined;
+    const forkedEm = this.fork();
 
     const rows = await this.graphCheckpointsDao.getAll(
       {
@@ -234,6 +256,7 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
         orderBy: { checkpointId: 'DESC' },
         ...(options?.limit ? { limit: options.limit } : {}),
       },
+      forkedEm,
     );
 
     for (const doc of rows) {
@@ -299,17 +322,21 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
         | string
         | undefined) ?? null;
 
-    await this.graphCheckpointsDao.upsertByCheckpointKey({
-      threadId,
-      checkpointNs,
-      checkpointId: id,
-      parentCheckpointId,
-      parentThreadId,
-      nodeId,
-      type: typeA,
-      checkpoint: Buffer.from(chk),
-      metadata: Buffer.from(meta),
-    });
+    const forkedEm = this.fork();
+    await this.graphCheckpointsDao.upsertByCheckpointKey(
+      {
+        threadId,
+        checkpointNs,
+        checkpointId: id,
+        parentCheckpointId,
+        parentThreadId,
+        nodeId,
+        type: typeA,
+        checkpoint: Buffer.from(chk),
+        metadata: Buffer.from(meta),
+      },
+      forkedEm,
+    );
 
     // Note: We do NOT emit notifications from put() to avoid duplicates.
     // Notifications are only emitted from putWrites() which contains the new messages.
@@ -333,19 +360,23 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
       throw new Error('checkpoint_id required');
     }
 
+    const forkedEm = this.fork();
     await Promise.all(
       writes.map(async ([channel, value], idx) => {
         const [type, ser] = await this.serde.dumpsTyped(value);
-        await this.graphCheckpointsWritesDao.upsertWriteByKey({
-          threadId,
-          checkpointNs,
-          checkpointId,
-          taskId,
-          idx,
-          channel,
-          type,
-          value: Buffer.from(ser),
-        });
+        await this.graphCheckpointsWritesDao.upsertWriteByKey(
+          {
+            threadId,
+            checkpointNs,
+            checkpointId,
+            taskId,
+            idx,
+            channel,
+            type,
+            value: Buffer.from(ser),
+          },
+          forkedEm,
+        );
       }),
     );
   }
@@ -358,10 +389,14 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
    * and checkpoints before deleting the root thread's data.
    */
   async deleteThread(threadId: string, ns = ''): Promise<void> {
+    const forkedEm = this.fork();
+
     // Find child checkpoints (nested agents and subagents linked via parentThreadId)
-    const childCheckpoints = await this.graphCheckpointsDao.getAll({
-      parentThreadId: threadId,
-    });
+    const childCheckpoints = await this.graphCheckpointsDao.getAll(
+      { parentThreadId: threadId },
+      undefined,
+      forkedEm,
+    );
 
     // Collect unique child threadIds to delete their writes too
     const childThreadIds = [
@@ -370,22 +405,24 @@ export class PgCheckpointSaver extends BaseCheckpointSaver {
 
     // Delete writes and checkpoints for each child thread
     for (const childThreadId of childThreadIds) {
-      await this.graphCheckpointsWritesDao.hardDelete({
-        threadId: childThreadId,
-      });
-      await this.graphCheckpointsDao.hardDelete({
-        threadId: childThreadId,
-      });
+      await this.graphCheckpointsWritesDao.hardDelete(
+        { threadId: childThreadId },
+        forkedEm,
+      );
+      await this.graphCheckpointsDao.hardDelete(
+        { threadId: childThreadId },
+        forkedEm,
+      );
     }
 
     // Delete the root thread's writes and checkpoints
-    await this.graphCheckpointsWritesDao.hardDelete({
-      threadId,
-      checkpointNs: ns,
-    });
-    await this.graphCheckpointsDao.hardDelete({
-      threadId,
-      checkpointNs: ns,
-    });
+    await this.graphCheckpointsWritesDao.hardDelete(
+      { threadId, checkpointNs: ns },
+      forkedEm,
+    );
+    await this.graphCheckpointsDao.hardDelete(
+      { threadId, checkpointNs: ns },
+      forkedEm,
+    );
   }
 }

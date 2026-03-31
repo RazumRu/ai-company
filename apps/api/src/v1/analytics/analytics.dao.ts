@@ -90,15 +90,12 @@ export class AnalyticsDao {
   private buildBaseContext(params: DateRangeParams) {
     const conditions: string[] = [];
     const paramValues: string[] = [];
-    let idx = 1;
 
-    conditions.push(`t.created_by = $${idx}`);
+    conditions.push('t.created_by = ?');
     paramValues.push(params.createdBy);
-    idx++;
 
-    conditions.push(`g.project_id = $${idx}`);
+    conditions.push('g.project_id = ?');
     paramValues.push(params.projectId);
-    idx++;
 
     return {
       params: paramValues,
@@ -106,9 +103,8 @@ export class AnalyticsDao {
         conditions.push(condition);
       },
       addParam(expr: string, value: string) {
-        conditions.push(`${expr} $${idx}`);
+        conditions.push(`${expr} ?`);
         paramValues.push(value);
-        idx++;
       },
       where() {
         return conditions.join(' AND ');

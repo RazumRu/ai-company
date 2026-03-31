@@ -1390,11 +1390,10 @@ export class RepoIndexService implements OnModuleInit {
     // Check for a soft-deleted row with the same (repositoryId, branch).
     // The unique constraint still covers soft-deleted rows, so we must
     // restore + update instead of creating a new row.
-    const softDeleted = await this.repoIndexDao.getOne({
-      repositoryId: params.repositoryId,
-      branch: params.branch,
-      withDeleted: true,
-    } as Parameters<typeof this.repoIndexDao.getOne>[0]);
+    const softDeleted = await this.repoIndexDao.getOne(
+      { repositoryId: params.repositoryId, branch: params.branch },
+      { filters: { softDelete: false } },
+    );
 
     if (softDeleted) {
       await this.repoIndexDao.restoreById(softDeleted.id);

@@ -20,9 +20,9 @@ $ARGUMENTS
 
 ## Context
 
-The Geniro platform consists of two repositories:
-- **geniro/** — NestJS API backend (MikroORM, Vitest, Zod DTOs)
-- **geniro/apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
+The Geniro platform is a monorepo with two apps:
+- **apps/api/** — NestJS API backend (MikroORM, Vitest, Zod DTOs)
+- **apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
 
 ## Your Role — Orchestrate, Don't Explore
 
@@ -39,12 +39,12 @@ Review the following in the Geniro codebase:
 
 $ARGUMENTS
 
-The Geniro platform consists of two repositories:
-- **geniro/** — NestJS API backend (MikroORM, Vitest, Zod DTOs)
-- **geniro/apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
+The Geniro platform is a monorepo with two apps:
+- **apps/api/** — NestJS API backend (MikroORM, Vitest, Zod DTOs)
+- **apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
 
 1. Identify what changed — use `git diff`, `git status`, or read the specific files/areas mentioned.
-2. Read the project standards — check `geniro/docs/code-guidelines.md`, `geniro/docs/testing.md`, and `geniro/apps/web/claude.md`.
+2. Read the project standards — check `docs/code-guidelines.md`, `docs/testing.md`, and `apps/web/CLAUDE.md`.
 3. Review every changed file against correctness, architecture fit, code quality, and the AI-generated code anti-patterns checklist.
 4. Also scan for pre-existing issues in the files you review — flag problems that existed before the current changes.
 5. Run `pnpm run full-check` in the relevant repo(s) to independently verify builds and tests pass.
@@ -63,12 +63,12 @@ After the reviewer returns, check the verdict.
 **If the reviewer returned findings (required changes OR minor improvements):**
 
 1. **Collect all fixable issues** — both required changes and minor improvements, both `[NEW]` and `[PRE-EXISTING]`.
-2. **Group issues by repo** — API issues (files in `geniro/`) → `api-agent`. Web issues (files in `geniro/apps/web/`) → `web-agent`.
+2. **Group issues by app** — API issues (files in `apps/api/`) → `api-agent`. Web issues (files in `apps/web/`) → `web-agent`.
 3. **Delegate fixes** to the appropriate agent(s). Launch API and Web agents in parallel if both have issues.
 
 **Delegation template for API fixes:**
 ```
-Work in the geniro/ directory.
+Work in the apps/api/ directory.
 
 The code reviewer found the following issues that must be fixed:
 
@@ -85,7 +85,7 @@ The code reviewer found the following issues that must be fixed:
 
 **Delegation template for Web fixes:**
 ```
-Work in the geniro/apps/web/ directory.
+Work in the apps/web/ directory.
 
 The code reviewer found the following issues that must be fixed:
 

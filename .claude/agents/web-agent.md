@@ -409,7 +409,8 @@ Do not start, stop, or manage Docker/Podman containers yourself. The Geniro proj
    ```
 3. **If the API server is NOT running**, report this to the orchestrator: "API server on port 5000 is not running. Playwright verification requires a running backend. The user needs to start it manually."
 4. Do not run `docker`/`podman` commands directly — no `docker run`, `docker start`, `docker compose`, `podman run`, etc. Container management is the user's responsibility.
-5. Do not attempt to start `pnpm deps:up` — this starts container infrastructure and requires the correct runtime configured on the host.
+5. Do not run destructive data commands — no `docker volume rm`, `podman volume rm`, `docker compose down -v`, `podman compose down -v`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, or any command that removes local database data or container volumes.
+6. Do not attempt to start `pnpm deps:up` — this starts container infrastructure and requires the correct runtime configured on the host.
 
 ---
 

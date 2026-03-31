@@ -4,6 +4,21 @@ export type ClientOptions = {
   baseUrl: string;
 };
 
+export type RuntimeHealthDto = {
+  /**
+   * Whether the runtime backend is reachable
+   */
+  healthy: boolean;
+  /**
+   * Runtime type checked
+   */
+  type: 'Docker' | 'Daytona';
+  /**
+   * Error message if the runtime is unhealthy
+   */
+  error?: string;
+};
+
 export type RuntimeInstanceDto = {
   /**
    * Runtime instance ID
@@ -2142,6 +2157,20 @@ export type AuthConfigResponseDto = {
    */
   clientId: string;
 };
+
+export type CheckHealthData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/runtimes/health';
+};
+
+export type CheckHealthResponses = {
+  200: RuntimeHealthDto;
+};
+
+export type CheckHealthResponse =
+  CheckHealthResponses[keyof CheckHealthResponses];
 
 export type GetRuntimesData = {
   body?: never;

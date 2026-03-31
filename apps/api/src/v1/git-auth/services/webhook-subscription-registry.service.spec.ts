@@ -53,6 +53,7 @@ describe('GitHubWebhookSubscriptionService', () => {
     logger = {
       log: vi.fn(),
       debug: vi.fn(),
+      warn: vi.fn(),
       error: vi.fn(),
     } as unknown as DefaultLogger;
 
@@ -383,10 +384,8 @@ describe('GitHubWebhookSubscriptionService', () => {
 
       expect(results).toHaveLength(1);
       expect(results[0]!.issue.number).toBe(5);
-      expect(logger.debug).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'Future reconciliation cycles may be throttled',
-        ),
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('GitHub rate limit low'),
       );
     });
 

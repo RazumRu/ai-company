@@ -228,6 +228,7 @@ describe('GraphsService', () => {
           provide: EntityManager,
           useValue: {
             transactional: vi.fn(),
+            fork: vi.fn().mockReturnValue({}),
           },
         },
         {
@@ -2243,18 +2244,25 @@ describe('GraphsService', () => {
         );
 
         expect(result.externalThreadId).toBe(expectedThreadId);
-        expect(threadsDao.getOne).toHaveBeenCalledWith({
-          externalThreadId: expectedThreadId,
-          graphId: mockGraphId,
-        });
-        expect(threadsDao.create).toHaveBeenCalledWith({
-          graphId: mockGraphId,
-          createdBy: mockUserId,
-          projectId: 'project-123',
-          externalThreadId: expectedThreadId,
-          status: ThreadStatus.Running,
-          metadata: { key: 'value' },
-        });
+        expect(threadsDao.getOne).toHaveBeenCalledWith(
+          {
+            externalThreadId: expectedThreadId,
+            graphId: mockGraphId,
+          },
+          undefined,
+          expect.anything(),
+        );
+        expect(threadsDao.create).toHaveBeenCalledWith(
+          {
+            graphId: mockGraphId,
+            createdBy: mockUserId,
+            projectId: 'project-123',
+            externalThreadId: expectedThreadId,
+            status: ThreadStatus.Running,
+            metadata: { key: 'value' },
+          },
+          expect.anything(),
+        );
       });
 
       it('should skip creation when thread already exists', async () => {
@@ -2278,10 +2286,14 @@ describe('GraphsService', () => {
         );
 
         expect(result.externalThreadId).toBe(expectedThreadId);
-        expect(threadsDao.getOne).toHaveBeenCalledWith({
-          externalThreadId: expectedThreadId,
-          graphId: mockGraphId,
-        });
+        expect(threadsDao.getOne).toHaveBeenCalledWith(
+          {
+            externalThreadId: expectedThreadId,
+            graphId: mockGraphId,
+          },
+          undefined,
+          expect.anything(),
+        );
         expect(threadsDao.create).not.toHaveBeenCalled();
       });
 

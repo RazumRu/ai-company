@@ -52,12 +52,12 @@ export class RepoIndexDao extends BaseDao<RepoIndexEntity> {
     const lockId = RepoIndexDao.advisoryLockId(repositoryId, branch);
     const connection = this.em.getConnection();
     try {
-      await connection.execute('SELECT pg_advisory_lock($1)', [lockId]);
+      await connection.execute('SELECT pg_advisory_lock(?)', [lockId]);
       const result = await cb();
       return result;
     } finally {
       try {
-        await connection.execute('SELECT pg_advisory_unlock($1)', [lockId]);
+        await connection.execute('SELECT pg_advisory_unlock(?)', [lockId]);
       } catch {
         // Best-effort unlock -- connection release will clean up the lock anyway
       }

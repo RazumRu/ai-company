@@ -4,6 +4,7 @@ import type {
   CheckpointMetadata,
   PendingWrite,
 } from '@langchain/langgraph-checkpoint';
+import { EntityManager } from '@mikro-orm/postgresql';
 import { Test, TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,6 +40,10 @@ describe('PgCheckpointSaver', () => {
       upsertWriteByKey: vi.fn(),
     };
 
+    const mockEntityManager = {
+      fork: vi.fn().mockReturnThis(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PgCheckpointSaver,
@@ -49,6 +54,10 @@ describe('PgCheckpointSaver', () => {
         {
           provide: GraphCheckpointsWritesDao,
           useValue: mockGraphCheckpointsWritesDao,
+        },
+        {
+          provide: EntityManager,
+          useValue: mockEntityManager,
         },
       ],
     }).compile();
@@ -94,6 +103,7 @@ describe('PgCheckpointSaver', () => {
           checkpointNs: 'test-ns',
           checkpointId: 'checkpoint-123',
         }),
+        expect.anything(),
       );
     });
   });
@@ -131,6 +141,7 @@ describe('PgCheckpointSaver', () => {
           taskId,
           idx: 0,
         }),
+        expect.anything(),
       );
       expect(
         mockGraphCheckpointsWritesDao.upsertWriteByKey,
@@ -143,6 +154,7 @@ describe('PgCheckpointSaver', () => {
           taskId,
           idx: 1,
         }),
+        expect.anything(),
       );
     });
   });

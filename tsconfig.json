@@ -27,9 +27,8 @@
     "types": ["node"],
     "verbatimModuleSyntax": false,
     "noUncheckedIndexedAccess": true,
-    "baseUrl": ".",
     "paths": {
-      "@packages/*": ["packages/*/src"]
+      "@packages/*": ["./packages/*/src"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist"]

@@ -356,7 +356,7 @@ Sort issues by severity (critical first).
 
 ### 6. Improved Instructions (if applicable)
 - List each agent node whose instructions need changes
-- For each, reference the `.md` file you created in `.generated/`
+- For each, reference the `.md` file you created in `.artifacts/`
 - Briefly summarize what changed and why
 
 ---
@@ -452,11 +452,11 @@ When your analysis identifies issues caused by **agent instructions** (system pr
 
 1. **Compare behavior vs. instructions.** For each agent node in the thread, compare what the instructions told the agent to do vs. what actually happened. Gaps, contradictions, and ambiguities in the instructions are root causes.
 
-2. **Write full updated instructions** to a new file in `.generated/`. Use the Write tool to create:
+2. **Write full updated instructions** to a new file in `.artifacts/`. Use the Write tool to create:
    ```
-   .generated/<graph-name>--<agent-name>--<node-id>-improved.md
+   .artifacts/<graph-name>--<agent-name>--<node-id>-improved.md
    ```
-   Example: `.generated/my-graph--test-agent--agent-1-improved.md`
+   Example: `.artifacts/my-graph--test-agent--agent-1-improved.md`
 
    Use kebab-case for all name segments. The agent name comes from the node's `config.name` field.
 
@@ -478,7 +478,7 @@ When your analysis identifies issues caused by **agent instructions** (system pr
 
 ### Existing Analysis Files
 
-The `.generated/` directory may contain previously improved instructions from earlier analyses. Check for existing files before creating new ones — if a file already exists for the same node, create a new version with a version suffix (e.g., `--test-agent--agent-1-improved-v2.md`).
+The `.artifacts/` directory may contain previously improved instructions from earlier analyses. Check for existing files before creating new ones — if a file already exists for the same node, create a new version with a version suffix (e.g., `--test-agent--agent-1-improved-v2.md`).
 
 ---
 

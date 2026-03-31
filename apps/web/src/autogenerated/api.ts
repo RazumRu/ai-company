@@ -1860,6 +1860,40 @@ export type RepoIndexDtoStatusEnum =
 /**
  *
  * @export
+ * @interface RuntimeHealthDto
+ */
+export interface RuntimeHealthDto {
+  /**
+   * Whether the runtime backend is reachable
+   * @type {boolean}
+   * @memberof RuntimeHealthDto
+   */
+  'healthy': boolean;
+  /**
+   * Runtime type checked
+   * @type {string}
+   * @memberof RuntimeHealthDto
+   */
+  'type': RuntimeHealthDtoTypeEnum;
+  /**
+   * Error message if the runtime is unhealthy
+   * @type {string}
+   * @memberof RuntimeHealthDto
+   */
+  'error'?: string;
+}
+
+export const RuntimeHealthDtoTypeEnum = {
+  Docker: 'Docker',
+  Daytona: 'Daytona',
+} as const;
+
+export type RuntimeHealthDtoTypeEnum =
+  (typeof RuntimeHealthDtoTypeEnum)[keyof typeof RuntimeHealthDtoTypeEnum];
+
+/**
+ *
+ * @export
  * @interface RuntimeInstanceDto
  */
 export interface RuntimeInstanceDto {
@@ -11562,6 +11596,48 @@ export const RuntimesApiAxiosParamCreator = function (
   return {
     /**
      *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    checkHealth: async (
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      const localVarPath = `/api/v1/runtimes/health`;
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
      * @param {string} threadId Filter by thread ID
      * @param {GetRuntimesStatusEnum} [status] Filter by runtime instance status
      * @param {*} [options] Override http request option.
@@ -11628,6 +11704,34 @@ export const RuntimesApiFp = function (configuration?: Configuration) {
   return {
     /**
      *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async checkHealth(
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<RuntimeHealthDto>
+    > {
+      const localVarAxiosArgs =
+        await localVarAxiosParamCreator.checkHealth(options);
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['RuntimesApi.checkHealth']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
      * @param {string} threadId Filter by thread ID
      * @param {GetRuntimesStatusEnum} [status] Filter by runtime instance status
      * @param {*} [options] Override http request option.
@@ -11677,6 +11781,18 @@ export const RuntimesApiFactory = function (
   return {
     /**
      *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    checkHealth(
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<RuntimeHealthDto> {
+      return localVarFp
+        .checkHealth(options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
      * @param {string} threadId Filter by thread ID
      * @param {GetRuntimesStatusEnum} [status] Filter by runtime instance status
      * @param {*} [options] Override http request option.
@@ -11701,6 +11817,18 @@ export const RuntimesApiFactory = function (
  * @extends {BaseAPI}
  */
 export class RuntimesApi extends BaseAPI {
+  /**
+   *
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof RuntimesApi
+   */
+  public checkHealth(options?: RawAxiosRequestConfig) {
+    return RuntimesApiFp(this.configuration)
+      .checkHealth(options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
   /**
    *
    * @param {string} threadId Filter by thread ID

@@ -417,6 +417,29 @@ export const upsertReasoningEntries = (
     byId.set(msg.id, msg);
   });
 
+  // Clean up stale streaming reasoning messages for the same runId.
+  // The backend keeps reasoningChunks at max size 1 and migrates content
+  // when the chunk ID changes. The incoming `entries` represent the current
+  // set of active reasoning IDs. Any existing streaming reasoning message
+  // for the same runId that is NOT in the incoming set is stale and must be
+  // removed to prevent duplicate reasoning blocks in the UI.
+  if (context.runId) {
+    const incomingIds = new Set(entries.map((e) => e.reasoningId));
+    for (const [id, msg] of byId) {
+      if (incomingIds.has(id)) {
+        continue;
+      }
+      if (!isStreamingReasoningMessage(msg)) {
+        continue;
+      }
+      const msgRunId = getMessageRunId(msg);
+      if (msgRunId && msgRunId === context.runId) {
+        byId.delete(id);
+        hasChanges = true;
+      }
+    }
+  }
+
   entries.forEach((entry) => {
     const existing = byId.get(entry.reasoningId);
     const existingMessage = existing?.message as
@@ -505,8 +528,11 @@ export const upsertReasoningEntries = (
   }
 
   if (!hasNewEntries) {
-    // Only updated existing entries — order unchanged, just replace in-place.
-    return prev.map((msg) => byId.get(msg.id) ?? msg);
+    // Only updated existing entries (or removed stale ones) — filter through
+    // byId to drop deleted entries and replace updated ones in-place.
+    return prev
+      .filter((msg) => byId.has(msg.id))
+      .map((msg) => byId.get(msg.id) ?? msg);
   }
 
   return sortMessagesChronologically(Array.from(byId.values()));
