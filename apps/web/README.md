@@ -7,11 +7,11 @@
 **Build, run, and manage AI agent automations through a visual graph editor.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6.svg)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178c6.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/Vite-7-646cff.svg)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vitejs.dev/)
 [![pnpm](https://img.shields.io/badge/pnpm-%E2%89%A510-f69220.svg)](https://pnpm.io/)
-[![Node](https://img.shields.io/badge/Node-%E2%89%A522-339933.svg)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/Node-%E2%89%A524-339933.svg)](https://nodejs.org/)
 
 </div>
 
@@ -73,7 +73,7 @@ A visual workspace for authoring and operating AI agent automations. Teams can s
 
 ### Prerequisites
 
-- **Node.js** >= 22
+- **Node.js** >= 24
 - **pnpm** >= 10 (the repo enforces the version via `package.json`)
 - Running instances of the **Geniro API** and **Keycloak** realm (defaults assume `localhost:5000` and `localhost:8082`)
 
