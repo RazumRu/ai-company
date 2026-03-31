@@ -402,7 +402,7 @@ If the hardcoded connection rules above seem wrong or outdated, query `GET http:
 
 Do not start, stop, or manage Docker/Podman containers yourself. The Geniro project may use Docker or Podman depending on the developer's environment.
 
-1. **Read `geniro/apps/web/CLAUDE.md`** and **`geniro/CLAUDE.md`** to check which container runtime and services the project uses.
+1. **Read `geniro/CLAUDE.md`** (including the Web Frontend section) to check which container runtime and services the project uses.
 2. **Check if the API server is running** before Playwright verification (the frontend needs it):
    ```bash
    lsof -i :5000 2>/dev/null

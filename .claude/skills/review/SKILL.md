@@ -44,7 +44,7 @@ The Geniro platform is a monorepo with two apps:
 - **apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
 
 1. Identify what changed — use `git diff`, `git status`, or read the specific files/areas mentioned.
-2. Read the project standards — check `docs/code-guidelines.md`, `docs/testing.md`, and `apps/web/CLAUDE.md`.
+2. Read the project standards — check `docs/code-guidelines.md`, `docs/testing.md`, and `CLAUDE.md` (Web Frontend section).
 3. Review every changed file against correctness, architecture fit, code quality, and the AI-generated code anti-patterns checklist.
 4. Also scan for pre-existing issues in the files you review — flag problems that existed before the current changes.
 5. Run `pnpm run full-check` in the relevant repo(s) to independently verify builds and tests pass.

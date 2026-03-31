@@ -140,13 +140,6 @@ For the **Web (geniro/apps/web/):**
 - Understand WebSocket handler patterns in `useGraphWebSocketHandlers.ts`
 - Check existing component patterns for similar UI features
 
-For the **Distribution (geniro-dist/):**
-- Read `helm/geniro/Chart.yaml` for chart metadata and dependency versions
-- Read `helm/geniro/values.yaml` for current default configuration
-- Check `helm/geniro/templates/` for existing deployment patterns
-- Check `helm/geniro/_helpers.tpl` for reusable template functions
-- If the task introduces new env vars, ports, or services in API/Web, check if Helm templates need updates
-
 ---
 
 ## Internet Research

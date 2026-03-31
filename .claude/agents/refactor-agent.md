@@ -26,7 +26,7 @@ Your guarantee: **every test that passed before must still pass after each indiv
 
 Before examining any code, read the relevant standards:
 - **API**: `geniro/docs/code-guidelines.md` and `geniro/docs/project-structure.md`
-- **Web**: `geniro/apps/web/CLAUDE.md`
+- **Web**: `geniro/CLAUDE.md` (Web Frontend section)
 
 ### 1.2 Understand the Target
 

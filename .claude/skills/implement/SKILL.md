@@ -542,7 +542,7 @@ Scan the diff against main and compare against these doc sources:
 | New env vars | `apps/api/.env.example` (should already be done in Implementation), `CLAUDE.md` quick reference if relevant |
 | New/changed auth, permissions, roles | `docs/code-guidelines.md` |
 | New integration or external service | `docs/code-guidelines.md` — add as canonical example if it follows the pattern |
-| New web patterns (pages, components, hooks) | `apps/web/CLAUDE.md` |
+| New web patterns (pages, components, hooks) | `CLAUDE.md` (Web Frontend section) |
 | New testing patterns | `docs/testing.md` |
 | New tool definitions or agent patterns | `docs/tool-definitions-best-practices.md` |
 

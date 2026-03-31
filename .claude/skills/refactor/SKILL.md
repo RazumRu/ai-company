@@ -29,7 +29,7 @@ The Geniro platform is a monorepo with two apps:
 
 ## Your Task
 
-1. **Read project standards** — `docs/code-guidelines.md`, `docs/project-structure.md` for API; `apps/web/CLAUDE.md` for Web.
+1. **Read project standards** — `docs/code-guidelines.md`, `docs/project-structure.md` for API; `CLAUDE.md` (Web Frontend section) for Web.
 2. **Analyze the target code** — identify all code smells (structure, duplication, naming, architecture).
 3. **Plan the refactoring** — produce an ordered list of incremental, safe steps. Present and wait for user confirmation on HIGH RISK steps.
 4. **Implement each step** — make one logical change at a time, run `pnpm run full-check` after each, revert if tests break.

@@ -81,8 +81,8 @@ A visual workspace for authoring and operating AI agent automations. Teams can s
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/geniro-web.git
-cd geniro-web
+git clone https://github.com/geniro-io/geniro.git
+cd geniro/apps/web
 
 # Install dependencies
 pnpm install
@@ -115,21 +115,22 @@ VITE_API_URL=https://api.example.com pnpm build
 
 ```bash
 # Build the production image
-docker build -t geniro-web .
+docker build -t geniro-web -f apps/web/Dockerfile .
 
 # Run on port 80
 docker run -p 80:4173 geniro-web
+# Note: Run docker build from the monorepo root
 ```
 
 The multi-stage Dockerfile uses Node 22-alpine, builds with Vite, and serves the static `dist/` bundle.
 
 ### Helm Deployment (Kubernetes)
 
-The Geniro platform (including this Web UI) can be deployed to Kubernetes using the official Helm chart. See the [geniro-dist/helm/geniro](../geniro-dist/helm/geniro/) directory at the monorepo root.
+The Geniro platform (including this Web UI) can be deployed to Kubernetes using the official Helm chart. See the [helm/geniro](../../helm/geniro/) directory at the monorepo root.
 
 ```bash
 # From the monorepo root
-helm install geniro ./geniro-dist/helm/geniro \
+helm install geniro ./helm/geniro \
   --set secrets.credentialEncryptionKey=<64-char-hex>
 ```
 
@@ -145,7 +146,7 @@ helm install geniro ./geniro-dist/helm/geniro \
 pnpm build
 ```
 
-See the [Helm chart README](../geniro-dist/helm/geniro/README.md) for full deployment documentation.
+See the [Helm chart README](../../helm/geniro/README.md) for full deployment documentation.
 
 ## Project Structure
 

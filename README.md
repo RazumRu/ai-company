@@ -16,8 +16,6 @@
 
 Design agents as visual graphs, connect them to tools, and execute them in isolated environments — all through a REST API with real-time updates.
 
-> **This repository contains the backend API.** The web UI lives at [geniro-web](https://github.com/geniro-io/geniro-web).
-
 ## Features
 
 - **Visual graph-based workflows** — Compose triggers, agents, tools, and runtimes into directed graphs with a pluggable node template system
@@ -151,9 +149,9 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo add qdrant https://qdrant.github.io/qdrant-helm
 helm repo update
 
-helm dependency update ./geniro-dist/helm/geniro
+helm dependency update ./helm/geniro
 
-helm install geniro ./geniro-dist/helm/geniro \
+helm install geniro ./helm/geniro \
   --set secrets.credentialEncryptionKey=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))") \
   --set secrets.openrouterApiKey=sk-or-v1-...
 ```
@@ -165,7 +163,7 @@ After install, follow the NOTES.txt output for port-forward commands to access t
 Disable any bundled dependency and point to an existing service:
 
 ```bash
-helm install geniro ./geniro-dist/helm/geniro \
+helm install geniro ./helm/geniro \
   --set postgresql.enabled=false \
   --set externalPostgresql.host=my-pg.example.com \
   --set externalPostgresql.password=mypassword \
@@ -174,7 +172,7 @@ helm install geniro ./geniro-dist/helm/geniro \
 
 ### Web Frontend Note
 
-The Web UI image has `API_URL` compiled at build time in `geniro-web/src/config/production.ts`. For custom domains, edit that file and rebuild the image before deploying.
+The Web UI image has `API_URL` compiled at build time in `apps/web/src/config/production.ts`. For custom domains, edit that file and rebuild the image before deploying.
 
 ## Tech Stack
 
