@@ -68,14 +68,18 @@ jobs:
       - name: up version
         id: semantic
         run: |
-          OUTPUT=$(pnpm run up-versions)
+          # Version API
+          OUTPUT_API=$(pnpm run up-versions)
+          echo "$OUTPUT_API"
 
-          echo $OUTPUT
+          # Version Web
+          OUTPUT_WEB=$(APP_NAME=web pnpm run up-versions)
+          echo "$OUTPUT_WEB"
 
-          if echo "$OUTPUT" | grep -q "no new version is released"; then
-           echo "release_created=false" >> $GITHUB_OUTPUT
+          if echo "$OUTPUT_API" | grep -q "no new version is released" && echo "$OUTPUT_WEB" | grep -q "no new version is released"; then
+            echo "release_created=false" >> $GITHUB_OUTPUT
           else
-           echo "release_created=true" >> $GITHUB_OUTPUT
+            echo "release_created=true" >> $GITHUB_OUTPUT
           fi
         env:
           GH_TOKEN: ${{ steps.generate_token.outputs.token }}
