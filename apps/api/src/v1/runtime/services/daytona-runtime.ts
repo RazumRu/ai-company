@@ -194,22 +194,7 @@ export class DaytonaRuntime extends BaseRuntime {
         );
 
         await this.invalidateStaleSnapshot(snapshotOrImage);
-
-        // Clean up the failed sandbox so the retry can reuse the same name
-        try {
-          const failed = await this.daytona!.get(sandboxName);
-          if (failed) {
-            await this.daytona!.delete(failed).catch((e) => {
-              this.logger?.warn(
-                `[DaytonaRuntime] Failed to delete failed sandbox "${sandboxName}": ${
-                  e instanceof Error ? e.message : String(e)
-                }`,
-              );
-            });
-          }
-        } catch {
-          // Not found — already cleaned up
-        }
+        await this.cleanupSandbox(sandboxName);
 
         try {
           this.sandbox = await this.createSandbox(
@@ -224,24 +209,6 @@ export class DaytonaRuntime extends BaseRuntime {
           throw retryError;
         }
       } else {
-        // Best-effort cleanup of zombie sandbox left in pending_build/error
-        // state after a timeout. Daytona may reject deletion for transitional
-        // states (#2390), but we try anyway to avoid accumulating zombies.
-        try {
-          const zombie = await this.daytona!.get(sandboxName);
-          if (zombie) {
-            await this.daytona!.delete(zombie).catch((e) => {
-              this.logger?.warn(
-                `[DaytonaRuntime] Failed to clean up sandbox "${sandboxName}" after creation error: ${
-                  e instanceof Error ? e.message : String(e)
-                }`,
-              );
-            });
-          }
-        } catch {
-          // Not found — already cleaned up
-        }
-
         this.emit({ type: 'start', data: { params: params || {}, error } });
         throw error;
       }
@@ -1021,6 +988,12 @@ export class DaytonaRuntime extends BaseRuntime {
     });
   }
 
+  /**
+   * Creates a sandbox with retry logic. If the first attempt times out
+   * (likely stuck in pending_build — Daytona issue #3602), cleans up the
+   * stuck sandbox and retries with a fresh name. Up to MAX_CREATE_RETRIES
+   * total attempts.
+   */
   private async createSandbox(
     commonParams: {
       name: string;
@@ -1030,18 +1003,62 @@ export class DaytonaRuntime extends BaseRuntime {
     },
     snapshotOrImage: string,
   ): Promise<Sandbox> {
-    if (snapshotOrImage) {
-      // Use `image` — Daytona automatically builds a snapshot from the
-      // Docker image on first use and caches it in the transient registry.
-      // Subsequent sandbox creations reuse the cached snapshot.
-      return this.daytona!.create(
-        { ...commonParams, image: snapshotOrImage },
-        { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
-      );
+    const MAX_CREATE_RETRIES = 3;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= MAX_CREATE_RETRIES; attempt++) {
+      // Use original name on first attempt, fresh name on retries
+      const name =
+        attempt === 1 ? commonParams.name : `${commonParams.name}-r${attempt}`;
+      const params = { ...commonParams, name };
+
+      try {
+        if (snapshotOrImage) {
+          return await this.daytona!.create(
+            { ...params, image: snapshotOrImage },
+            { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
+          );
+        }
+        return await this.daytona!.create(params, {
+          timeout: SANDBOX_CREATE_TIMEOUT_SECONDS,
+        });
+      } catch (err) {
+        lastError = err;
+
+        if (attempt < MAX_CREATE_RETRIES) {
+          this.logger?.warn(
+            `[DaytonaRuntime] Sandbox creation attempt ${attempt}/${MAX_CREATE_RETRIES} failed` +
+              ` (name="${name}"). Cleaning up and retrying…`,
+          );
+
+          // Best-effort cleanup of the stuck sandbox
+          await this.cleanupSandbox(name);
+        }
+      }
     }
-    return this.daytona!.create(commonParams, {
-      timeout: SANDBOX_CREATE_TIMEOUT_SECONDS,
-    });
+
+    throw lastError;
+  }
+
+  /**
+   * Best-effort deletion of a sandbox by name.
+   * Used to clean up stuck sandboxes before retrying creation.
+   */
+  private async cleanupSandbox(name: string): Promise<void> {
+    try {
+      const sandbox = await this.daytona!.get(name);
+      if (sandbox) {
+        await this.daytona!.delete(sandbox).catch((e) => {
+          this.logger?.warn(
+            `[DaytonaRuntime] Failed to clean up sandbox "${name}": ${
+              e instanceof Error ? e.message : String(e)
+            }`,
+          );
+        });
+      }
+    } catch {
+      // Not found — already cleaned up
+    }
   }
 
   /**
