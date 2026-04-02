@@ -224,6 +224,24 @@ export class DaytonaRuntime extends BaseRuntime {
           throw retryError;
         }
       } else {
+        // Best-effort cleanup of zombie sandbox left in pending_build/error
+        // state after a timeout. Daytona may reject deletion for transitional
+        // states (#2390), but we try anyway to avoid accumulating zombies.
+        try {
+          const zombie = await this.daytona!.get(sandboxName);
+          if (zombie) {
+            await this.daytona!.delete(zombie).catch((e) => {
+              this.logger?.warn(
+                `[DaytonaRuntime] Failed to clean up sandbox "${sandboxName}" after creation error: ${
+                  e instanceof Error ? e.message : String(e)
+                }`,
+              );
+            });
+          }
+        } catch {
+          // Not found — already cleaned up
+        }
+
         this.emit({ type: 'start', data: { params: params || {}, error } });
         throw error;
       }
