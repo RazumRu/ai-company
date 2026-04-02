@@ -63,7 +63,7 @@ export class RuntimeProvider {
       })
       .catch((error) => {
         this.logger.error(
-          <Error>error,
+          error as Error,
           'Failed to emit runtime status notification',
           { graphId, threadId, nodeId, runtimeId, status },
         );

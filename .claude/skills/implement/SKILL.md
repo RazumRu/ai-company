@@ -7,7 +7,7 @@ argument-hint: "[feature: <name> | next | feature description]"
 
 # Geniro Implementation Orchestrator
 
-You are the **Implementation Orchestrator** for Geniro. Your job is to take a feature spec or feature request and drive it through the full pipeline: **Context -> Setup -> Discovery -> Architecture -> Approval -> Implementation -> Validate -> Simplify -> Review -> Ship -> Docs -> Learn**.
+You are the **Implementation Orchestrator** for Geniro. Your job is to take a feature spec or feature request and drive it through the full pipeline: **Context -> Setup -> Discovery -> Architecture -> Approval -> Implementation -> Validate -> Simplify -> Review -> Ship -> Finalize**.
 
 Phases marked **(WAIT)** require user input before proceeding.
 
@@ -37,8 +37,8 @@ After any step that modifies `.dto.ts` or `.controller.ts` files, run `pnpm --fi
 
 If the pipeline is interrupted, the user re-runs `/implement` with the same arguments. The Context Phase detects existing work via git (branch, commits, changed files, spec file on disk) and picks up where things left off.
 
-**Full pipeline:** Context -> Setup -> Discovery -> Architecture -> Approval -> Implementation -> Validate -> Simplify -> Review -> Ship -> Docs -> Learn.
-**Fast-path:** Context -> Setup -> Implementation -> Validate -> Review -> Ship -> Docs -> Learn (skip Discovery, Architecture, Approval, Simplify).
+**Full pipeline:** Context -> Setup -> Discovery -> Architecture -> Approval -> Implementation -> Validate -> Simplify -> Review -> Ship -> Finalize.
+**Fast-path:** Context -> Setup -> Implementation -> Validate -> Review -> Ship -> Finalize (skip Discovery, Architecture, Approval, Simplify).
 
 ---
 
@@ -355,13 +355,14 @@ Run `pnpm test:unit` after any new/updated specs to verify they pass.
 
 #### 4b: Integration Tests (`*.int.ts`)
 
-Only required when the change involves **new or modified DAO methods, complex service orchestration, or database queries** — not for every change.
+**MANDATORY** when the change touches any of: DAO methods, service methods with DB calls, entity changes, migrations, complex query logic, or multi-service orchestration. The only exception is pure frontend (Web-only) changes with no API involvement.
 
-1. **Check if the changed module already has integration tests** in `src/__tests__/integration/`. If yes, grep for the changed function/method name.
-2. **If integration tests exist but don't cover the change**: delegate to a fresh `api-agent`: "Add integration test cases for [method] in [existing int file]. Follow the existing test patterns in that file."
-3. **If no integration tests exist and the change warrants them** (new DAO method, complex query, multi-service orchestration): delegate to a fresh `api-agent`: "Create an integration test file for [module] in `src/__tests__/integration/`. Test [specific scenarios]. Follow existing `.int.ts` patterns."
-
-Run the specific integration test file: `pnpm test:integration [filename]`.
+1. **Identify integration test candidates:** From the diff, list every changed DAO, service method that calls a DAO, or entity. Each one needs integration test coverage.
+2. **Check if the changed module already has integration tests** in `src/__tests__/integration/`. Grep for the changed function/method name.
+3. **If integration tests exist but don't cover the change**: delegate to a fresh `api-agent`: "Add integration test cases for [method] in [existing int file]. Follow the existing test patterns in that file."
+4. **If no integration tests exist**: delegate to a fresh `api-agent`: "Create an integration test file for [module] in `src/__tests__/integration/`. Test [specific scenarios]. Follow existing `.int.ts` patterns in nearby modules."
+5. **Run every affected integration test file** explicitly: `pnpm test:integration [filename]`. Do NOT skip this — integration tests must pass before proceeding.
+6. **Report results** — list each integration test file run with pass/fail status. If any fail, enter the Fix Loop (Step 5).
 
 #### 4c: E2E Tests (`*.cy.ts`) — new endpoints only
 
@@ -477,60 +478,29 @@ Then ask the user for feedback and ship method in a single interaction. If full-
 - "Minor tweaks / Fix issues" -- small adjustments or CI fixes needed (I'll describe)
 
 **Routing:**
-- **Just commit** -> proceed to Step 2
+- **Just commit** -> proceed to Finalize phase
 - **Minor tweaks / Fix issues** -> ask what to change. **Route based on adjustment size:**
   - **Big adjustments** (changes to data model, API contract, new endpoints/pages, or fundamentally different approach): re-run `architect-agent` with the changes -> `skeptic-agent` -> then back to Implementation Phase for the affected tasks. This ensures the spec stays accurate.
   - **Medium adjustments** (new logic, new component sections, additional fields that require codebase research): run an `Explore` subagent scoped to the requested change to understand patterns and dependencies. If the research reveals complexity (multiple files, cross-module coordination, ambiguous approach), run `architect-agent` for a targeted spec update -> `skeptic-agent` -> then delegate to implementer agents. If research shows it's straightforward, delegate directly to implementer agents with the research context.
   - **Small adjustments** (styling, logic tweaks, missing fields, CI fixes): delegate directly to implementer agents. Use Validate Step 5 for CI failures, re-run `pnpm run full-check`. If 10+ lines changed, re-run `reviewer-agent` and process findings as a fix loop (max 3 rounds, then escalate).
   - After any adjustment: run codegen check (see Codegen Rule), re-run `pnpm run full-check`. Then loop back and re-present results. Soft limit: after 3 tweak rounds, suggest using `/follow-up` for further changes.
-- **Leave uncommitted** -> skip to Docs phase (then Learn)
+- **Leave uncommitted** -> skip to Finalize phase (Finalize will skip the commit step)
 
-### Step 2: Execute Ship
-
-Commit with conventional format: `type(scope): message`.
-
-**Worktree warning:** If working in a worktree and user chose "Leave uncommitted", warn them that changes remain in the worktree directory (include the path) and they'll need to manually commit and run `ExitWorktree` later to merge back.
-
-### Step 3: Worktree Exit
-
-If working in a worktree (from Setup) and user chose any commit option, call `ExitWorktree` to merge changes back and clean up. Do this before cleanup so cleanup runs in the main branch context.
-
-### Step 4: Cleanup
-
-Run these cleanup commands directly (no agent needed — this is deterministic work):
-
-```bash
-# Remove Playwright screenshots and temp artifacts
-find . -maxdepth 5 \( -name '*screenshot*.png' -o -name '*page-*.png' -o -name '*playwright*.png' -o -name '*screenshot*.jpeg' -o -name '*.tmp' -o -name '*.bak' -o -name 'debug-*' \) -not -path '*/node_modules/*' -not -path '*/.git/*' -delete 2>/dev/null
-
-# Remove stray .log files (not in node_modules/.git)
-find . -maxdepth 5 -name '*.log' -not -path '*/node_modules/*' -not -path '*/.git/*' -delete 2>/dev/null
-
-# Kill orphaned processes on agent ports (4200-4299) — never touch dev ports (5000, 5174, 5432, 6379)
-lsof -ti :4200-4299 2>/dev/null | xargs kill 2>/dev/null || true
-```
-
-If any command fails silently, that's fine — cleanup is best-effort.
-
-**IMPORTANT: The pipeline is NOT done after shipping.** Docs and Learn phases still need to run — do not stop here.
-
-### Step 5: Archive Feature Spec (if from backlog)
-
-If this task came from a feature spec in `.claude/.artifacts/project-features/`:
-```bash
-mkdir -p .claude/.artifacts/project-features/completed
-```
-Update YAML frontmatter: `status: completed`, `updated: <today>`. Move to `completed/`.
-
-**-> Proceed to Docs.**
+**-> Proceed to Finalize.**
 
 ---
 
-## Docs Phase
+## Finalize Phase
+
+**Gate:** User chose a ship method in Ship Phase.
+
+This phase collects ALL remaining work (docs, learnings, improvements) BEFORE committing, so everything ships in a single commit.
+
+### Step 1: Update Docs
 
 Check whether existing documentation needs updating based on what was implemented. **Skip if nothing changed that affects documented surfaces.**
 
-### What to check
+#### What to check
 
 Scan the diff against main and compare against these doc sources:
 
@@ -546,7 +516,7 @@ Scan the diff against main and compare against these doc sources:
 | New testing patterns | `docs/testing.md` |
 | New tool definitions or agent patterns | `docs/tool-definitions-best-practices.md` |
 
-### How to update
+#### How to update
 
 1. **Read the relevant doc files** identified above
 2. **Check for stale examples** — does the doc reference files, functions, or patterns that were renamed, moved, or superseded by this implementation?
@@ -554,15 +524,7 @@ Scan the diff against main and compare against these doc sources:
 4. **Apply updates** directly using Edit — keep changes minimal and focused. Don't rewrite docs, just patch what's stale or add a new example/reference.
 5. If no docs need updating, skip silently — don't mention it to the user.
 
-**-> Proceed to Learn.**
-
----
-
-## Learn & Improve Phase
-
-Two jobs: (1) save what we learned, (2) suggest how to improve the system. **Both are mandatory** — do not skip this phase.
-
-### Step 1: Extract Learnings
+### Step 2: Extract Learnings
 
 Scan the full conversation for events worth remembering. Look for these signals:
 
@@ -580,7 +542,7 @@ Scan the full conversation for events worth remembering. Look for these signals:
 
 Before writing, check if an existing memory covers this topic — UPDATE rather than duplicate. Skip if nothing genuinely novel was discovered.
 
-### Step 2: Suggest Improvements (WAIT)
+### Step 3: Suggest Improvements (WAIT)
 
 Analyze the full pipeline run and identify potential improvements to the system itself:
 
@@ -598,5 +560,44 @@ Present via `AskUserQuestion` with header "Improve":
 - "Apply all" — implement all proposed changes
 - "Review one-by-one" — approve each separately
 - "Skip" — no improvements needed
+
+### Step 4: Commit (conditional)
+
+**If user chose "Just commit" in Ship Phase:**
+
+Commit ALL changes (implementation + docs + rules/skill updates) with conventional format: `type(scope): message`.
+
+**If user chose "Leave uncommitted":**
+
+Skip the commit. If working in a worktree, warn them that changes remain in the worktree directory (include the path) and they'll need to manually commit and run `ExitWorktree` later to merge back.
+
+### Step 5: Worktree Exit
+
+If working in a worktree (from Setup) and user chose any commit option, call `ExitWorktree` to merge changes back and clean up. Do this before cleanup so cleanup runs in the main branch context.
+
+### Step 6: Cleanup
+
+Run these cleanup commands directly (no agent needed — this is deterministic work):
+
+```bash
+# Remove Playwright screenshots and temp artifacts
+find . -maxdepth 5 \( -name '*screenshot*.png' -o -name '*page-*.png' -o -name '*playwright*.png' -o -name '*screenshot*.jpeg' -o -name '*.tmp' -o -name '*.bak' -o -name 'debug-*' \) -not -path '*/node_modules/*' -not -path '*/.git/*' -delete 2>/dev/null
+
+# Remove stray .log files (not in node_modules/.git)
+find . -maxdepth 5 -name '*.log' -not -path '*/node_modules/*' -not -path '*/.git/*' -delete 2>/dev/null
+
+# Kill orphaned processes on agent ports (4200-4299) — never touch dev ports (5000, 5174, 5432, 6379)
+lsof -ti :4200-4299 2>/dev/null | xargs kill 2>/dev/null || true
+```
+
+If any command fails silently, that's fine — cleanup is best-effort.
+
+### Step 7: Archive Feature Spec (if from backlog)
+
+If this task came from a feature spec in `.claude/.artifacts/project-features/`:
+```bash
+mkdir -p .claude/.artifacts/project-features/completed
+```
+Update YAML frontmatter: `status: completed`, `updated: <today>`. Move to `completed/`.
 
 **-> Pipeline complete.**
