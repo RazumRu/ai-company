@@ -3,8 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
 import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
-import { buildSnapshotName } from '../runtime.utils';
-import { _snapshotInflightForTesting, DaytonaRuntime } from './daytona-runtime';
+import { DaytonaRuntime } from './daytona-runtime';
 import { DockerRuntime } from './docker-runtime';
 import { RuntimeProvider } from './runtime-provider';
 
@@ -24,21 +23,11 @@ const mockSandbox = {
   },
 };
 
-const mockSnapshotService = {
-  get: vi.fn(),
-  create: vi.fn(),
-  list: vi
-    .fn()
-    .mockResolvedValue({ items: [], total: 0, page: 1, totalPages: 1 }),
-  delete: vi.fn().mockResolvedValue(undefined),
-};
-
 const mockDaytonaInstance = {
   create: vi.fn().mockResolvedValue(mockSandbox),
   get: vi.fn(),
   delete: vi.fn().mockResolvedValue(undefined),
   start: vi.fn().mockResolvedValue(undefined),
-  snapshot: mockSnapshotService,
 };
 
 vi.mock('@daytonaio/sdk', async (importOriginal) => {
@@ -622,13 +611,9 @@ describe('DaytonaRuntime', () => {
         apiUrl: 'http://api',
         target: 'us',
       });
-      _snapshotInflightForTesting.clear();
       mockDaytonaInstance.create.mockResolvedValue(mockSandbox);
       mockDaytonaInstance.get.mockRejectedValue(new Error('Not found'));
       mockDaytonaInstance.delete.mockResolvedValue(undefined);
-      // Snapshot service: snapshot.get throws "not found", create returns active
-      mockSnapshotService.get.mockRejectedValue(new Error('not found'));
-      mockSnapshotService.create.mockResolvedValue({ state: 'active' });
       // runImageEntrypoint exec calls need session mocks.
       // Return exitCode 1 so the entrypoint check sees "not found" and skips.
       mockSandbox.process.createSession.mockResolvedValue(undefined);
@@ -651,7 +636,7 @@ describe('DaytonaRuntime', () => {
       expect(mockDaytonaInstance.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'my-sandbox',
-          snapshot: buildSnapshotName('node:20'),
+          image: 'node:20',
           envVars: { NODE_ENV: 'test' },
           labels: { team: 'backend' },
           autoStopInterval: 0,
@@ -1305,172 +1290,6 @@ describe('DaytonaRuntime', () => {
         );
       });
     });
-  });
-
-  describe('snapshot management', () => {
-    const TEST_IMAGE = 'razumru/geniro-runtime:latest';
-    let freshRuntime: DaytonaRuntime;
-
-    beforeEach(() => {
-      freshRuntime = new DaytonaRuntime(
-        { apiKey: 'key', apiUrl: 'http://api', target: 'us' },
-        { snapshot: TEST_IMAGE },
-      );
-      _snapshotInflightForTesting.clear();
-      vi.clearAllMocks();
-      // Default: sandbox get returns "not found" (no existing sandbox to reuse)
-      mockDaytonaInstance.get.mockRejectedValue(new Error('not found'));
-    });
-
-    it('should use pre-built snapshot when it already exists', async () => {
-      mockSnapshotService.get.mockResolvedValue({
-        state: 'active',
-        name: buildSnapshotName(TEST_IMAGE),
-      });
-
-      await freshRuntime.start();
-
-      expect(mockSnapshotService.create).not.toHaveBeenCalled();
-      expect(mockDaytonaInstance.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          snapshot: expect.stringMatching(/^geniro-runtime-/),
-        }),
-        expect.any(Object),
-      );
-      // Should NOT have been called with `image`
-      expect(mockDaytonaInstance.create).not.toHaveBeenCalledWith(
-        expect.objectContaining({ image: expect.any(String) }),
-        expect.any(Object),
-      );
-    });
-
-    it('should create snapshot on first use when none exists', async () => {
-      mockSnapshotService.get.mockRejectedValue(new Error('not found'));
-      mockSnapshotService.create.mockResolvedValue({ state: 'active' });
-
-      await freshRuntime.start();
-
-      expect(mockSnapshotService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: expect.stringMatching(/^geniro-runtime-/),
-          image: TEST_IMAGE,
-        }),
-        expect.objectContaining({ onLogs: expect.any(Function) }),
-      );
-      expect(mockDaytonaInstance.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          snapshot: expect.stringMatching(/^geniro-runtime-/),
-        }),
-        expect.any(Object),
-      );
-    });
-
-    it('should delete and rebuild snapshot in error state', async () => {
-      const snapshotName = buildSnapshotName(TEST_IMAGE);
-      const errorSnapshot = {
-        state: 'error',
-        name: snapshotName,
-        errorReason: 'build failed',
-      };
-      mockSnapshotService.get.mockResolvedValue(errorSnapshot);
-      mockSnapshotService.create.mockResolvedValue({ state: 'active' });
-
-      await freshRuntime.start();
-
-      expect(mockSnapshotService.delete).toHaveBeenCalledWith(errorSnapshot);
-      expect(mockSnapshotService.create).toHaveBeenCalledWith(
-        expect.objectContaining({ name: snapshotName, image: TEST_IMAGE }),
-        expect.any(Object),
-      );
-    });
-
-    it('should fail hard when snapshot creation fails', async () => {
-      mockSnapshotService.get.mockRejectedValue(new Error('not found'));
-      mockSnapshotService.create.mockRejectedValue(
-        new Error('image pull failed'),
-      );
-
-      await expect(freshRuntime.start()).rejects.toThrow('image pull failed');
-    });
-
-    it('should throw when snapshot creation resolves with non-active state', async () => {
-      mockSnapshotService.get.mockRejectedValue(new Error('not found'));
-      mockSnapshotService.create.mockResolvedValue({
-        state: 'error',
-        errorReason: 'disk full',
-      });
-
-      await expect(freshRuntime.start()).rejects.toThrow(
-        /state is "error".*expected ACTIVE/,
-      );
-    });
-
-    it('should coalesce concurrent snapshot builds via inflight map', async () => {
-      // Directly verify coalescing: pre-set an inflight promise, then
-      // start a runtime. The runtime should await the existing promise
-      // instead of calling snapshot.create().
-      const snapshotName = buildSnapshotName(TEST_IMAGE);
-
-      // Simulate an in-flight build that resolves shortly
-      const inflightPromise = new Promise<void>((resolve) =>
-        setTimeout(resolve, 50),
-      );
-      _snapshotInflightForTesting.set(snapshotName, inflightPromise);
-
-      await freshRuntime.start();
-
-      // snapshot.create should NOT be called — the inflight was awaited
-      expect(mockSnapshotService.create).not.toHaveBeenCalled();
-      // But daytona.create should still be called with the snapshot name
-      expect(mockDaytonaInstance.create).toHaveBeenCalledWith(
-        expect.objectContaining({ snapshot: snapshotName }),
-        expect.any(Object),
-      );
-    });
-
-    it('should clean up old snapshots after image change', async () => {
-      mockSnapshotService.get.mockRejectedValue(new Error('not found'));
-      mockSnapshotService.create.mockResolvedValue({ state: 'active' });
-      mockSnapshotService.list.mockResolvedValue({
-        items: [
-          { name: 'geniro-runtime-oldhash', imageName: 'old-image:v1' },
-          { name: 'unrelated-snapshot', imageName: 'other' },
-        ],
-        total: 2,
-      });
-
-      await freshRuntime.start();
-
-      // Should delete old geniro-runtime-* but not unrelated snapshots
-      // Cleanup is async (fire-and-forget), wait a tick for it to execute
-      await new Promise((r) => setTimeout(r, 10));
-      expect(mockSnapshotService.delete).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'geniro-runtime-oldhash' }),
-      );
-      expect(mockSnapshotService.delete).not.toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'unrelated-snapshot' }),
-      );
-    });
-  });
-});
-
-describe('buildSnapshotName', () => {
-  it('should generate a deterministic name from image string', () => {
-    const name1 = buildSnapshotName('razumru/geniro-runtime:latest');
-    const name2 = buildSnapshotName('razumru/geniro-runtime:latest');
-    expect(name1).toBe(name2);
-    expect(name1).toMatch(/^geniro-runtime-[a-f0-9]{8}$/);
-  });
-
-  it('should generate different names for different images', () => {
-    const name1 = buildSnapshotName('razumru/geniro-runtime:latest');
-    const name2 = buildSnapshotName('razumru/geniro-runtime:v2');
-    expect(name1).not.toBe(name2);
-  });
-
-  it('should not contain colons', () => {
-    const name = buildSnapshotName('registry.example.com:5000/image:tag');
-    expect(name).not.toContain(':');
   });
 });
 

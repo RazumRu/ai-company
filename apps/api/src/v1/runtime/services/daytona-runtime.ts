@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Duplex, PassThrough } from 'node:stream';
 
-import { SnapshotState } from '@daytonaio/api-client';
 import type { DaytonaConfig } from '@daytonaio/sdk';
 import { Daytona, Sandbox } from '@daytonaio/sdk';
 
@@ -11,11 +10,7 @@ import {
   RuntimeExecResult,
   RuntimeStartParams,
 } from '../runtime.types';
-import {
-  buildEnvPrefix,
-  buildSnapshotName,
-  shellEscape,
-} from '../runtime.utils';
+import { buildEnvPrefix, shellEscape } from '../runtime.utils';
 import { BaseRuntime } from './base-runtime';
 
 /** Configuration needed to connect to the Daytona API. */
@@ -45,16 +40,6 @@ const HARD_TIMEOUT_MS = 3_600_000;
  * Only used in the streaming (runAsync: true) path for idle-timeout-aware execution.
  */
 const POLL_INTERVAL_MS = 200;
-
-/**
- * In-process lock for snapshot creation. When multiple DaytonaRuntime instances
- * try to ensure the same snapshot concurrently, they coalesce into one build.
- * Key: snapshot name, Value: the in-flight creation promise.
- */
-const snapshotInflight = new Map<string, Promise<void>>();
-
-/** Exported for test cleanup only. */
-export { snapshotInflight as _snapshotInflightForTesting };
 
 /**
  * DaytonaRuntime using the @daytonaio/sdk
@@ -1046,194 +1031,17 @@ export class DaytonaRuntime extends BaseRuntime {
     snapshotOrImage: string,
   ): Promise<Sandbox> {
     if (snapshotOrImage) {
-      const snapshotName = await this.ensureSnapshot(snapshotOrImage);
+      // Use `image` — Daytona automatically builds a snapshot from the
+      // Docker image on first use and caches it in the transient registry.
+      // Subsequent sandbox creations reuse the cached snapshot.
       return this.daytona!.create(
-        { ...commonParams, snapshot: snapshotName },
+        { ...commonParams, image: snapshotOrImage },
         { timeout: SANDBOX_CREATE_TIMEOUT_SECONDS },
       );
     }
     return this.daytona!.create(commonParams, {
       timeout: SANDBOX_CREATE_TIMEOUT_SECONDS,
     });
-  }
-
-  /**
-   * Ensures a pre-built snapshot exists for the given image.
-   * Returns the snapshot name to use with `daytona.create({ snapshot })`.
-   * Handles concurrent callers by coalescing into a single build.
-   */
-  private async ensureSnapshot(image: string): Promise<string> {
-    const name = buildSnapshotName(image);
-
-    // Fast path: another caller is already handling this snapshot
-    const inflight = snapshotInflight.get(name);
-    if (inflight) {
-      await inflight;
-      return name;
-    }
-
-    // Claim the lock synchronously before any await to prevent
-    // concurrent callers from entering the same check-or-build path.
-    const handlePromise = this.ensureSnapshotInner(name, image);
-    snapshotInflight.set(name, handlePromise);
-
-    try {
-      await handlePromise;
-    } finally {
-      snapshotInflight.delete(name);
-    }
-
-    // Best-effort cleanup of old geniro-runtime-* snapshots (image hash changed)
-    this.cleanupOldSnapshots(name).catch((err) => {
-      this.logger?.warn(
-        `[DaytonaRuntime] Failed to clean up old snapshots: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    });
-
-    return name;
-  }
-
-  /**
-   * Inner logic for ensureSnapshot — checks existence and builds if needed.
-   * Separated so that the caller can wrap the entire flow in the inflight map
-   * without a race window between the existence check and the lock acquisition.
-   */
-  private async ensureSnapshotInner(
-    name: string,
-    image: string,
-  ): Promise<void> {
-    // Check if snapshot already exists
-    try {
-      const existing = await this.daytona!.snapshot.get(name);
-      if (existing.state === SnapshotState.ACTIVE) {
-        return;
-      }
-      // Snapshot exists but in a failed state — delete and rebuild
-      if (
-        existing.state === SnapshotState.ERROR ||
-        existing.state === SnapshotState.BUILD_FAILED
-      ) {
-        this.logger?.warn(
-          `[DaytonaRuntime] Snapshot "${name}" is in state "${existing.state}" — deleting and rebuilding`,
-        );
-        await this.daytona!.snapshot.delete(existing).catch(() => undefined);
-      }
-      // If it's in building/pending/pulling state, wait for it by polling
-      if (
-        existing.state === SnapshotState.BUILDING ||
-        existing.state === SnapshotState.PENDING ||
-        existing.state === SnapshotState.PULLING
-      ) {
-        this.logger?.log(
-          `[DaytonaRuntime] Snapshot "${name}" is already being built (state=${existing.state}) — waiting`,
-        );
-        await this.waitForSnapshotReady(name);
-        return;
-      }
-    } catch (err) {
-      // Re-throw unexpected errors (network, auth, rate-limit)
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('not found') && !msg.includes('404')) {
-        throw err;
-      }
-      // Not found — proceed to create
-    }
-
-    await this.buildSnapshot(name, image);
-  }
-
-  private async buildSnapshot(name: string, image: string): Promise<void> {
-    this.logger?.log(
-      `[DaytonaRuntime] Creating snapshot "${name}" from image "${image}"…`,
-    );
-
-    const result = await this.daytona!.snapshot.create(
-      { name, image },
-      {
-        onLogs: (chunk: string) => {
-          this.logger?.log(`[DaytonaRuntime] [snapshot-build] ${chunk}`);
-        },
-        timeout: SANDBOX_CREATE_TIMEOUT_SECONDS,
-      },
-    );
-
-    if (result.state !== SnapshotState.ACTIVE) {
-      throw new Error(
-        `Snapshot "${name}" creation resolved but state is "${result.state}" (expected ACTIVE). ` +
-          `Reason: ${result.errorReason ?? 'unknown'}`,
-      );
-    }
-
-    this.logger?.log(
-      `[DaytonaRuntime] Snapshot "${name}" created successfully`,
-    );
-  }
-
-  /**
-   * Polls `snapshot.get()` until the snapshot reaches `active` state.
-   * Throws if the snapshot reaches a terminal error state.
-   */
-  private async waitForSnapshotReady(name: string): Promise<void> {
-    const SNAPSHOT_POLL_MS = 5_000;
-    const maxWaitMs = SANDBOX_CREATE_TIMEOUT_SECONDS * 1000;
-    const deadline = Date.now() + maxWaitMs;
-
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, SNAPSHOT_POLL_MS));
-      try {
-        const snap = await this.daytona!.snapshot.get(name);
-        if (snap.state === SnapshotState.ACTIVE) {
-          return;
-        }
-        if (
-          snap.state === SnapshotState.ERROR ||
-          snap.state === SnapshotState.BUILD_FAILED
-        ) {
-          throw new Error(
-            `Snapshot "${name}" failed to build: state=${snap.state}, reason=${snap.errorReason ?? 'unknown'}`,
-          );
-        }
-      } catch (err) {
-        // If the snapshot was deleted while we were waiting, it's a failure
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('not found') || msg.includes('404')) {
-          throw new Error(`Snapshot "${name}" was deleted during build`, {
-            cause: err,
-          });
-        }
-        throw err;
-      }
-    }
-
-    throw new Error(
-      `Snapshot "${name}" did not become active within ${SANDBOX_CREATE_TIMEOUT_SECONDS}s`,
-    );
-  }
-
-  /**
-   * Deletes old geniro-runtime-* snapshots that don't match the current snapshot name.
-   * Called after a new snapshot is successfully created.
-   */
-  private async cleanupOldSnapshots(currentName: string): Promise<void> {
-    const { items } = await this.daytona!.snapshot.list(1, 100);
-    const oldSnapshots = items.filter(
-      (s) => s.name.startsWith('geniro-runtime-') && s.name !== currentName,
-    );
-
-    for (const old of oldSnapshots) {
-      this.logger?.log(
-        `[DaytonaRuntime] Deleting old snapshot "${old.name}" (image=${old.imageName})`,
-      );
-      await this.daytona!.snapshot.delete(old).catch((err) => {
-        this.logger?.warn(
-          `[DaytonaRuntime] Failed to delete old snapshot "${old.name}": ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      });
-    }
   }
 
   /**
@@ -1246,33 +1054,23 @@ export class DaytonaRuntime extends BaseRuntime {
   }
 
   /**
-   * Finds and deletes the snapshot for the given image so that the next
-   * sandbox creation triggers a fresh snapshot build.
+   * Finds and deletes the cached Daytona snapshot built from the given image
+   * so that the next sandbox creation triggers a fresh snapshot build.
    */
-  private async invalidateStaleSnapshot(image: string): Promise<void> {
+  private async invalidateStaleSnapshot(imageName: string): Promise<void> {
     try {
-      // Try to delete the hash-based snapshot first
-      const name = buildSnapshotName(image);
-      try {
-        const snapshot = await this.daytona!.snapshot.get(name);
+      const { items } = await this.daytona!.snapshot.list(1, 100);
+      const stale = items.find((s) => s.imageName === imageName);
+      if (stale) {
         this.logger?.log(
-          `[DaytonaRuntime] Deleting stale snapshot "${name}" (id=${snapshot.id})`,
+          `[DaytonaRuntime] Deleting stale snapshot "${stale.name}" (id=${stale.id})`,
         );
-        await this.daytona!.snapshot.delete(snapshot);
-      } catch {
-        // Not found by name — fall back to searching by imageName
-        const { items } = await this.daytona!.snapshot.list(1, 100);
-        const stale = items.find((s) => s.imageName === image);
-        if (stale) {
-          this.logger?.log(
-            `[DaytonaRuntime] Deleting stale snapshot "${stale.name}" (id=${stale.id})`,
-          );
-          await this.daytona!.snapshot.delete(stale);
-        } else {
-          this.logger?.warn(
-            `[DaytonaRuntime] No cached snapshot found for image "${image}"`,
-          );
-        }
+        await this.daytona!.snapshot.delete(stale);
+      } else {
+        this.logger?.warn(
+          `[DaytonaRuntime] No cached snapshot found for image "${imageName}" — ` +
+            `retry will attempt to create from image directly`,
+        );
       }
     } catch (err) {
       this.logger?.warn(
