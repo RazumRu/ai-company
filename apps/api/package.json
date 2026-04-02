@@ -30,6 +30,7 @@
     "seed:create": "NODE_OPTIONS='-r tsconfig-paths/register' MIKRO_ORM_CLI_TS_CONFIG_PATH=./tsconfig.mikro-orm.json mikro-orm seeder:create"
   },
   "dependencies": {
+    "@daytonaio/api-client": "0.158.0",
     "@daytonaio/sdk": "0.158.0",
     "@fastify/static": "^9.0.0",
     "@hey-api/openapi-ts": "^0.94.5",

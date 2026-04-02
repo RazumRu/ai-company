@@ -101,6 +101,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@daytonaio/api-client':
+        specifier: 0.158.0
+        version: 0.158.0
       '@daytonaio/sdk':
         specifier: 0.158.0
         version: 0.158.0(ws@8.17.1)
