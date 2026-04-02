@@ -232,6 +232,7 @@ export const useChatsThreadList = (deps: UseChatsThreadListDeps) => {
         GetThreadsStatusesEnum.Running,
         GetThreadsStatusesEnum.NeedMoreInfo,
         GetThreadsStatusesEnum.Stopped,
+        GetThreadsStatusesEnum.Waiting,
       ];
     }
     if (!resolvedStatusesFilterSupported) {

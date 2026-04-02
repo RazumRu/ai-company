@@ -258,3 +258,12 @@ export class ThreadUsageStatisticsDto extends createZodDto(
 export class SetThreadMetadataDto extends createZodDto(
   SetThreadMetadataSchema,
 ) {}
+
+// Resume thread
+export const ResumeThreadSchema = z.object({
+  message: z
+    .string()
+    .optional()
+    .describe('Optional message to inject instead of the stored checkPrompt'),
+});
+export class ResumeThreadDto extends createZodDto(ResumeThreadSchema) {}

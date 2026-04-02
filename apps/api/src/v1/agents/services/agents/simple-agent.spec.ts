@@ -276,6 +276,7 @@ describe('SimpleAgent', () => {
         threadId: 'test-thread',
         checkpointNs: undefined,
         needsMoreInfo: false,
+        waiting: false,
       });
     });
 

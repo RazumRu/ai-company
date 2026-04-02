@@ -25,6 +25,12 @@ export type AgentOutput = {
   threadId: string;
   checkpointNs?: string;
   needsMoreInfo?: boolean;
+  waiting?: boolean;
+  waitMetadata?: {
+    durationSeconds: number;
+    checkPrompt: string;
+    reason: string;
+  };
 };
 
 export type AgentRunEvent = {

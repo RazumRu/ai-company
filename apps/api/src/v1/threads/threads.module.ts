@@ -12,6 +12,8 @@ import { ThreadsDao } from './dao/threads.dao';
 import { MessageEntity } from './entity/message.entity';
 import { ThreadEntity } from './entity/thread.entity';
 import { ThreadNameGeneratorService } from './services/thread-name-generator.service';
+import { ThreadResumeService } from './services/thread-resume.service';
+import { ThreadResumeQueueService } from './services/thread-resume-queue.service';
 import { ThreadsService } from './services/threads.service';
 import { ThreadsListener } from './threads.listener';
 
@@ -31,12 +33,16 @@ import { ThreadsListener } from './threads.listener';
     MessagesDao,
     ThreadNameGeneratorService,
     ThreadsListener,
+    ThreadResumeQueueService,
+    ThreadResumeService,
   ],
   exports: [
     ThreadsDao,
     MessagesDao,
     ThreadsService,
     ThreadNameGeneratorService,
+    ThreadResumeQueueService,
+    ThreadResumeService,
   ],
 })
 export class ThreadsModule {}

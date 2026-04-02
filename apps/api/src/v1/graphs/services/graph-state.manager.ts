@@ -1,4 +1,5 @@
 import { Injectable, Scope } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DefaultLogger, NotFoundException } from '@packages/common';
 import { isEqual } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
@@ -15,10 +16,17 @@ import {
   AgentStopEvent,
 } from '../../agents/services/agents/base-agent';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
-import type { IGraphNodeUpdateData } from '../../notifications/notifications.types';
+import type {
+  IGraphNodeUpdateData,
+  IThreadUpdateData,
+} from '../../notifications/notifications.types';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
-import { ThreadStatus } from '../../threads/threads.types';
+import {
+  THREAD_WAITING_EVENT,
+  ThreadStatus,
+  ThreadWaitingEvent,
+} from '../../threads/threads.types';
 import {
   CompiledGraphNode,
   GraphExecutionMetadata,
@@ -68,6 +76,7 @@ export class GraphStateManager {
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly logger: DefaultLogger,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   setGraphId(id: string) {
@@ -427,13 +436,24 @@ export class GraphStateManager {
     const isRootThread = !parentThreadId || parentThreadId === threadId;
 
     if (isRootThread && threadId) {
+      const isWaiting = data.result?.waiting === true;
       const finalStatus = data.error
         ? ThreadStatus.Stopped
-        : data.result?.needsMoreInfo
-          ? ThreadStatus.NeedMoreInfo
-          : ThreadStatus.Done;
+        : isWaiting
+          ? ThreadStatus.Waiting
+          : data.result?.needsMoreInfo
+            ? ThreadStatus.NeedMoreInfo
+            : ThreadStatus.Done;
 
       state.error = data.error ? this.toErrorMessage(data.error) : null;
+
+      const threadUpdateData: IThreadUpdateData = { status: finalStatus };
+      if (isWaiting && data.result?.waitMetadata) {
+        threadUpdateData.scheduledResumeAt = new Date(
+          Date.now() + data.result.waitMetadata.durationSeconds * 1000,
+        ).toISOString();
+        threadUpdateData.waitReason = data.result.waitMetadata.reason;
+      }
 
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadUpdate,
@@ -441,8 +461,20 @@ export class GraphStateManager {
         nodeId: state.nodeId,
         threadId,
         ...(parentThreadId ? { parentThreadId } : {}),
-        data: { status: finalStatus },
+        data: threadUpdateData,
       });
+
+      if (isWaiting && data.result?.waitMetadata) {
+        const waitingEvent: ThreadWaitingEvent = {
+          graphId: this.graphId,
+          nodeId: state.nodeId,
+          threadId,
+          durationSeconds: data.result.waitMetadata.durationSeconds,
+          checkPrompt: data.result.waitMetadata.checkPrompt,
+          reason: data.result.waitMetadata.reason,
+        };
+        this.eventEmitter.emit(THREAD_WAITING_EVENT, waitingEvent);
+      }
     }
 
     this.emitNodeUpdate(state, threadId, runId);

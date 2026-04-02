@@ -17,6 +17,7 @@ import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
+import { ThreadResumeQueueService } from '../../threads/services/thread-resume-queue.service';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import {
@@ -291,6 +292,14 @@ describe('GraphsService', () => {
           useValue: {
             getTemplate: vi.fn().mockReturnValue(undefined),
             getTemplatesByKind: vi.fn().mockReturnValue([]),
+          },
+        },
+        {
+          provide: ThreadResumeQueueService,
+          useValue: {
+            cancelAllForGraph: vi.fn().mockResolvedValue(undefined),
+            cancelResumeJob: vi.fn().mockResolvedValue(undefined),
+            scheduleResume: vi.fn().mockResolvedValue(undefined),
           },
         },
       ],
@@ -1510,7 +1519,7 @@ describe('GraphsService', () => {
 
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: mockGraphId,
-        status: ThreadStatus.Running,
+        status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
       });
       expect(threadsDao.updateById).toHaveBeenCalledWith(runningThread.id, {
         status: ThreadStatus.Stopped,
@@ -1656,7 +1665,7 @@ describe('GraphsService', () => {
       expect(graphRegistry.destroy).toHaveBeenCalledWith(mockGraphId);
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: mockGraphId,
-        status: ThreadStatus.Running,
+        status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
       });
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
         status: GraphStatus.Stopped,
@@ -1695,7 +1704,7 @@ describe('GraphsService', () => {
 
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: mockGraphId,
-        status: ThreadStatus.Running,
+        status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
       });
       expect(threadsDao.updateById).toHaveBeenCalledWith('thread-1', {
         status: ThreadStatus.Stopped,
@@ -1752,7 +1761,7 @@ describe('GraphsService', () => {
       expect(graphRegistry.destroy).not.toHaveBeenCalled();
       expect(threadsDao.getAll).toHaveBeenCalledWith({
         graphId: mockGraphId,
-        status: ThreadStatus.Running,
+        status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
       });
       expect(graphDao.updateById).toHaveBeenCalledWith(mockGraphId, {
         status: GraphStatus.Stopped,

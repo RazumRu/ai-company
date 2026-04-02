@@ -18,7 +18,9 @@ import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
+import { ThreadResumeQueueService } from '../../threads/services/thread-resume-queue.service';
 import { ThreadStatus } from '../../threads/threads.types';
+import { clearWaitMetadata } from '../../threads/threads.utils';
 import { GraphDao } from '../dao/graph.dao';
 import {
   CreateGraphDto,
@@ -60,6 +62,7 @@ export class GraphsService {
     private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
     private readonly templateRegistry: TemplateRegistry,
+    private readonly threadResumeQueueService: ThreadResumeQueueService,
   ) {}
 
   private prepareResponse(
@@ -495,6 +498,12 @@ export class GraphsService {
         // Best effort: keep original error as the primary failure reason
       }
 
+      try {
+        await this.threadResumeQueueService.cancelAllForGraph(id);
+      } catch {
+        // Best effort: keep original error as the primary failure reason
+      }
+
       await this.graphDao.updateById(id, {
         status: GraphStatus.Error,
         error: (error as Error).message,
@@ -518,7 +527,7 @@ export class GraphsService {
   private async stopRunningThreads(graphId: string): Promise<void> {
     const runningThreads = await this.threadsDao.getAll({
       graphId,
-      status: ThreadStatus.Running,
+      status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
     });
 
     if (!runningThreads.length) {
@@ -609,11 +618,18 @@ export class GraphsService {
       await this.graphRegistry.destroy(id);
     }
 
-    // Safety net: stop any threads still marked as running in the database.
+    // Safety net: stop any threads still marked as running/waiting in the database.
     try {
       await this.stopRunningThreads(id);
     } catch {
       // Best effort: keep destroy flowing even if thread cleanup fails
+    }
+
+    // Cancel any pending resume jobs for this graph
+    try {
+      await this.threadResumeQueueService.cancelAllForGraph(id);
+    } catch {
+      // Best effort: keep destroy flowing even if resume job cancellation fails
     }
 
     // Update status to stopped
@@ -700,6 +716,29 @@ export class GraphsService {
         'TRIGGER_NOT_CONFIGURED',
         'Agent invocation function not set on trigger',
       );
+    }
+
+    // If the thread is currently waiting, cancel the pending resume job
+    // so the user's message takes over (edge case: user sends message to waiting thread)
+    if (dto.threadSubId) {
+      const existingThread = await this.threadsDao.getOne({
+        externalThreadId: dto.threadSubId,
+        graphId: graphId,
+      });
+
+      if (existingThread?.status === ThreadStatus.Waiting) {
+        try {
+          await this.threadResumeQueueService.cancelResumeJob(
+            existingThread.id,
+          );
+          await this.threadsDao.updateById(existingThread.id, {
+            status: ThreadStatus.Running,
+            metadata: clearWaitMetadata(existingThread.metadata),
+          });
+        } catch {
+          // Best effort — the user message will proceed regardless
+        }
+      }
     }
 
     const res = await trigger.invokeAgent(messages, {

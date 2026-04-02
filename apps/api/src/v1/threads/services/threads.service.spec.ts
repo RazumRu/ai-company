@@ -16,6 +16,7 @@ import { GetMessagesQueryDto, GetThreadsQueryDto } from '../dto/threads.dto';
 import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
 import { ThreadStatus } from '../threads.types';
+import { ThreadResumeService } from './thread-resume.service';
 import { ThreadsService } from './threads.service';
 
 describe('ThreadsService', () => {
@@ -26,6 +27,7 @@ describe('ThreadsService', () => {
   let checkpointStateService: CheckpointStateService;
   let graphDao: GraphDao;
   let graphsService: GraphsService;
+  let threadResumeService: ThreadResumeService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -130,6 +132,13 @@ describe('ThreadsService', () => {
             getAll: vi.fn().mockResolvedValue([]),
           },
         },
+        {
+          provide: ThreadResumeService,
+          useValue: {
+            resumeEarly: vi.fn(),
+            cancelWait: vi.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -143,6 +152,7 @@ describe('ThreadsService', () => {
     );
     graphDao = module.get<GraphDao>(GraphDao);
     graphsService = module.get<GraphsService>(GraphsService);
+    threadResumeService = module.get<ThreadResumeService>(ThreadResumeService);
   });
 
   describe('getThreads', () => {
@@ -1756,6 +1766,133 @@ describe('ThreadsService', () => {
           /^attachment; filename="thread-export-\d{4}-\d{2}-\d{2}\.json"$/,
         ),
       });
+    });
+  });
+
+  describe('resumeThread', () => {
+    it('should throw NotFoundException when thread not found', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.resumeThread(mockCtx, mockThreadId, {}),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+    });
+
+    it('should throw BadRequestException when thread is not waiting', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+      });
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      await expect(
+        service.resumeThread(mockCtx, mockThreadId, {}),
+      ).rejects.toThrow('Thread is not in waiting state');
+    });
+
+    it('should call resumeEarly and return updated thread', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Waiting,
+      });
+      const updatedThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(threadsDao, 'getById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadResumeService, 'resumeEarly').mockResolvedValue(undefined);
+
+      const result = await service.resumeThread(mockCtx, mockThreadId, {});
+
+      expect(threadResumeService.resumeEarly).toHaveBeenCalledWith(
+        mockThreadId,
+        undefined,
+      );
+      expect(result.id).toBe(mockThreadId);
+    });
+
+    it('should pass optional message to resumeEarly', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Waiting,
+      });
+      const updatedThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(threadsDao, 'getById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadResumeService, 'resumeEarly').mockResolvedValue(undefined);
+
+      await service.resumeThread(mockCtx, mockThreadId, {
+        message: 'Custom resume message',
+      });
+
+      expect(threadResumeService.resumeEarly).toHaveBeenCalledWith(
+        mockThreadId,
+        'Custom resume message',
+      );
+    });
+
+    it('should not allow resuming another user thread', async () => {
+      const otherCtx = {
+        checkSub: vi.fn().mockReturnValue('other-user-id'),
+      } as unknown as AppContextStorage;
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(
+        service.resumeThread(otherCtx, mockThreadId, {}),
+      ).rejects.toThrow('[THREAD_NOT_FOUND] An exception has occurred');
+    });
+  });
+
+  describe('cancelWait', () => {
+    it('should throw NotFoundException when thread not found', async () => {
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(service.cancelWait(mockCtx, mockThreadId)).rejects.toThrow(
+        '[THREAD_NOT_FOUND] An exception has occurred',
+      );
+    });
+
+    it('should throw BadRequestException when thread is not waiting', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+      });
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      await expect(service.cancelWait(mockCtx, mockThreadId)).rejects.toThrow(
+        'Thread is not in waiting state',
+      );
+    });
+
+    it('should call cancelWait and return updated thread', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Waiting,
+      });
+      const updatedThread = createMockThreadEntity({
+        status: ThreadStatus.Stopped,
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(threadsDao, 'getById').mockResolvedValue(updatedThread);
+      vi.spyOn(threadResumeService, 'cancelWait').mockResolvedValue(undefined);
+
+      const result = await service.cancelWait(mockCtx, mockThreadId);
+
+      expect(threadResumeService.cancelWait).toHaveBeenCalledWith(mockThreadId);
+      expect(result.id).toBe(mockThreadId);
+    });
+
+    it('should not allow cancelling another user thread', async () => {
+      const otherCtx = {
+        checkSub: vi.fn().mockReturnValue('other-user-id'),
+      } as unknown as AppContextStorage;
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+
+      await expect(service.cancelWait(otherCtx, mockThreadId)).rejects.toThrow(
+        '[THREAD_NOT_FOUND] An exception has occurred',
+      );
     });
   });
 });
