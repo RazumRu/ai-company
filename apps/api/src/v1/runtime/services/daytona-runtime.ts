@@ -1060,7 +1060,7 @@ export class DaytonaRuntime extends BaseRuntime {
   /**
    * Ensures a pre-built snapshot exists for the given image.
    * Returns the snapshot name to use with `daytona.create({ snapshot })`.
-   * Handles concurrent callers by coalescing into a single check-or-build.
+   * Handles concurrent callers by coalescing into a single build.
    */
   private async ensureSnapshot(image: string): Promise<string> {
     const name = buildSnapshotName(image);
@@ -1072,13 +1072,13 @@ export class DaytonaRuntime extends BaseRuntime {
       return name;
     }
 
-    // Claim the lock synchronously (before any await) so concurrent
-    // callers coalesce into a single check-or-build operation.
-    const checkOrBuild = this.checkOrBuildSnapshot(name, image);
-    snapshotInflight.set(name, checkOrBuild);
+    // Claim the lock synchronously before any await to prevent
+    // concurrent callers from entering the same check-or-build path.
+    const handlePromise = this.ensureSnapshotInner(name, image);
+    snapshotInflight.set(name, handlePromise);
 
     try {
-      await checkOrBuild;
+      await handlePromise;
     } finally {
       snapshotInflight.delete(name);
     }
@@ -1096,14 +1096,15 @@ export class DaytonaRuntime extends BaseRuntime {
   }
 
   /**
-   * Checks if a snapshot already exists and is usable; builds it if not.
-   * Called exclusively by `ensureSnapshot` — extracted so the inflight lock
-   * can be set synchronously before the first `await`.
+   * Inner logic for ensureSnapshot — checks existence and builds if needed.
+   * Separated so that the caller can wrap the entire flow in the inflight map
+   * without a race window between the existence check and the lock acquisition.
    */
-  private async checkOrBuildSnapshot(
+  private async ensureSnapshotInner(
     name: string,
     image: string,
   ): Promise<void> {
+    // Check if snapshot already exists
     try {
       const existing = await this.daytona!.snapshot.get(name);
       if (existing.state === SnapshotState.ACTIVE) {
