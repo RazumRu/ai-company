@@ -22,11 +22,13 @@ const mockQueueService = {
   scheduleResume: vi.fn().mockResolvedValue(undefined),
   cancelResumeJob: vi.fn().mockResolvedValue(undefined),
   cancelAllForGraph: vi.fn().mockResolvedValue(undefined),
+  hasJob: vi.fn().mockResolvedValue(false),
 };
 
 const mockThreadsDao = {
   getOne: vi.fn(),
   getById: vi.fn(),
+  getAll: vi.fn().mockResolvedValue([]),
   updateById: vi.fn().mockResolvedValue(1),
 };
 
@@ -233,50 +235,44 @@ describe('ThreadResumeService', () => {
       );
     });
 
-    it('stops thread when graph is not running', async () => {
+    it('throws when graph is not in registry so BullMQ retries', async () => {
       const thread = makeThread();
       mockThreadsDao.getById.mockResolvedValue(thread);
       mockGraphRegistry.get.mockReturnValue(undefined);
 
-      await service.handleResume({
-        threadId: 'thread-1',
-        graphId: 'graph-1',
-        nodeId: 'node-1',
-        externalThreadId: 'ext-thread-1',
-        checkPrompt: 'Check',
-        reason: 'Reason',
-        scheduledAt: '2024-01-01T00:05:00.000Z',
-        createdBy: 'user-1',
-      });
-
-      expect(mockThreadsDao.updateById).toHaveBeenCalledWith(
-        'thread-1',
-        expect.objectContaining({ status: ThreadStatus.Stopped }),
-      );
+      await expect(
+        service.handleResume({
+          threadId: 'thread-1',
+          graphId: 'graph-1',
+          nodeId: 'node-1',
+          externalThreadId: 'ext-thread-1',
+          checkPrompt: 'Check',
+          reason: 'Reason',
+          scheduledAt: '2024-01-01T00:05:00.000Z',
+          createdBy: 'user-1',
+        }),
+      ).rejects.toThrow('not in registry');
     });
 
-    it('stops thread when agent node not found in graph', async () => {
+    it('throws when agent node not found in graph so BullMQ retries', async () => {
       const thread = makeThread();
       mockThreadsDao.getById.mockResolvedValue(thread);
 
       const compiledGraph = makeCompiledGraph(false);
       mockGraphRegistry.get.mockReturnValue(compiledGraph);
 
-      await service.handleResume({
-        threadId: 'thread-1',
-        graphId: 'graph-1',
-        nodeId: 'node-1',
-        externalThreadId: 'ext-thread-1',
-        checkPrompt: 'Check',
-        reason: 'Reason',
-        scheduledAt: '2024-01-01T00:05:00.000Z',
-        createdBy: 'user-1',
-      });
-
-      expect(mockThreadsDao.updateById).toHaveBeenCalledWith(
-        'thread-1',
-        expect.objectContaining({ status: ThreadStatus.Stopped }),
-      );
+      await expect(
+        service.handleResume({
+          threadId: 'thread-1',
+          graphId: 'graph-1',
+          nodeId: 'node-1',
+          externalThreadId: 'ext-thread-1',
+          checkPrompt: 'Check',
+          reason: 'Reason',
+          scheduledAt: '2024-01-01T00:05:00.000Z',
+          createdBy: 'user-1',
+        }),
+      ).rejects.toThrow('not found in graph');
     });
 
     it('returns when thread not found', async () => {
@@ -373,6 +369,106 @@ describe('ThreadResumeService', () => {
       await expect(service.resumeEarly('thread-1')).rejects.toThrow(
         'Thread is not in waiting state',
       );
+    });
+  });
+
+  describe('recoverOverdueThreads', () => {
+    it('re-schedules resume for overdue waiting thread with no job', async () => {
+      const overdueThread = makeThread({
+        metadata: {
+          scheduledResumeAt: new Date(Date.now() - 120_000).toISOString(),
+          waitReason: 'Waiting for deploy',
+          waitNodeId: 'node-1',
+          waitCheckPrompt: 'Check deployment status',
+        },
+      });
+      mockThreadsDao.getAll.mockResolvedValue([overdueThread]);
+      mockQueueService.hasJob.mockResolvedValue(false);
+
+      // Access private method via cast
+      await (
+        service as unknown as { recoverOverdueThreads: () => Promise<void> }
+      ).recoverOverdueThreads();
+
+      expect(mockQueueService.scheduleResume).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: 'thread-1',
+          graphId: 'graph-1',
+          nodeId: 'node-1',
+        }),
+        0,
+      );
+    });
+
+    it('skips threads that still have a BullMQ job', async () => {
+      const overdueThread = makeThread({
+        metadata: {
+          scheduledResumeAt: new Date(Date.now() - 120_000).toISOString(),
+          waitReason: 'Waiting',
+          waitNodeId: 'node-1',
+          waitCheckPrompt: 'Check',
+        },
+      });
+      mockThreadsDao.getAll.mockResolvedValue([overdueThread]);
+      mockQueueService.hasJob.mockResolvedValue(true);
+
+      await (
+        service as unknown as { recoverOverdueThreads: () => Promise<void> }
+      ).recoverOverdueThreads();
+
+      expect(mockQueueService.scheduleResume).not.toHaveBeenCalled();
+    });
+
+    it('skips threads within the grace period', async () => {
+      const recentThread = makeThread({
+        metadata: {
+          scheduledResumeAt: new Date(Date.now() - 10_000).toISOString(),
+          waitReason: 'Waiting',
+          waitNodeId: 'node-1',
+          waitCheckPrompt: 'Check',
+        },
+      });
+      mockThreadsDao.getAll.mockResolvedValue([recentThread]);
+
+      await (
+        service as unknown as { recoverOverdueThreads: () => Promise<void> }
+      ).recoverOverdueThreads();
+
+      expect(mockQueueService.hasJob).not.toHaveBeenCalled();
+      expect(mockQueueService.scheduleResume).not.toHaveBeenCalled();
+    });
+
+    it('skips threads without scheduledResumeAt metadata', async () => {
+      const threadNoMeta = makeThread({ metadata: {} });
+      mockThreadsDao.getAll.mockResolvedValue([threadNoMeta]);
+
+      await (
+        service as unknown as { recoverOverdueThreads: () => Promise<void> }
+      ).recoverOverdueThreads();
+
+      expect(mockQueueService.hasJob).not.toHaveBeenCalled();
+      expect(mockQueueService.scheduleResume).not.toHaveBeenCalled();
+    });
+
+    it('logs error and does not throw on failure', async () => {
+      mockThreadsDao.getAll.mockRejectedValue(new Error('DB down'));
+
+      await (
+        service as unknown as { recoverOverdueThreads: () => Promise<void> }
+      ).recoverOverdueThreads();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.any(Error),
+        'Failed to check for overdue waiting threads',
+      );
+    });
+  });
+
+  describe('onModuleDestroy', () => {
+    it('clears the overdue check interval', () => {
+      service.onModuleInit();
+      service.onModuleDestroy();
+      // No assertion needed — ensures no throw; interval is cleaned up
     });
   });
 

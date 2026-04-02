@@ -139,10 +139,15 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = React.memo(
               <p className="text-[10px] text-purple-600 dark:text-purple-400 mb-1.5 flex items-center gap-1">
                 <Timer className="w-3 h-3 flex-shrink-0" />
                 <span className="truncate">
-                  Resumes in{' '}
-                  {formatRemainingTime(
-                    (thread as ThreadDto).metadata!.scheduledResumeAt as string,
-                  )}
+                  {(() => {
+                    const remaining = formatRemainingTime(
+                      (thread as ThreadDto).metadata!
+                        .scheduledResumeAt as string,
+                    );
+                    return remaining === 'soon'
+                      ? 'Resuming soon'
+                      : `Resumes in ${remaining}`;
+                  })()}
                 </span>
               </p>
             )}

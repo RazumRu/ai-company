@@ -850,7 +850,9 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
               </span>
               {countdown !== null && (
                 <span className="text-xs text-purple-600/80 dark:text-purple-400/80">
-                  Resuming in {formatCountdown(countdown)}
+                  {countdown > 0
+                    ? `Resuming in ${formatCountdown(countdown)}`
+                    : 'Resuming soon'}
                 </span>
               )}
             </div>

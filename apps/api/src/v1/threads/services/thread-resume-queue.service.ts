@@ -188,6 +188,15 @@ export class ThreadResumeQueueService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Check whether a resume job exists for the given thread (any state).
+   */
+  async hasJob(threadId: string): Promise<boolean> {
+    const jobId = `thread-resume:${threadId}`;
+    const job = await this.queue.getJob(jobId);
+    return job !== undefined;
+  }
+
   private async processJob(job: Job<ThreadResumeJobData>): Promise<void> {
     if (!this.callbacks) {
       throw new Error('Queue callbacks not configured');

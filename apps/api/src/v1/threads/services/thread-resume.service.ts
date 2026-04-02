@@ -1,5 +1,5 @@
 import { HumanMessage } from '@langchain/core/messages';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { DefaultLogger } from '@packages/common';
 
@@ -16,8 +16,16 @@ import {
   ThreadResumeQueueService,
 } from './thread-resume-queue.service';
 
+/** How often to check for overdue waiting threads (ms). */
+const OVERDUE_CHECK_INTERVAL_MS = 60_000;
+
+/** Grace period before treating a waiting thread as overdue (ms). */
+const OVERDUE_GRACE_MS = 30_000;
+
 @Injectable()
-export class ThreadResumeService implements OnModuleInit {
+export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
+  private overdueCheckHandle: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private readonly queueService: ThreadResumeQueueService,
     private readonly threadsDao: ThreadsDao,
@@ -31,6 +39,18 @@ export class ThreadResumeService implements OnModuleInit {
       onProcess: (data) => this.handleResume(data),
       onFailed: (data, error) => this.handleResumeFailed(data, error),
     });
+
+    this.overdueCheckHandle = setInterval(
+      () => void this.recoverOverdueThreads(),
+      OVERDUE_CHECK_INTERVAL_MS,
+    );
+  }
+
+  onModuleDestroy(): void {
+    if (this.overdueCheckHandle) {
+      clearInterval(this.overdueCheckHandle);
+      this.overdueCheckHandle = null;
+    }
   }
 
   @OnEvent(THREAD_WAITING_EVENT)
@@ -113,39 +133,25 @@ export class ThreadResumeService implements OnModuleInit {
 
     const compiledGraph = this.graphRegistry.get(data.graphId);
     if (!compiledGraph) {
-      this.logger.warn('Graph not running, cannot resume thread', {
-        threadId: data.threadId,
-        graphId: data.graphId,
-      });
-      await this.threadsDao.updateById(data.threadId, {
-        status: ThreadStatus.Stopped,
-        metadata: clearWaitMetadata(thread.metadata),
-      });
-      return;
+      // Throw so BullMQ retries — the graph may not be in the in-memory
+      // registry yet (e.g. after a hot-reload). If all retries exhaust,
+      // handleResumeFailed will stop the thread and notify the frontend.
+      throw new Error(
+        `Graph "${data.graphId}" not in registry, cannot resume thread "${data.threadId}"`,
+      );
     }
 
     const agentNode = compiledGraph.nodes.get(data.nodeId);
     if (!agentNode) {
-      this.logger.warn('Agent node not found in graph, cannot resume thread', {
-        threadId: data.threadId,
-        graphId: data.graphId,
-        nodeId: data.nodeId,
-      });
-      await this.threadsDao.updateById(data.threadId, {
-        status: ThreadStatus.Stopped,
-      });
-      return;
+      throw new Error(
+        `Agent node "${data.nodeId}" not found in graph "${data.graphId}", cannot resume thread "${data.threadId}"`,
+      );
     }
 
     if (!(agentNode.instance instanceof SimpleAgent)) {
-      this.logger.warn('Node is not a SimpleAgent, cannot resume', {
-        threadId: data.threadId,
-        nodeId: data.nodeId,
-      });
-      await this.threadsDao.updateById(data.threadId, {
-        status: ThreadStatus.Stopped,
-      });
-      return;
+      throw new Error(
+        `Node "${data.nodeId}" is not a SimpleAgent, cannot resume thread "${data.threadId}"`,
+      );
     }
     const agent = agentNode.instance;
 
@@ -175,6 +181,68 @@ export class ThreadResumeService implements OnModuleInit {
         thread_created_by: data.createdBy,
       },
     });
+  }
+
+  /**
+   * Periodic safety net: finds threads stuck in Waiting with an overdue
+   * scheduledResumeAt and no BullMQ job, then re-schedules the resume.
+   * Catches jobs lost during hot-reloads or other transient failures.
+   */
+  private async recoverOverdueThreads(): Promise<void> {
+    try {
+      const waitingThreads = await this.threadsDao.getAll({
+        status: ThreadStatus.Waiting,
+      });
+
+      const now = Date.now();
+
+      for (const thread of waitingThreads) {
+        const metadata = thread.metadata as Record<string, unknown> | undefined;
+        const scheduledAt = metadata?.scheduledResumeAt as string | undefined;
+        if (!scheduledAt) {
+          continue;
+        }
+
+        const scheduledMs = new Date(scheduledAt).getTime();
+        if (now - scheduledMs < OVERDUE_GRACE_MS) {
+          continue;
+        }
+
+        const hasJob = await this.queueService.hasJob(thread.id);
+        if (hasJob) {
+          continue;
+        }
+
+        this.logger.warn(
+          'Recovering overdue waiting thread — re-scheduling resume',
+          {
+            threadId: thread.id,
+            graphId: thread.graphId,
+            scheduledResumeAt: scheduledAt,
+            overdueMs: now - scheduledMs,
+          },
+        );
+
+        await this.queueService.scheduleResume(
+          {
+            threadId: thread.id,
+            graphId: thread.graphId,
+            nodeId: (metadata?.waitNodeId as string) ?? '',
+            externalThreadId: thread.externalThreadId,
+            checkPrompt: (metadata?.waitCheckPrompt as string) ?? '',
+            reason: (metadata?.waitReason as string) ?? '',
+            scheduledAt,
+            createdBy: thread.createdBy,
+          },
+          0, // Fire immediately — already overdue
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        err instanceof Error ? err : new Error(String(err)),
+        'Failed to check for overdue waiting threads',
+      );
+    }
   }
 
   async handleResumeFailed(
