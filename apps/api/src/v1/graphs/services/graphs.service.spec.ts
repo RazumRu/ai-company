@@ -2306,6 +2306,66 @@ describe('GraphsService', () => {
         expect(threadsDao.create).not.toHaveBeenCalled();
       });
 
+      it('should cancel resume job and clear wait metadata when thread is waiting', async () => {
+        setupTriggerMocks();
+        const waitingThread = {
+          id: 'waiting-thread-id',
+          graphId: mockGraphId,
+          externalThreadId: expectedThreadId,
+          createdBy: mockUserId,
+          status: ThreadStatus.Waiting,
+          metadata: {
+            scheduledResumeAt: '2026-04-02T10:00:00.000Z',
+            waitReason: 'Waiting for CI',
+            waitNodeId: 'node-123',
+            waitCheckPrompt: 'Check CI',
+            customField: 'preserved',
+          },
+        } as any;
+
+        // First call: waiting check (uses graphId:threadSubId format)
+        // Second call: eager create check (uses forked EM)
+        vi.mocked(threadsDao.getOne)
+          .mockResolvedValueOnce(waitingThread)
+          .mockResolvedValueOnce(waitingThread);
+
+        const resumeQueueService = module.get<ThreadResumeQueueService>(
+          ThreadResumeQueueService,
+        );
+
+        const result = await service.executeTrigger(
+          mockCtx,
+          mockGraphId,
+          triggerId,
+          {
+            messages: ['Follow-up message'],
+            threadSubId: 'my-thread',
+          },
+        );
+
+        expect(result.externalThreadId).toBe(expectedThreadId);
+
+        // Should look up thread using full externalThreadId format
+        expect(threadsDao.getOne).toHaveBeenCalledWith({
+          externalThreadId: expectedThreadId,
+          graphId: mockGraphId,
+        });
+
+        // Should cancel the pending resume job
+        expect(resumeQueueService.cancelResumeJob).toHaveBeenCalledWith(
+          'waiting-thread-id',
+        );
+
+        // Should clear wait metadata and set to Running
+        expect(threadsDao.updateById).toHaveBeenCalledWith(
+          'waiting-thread-id',
+          {
+            status: ThreadStatus.Running,
+            metadata: { customField: 'preserved' },
+          },
+        );
+      });
+
       it('should swallow unique constraint error when handler wins the race', async () => {
         setupTriggerMocks();
         vi.mocked(threadsDao.getOne).mockResolvedValue(null);

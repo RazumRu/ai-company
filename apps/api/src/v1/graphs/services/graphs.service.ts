@@ -722,7 +722,7 @@ export class GraphsService {
     // so the user's message takes over (edge case: user sends message to waiting thread)
     if (dto.threadSubId) {
       const existingThread = await this.threadsDao.getOne({
-        externalThreadId: dto.threadSubId,
+        externalThreadId: `${graphId}:${dto.threadSubId}`,
         graphId: graphId,
       });
 

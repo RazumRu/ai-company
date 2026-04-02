@@ -9,6 +9,8 @@ import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadDto } from '../../../threads/dto/threads.dto';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadsService } from '../../../threads/services/threads.service';
+import { ThreadStatus } from '../../../threads/threads.types';
+import { clearWaitMetadata } from '../../../threads/threads.utils';
 import {
   IEnrichedNotification,
   NotificationScope,
@@ -54,7 +56,8 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       return [];
     }
 
-    const updates: Partial<Pick<ThreadEntity, 'status' | 'name'>> = {};
+    const updates: Partial<Pick<ThreadEntity, 'status' | 'name' | 'metadata'>> =
+      {};
 
     if (data.status !== undefined) {
       updates.status = data.status;
@@ -63,6 +66,17 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
     // Only update thread name if it doesn't already exist (set once)
     if (data.name !== undefined && !thread.name) {
       updates.name = data.name ?? undefined;
+    }
+
+    // Clear wait metadata when transitioning away from Waiting to a terminal state.
+    // This prevents stale scheduledResumeAt/waitReason from lingering when the
+    // agent finishes a run that superseded the waiting state.
+    if (
+      thread.status === ThreadStatus.Waiting &&
+      data.status !== undefined &&
+      data.status !== ThreadStatus.Waiting
+    ) {
+      updates.metadata = clearWaitMetadata(thread.metadata);
     }
 
     if (Object.keys(updates).length > 0) {

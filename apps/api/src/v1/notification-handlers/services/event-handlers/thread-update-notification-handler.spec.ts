@@ -327,5 +327,70 @@ describe('ThreadUpdateNotificationHandler', () => {
         status: ThreadStatus.Done,
       });
     });
+
+    it('clears wait metadata when transitioning from Waiting to Done', async () => {
+      const waitMetadata = {
+        scheduledResumeAt: '2026-04-02T10:00:00.000Z',
+        waitReason: 'Waiting for CI',
+        waitNodeId: 'node-123',
+        waitCheckPrompt: 'Check CI status',
+        customField: 'preserved',
+      };
+      const thread = createMockThreadEntity({
+        status: ThreadStatus.Waiting,
+        metadata: waitMetadata,
+      });
+      const updatedThread = {
+        ...thread,
+        status: ThreadStatus.Done,
+        metadata: { customField: 'preserved' },
+        updatedAt: new Date('2024-01-01T00:00:01Z'),
+      } satisfies ThreadEntity;
+
+      const notification = createMockNotification({
+        data: { status: ThreadStatus.Done },
+      });
+
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(updatedThread);
+
+      const updateSpy = vi.spyOn(threadsDao, 'updateById').mockResolvedValue(1);
+
+      await handler.handle(notification);
+
+      expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+        status: ThreadStatus.Done,
+        metadata: { customField: 'preserved' },
+      });
+    });
+
+    it('does not clear metadata when thread is not in Waiting status', async () => {
+      const thread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        metadata: { someField: 'value' },
+      });
+      const updatedThread = {
+        ...thread,
+        status: ThreadStatus.Done,
+        updatedAt: new Date('2024-01-01T00:00:01Z'),
+      } satisfies ThreadEntity;
+
+      const notification = createMockNotification({
+        data: { status: ThreadStatus.Done },
+      });
+
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(thread)
+        .mockResolvedValueOnce(updatedThread);
+
+      const updateSpy = vi.spyOn(threadsDao, 'updateById').mockResolvedValue(1);
+
+      await handler.handle(notification);
+
+      expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+        status: ThreadStatus.Done,
+      });
+    });
   });
 });
