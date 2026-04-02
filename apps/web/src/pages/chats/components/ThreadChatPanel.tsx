@@ -51,6 +51,7 @@ import {
   TooltipTrigger,
 } from '../../../components/ui/tooltip';
 import { cn } from '../../../components/ui/utils';
+import { formatCountdown, useCountdown } from '../../../hooks/useCountdown';
 import { useSystemSettings } from '../../../hooks/useSystemSettings';
 import { extractApiErrorMessage } from '../../../utils/errors';
 import {
@@ -60,50 +61,6 @@ import {
 import { sortMessagesChronologically } from '../../../utils/threadMessages';
 import ThreadMessagesView from '../../graphs/components/ThreadMessagesView';
 import type { PendingMessage } from '../../graphs/types/messages';
-
-function useCountdown(targetDate: string | undefined): number | null {
-  const [remaining, setRemaining] = useState<number | null>(null);
-  useEffect(() => {
-    if (!targetDate) {
-      setRemaining(null);
-      return;
-    }
-    let interval: ReturnType<typeof setInterval> | undefined;
-    const update = () => {
-      const diff = new Date(targetDate).getTime() - Date.now();
-      const value = Math.max(0, Math.floor(diff / 1000));
-      setRemaining(value);
-      if (value <= 0 && interval) {
-        clearInterval(interval);
-        interval = undefined;
-      }
-    };
-    update();
-    interval = setInterval(update, 1000);
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [targetDate]);
-  return remaining;
-}
-
-function formatCountdown(seconds: number): string {
-  if (seconds <= 0) {
-    return 'Resuming soon';
-  }
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) {
-    return `${h}h ${m}m`;
-  }
-  if (m > 0) {
-    return `${m}m ${s}s`;
-  }
-  return `${s}s`;
-}
 
 interface ThreadChatPanelProps {
   graphId: string;

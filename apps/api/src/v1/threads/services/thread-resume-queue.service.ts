@@ -96,7 +96,7 @@ export class ThreadResumeQueueService implements OnModuleInit, OnModuleDestroy {
     data: ThreadResumeJobData,
     delayMs: number,
   ): Promise<void> {
-    const jobId = `thread-resume:${data.threadId}`;
+    const jobId = `thread-resume-${data.threadId}`;
 
     // Remove any existing job for this thread before scheduling a new one
     const existingJob = await this.queue.getJob(jobId);
@@ -131,7 +131,7 @@ export class ThreadResumeQueueService implements OnModuleInit, OnModuleDestroy {
    * Best-effort: if the job is already processing or gone, we log and continue.
    */
   async cancelResumeJob(threadId: string): Promise<void> {
-    const jobId = `thread-resume:${threadId}`;
+    const jobId = `thread-resume-${threadId}`;
     try {
       const job = await this.queue.getJob(jobId);
       if (!job) {
@@ -192,7 +192,7 @@ export class ThreadResumeQueueService implements OnModuleInit, OnModuleDestroy {
    * Check whether a resume job exists for the given thread (any state).
    */
   async hasJob(threadId: string): Promise<boolean> {
-    const jobId = `thread-resume:${threadId}`;
+    const jobId = `thread-resume-${threadId}`;
     const job = await this.queue.getJob(jobId);
     return job !== undefined;
   }

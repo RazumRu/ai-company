@@ -96,7 +96,7 @@ describe('ThreadResumeQueueService', () => {
       await service.scheduleResume(data, 60_000);
 
       expect(mockQueue.add).toHaveBeenCalledWith('thread-resume', data, {
-        jobId: 'thread-resume:thread-1',
+        jobId: 'thread-resume-thread-1',
         delay: 60_000,
       });
     });
@@ -144,7 +144,7 @@ describe('ThreadResumeQueueService', () => {
 
       await service.cancelResumeJob('thread-1');
 
-      expect(mockQueue.getJob).toHaveBeenCalledWith('thread-resume:thread-1');
+      expect(mockQueue.getJob).toHaveBeenCalledWith('thread-resume-thread-1');
       expect(mockJob.remove).toHaveBeenCalled();
     });
 
@@ -154,7 +154,7 @@ describe('ThreadResumeQueueService', () => {
       await service.cancelResumeJob('non-existent');
 
       expect(mockQueue.getJob).toHaveBeenCalledWith(
-        'thread-resume:non-existent',
+        'thread-resume-non-existent',
       );
     });
 

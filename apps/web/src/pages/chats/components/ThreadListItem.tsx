@@ -23,24 +23,8 @@ import {
   DropdownMenuTrigger,
 } from '../../../components/ui/dropdown-menu';
 import { cn } from '../../../components/ui/utils';
+import { formatCountdown, useCountdown } from '../../../hooks/useCountdown';
 import { formatRelativeDate } from '../../../utils/formatRelativeDate';
-
-function formatRemainingTime(targetDate: string): string {
-  const diff = new Date(targetDate).getTime() - Date.now();
-  if (diff <= 0) {
-    return 'soon';
-  }
-  const totalSeconds = Math.floor(diff / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  if (h > 0) {
-    return `${h}h ${m}m`;
-  }
-  if (m > 0) {
-    return `${m}m`;
-  }
-  return `${totalSeconds}s`;
-}
 import {
   getStatusBadgeClass,
   getThreadStatusDisplay,
@@ -64,6 +48,14 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = React.memo(
   ({ thread, isActive, graphCache, onSelect, onDeleteThread, agents }) => {
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const isDraft = 'isDraft' in thread && thread.isDraft === true;
+    const isWaiting =
+      !isDraft && (thread as ThreadDto).status === StatusEnum.Waiting;
+    const scheduledResumeAt = isWaiting
+      ? ((thread as ThreadDto).metadata?.scheduledResumeAt as
+          | string
+          | undefined)
+      : undefined;
+    const countdown = useCountdown(scheduledResumeAt);
     const statusMeta = isDraft
       ? { label: 'Draft', color: '#d9d9d9' }
       : getThreadStatusDisplay(
@@ -133,24 +125,16 @@ export const ThreadListItem: React.FC<ThreadListItemProps> = React.memo(
           </p>
 
           {/* Waiting subtitle: scheduled resume time */}
-          {!isDraft &&
-            (thread as ThreadDto).status === StatusEnum.Waiting &&
-            (thread as ThreadDto).metadata?.scheduledResumeAt && (
-              <p className="text-[10px] text-purple-600 dark:text-purple-400 mb-1.5 flex items-center gap-1">
-                <Timer className="w-3 h-3 flex-shrink-0" />
-                <span className="truncate">
-                  {(() => {
-                    const remaining = formatRemainingTime(
-                      (thread as ThreadDto).metadata!
-                        .scheduledResumeAt as string,
-                    );
-                    return remaining === 'soon'
-                      ? 'Resuming soon'
-                      : `Resumes in ${remaining}`;
-                  })()}
-                </span>
-              </p>
-            )}
+          {countdown !== null && (
+            <p className="text-[10px] text-purple-600 dark:text-purple-400 mb-1.5 flex items-center gap-1">
+              <Timer className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">
+                {countdown > 0
+                  ? `Resumes in ${formatCountdown(countdown)}`
+                  : 'Resuming soon'}
+              </span>
+            </p>
+          )}
 
           {/* Row 3: agent avatars + relative timestamp */}
           <div className="flex items-center justify-between">
