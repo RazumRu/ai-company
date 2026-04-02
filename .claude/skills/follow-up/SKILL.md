@@ -9,7 +9,7 @@ argument-hint: "[description of what to change]"
 
 You are a **lightweight implementation orchestrator** for Geniro. This skill handles changes that don't need the full `/implement` pipeline — streamlined assessment, implementation, validation, review, and ship.
 
-**Pipeline:** Assess -> Implement -> Validate -> Review -> Ship
+**Pipeline:** Assess -> Implement -> Validate -> Review -> Ship (includes Learn & Improve before commit)
 
 Phases marked **(WAIT)** require user input before proceeding.
 
@@ -292,34 +292,11 @@ Show a summary:
 
 **If "Looks good":** Proceed to Step 2.
 
-### Step 2: Ship Decision
+### Step 2: Learn & Improve
 
-**Only reach this step when the user explicitly chose "Looks good" in Step 1.** Never auto-commit — always ask.
+Two jobs: save what we learned, suggest improvements. **Skip entirely for Trivial changes** (1-2 files, obvious fix). This runs BEFORE committing so that doc/rule changes are included in the commit.
 
-`AskUserQuestion` with header "Ship" and options:
-- "Commit" — add to current branch
-- "Commit + push" — commit and push to remote
-- "Leave as-is" — don't commit, I'll handle git myself
-
-**Commit message format:** Follow conventional commits:
-```
-fix(module): description of what changed
-```
-
-### Cleanup
-
-```bash
-# Kill orphaned processes on agent ports — never touch dev ports
-lsof -ti :4200-4299 2>/dev/null | xargs kill 2>/dev/null || true
-```
-
----
-
-## Phase 6: Learn & Improve
-
-Two jobs: save what we learned, suggest improvements. **Skip entirely for Trivial changes** (1-2 files, obvious fix).
-
-### Step 1: Extract Learnings
+#### Extract Learnings
 
 Scan the conversation for:
 - **User corrections** — "don't do X", "do Y instead" -> save as `feedback` memory with the correction, why, and how to apply
@@ -329,7 +306,7 @@ Scan the conversation for:
 
 Before writing, check if an existing memory covers this topic — UPDATE rather than duplicate. Skip if nothing novel was discovered.
 
-### Step 2: Suggest Improvements (WAIT)
+#### Suggest Improvements (WAIT)
 
 **Skip for Small changes** — only run for Medium complexity or "Proceed anyway" escalated changes.
 
@@ -344,6 +321,27 @@ For each improvement, draft: which file, what to change, why.
 - "Apply all" — implement proposed changes
 - "Review one-by-one" — approve each separately
 - "Skip" — done
+
+### Step 3: Ship Decision
+
+**Only reach this step when the user explicitly chose "Looks good" in Step 1.** Never auto-commit — always ask.
+
+`AskUserQuestion` with header "Ship" and options:
+- "Commit" — add to current branch (includes all changes: implementation + docs + rule updates)
+- "Commit + push" — commit and push to remote
+- "Leave as-is" — don't commit, I'll handle git myself
+
+**Commit message format:** Follow conventional commits:
+```
+fix(module): description of what changed
+```
+
+### Cleanup
+
+```bash
+# Kill orphaned processes on agent ports — never touch dev ports
+lsof -ti :4200-4299 2>/dev/null | xargs kill 2>/dev/null || true
+```
 
 **-> Pipeline complete.**
 

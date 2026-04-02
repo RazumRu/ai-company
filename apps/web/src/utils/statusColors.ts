@@ -23,6 +23,9 @@ const STATUS_BADGE_CLASSES: Record<string, string> = {
   need_more_info: 'bg-amber-100 text-amber-700 hover:bg-amber-100',
   applying: 'bg-amber-100 text-amber-700 hover:bg-amber-100',
 
+  // purple – waiting / scheduled
+  waiting: 'bg-purple-100 text-purple-700 hover:bg-purple-100',
+
   // muted – inactive
   stopped: 'bg-muted text-muted-foreground hover:bg-muted',
   pending: 'bg-muted text-muted-foreground hover:bg-muted',

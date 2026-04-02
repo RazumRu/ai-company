@@ -38,6 +38,7 @@ import { SubagentsRunTaskTool } from './tools/common/subagents/subagents-run-tas
 import { SubagentsToolGroup } from './tools/common/subagents/subagents-tool-group';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
+import { WaitForTool } from './tools/core/wait-for.tool';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { FinishTool } from './tools/core/finish.tool';
     ShellTool,
     WebSearchTool,
     FinishTool,
+    WaitForTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,
@@ -87,6 +89,7 @@ import { FinishTool } from './tools/core/finish.tool';
     ShellTool,
     WebSearchTool,
     FinishTool,
+    WaitForTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,

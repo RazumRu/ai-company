@@ -1,5 +1,9 @@
 import { Injectable, StreamableFile } from '@nestjs/common';
-import { DefaultLogger, NotFoundException } from '@packages/common';
+import {
+  BadRequestException,
+  DefaultLogger,
+  NotFoundException,
+} from '@packages/common';
 import Decimal from 'decimal.js';
 import { JsonStreamStringify } from 'json-stream-stringify';
 import { PassThrough, Readable } from 'stream';
@@ -17,6 +21,7 @@ import { ThreadsDao } from '../dao/threads.dao';
 import {
   GetMessagesQueryDto,
   GetThreadsQueryDto,
+  ResumeThreadDto,
   SetThreadMetadataDto,
   ThreadDto,
   ThreadMessageDto,
@@ -27,6 +32,7 @@ import {
 import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
 import { ThreadStatus } from '../threads.types';
+import { ThreadResumeService } from './thread-resume.service';
 
 @Injectable()
 export class ThreadsService {
@@ -38,6 +44,7 @@ export class ThreadsService {
     private readonly logger: DefaultLogger,
     private readonly checkpointStateService: CheckpointStateService,
     private readonly graphDao: GraphDao,
+    private readonly threadResumeService: ThreadResumeService,
   ) {}
 
   async getThreads(
@@ -220,6 +227,51 @@ export class ThreadsService {
     }
 
     return this.stopThread(ctx, thread.id);
+  }
+
+  async resumeThread(
+    ctx: AppContextStorage,
+    threadId: string,
+    dto: ResumeThreadDto,
+  ): Promise<ThreadDto> {
+    const thread = await this.getOwnedWaitingThread(ctx, threadId);
+    await this.threadResumeService.resumeEarly(threadId, dto.message);
+    const updated = (await this.threadDao.getById(threadId)) ?? thread;
+    return (await this.prepareThreadsResponse([updated]))[0]!;
+  }
+
+  async cancelWait(
+    ctx: AppContextStorage,
+    threadId: string,
+  ): Promise<ThreadDto> {
+    const thread = await this.getOwnedWaitingThread(ctx, threadId);
+    await this.threadResumeService.cancelWait(threadId);
+    const updated = (await this.threadDao.getById(threadId)) ?? thread;
+    return (await this.prepareThreadsResponse([updated]))[0]!;
+  }
+
+  private async getOwnedWaitingThread(
+    ctx: AppContextStorage,
+    threadId: string,
+  ): Promise<ThreadEntity> {
+    const userId = ctx.checkSub();
+    const thread = await this.threadDao.getOne({
+      id: threadId,
+      createdBy: userId,
+    });
+
+    if (!thread) {
+      throw new NotFoundException('THREAD_NOT_FOUND');
+    }
+
+    if (thread.status !== ThreadStatus.Waiting) {
+      throw new BadRequestException(
+        'THREAD_NOT_WAITING',
+        'Thread is not in waiting state',
+      );
+    }
+
+    return thread;
   }
 
   async setMetadata(

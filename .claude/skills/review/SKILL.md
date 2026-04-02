@@ -1,6 +1,6 @@
 ---
 name: review
-description: "Review code changes in the Geniro codebase before they ship. Catches bugs, AI-generated code anti-patterns, architectural drift, missing tests, and requirements gaps. Use after implementing a feature, before committing, or to review a specific branch."
+description: "Review code changes in the Geniro codebase before they ship. Uses a multi-agent architecture: 5 focused sub-reviewers (bugs, security, architecture, tests, guidelines) run in parallel, then a judge pass deduplicates and scores findings. Catches bugs, AI-generated code anti-patterns, architectural drift, missing tests, security vulnerabilities (OWASP), test quality issues, and design system violations. Use after implementing a feature, before committing, or to review a specific branch."
 context: fork
 model: sonnet
 allowed-tools:
@@ -12,7 +12,7 @@ allowed-tools:
 argument-hint: "[what to review — e.g., 'recent changes', 'the graph revision service', branch name]"
 ---
 
-# Code Review & Fix
+# Code Review Pipeline
 
 Review the following in the Geniro codebase, then fix all issues found (both new and pre-existing):
 
@@ -26,7 +26,16 @@ The Geniro platform is a monorepo with two apps:
 
 ## Your Role — Orchestrate, Don't Explore
 
-You are a **coordinator**. You delegate the review to the `reviewer-agent` and fixes to `api-agent` / `web-agent`. You do NOT read source code or explore the codebase yourself.
+You are a **coordinator**. You delegate the review to the `reviewer-agent` (which internally spawns 5 focused sub-reviewers in parallel) and fixes to `api-agent` / `web-agent`. You do NOT read source code or explore the codebase yourself.
+
+## Architecture
+
+The `reviewer-agent` uses a **multi-agent review grid**:
+- 5 parallel sub-reviewers (bugs, security, architecture, tests, guidelines), each with a focused context window
+- A judge pass that deduplicates, verifies, and confidence-scores all findings
+- Only findings with confidence >= 70 are reported
+
+This solves the attention degradation problem where a single reviewer misses issues in the middle of large diffs.
 
 ## Workflow
 
@@ -44,11 +53,11 @@ The Geniro platform is a monorepo with two apps:
 - **apps/web/** — React frontend (Vite, Ant Design, Refine, Socket.io)
 
 1. Identify what changed — use `git diff`, `git status`, or read the specific files/areas mentioned.
-2. Read the project standards — check `docs/code-guidelines.md`, `docs/testing.md`, and `CLAUDE.md` (Web Frontend section).
-3. Review every changed file against correctness, architecture fit, code quality, and the AI-generated code anti-patterns checklist.
-4. Also scan for pre-existing issues in the files you review — flag problems that existed before the current changes.
-5. Run `pnpm run full-check` in the relevant repo(s) to independently verify builds and tests pass.
-6. Deliver a structured review with verdict, required changes (tagged [NEW] or [PRE-EXISTING]), and minor improvements.
+2. Spawn your 5 focused sub-reviewers in parallel (bugs, security, architecture, tests, guidelines).
+3. Run the judge pass to deduplicate, verify, and score findings.
+4. Also scan for pre-existing issues in the files you review — tag them [PRE-EXISTING].
+5. Run `pnpm run full-check` independently to verify builds and tests pass.
+6. Deliver a structured review with verdict, required changes, and minor improvements.
 
 Be thorough but pragmatic. Catch real problems, propose practical fixes, approve when it's good enough to ship.
 ```
@@ -57,13 +66,13 @@ Be thorough but pragmatic. Catch real problems, propose practical fixes, approve
 
 After the reviewer returns, check the verdict.
 
-**If the reviewer returned ✅ Approved (no changes):**
+**If the reviewer returned APPROVED (no changes):**
 - Report the clean review result to the user and stop.
 
 **If the reviewer returned findings (required changes OR minor improvements):**
 
 1. **Collect all fixable issues** — both required changes and minor improvements, both `[NEW]` and `[PRE-EXISTING]`.
-2. **Group issues by app** — API issues (files in `apps/api/`) → `api-agent`. Web issues (files in `apps/web/`) → `web-agent`.
+2. **Group issues by app** — API issues (files in `apps/api/`) -> `api-agent`. Web issues (files in `apps/web/`) -> `web-agent`.
 3. **Delegate fixes** to the appropriate agent(s). Launch API and Web agents in parallel if both have issues.
 
 **Delegation template for API fixes:**
@@ -94,7 +103,7 @@ The code reviewer found the following issues that must be fixed:
 
 ## Requirements
 - Fix ALL listed issues — do not skip any
-- Run `pnpm run full-check` in geniro/apps/web/ after fixing and resolve any failures
+- Run `pnpm run full-check` in geniro/ after fixing and resolve any failures
 - Do NOT introduce new features or refactor beyond what the reviewer requested
 - **MANDATORY DATA SAFETY RULE**: NEVER run `docker volume rm`, `podman volume rm`, `docker compose down -v`, `podman compose down -v`, `DROP TABLE`, `DROP DATABASE`, `TRUNCATE`, or any command that removes local database data or Docker/Podman volumes
 - After completing, report: files modified, full-check result, what was fixed
@@ -116,13 +125,12 @@ Re-review after fixes. This is review round 2.
 ## Files changed in this round
 [list of files modified during fixes]
 
-Verify that ALL previous required changes and minor improvements have been properly addressed.
-Check that fixes didn't introduce new issues.
+This is a re-review — only spawn sub-reviewers for dimensions that had findings in round 1. Verify that ALL previous required changes and minor improvements have been properly addressed. Check that fixes didn't introduce new issues.
 ```
 
 **Review loop:**
-- If the reviewer returns ✅ Approved → proceed to Phase 4 (report)
-- If the reviewer still has issues → route fixes to agents again and re-review
+- If the reviewer returns APPROVED -> proceed to Phase 4 (report)
+- If the reviewer still has issues -> route fixes to agents again and re-review
 - **Safety limit:** Max 3 fix rounds. If not resolved after 3 rounds, report the outstanding issues to the user.
 
 ### Phase 4: Report
@@ -130,7 +138,7 @@ Check that fixes didn't introduce new issues.
 Present the final result to the user:
 
 1. **Original review verdict** and summary
-2. **Issues found** — how many new vs pre-existing
+2. **Issues found** — how many per dimension (bugs, security, architecture, tests, guidelines), new vs pre-existing
 3. **Fixes applied** — what was changed and where
 4. **Final verification** — build/test status after fixes
 5. **Outstanding issues** (if any remained after the fix loop)

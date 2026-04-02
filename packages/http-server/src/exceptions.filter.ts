@@ -18,7 +18,7 @@ import { ExceptionHandler } from './exception-handler';
 @Catch()
 export class ExceptionsFilter extends BaseExceptionFilter {
   constructor(private readonly moduleRef: INestApplication) {
-    const applicationRef = <HttpServer>moduleRef.get(HttpAdapterHost);
+    const applicationRef = moduleRef.get(HttpAdapterHost) as HttpServer;
 
     super(applicationRef);
   }

@@ -62,7 +62,7 @@ export const createTestModule = async (
 
   testBootstrapper.setupLogger({
     prettyPrint: environment.prettyLog,
-    level: <LogLevel>environment.logLevel,
+    level: environment.logLevel as LogLevel,
     sentryDsn: environment.sentryDsn,
   });
 

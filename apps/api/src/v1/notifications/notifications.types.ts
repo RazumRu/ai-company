@@ -104,6 +104,8 @@ export interface IThreadCreateNotification extends INotification<ThreadEntity> {
 export interface IThreadUpdateData {
   status?: ThreadStatus;
   name?: string;
+  scheduledResumeAt?: string;
+  waitReason?: string;
 }
 
 export type ThreadUpdateNotificationData = IThreadUpdateData | ThreadDto;

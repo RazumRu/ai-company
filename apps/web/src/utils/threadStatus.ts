@@ -20,6 +20,10 @@ export const THREAD_STATUS_STYLES: Record<
     label: 'Stopped',
     color: 'var(--muted-foreground)',
   },
+  [ThreadDtoStatusEnum.Waiting]: {
+    label: 'Waiting',
+    color: 'var(--color-purple-500)',
+  },
 } as const;
 
 export const getThreadStatusDisplay = (status?: ThreadDto['status']) => {

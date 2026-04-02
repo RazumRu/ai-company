@@ -137,10 +137,10 @@ export const setupMiddlewares = (
     corsOrigin?: string;
   },
 ) => {
-  const serverApp = <NestFastifyApplication>app;
-  const fastifyInstance: FastifyInstance = <FastifyInstance>(
-    (<unknown>serverApp.getHttpAdapter().getInstance())
-  );
+  const serverApp = app as NestFastifyApplication;
+  const fastifyInstance: FastifyInstance = serverApp
+    .getHttpAdapter()
+    .getInstance() as unknown as FastifyInstance;
 
   // if (sentryService.isSentryInit && param.logger?.sentry?.enabledHttpTracing) {
   //   app.use(Sentry.Handlers.requestHandler());

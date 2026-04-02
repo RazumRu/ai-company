@@ -16,6 +16,7 @@ import { AppContextStorage } from '../../../auth/app-context-storage';
 import {
   GetMessagesQueryDto,
   GetThreadsQueryDto,
+  ResumeThreadDto,
   SetThreadMetadataDto,
   ThreadDto,
   ThreadMessageDto,
@@ -123,5 +124,22 @@ export class ThreadsController {
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadDto> {
     return this.threadsService.stopThreadByExternalId(ctx, externalThreadId);
+  }
+
+  @Post(':threadId/resume')
+  async resumeThread(
+    @Param('threadId') threadId: string,
+    @Body() dto: ResumeThreadDto,
+    @CtxStorage() ctx: AppContextStorage,
+  ): Promise<ThreadDto> {
+    return this.threadsService.resumeThread(ctx, threadId, dto);
+  }
+
+  @Post(':threadId/cancel-wait')
+  async cancelWait(
+    @Param('threadId') threadId: string,
+    @CtxStorage() ctx: AppContextStorage,
+  ): Promise<ThreadDto> {
+    return this.threadsService.cancelWait(ctx, threadId);
   }
 }

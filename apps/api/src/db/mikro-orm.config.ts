@@ -24,7 +24,12 @@ const config = defineConfig({
   // back to require() for .ts files so ts-node-dev can compile them.
 
   dynamicImportProvider: async (id: string) => {
-    if (id.endsWith('.ts') || id.includes('.ts?')) {
+    // In vitest, import() is intercepted by the transform pipeline (SWC) which
+    // handles decorators and TS syntax. CJS require() bypasses the pipeline and
+    // hits Node's native parser which fails on decorators.
+    // In ts-node-dev, require() is needed because import() isn't hooked.
+    const isVitest = typeof process !== 'undefined' && !!process.env['VITEST'];
+    if (!isVitest && (id.endsWith('.ts') || id.includes('.ts?'))) {
       const path = id.startsWith('file://') ? new URL(id).pathname : id;
       return esmRequire(path);
     }

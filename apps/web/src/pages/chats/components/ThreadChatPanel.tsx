@@ -1,10 +1,14 @@
+import axios from 'axios';
 import {
   AlertTriangle,
   ChevronDown,
+  CircleX,
   GitBranch,
   Loader2,
+  Play,
   Send,
   Square,
+  Timer,
   Zap,
 } from 'lucide-react';
 import React, {
@@ -47,6 +51,7 @@ import {
   TooltipTrigger,
 } from '../../../components/ui/tooltip';
 import { cn } from '../../../components/ui/utils';
+import { formatCountdown, useCountdown } from '../../../hooks/useCountdown';
 import { useSystemSettings } from '../../../hooks/useSystemSettings';
 import { extractApiErrorMessage } from '../../../utils/errors';
 import {
@@ -221,7 +226,19 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
 
   const effectiveThreadStatus = threadStatusOverride ?? thread.status;
   const isThreadRunning = effectiveThreadStatus === ThreadDtoStatusEnum.Running;
+  const isThreadWaiting = effectiveThreadStatus === ThreadDtoStatusEnum.Waiting;
   const prevIsThreadRunningRef = useRef<boolean>(isThreadRunning);
+
+  const scheduledResumeAt = thread.metadata?.scheduledResumeAt as
+    | string
+    | undefined;
+  const waitReason = thread.metadata?.waitReason as string | undefined;
+  const countdown = useCountdown(
+    isThreadWaiting ? scheduledResumeAt : undefined,
+  );
+
+  const [resumingThread, setResumingThread] = useState(false);
+  const [cancellingWait, setCancellingWait] = useState(false);
 
   // Use pending messages provided from the shared store
   const pendingMessages = useMemo(() => {
@@ -371,6 +388,40 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
       setThreadStatusOverride(undefined);
     } finally {
       setStoppingThread(false);
+    }
+  }, [isDraft, thread.id]);
+
+  const handleResumeThread = useCallback(async () => {
+    if (isDraft) {
+      return;
+    }
+    try {
+      setResumingThread(true);
+      // TODO: replace with threadsApi.resumeThread() after pnpm generate:api
+      await axios.post(`/api/v1/threads/${thread.id}/resume`, {});
+      toast.success('Thread resume requested');
+    } catch (error) {
+      console.error('Error resuming thread', error);
+      toast.error(extractApiErrorMessage(error, 'Failed to resume thread'));
+    } finally {
+      setResumingThread(false);
+    }
+  }, [isDraft, thread.id]);
+
+  const handleCancelWait = useCallback(async () => {
+    if (isDraft) {
+      return;
+    }
+    try {
+      setCancellingWait(true);
+      // TODO: replace with threadsApi.cancelWait() after pnpm generate:api
+      await axios.post(`/api/v1/threads/${thread.id}/cancel-wait`);
+      toast.success('Wait cancelled');
+    } catch (error) {
+      console.error('Error cancelling wait', error);
+      toast.error(extractApiErrorMessage(error, 'Failed to cancel wait'));
+    } finally {
+      setCancellingWait(false);
     }
   }, [isDraft, thread.id]);
 
@@ -740,6 +791,70 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
     repoSearch,
   ]);
 
+  const WaitingBanner = useMemo(() => {
+    if (!isThreadWaiting) {
+      return null;
+    }
+    return (
+      <div className="px-4 py-2.5 border-t border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950/30">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Timer className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                Waiting
+                {waitReason ? ` \u2014 ${waitReason}` : ''}
+              </span>
+              {countdown !== null && (
+                <span className="text-xs text-purple-600/80 dark:text-purple-400/80">
+                  {countdown > 0
+                    ? `Resuming in ${formatCountdown(countdown)}`
+                    : 'Resuming soon'}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-100 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-900"
+              onClick={handleResumeThread}
+              disabled={resumingThread}>
+              {resumingThread ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Play className="h-3 w-3" />
+              )}
+              Resume Now
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-muted-foreground hover:text-destructive"
+              onClick={handleCancelWait}
+              disabled={cancellingWait}>
+              {cancellingWait ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <CircleX className="h-3 w-3" />
+              )}
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [
+    isThreadWaiting,
+    waitReason,
+    countdown,
+    handleResumeThread,
+    handleCancelWait,
+    resumingThread,
+    cancellingWait,
+  ]);
+
   // Extract input section to prevent rerenders of ThreadMessagesView when typing
   const ChatInputSection = useMemo(
     () => (
@@ -923,6 +1038,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
         />
       </div>
 
+      {WaitingBanner}
       {ChatInputSection}
     </div>
   );

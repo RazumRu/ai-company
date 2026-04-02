@@ -1,5 +1,6 @@
 import { Duplex, PassThrough } from 'node:stream';
 
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,7 +11,10 @@ import {
   RuntimeExecResult,
 } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
-import { ThreadStatus } from '../../threads/threads.types';
+import {
+  THREAD_WAITING_EVENT,
+  ThreadStatus,
+} from '../../threads/threads.types';
 import {
   CompiledGraphNode,
   GraphExecutionMetadata,
@@ -117,6 +121,7 @@ const makeHandle = <TInstance>(
 describe('GraphStateManager', () => {
   let notifications: NotificationsService;
   let logger: DefaultLogger;
+  let eventEmitter: EventEmitter2;
   let manager: GraphStateManager;
 
   beforeEach(() => {
@@ -129,7 +134,10 @@ describe('GraphStateManager', () => {
       info: vi.fn(),
       warn: vi.fn(),
     } as unknown as DefaultLogger;
-    manager = new GraphStateManager(notifications, logger);
+    eventEmitter = {
+      emit: vi.fn(),
+    } as unknown as EventEmitter2;
+    manager = new GraphStateManager(notifications, logger, eventEmitter);
     manager.setGraphId('graph-1');
   });
 
@@ -583,6 +591,217 @@ describe('GraphStateManager', () => {
 
       const snapshots = manager.getSnapshots('thread-1');
       expect(snapshots[0]?.additionalNodeMetadata).toEqual(additionalMetadata);
+    });
+  });
+
+  describe('Agent waiting status', () => {
+    const setupAgentNode = () => {
+      const agent: any = {
+        subscribe: vi.fn(),
+        getGraphNodeMetadata: vi.fn(),
+      };
+      let agentHandler: any;
+      agent.subscribe.mockImplementation((handler: any) => {
+        agentHandler = handler;
+        return vi.fn();
+      });
+
+      const node: CompiledGraphNode = {
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        config: {},
+        instance: agent,
+        handle: makeHandle(agent),
+      };
+
+      manager.registerNode('agent-1');
+      manager.attachGraphNode('agent-1', node);
+
+      return { agentHandler: () => agentHandler };
+    };
+
+    it('should emit ThreadStatus.Waiting when result.waiting is true', async () => {
+      const { agentHandler } = setupAgentNode();
+
+      // Invoke first to register execution
+      await agentHandler()({
+        type: 'invoke',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+        },
+      });
+
+      vi.mocked(notifications.emit).mockClear();
+
+      await agentHandler()({
+        type: 'run',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+          result: {
+            messages: [],
+            threadId: 'thread-1',
+            waiting: true,
+            waitMetadata: {
+              durationSeconds: 300,
+              checkPrompt: 'Check CI status',
+              reason: 'Waiting for CI pipeline',
+            },
+          },
+        },
+      });
+
+      const threadUpdate = vi
+        .mocked(notifications.emit)
+        .mock.calls.find(
+          (call: any) => call[0].type === NotificationEvent.ThreadUpdate,
+        )?.[0] as any;
+
+      expect(threadUpdate).toBeDefined();
+      expect(threadUpdate.data.status).toBe(ThreadStatus.Waiting);
+    });
+
+    it('should include scheduledResumeAt and waitReason in notification when waiting', async () => {
+      const { agentHandler } = setupAgentNode();
+
+      await agentHandler()({
+        type: 'invoke',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+        },
+      });
+
+      vi.mocked(notifications.emit).mockClear();
+
+      const beforeTime = Date.now();
+
+      await agentHandler()({
+        type: 'run',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+          result: {
+            messages: [],
+            threadId: 'thread-1',
+            waiting: true,
+            waitMetadata: {
+              durationSeconds: 600,
+              checkPrompt: 'Check deployment',
+              reason: 'Waiting for deploy to finish',
+            },
+          },
+        },
+      });
+
+      const threadUpdate = vi
+        .mocked(notifications.emit)
+        .mock.calls.find(
+          (call: any) => call[0].type === NotificationEvent.ThreadUpdate,
+        )?.[0] as any;
+
+      expect(threadUpdate.data.waitReason).toBe('Waiting for deploy to finish');
+      expect(threadUpdate.data.scheduledResumeAt).toBeDefined();
+
+      const scheduledAt = new Date(
+        threadUpdate.data.scheduledResumeAt,
+      ).getTime();
+      // scheduledResumeAt should be approximately now + 600s
+      expect(scheduledAt).toBeGreaterThanOrEqual(beforeTime + 600 * 1000);
+      expect(scheduledAt).toBeLessThanOrEqual(Date.now() + 600 * 1000 + 1000);
+    });
+
+    it('should emit THREAD_WAITING_EVENT via EventEmitter2 when waiting', async () => {
+      const { agentHandler } = setupAgentNode();
+
+      await agentHandler()({
+        type: 'invoke',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+        },
+      });
+
+      vi.mocked(eventEmitter.emit).mockClear();
+
+      await agentHandler()({
+        type: 'run',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+          result: {
+            messages: [],
+            threadId: 'thread-1',
+            waiting: true,
+            waitMetadata: {
+              durationSeconds: 120,
+              checkPrompt: 'Check PR status',
+              reason: 'Waiting for PR review',
+            },
+          },
+        },
+      });
+
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        THREAD_WAITING_EVENT,
+        expect.objectContaining({
+          graphId: 'graph-1',
+          nodeId: 'agent-1',
+          threadId: 'thread-1',
+          durationSeconds: 120,
+          checkPrompt: 'Check PR status',
+          reason: 'Waiting for PR review',
+        }),
+      );
+    });
+
+    it('should not emit THREAD_WAITING_EVENT when result is not waiting', async () => {
+      const { agentHandler } = setupAgentNode();
+
+      await agentHandler()({
+        type: 'invoke',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+        },
+      });
+
+      vi.mocked(eventEmitter.emit).mockClear();
+
+      await agentHandler()({
+        type: 'run',
+        data: {
+          threadId: 'thread-1',
+          config: {
+            configurable: { graph_id: 'graph-1', node_id: 'agent-1' },
+          },
+          result: {
+            messages: [],
+            threadId: 'thread-1',
+          },
+        },
+      });
+
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith(
+        THREAD_WAITING_EVENT,
+        expect.anything(),
+      );
     });
   });
 

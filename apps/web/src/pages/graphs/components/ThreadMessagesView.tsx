@@ -447,8 +447,8 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
           return nid;
         }
       }
-      return nodeId;
-    }, [preparedMessagesResult, nodeId]);
+      return undefined;
+    }, [preparedMessagesResult]);
 
     const lastAgentName = lastAgentNodeId
       ? nodeDisplayNames?.[lastAgentNodeId] ||

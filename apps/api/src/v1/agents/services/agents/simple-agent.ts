@@ -23,6 +23,7 @@ import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { zodToAjvSchema } from '../../../agent-tools/agent-tools.utils';
 import type { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
+import { WaitForTool } from '../../../agent-tools/tools/core/wait-for.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
@@ -100,6 +101,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   public async initTools(_config: SimpleAgentSchemaType) {
     // ----- finish tool -----
     this.addTool(new FinishTool().build({}));
+
+    // ----- wait_for tool -----
+    this.addTool(new WaitForTool().build({}));
 
     // ----- mcp -----
     for (const mcpService of this.mcpServices) {
@@ -251,8 +255,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             const finishState = FinishTool.getStateFromToolsMetadata(
               s.toolsMetadata,
             );
+            const waitForState = WaitForTool.getStateFromToolsMetadata(
+              s.toolsMetadata,
+            );
             const isComplete = Boolean(
-              finishState && (finishState.done || finishState.needsMoreInfo),
+              (finishState &&
+                (finishState.done || finishState.needsMoreInfo)) ||
+              (waitForState && waitForState.waiting),
             );
 
             if (!isComplete) {
@@ -914,7 +923,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         mode: 'append',
         items: updateMessages,
       },
-      toolsMetadata: FinishTool.clearState(),
+      toolsMetadata: {
+        ...FinishTool.clearState(),
+        ...WaitForTool.clearState(),
+      },
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
     };
@@ -1048,6 +1060,11 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       });
     }
 
+    const waitForState = WaitForTool.getStateFromToolsMetadata(
+      finalState.toolsMetadata,
+    );
+    const isWaiting = waitForState?.waiting === true;
+
     const result = {
       // Preserve historical behavior: the AgentOutput is the *new* messages produced by the run,
       // not the initial user input we already provided to the graph.
@@ -1057,11 +1074,23 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       needsMoreInfo:
         FinishTool.getStateFromToolsMetadata(finalState.toolsMetadata)
           ?.needsMoreInfo === true,
+      waiting: isWaiting,
+      ...(isWaiting && waitForState
+        ? {
+            waitMetadata: {
+              durationSeconds: waitForState.durationSeconds,
+              checkPrompt: waitForState.checkPrompt,
+              reason: waitForState.reason,
+            },
+          }
+        : {}),
     };
 
     const wasDone =
       FinishTool.getStateFromToolsMetadata(finalState.toolsMetadata)?.done ===
-      true;
+        true ||
+      WaitForTool.getStateFromToolsMetadata(finalState.toolsMetadata)
+        ?.waiting === true;
     const wasStopped = Boolean(runEntry.stopped) && !wasDone;
     const stopError = wasStopped
       ? new Error(runEntry.stopReason ?? this.formatStoppedReason())

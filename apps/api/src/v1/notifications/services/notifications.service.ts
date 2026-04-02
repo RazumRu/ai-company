@@ -24,7 +24,7 @@ export class NotificationsService {
           await subscriber(event);
         } catch (error) {
           this.logger.error(
-            <Error>error,
+            error as Error,
             'Subscriber failed to process notification',
             {
               type: event.type,

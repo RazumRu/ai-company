@@ -13,6 +13,12 @@
 - Always `return await` async calls (not bare `return somePromise()`). This ensures stack traces include the caller.
 - Validate inputs early, return/throw early. Avoid deep nesting.
 
+## File Organization
+
+- `*.types.ts` files contain only types, interfaces, enums, and constants. Never put functions in types files.
+- `*.utils.ts` files contain utility/helper functions. If a module needs shared helpers, create `<feature>.utils.ts` in the same directory.
+- Class files (services, controllers, DAOs) contain only the class. Never put standalone functions in class files.
+
 ## Code Quality
 
 - No inline imports (`require()` inside functions). All imports at the top of the file.

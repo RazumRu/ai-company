@@ -2541,6 +2541,7 @@ export const ThreadDtoStatusEnum = {
   Done: 'done',
   NeedMoreInfo: 'need_more_info',
   Stopped: 'stopped',
+  Waiting: 'waiting',
 } as const;
 
 export type ThreadDtoStatusEnum =
@@ -14160,6 +14161,7 @@ export const GetThreadsStatusesEnum = {
   Done: 'done',
   NeedMoreInfo: 'need_more_info',
   Stopped: 'stopped',
+  Waiting: 'waiting',
 } as const;
 export type GetThreadsStatusesEnum =
   (typeof GetThreadsStatusesEnum)[keyof typeof GetThreadsStatusesEnum];
