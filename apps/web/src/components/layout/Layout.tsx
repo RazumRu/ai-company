@@ -19,6 +19,7 @@ import { useAuth, useAuthModule } from '../../auth/AuthModuleContext';
 import { STORYBOOK_ENABLED } from '../../config';
 import { useCurrentProject } from '../../hooks/useCurrentProject';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
+import { useSystemSettings } from '../../hooks/useSystemSettings';
 import { Button } from '../ui/button';
 import {
   DropdownMenu,
@@ -95,6 +96,7 @@ export function Layout({ children }: { children?: React.ReactNode }) {
     'geniro:nav-sidebar-collapsed',
     false,
   );
+  const { settings } = useSystemSettings();
 
   const { label: currentPage, backLink } = resolvePageTitle(
     location.pathname,
@@ -373,6 +375,13 @@ export function Layout({ children }: { children?: React.ReactNode }) {
               </Button>
             )}
           </div>
+          {!navCollapsed && settings.apiVersion && (
+            <div className="px-3 pb-2 pt-1">
+              <p className="text-xs text-muted-foreground truncate">
+                v{settings.webVersion} / API v{settings.apiVersion}
+              </p>
+            </div>
+          )}
         </aside>
 
         {/* Main content */}

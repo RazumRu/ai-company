@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS: SystemSettings = {
   githubWebhookEnabled: false,
   litellmManagementEnabled: false,
   isAdmin: false,
+  apiVersion: '',
+  webVersion: '',
 };
 
 let cachedSettings: SystemSettings | null = null;

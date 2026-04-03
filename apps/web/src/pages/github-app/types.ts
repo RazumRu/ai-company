@@ -58,6 +58,8 @@ export interface SystemSettingsDto {
   githubWebhookEnabled: boolean;
   litellmManagementEnabled: boolean;
   isAdmin: boolean;
+  apiVersion: string;
+  webVersion: string;
 }
 
 export const systemSettingsApi = {

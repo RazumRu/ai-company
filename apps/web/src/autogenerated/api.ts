@@ -2189,6 +2189,18 @@ export interface SystemSettingsResponseDto {
    * @memberof SystemSettingsResponseDto
    */
   'githubWebhookEnabled': boolean;
+  /**
+   * Current API server version
+   * @type {string}
+   * @memberof SystemSettingsResponseDto
+   */
+  'apiVersion': string;
+  /**
+   * Current web client version
+   * @type {string}
+   * @memberof SystemSettingsResponseDto
+   */
+  'webVersion': string;
 }
 /**
  *

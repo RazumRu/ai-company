@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { Controller, Get } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { IContextData } from '@packages/http-server';
@@ -10,6 +13,18 @@ import {
   AuthProviderType,
   SystemSettingsResponseDto,
 } from './dto/system.dto';
+
+const API_VERSION = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, '../../../package.json'), 'utf-8'),
+  ) as { version: string }
+).version;
+
+const WEB_VERSION = (
+  JSON.parse(
+    readFileSync(resolve(__dirname, '../../../../web/package.json'), 'utf-8'),
+  ) as { version: string }
+).version;
 
 @ApiTags('system')
 @Controller('system')
@@ -26,6 +41,8 @@ export class SystemController {
       isAdmin:
         Array.isArray(ctx.roles) && ctx.roles.includes(environment.adminRole),
       githubWebhookEnabled: Boolean(environment.githubWebhookSecret),
+      apiVersion: API_VERSION,
+      webVersion: WEB_VERSION,
     };
   }
 

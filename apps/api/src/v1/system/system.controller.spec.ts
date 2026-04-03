@@ -63,6 +63,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
     });
 
@@ -74,6 +76,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
     });
 
@@ -86,6 +90,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: false,
         isAdmin: false,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
     });
 
@@ -97,6 +103,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: true,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
     });
 
@@ -108,6 +116,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
     });
 
@@ -120,6 +130,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
     });
 
@@ -134,6 +146,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: true,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
 
       const defaultAdminCtx = { roles: ['admin'] } as IContextData;
@@ -143,7 +157,17 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
+        apiVersion: expect.any(String),
+        webVersion: expect.any(String),
       });
+    });
+
+    it('should return apiVersion and webVersion as semver strings', () => {
+      mockGitHubAppService.isConfigured.mockReturnValue(true);
+      const result = controller.getSettings(nonAdminCtx);
+      const semverPattern = /^\d+\.\d+\.\d+/;
+      expect(result.apiVersion).toMatch(semverPattern);
+      expect(result.webVersion).toMatch(semverPattern);
     });
   });
 

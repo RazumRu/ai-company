@@ -16,6 +16,8 @@ export const SystemSettingsResponseSchema = z.object({
     .describe(
       'Whether the GitHub webhook receiver is configured and available',
     ),
+  apiVersion: z.string().describe('Current API server version'),
+  webVersion: z.string().describe('Current web client version'),
 });
 
 export type SystemSettingsResponse = z.infer<
