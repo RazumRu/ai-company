@@ -32,6 +32,8 @@ jobs:
     name: Version packages
     outputs:
       release_created: ${{ steps.semantic.outputs.release_created }}
+      api_released: ${{ steps.semantic.outputs.api_released }}
+      web_released: ${{ steps.semantic.outputs.web_released }}
     steps:
       - uses: tibdex/github-app-token@v2
         id: generate_token
@@ -76,13 +78,135 @@ jobs:
           OUTPUT_WEB=$(APP_NAME=web pnpm run up-versions)
           echo "$OUTPUT_WEB"
 
-          if echo "$OUTPUT_API" | grep -q "no new version is released" && echo "$OUTPUT_WEB" | grep -q "no new version is released"; then
+          API_RELEASED=true
+          WEB_RELEASED=true
+
+          if echo "$OUTPUT_API" | grep -q "no new version is released"; then
+            API_RELEASED=false
+          fi
+          if echo "$OUTPUT_WEB" | grep -q "no new version is released"; then
+            WEB_RELEASED=false
+          fi
+
+          echo "api_released=$API_RELEASED" >> $GITHUB_OUTPUT
+          echo "web_released=$WEB_RELEASED" >> $GITHUB_OUTPUT
+
+          if [[ "$API_RELEASED" == "false" && "$WEB_RELEASED" == "false" ]]; then
             echo "release_created=false" >> $GITHUB_OUTPUT
           else
             echo "release_created=true" >> $GITHUB_OUTPUT
           fi
         env:
           GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+  create-release-api:
+    runs-on: ubuntu-22.04
+    name: Create API Release
+    needs: [version]
+    if: ${{ needs.version.outputs.api_released == 'true' && github.ref_name == 'main' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Get API version tags
+        id: tags
+        run: |
+          git fetch --tags --force --prune
+
+          PATTERN="@${{ env.TAG_PREFIX }}/${{ env.APP_NAME }}@*"
+          TAGS="$(git tag --merged HEAD --list "$PATTERN" | sort -V)"
+          CURRENT_TAG="$(echo "$TAGS" | tail -n 1)"
+          PREV_TAG="$(echo "$TAGS" | tail -n 2 | head -n 1)"
+          VERSION="${CURRENT_TAG##*@}"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "No API tag found, skipping release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "current_tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        if: steps.tags.outputs.skip != 'true'
+        id: changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag ${{ steps.tags.outputs.current_tag }} --latest --strip header
+        env:
+          OUTPUT: CHANGES.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Create GitHub Release
+        if: steps.tags.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tags.outputs.current_tag }}
+          name: "geniro-api v${{ steps.tags.outputs.version }}"
+          body_path: CHANGES.md
+          generate_release_notes: false
+
+  create-release-web:
+    runs-on: ubuntu-22.04
+    name: Create Web Release
+    needs: [version]
+    if: ${{ needs.version.outputs.web_released == 'true' && github.ref_name == 'main' }}
+    env:
+      WEB_APP_NAME: web
+      WEB_TAG_PREFIX: geniro
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Get Web version tags
+        id: tags
+        run: |
+          git fetch --tags --force --prune
+
+          PATTERN="@${{ env.WEB_TAG_PREFIX }}/${{ env.WEB_APP_NAME }}@*"
+          TAGS="$(git tag --merged HEAD --list "$PATTERN" | sort -V)"
+          CURRENT_TAG="$(echo "$TAGS" | tail -n 1)"
+          PREV_TAG="$(echo "$TAGS" | tail -n 2 | head -n 1)"
+          VERSION="${CURRENT_TAG##*@}"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "No Web tag found, skipping release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "current_tag=$CURRENT_TAG" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        if: steps.tags.outputs.skip != 'true'
+        id: changelog
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag ${{ steps.tags.outputs.current_tag }} --latest --strip header
+        env:
+          OUTPUT: CHANGES.md
+          GITHUB_REPO: ${{ github.repository }}
+
+      - name: Create GitHub Release
+        if: steps.tags.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tags.outputs.current_tag }}
+          name: "geniro-web v${{ steps.tags.outputs.version }}"
+          body_path: CHANGES.md
+          generate_release_notes: false
 
   build-and-push:
     runs-on: ubuntu-22.04
