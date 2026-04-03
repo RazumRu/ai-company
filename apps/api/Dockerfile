@@ -16,6 +16,9 @@ RUN corepack enable && \
 # ---------- Runner ----------
 FROM node:24-alpine AS run
 
+ARG APP_VERSION=dev
+ENV API_VERSION=${APP_VERSION}
+
 ENV WORKDIR=/usr/src/app
 ENV APP_NAME="api"
 ENV HTTP_PORT=5000

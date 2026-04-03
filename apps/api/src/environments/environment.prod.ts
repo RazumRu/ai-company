@@ -106,6 +106,10 @@ export const environment = () =>
     // agents
     agentsInstructionsFile: getEnv('AGENTS_INSTRUCTIONS_FILE', 'AGENTS.md'),
 
+    // --- Versions ---
+    apiVersion: getEnv('API_VERSION', 'dev'),
+    webVersion: getEnv('WEB_VERSION', 'dev'),
+
     // --- Feature flags ---
     litellmManagementEnabled: getEnv('LITELLM_MANAGEMENT_ENABLED', false),
     restoreGraphs: getEnv('RESTORE_GRAPHS', true),

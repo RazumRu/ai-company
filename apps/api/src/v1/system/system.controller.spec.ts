@@ -22,6 +22,8 @@ const mockEnvironment: Record<string, unknown> = {
   zitadelClientId: ZITADEL_CLIENT_ID,
   adminRole: ADMIN_ROLE,
   githubWebhookSecret: '',
+  apiVersion: '1.2.3',
+  webVersion: '0.4.5',
 };
 
 vi.mock('../../environments', () => ({
@@ -63,8 +65,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
     });
 
@@ -76,8 +78,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
     });
 
@@ -90,8 +92,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: false,
         isAdmin: false,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
     });
 
@@ -103,8 +105,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: true,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
     });
 
@@ -116,8 +118,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
     });
 
@@ -130,8 +132,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
     });
 
@@ -146,8 +148,8 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: true,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
 
       const defaultAdminCtx = { roles: ['admin'] } as IContextData;
@@ -157,17 +159,16 @@ describe('SystemController', () => {
         litellmManagementEnabled: true,
         isAdmin: false,
         githubWebhookEnabled: false,
-        apiVersion: expect.any(String),
-        webVersion: expect.any(String),
+        apiVersion: '1.2.3',
+        webVersion: '0.4.5',
       });
     });
 
-    it('should return apiVersion and webVersion as semver strings', () => {
+    it('should return apiVersion and webVersion from environment', () => {
       mockGitHubAppService.isConfigured.mockReturnValue(true);
       const result = controller.getSettings(nonAdminCtx);
-      const semverPattern = /^\d+\.\d+\.\d+/;
-      expect(result.apiVersion).toMatch(semverPattern);
-      expect(result.webVersion).toMatch(semverPattern);
+      expect(result.apiVersion).toBe('1.2.3');
+      expect(result.webVersion).toBe('0.4.5');
     });
   });
 

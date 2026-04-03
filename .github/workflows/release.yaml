@@ -131,6 +131,8 @@ jobs:
           file: "./apps/${{ env.APP_NAME }}/Dockerfile"
           push: true
           provenance: false
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.tag }}
           tags: |
             ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version_postfix }}
             ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.final_tag }}
@@ -186,6 +188,8 @@ jobs:
           file: "./apps/${{ env.WEB_APP_NAME }}/Dockerfile"
           push: true
           provenance: false
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.tag }}
           tags: |
             ${{ env.WEB_DOCKER_IMAGE }}:${{ steps.version.outputs.version_postfix }}
             ${{ env.WEB_DOCKER_IMAGE }}:${{ steps.version.outputs.final_tag }}

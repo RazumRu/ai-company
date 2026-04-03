@@ -15,6 +15,9 @@ RUN corepack enable && \
 # ---------- Runner ----------
 FROM node:24-alpine AS run
 
+ARG APP_VERSION=dev
+ENV WEB_VERSION=${APP_VERSION}
+
 WORKDIR /app
 
 RUN apk add --no-cache --update curl gettext
