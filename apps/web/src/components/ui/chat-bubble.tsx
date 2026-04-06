@@ -157,10 +157,20 @@ export const ChatBubble: React.FC<ChatBubbleProps> = React.memo(
                     alt={`Attachment ${i + 1}`}
                     className="max-h-48 max-w-xs rounded-md border border-border cursor-pointer hover:opacity-90 transition-opacity"
                     onClick={() => {
-                      if (
-                        /^data:image\//.test(url) ||
-                        /^https?:\/\//.test(url)
-                      ) {
+                      if (/^data:image\//.test(url)) {
+                        // Convert data URL to blob URL — window.open() has URL length limits
+                        // that cause empty tabs with large base64 strings
+                        const byteString = atob(url.split(',')[1] ?? '');
+                        const mimeMatch = url.match(/^data:(image\/\w+);/);
+                        const mime = mimeMatch?.[1] ?? 'image/png';
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) {
+                          ia[i] = byteString.charCodeAt(i);
+                        }
+                        const blob = new Blob([ab], { type: mime });
+                        window.open(URL.createObjectURL(blob), '_blank');
+                      } else if (/^https?:\/\//.test(url)) {
                         window.open(url, '_blank');
                       }
                     }}
