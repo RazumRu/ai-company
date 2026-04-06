@@ -1,6 +1,5 @@
 {
-  "statusLine": {
-    "type": "command",
+  "statusline": {
     "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/context-statusline.sh"
   },
   "hooks": {
@@ -88,8 +87,7 @@
       "Grep",
       "Bash(*)",
       "Write(*)",
-      "Edit(*)",
-      "WebSearch"
+      "Edit(*)"
     ],
     "deny": []
   }

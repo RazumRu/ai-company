@@ -1,8 +1,7 @@
 ---
 globs:
   - "apps/api/src/**/*.ts"
-  - "apps/web/src/**/*.ts"
-  - "apps/web/src/**/*.tsx"
+  - "apps/web/src/**/*.{ts,tsx}"
   - "packages/**/*.ts"
   - "*.{yml,yaml,json,xml,conf,config}"
   - "docker*"

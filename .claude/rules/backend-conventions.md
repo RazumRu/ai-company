@@ -4,6 +4,7 @@ globs:
   - "packages/**/*.ts"
   - "!**/*.spec.ts"
   - "!**/*.int.ts"
+  - "!**/*.cy.ts"
 ---
 
 # Backend Conventions
