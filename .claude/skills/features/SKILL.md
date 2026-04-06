@@ -1,147 +1,146 @@
 ---
 name: features
-description: "Manage the feature backlog. List all features with status, show next pending feature, mark features as complete, or update status. Features are stored in .claude/.artifacts/project-features/."
+description: "Lightweight feature backlog management. Track features with status, priority, complexity. List, prioritize, add, complete, and check progress without heavyweight PM tools."
+context: main
 model: haiku
-allowed-tools:
-  - Read
-  - Edit
-  - Glob
-  - Grep
-  - Bash
-argument-hint: "[list|next|complete <name>|status <name> <new-status>]"
+allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, AskUserQuestion]
+argument-hint: "[command: list|next|add|complete|status] [optional: id or description]"
 ---
 
-# Feature Backlog Manager
+# Features: Lightweight Backlog & Progress Tracking
 
-Manage the Geniro feature backlog stored in `.claude/.artifacts/project-features/`.
+Use this skill to manage a project feature backlog without heavyweight PM tools. Track features with status, priority, and complexity. Designed for rapid iteration and clear progress visibility.
 
-## Command
+## Core Commands
 
-$ARGUMENTS
+| Command | Usage | Purpose |
+|---------|-------|---------|
+| **list** | `/features list` | Show all features grouped by status (planned, in-progress, done, blocked) |
+| **next** | `/features next` | Show highest-priority unstarted feature ready for work |
+| **add** | `/features add [description]` | Add a new planned feature; auto-assigns next ID and priority |
+| **move** | `/features move [id] [status]` | Transition a feature's status (planned→in-progress→done, or blocked) |
+| **complete** | `/features complete [id]` | Mark feature as done; explain what was completed |
+| **status** | `/features status` | Quick summary: total, in-progress, done, blocked count |
 
-Parse the arguments to determine the action:
+## Data Format
 
-### `list` (or no arguments)
-
-List all features with their status, size, and creation date.
-
-```bash
-# Check if directory exists
-ls .claude/.artifacts/project-features/*.md 2>/dev/null
-```
-
-For each `.md` file found (excluding the `completed/` subdirectory), read the YAML frontmatter and extract:
-- `name`
-- `status` (draft, approved, in-progress, completed)
-- `size` (S, M, L)
-- `type` (feature, bugfix, refactor, task)
-- `created`
-- `updated`
-
-**Auto-archive misplaced completed features:** If any feature in the main directory has `status: completed`, it should have been moved but wasn't. Automatically fix this:
-1. Update `updated` to today's date if not already set
-2. Move the file:
-   ```bash
-   mkdir -p .claude/.artifacts/project-features/completed
-   mv .claude/.artifacts/project-features/<name>.md .claude/.artifacts/project-features/completed/<name>.md
-   ```
-3. Report: `Auto-archived <name> to completed/ (status was already 'completed')`
-
-Also check `.claude/.artifacts/project-features/completed/` for recently completed features.
-
-**Present as a formatted table:**
+Features stored in `.claude/.artifacts/planning/FEATURES.md`:
 
 ```
-## Feature Backlog
-
-| # | Name | Status | Size | Type | Created | Updated |
-|---|------|--------|------|------|---------|---------|
-| 1 | feature-name | approved | M | feature | 2026-02-24 | 2026-02-24 |
-| 2 | another-task | in-progress | S | task | 2026-02-23 | 2026-02-24 |
-
-## Recently Completed
-
-| Name | Size | Type | Completed |
-|------|------|------|-----------|
-| old-feature | L | feature | 2026-02-20 |
-
-To implement the next approved feature:
-  /implement feature: <name>
-
-To mark a feature as done:
-  /features complete <name>
-
-To create a new feature:
-  /spec <description>
+| ID | Description | Status | Priority | Complexity | Notes |
+|----|-------------|--------|----------|------------|-------|
+| F1 | Core auth system | done | P0 | XL | Shipped v1.0 |
+| F2 | Email notifications | in-progress | P1 | M | Needs SMTP config |
+| F3 | Admin dashboard | planned | P2 | L | Design pending |
+| F4 | Payment integration | blocked | P1 | XL | Blocked on legal review |
 ```
 
-If no features exist, show:
+**Fields:**
+- **ID**: Auto-incremented (F1, F2, F3...)
+- **Description**: One-sentence feature goal
+- **Status**: `planned` → `in-progress` → `done` (or `blocked` if stuck)
+- **Priority**: P0 (critical), P1 (high), P2 (medium), P3 (low)
+- **Complexity**: XS, S, M, L, XL estimate
+- **Notes**: Blockers, dependencies, or context
+
+## Workflow: Add → Track → Complete
+
+### 1. Add Feature
 ```
-No features in the backlog yet.
-
-Create one with: /spec <description>
+/features add Implement dark mode toggle in settings
 ```
+→ Creates new entry with status=planned, auto-assigns ID and priority
 
-### `next`
-
-Find the next feature ready for implementation:
-
-1. Read all `.md` files in `.claude/.artifacts/project-features/` (not `completed/`)
-2. Filter for `status: approved` (ready to implement)
-3. Sort by creation date (oldest first)
-4. Show the first match with its full spec
-
-If no approved features exist, check for `draft` features and suggest the user approve one.
-
+### 2. Track Progress
 ```
-## Next Feature Ready for Implementation
-
-**<feature-name>** (Size: M, Created: 2026-02-24)
-
-<show the Problem Statement and Requirements sections>
-
-To implement:
-  /implement feature: <feature-name>
+/features list                    # See all features
+/features next                    # What should I work on?
+/features status                  # Quick metrics
 ```
 
-### `complete <name>`
+### 3. Move Status
+```
+/features move F2 in-progress       # Start working on F2
+/features move F4 blocked            # Mark F4 as blocked
+```
+→ Updates the feature's status in the table. Valid transitions: `planned` → `in-progress` → `done` (or `blocked` at any stage).
 
-Move a feature to the completed folder:
+### 4. Complete & Mark Done
+```
+/features complete F2             # Mark F2 as done
+```
+→ Record what was shipped, move to done section
 
-1. Find `.claude/.artifacts/project-features/<name>.md`
-2. Update the YAML frontmatter:
-   - Set `status: completed`
-   - Set `updated: <today's date>`
-3. Move the file to `.claude/.artifacts/project-features/completed/<name>.md`:
-   ```bash
-   mkdir -p .claude/.artifacts/project-features/completed
-   mv .claude/.artifacts/project-features/<name>.md .claude/.artifacts/project-features/completed/<name>.md
-   ```
-4. Confirm:
-   ```
-   ✅ Feature "<name>" marked as completed and moved to .claude/.artifacts/project-features/completed/
-   ```
+**Note:** For detailed feature specs, use `/spec [description]`. Specs are stored as separate `*-spec.md` files in `.claude/.artifacts/planning/`.
 
-### `status <name> <new-status>`
+## Compliance — Do Not Over-Engineer
 
-Update a feature's status without moving it:
+| Your reasoning | Why it's wrong |
+|---|---|
+| "Let me add story points and velocity tracking" | Complexity kills adoption. One Markdown table, no databases. |
+| "We need a dependency graph first" | Dependency graphs are overhead. Use priority + blockers column instead. |
+| "I should optimize the backlog ordering" | Perfect ordering doesn't exist. Sort by priority, pick the top item, ship it. |
+| "Let me track this in a separate tool" | Features live in `.claude/.artifacts/planning/FEATURES.md`. One source of truth. |
+| "I'll update statuses in bulk later" | Status updates go stale fast. Update when work starts/finishes, not later. |
 
-1. Find `.claude/.artifacts/project-features/<name>.md`
-2. Valid statuses: `draft`, `approved`, `in-progress`, `completed`
-3. Update the `status` and `updated` fields in the YAML frontmatter using the Edit tool
-4. If new status is `completed`, also move to `completed/` subdirectory (same as `complete` command)
-5. Confirm the change
+## Definition of Done
 
-### `show <name>`
+For each skill invocation, confirm:
 
-Show the full spec for a specific feature:
+- [ ] Feature file (`.claude/.artifacts/planning/FEATURES.md`) exists and is readable
+- [ ] All features have ID, description, status, priority, complexity
+- [ ] Requested command executed (list/next/add/complete/status)
+- [ ] Output is clear and actionable
+- [ ] File updated if any changes made (add/complete)
+- [ ] Status transitions are valid (planned→in-progress→done, or blocked)
 
-1. Find `.claude/.artifacts/project-features/<name>.md` (check both active and completed dirs)
-2. Read and display the full content
-3. Show implementation instructions if status is `approved`
+---
 
-## Rules
+## When to Use This Skill
 
-- **Always check if the directory exists** before trying to read files. If `.claude/.artifacts/project-features/` doesn't exist, tell the user to create a feature first with `/spec`.
-- **Fuzzy name matching** — if the user types a partial name, try to match it (e.g., `thread` matches `thread-auto-naming.md`).
-- **Be concise** — this is a management tool, not an analyzer. Show formatted output quickly.
+**Use `/features`:**
+- Starting a project and need lightweight backlog
+- Tracking 5–50 features (not thousands)
+- Need quick visibility into what's done vs. blocked vs. planned
+- Team is 1–10 people (small enough for simple Markdown)
+- Want progress without PM overhead
+
+**Don't use:**
+- Complex multi-project portfolio management
+- Need inter-team dependency tracking
+- Tracking 100+ features (use Jira/Linear)
+
+---
+
+## Examples
+
+### List Features
+```
+/features list
+```
+→ Output grouped by status with IDs, descriptions, priority, complexity
+
+### Add Feature
+```
+/features add API rate limiting with token buckets
+```
+→ New entry: F5 | API rate limiting... | planned | P2 | M | Created today
+
+### Check What's Next
+```
+/features next
+```
+→ Show highest P-value unstarted feature with complexity estimate
+→ Includes routing hint: "Ready to spec this? `/spec [feature name]`"
+
+### Complete Feature
+```
+/features complete F3
+```
+→ Mark F3 as done, prompt for completion notes, update file
+
+### Status Snapshot
+```
+/features status
+```
+→ "Total: 12 | In-progress: 2 | Done: 5 | Blocked: 1 | Planned: 4"

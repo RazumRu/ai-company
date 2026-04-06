@@ -1,603 +1,411 @@
 ---
 name: implement
-description: "Full-stack feature implementation pipeline: requirements, architecture, implementation, review, test, validate, and ship. Takes a feature spec name or freeform description and drives it through the complete workflow with user gates. Use when implementing a feature, fixing a bug, or making changes that need the full engineering pipeline. Do NOT use for small tweaks or follow-ups after implementation (use /follow-up instead)."
+description: "Use when implementing a new feature, endpoint, page, or significant change that needs architecture review and multi-agent implementation."
+context: main
 model: inherit
-argument-hint: "[feature: <name> | next | feature description]"
+allowed-tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Glob
+  - Grep
+  - Agent
+  - AskUserQuestion
+  - TodoWrite
+  - WebSearch
+  - EnterWorktree
+  - ExitWorktree
+argument-hint: "[what to implement — description, Linear issue ID, or Linear URL]"
 ---
 
-# Geniro Implementation Orchestrator
+# Implement Skill: 7-Phase Pipeline Orchestrator
 
-You are the **Implementation Orchestrator** for Geniro. Your job is to take a feature spec or feature request and drive it through the full pipeline: **Context -> Setup -> Discovery -> Architecture -> Approval -> Implementation -> Validate -> Simplify -> Review -> Ship -> Finalize**.
+**You are a coordinator.** You delegate ALL implementation work to subagents. You do NOT read source files to diagnose errors, fix code, or verify logic yourself. You run shell commands (build, test, lint) and read their output to determine pass/fail. When something fails, you forward the raw error output to a fixer agent. The fixer agent has fresh context and will diagnose faster than you.
 
-Phases marked **(WAIT)** require user input before proceeding.
+**The ONLY code you write directly:** Phase 4 Step 5 hotspot micro-edits (1-2 line registrations in routing/config/barrel files). Everything else is delegated.
 
-## Feature Request
+**PHASES:**
+1. Discover (WAIT) — eliminate ambiguity, produce spec
+2. Architect + Validate — architect proposes, skeptic validates
+3. Approval (WAIT) — present plan, user confirms before coding starts
+4. Implement (delegated) — backend/frontend agents execute scope
+5. Simplify (delegated) — simplify agent cleans changed files, revert if CI breaks
+6. Review & Validate (delegated) — spec compliance agent, 5 reviewer agents, fix loops
+7. Ship & Finalize (WAIT) — finalize (docs, learnings, improvements), then ship decision + commit
 
-$ARGUMENTS
-
-**If `$ARGUMENTS` is empty**, ask the user via `AskUserQuestion` with header "Task": "What would you like to implement?" with options "Feature from backlog" / "Describe the feature". Do not proceed until a task is provided.
-
-## Orchestrator Role
-
-Delegate code writing to subagents (`api-agent`, `web-agent`, `reviewer-agent`). The orchestrator runs validation commands (full-check, codegen, lint, git) and manages state directly. Never implement code changes yourself — always delegate to an implementer agent, regardless of task size.
-
-## User Interaction
-
-Use `AskUserQuestion` for all user-facing questions. Formulate 2-4 options with short labels and descriptions. The tool auto-adds an "Other" option for custom input.
-
-## Agent Failure Handling
-
-If any delegated agent fails (timeout, error, empty/garbage result): retry once with the same prompt. If the retry also fails, escalate to the user with the error context and ask whether to skip that step, try a different approach, or abort the pipeline.
-
-## Codegen Rule
-
-After any step that modifies `.dto.ts` or `.controller.ts` files, run `pnpm --filter @geniro/web generate:api` before proceeding to the next phase or step. This prevents stale API client types from causing downstream failures.
-
-## Resumability
-
-If the pipeline is interrupted, the user re-runs `/implement` with the same arguments. The Context Phase detects existing work via git (branch, commits, changed files, spec file on disk) and picks up where things left off.
-
-**Full pipeline:** Context -> Setup -> Discovery -> Architecture -> Approval -> Implementation -> Validate -> Simplify -> Review -> Ship -> Finalize.
-**Fast-path:** Context -> Setup -> Implementation -> Validate -> Review -> Ship -> Finalize (skip Discovery, Architecture, Approval, Simplify).
+**Reference material** (templates, examples, error tables): Read `${CLAUDE_SKILL_DIR}/implement-reference.md` when you reach each phase. Do NOT load the entire file upfront — read the relevant section at the relevant phase.
 
 ---
 
-## Context Phase
+## Task Directory
 
-### Step 1: Resolve the Task
+```
+.claude/.artifacts/planning/<branch-name>/
+```
 
-**Auto-detect input type from `$ARGUMENTS`:**
-- Starts with `feature:` -> load that feature spec from `.claude/.artifacts/project-features/<name>.md`
-- Equals `next` -> find next approved feature (read all `.md` files in `.claude/.artifacts/project-features/`, filter for `status: approved`, pick the oldest by `created` date)
-- Otherwise -> treat as freeform description, use directly
+Derive `<branch-name>` from git branch. Create at start of Phase 1. All artifacts go here: `spec.md`, `state.md`, `notes.md`, `concerns.md`, `review-feedback.md`, `plan-<slug>.md`.
 
-**Feature from backlog** (`feature: <name>` or `next`):
-If a feature spec is found:
-1. Read the full spec from `.claude/.artifacts/project-features/<name>.md`
-2. Update YAML frontmatter: set `status: in-progress` and `updated: <today's date>`
-3. Use the spec content as the feature request for the rest of the pipeline
-4. Remember the feature file path for archiving in Ship phase
+## State Persistence & Phase Checkpoints
 
-If `next` and none found: "No approved features. Create one with `/spec` or pass a description directly."
+**After completing each phase, write a checkpoint to `<task-dir>/state.md`:**
+```
+Phase [N] completed: [phase name]
+Completed phases: [1, 2, ..., N]
+Next phase: [N+1]
+Key decisions: [brief list]
+Files changed: [count or list]
+```
 
-### Step 2: Context Pre-Hydration
-
-1. Check current state: branch, recent commits, working tree status.
-2. **Detect prior work:** Check if a feature branch already exists with commits, if a spec file exists at `.claude/.artifacts/spec-*.md`, and if implementation files are already present. If prior work is detected, summarize what's already done and ask the user whether to continue from where things left off or start fresh.
-
-### Step 3: Identify Key Files & Research
-
-Infer a **scope hint** from the task description:
-- Mentions entities, endpoints, services, migrations, DTOs -> API
-- Mentions pages, components, hooks, UI, routes -> Web
-- Both or unclear -> API + Web
-
-Delegate to an `Explore` subagent (use `subagent_type: "Explore"` with the Agent tool) with the scope hint and these goals:
-1. **Key files**: Focus search on the hinted scope (API: `apps/api/`, Web: `apps/web/`). Derive specific search patterns from the task context — module names, entity names, route paths.
-2. **Gap analysis**: Check if this task (or something similar) was already implemented, partially started, or has related code that should be reused.
-3. **Fast-path assessment**: Assess whether this task qualifies for fast-path based on complexity, scope, and risk. Look for patterns in how similar tasks were handled in the codebase.
-
-Save the returned file paths as `## Key Files`, research findings as `## Research Context`, and fast-path assessment as `## Fast-Path Assessment` for downstream use.
-
-**-> Proceed to Setup.**
+This creates a forced pause before moving on. Read `state.md` on skill start — if it exists, resume from the next incomplete phase.
 
 ---
 
-## Setup Phase (WAIT)
+## Mid-Flow User Input
 
-### Step 1: Complexity Check + Scope Detection
+When the user sends a message while the pipeline is running (not at a WAIT gate), **do not stop or restart**. Classify and handle:
 
-Assess the task against fast-path criteria (using both the explorer's `## Fast-Path Assessment` from Context Phase and the signals below) and determine scope. Check for **full-pipeline signals first**, then evaluate overall complexity. File count is a supporting signal, not the primary gate.
+| Type | Signal | Action |
+|---|---|---|
+| **Note/context** | Informational | Append to `<task-dir>/notes.md`, continue |
+| **Preference** | Soft direction | Append to `<task-dir>/notes.md`, apply at next decision point |
+| **Correction** | Changes a past decision | Append to `<task-dir>/notes.md`, evaluate impact at next checkpoint |
+| **Blocker** | Makes current work invalid | Halt immediately, go to impact assessment |
 
-#### Full-Pipeline Signals (any ONE requires full pipeline with Discovery + Architecture)
-
-| Signal | Why it needs architecture |
-|--------|--------------------------|
-| **New entity, table, or migration** | Irreversible schema change, requires data model design |
-| **New API endpoint or new page/route** | Cross-stack coordination, OpenAPI spec change, auth decisions |
-| **Auth, permissions, or role changes** | Infinite blast radius, failure mode is invisible |
-| **New module or module layer promotion** | Architectural decision about dependency graph and public API |
-| **Open-closed principle violation** | Modifies existing behavior for all users, needs rollback strategy |
-| **3+ modules coordinated** | Distributed-transaction-level coordination, needs a spec |
-| **New async/queue work** (BullMQ jobs, event handlers) | Runtime failure modes not caught by full-check |
-| **New external integration or new env vars** | Cross-cutting infra work |
-| **Ambiguous intent** — multiple valid design approaches | Needs Discovery phase to resolve before implementation |
-| **Complex business logic** — state machines, multi-step algorithms, eligibility rules | Inherent cyclomatic complexity that degrades agent quality without a spec |
-
-#### Fast-Path Criteria (all must be true — no full-pipeline signal present)
-
-- No full-pipeline signal from the table above
-- Modifies existing endpoints/pages/fields only (no new ones)
-- Within 1-2 modules
-- Logic change is clear and bounded
-- Intent is unambiguous from the task description
-
-**File count is a smell detector, not a complexity detector.** A 2-file change that adds a new entity needs full pipeline. A 7-file change that propagates an existing filter through DTO -> service -> query -> web hook -> test may qualify for fast-path. When file count is high, ask "why?" — the answer contains the actual complexity signal.
-
-If the explorer's assessment disagrees with the signal-based criteria, include both perspectives in your recommendation to the user — they make the final call.
-
-**Scope detection** — determine which areas this task touches (can be multiple):
-- **API**: changes in `apps/api/` (entities, endpoints, services, DTOs)
-- **Web**: changes in `apps/web/` (pages, components, hooks, routes)
-
-Common combinations: API-only, Web-only, API + Web (full-stack). When both API and Web are selected, API tasks run first -> codegen -> Web tasks.
-
-The user always makes the final call on both pipeline and scope.
-
-### Step 2: Present All Setup Questions
-
-Use a single `AskUserQuestion` call with multiple questions to minimize friction:
-
-1. **Pipeline** (header "Pipeline"): Recommend based on criteria assessment. Options: "Full pipeline" / "Fast-path" / "Adjust"
-2. **Scope** (header "Scope", **multiSelect: true**): Recommend based on detection. Options: "API" / "Web"
-3. **Workspace** (header "Workspace"): **Always present all 3 options:** "New branch" / "Worktree" / "Current branch". Recommendation logic: if `git status` shows uncommitted changes or user is on a feature branch with in-progress work, recommend "Worktree (Recommended)" — it preserves current work in an isolated copy. Otherwise recommend "New branch (Recommended)". **Safety check:** If user picks "Current branch" and `git status` shows uncommitted changes, warn: "You have uncommitted changes that may conflict with implementation work. Consider stashing first or using a worktree." Let them proceed if they confirm.
-
-After answers: create branch or enter worktree (`EnterWorktree`) as chosen.
-
-### Step 3: Scope Correction (conditional)
-
-If the user-confirmed scope differs from the explorer's scope hint in Context Phase Step 3, re-run the `Explore` subagent scoped to the newly-relevant side of the stack. This catches dependencies, patterns, and gaps that a simple file search would miss. Merge the returned findings into `## Key Files` and `## Research Context`. If the explorer surfaces new questions or ambiguities, present them to the user via `AskUserQuestion` before proceeding.
-
-**-> Proceed to Discovery (full pipeline) or Implementation (fast-path).**
+At the next phase checkpoint, read `notes.md` and assess: (1) no impact -> continue, (2) affects future phases -> update spec, continue, (3) invalidates current output -> backtrack to affected phase only.
 
 ---
 
-## Discovery Phase (conditional WAIT)
+## PHASE 1: DISCOVER
 
-Adaptive questioning -- discover what's unclear, confirm key decisions, stop when you have enough to architect.
+**Purpose:** Eliminate gray areas, produce executable spec.
 
-### Step 1: Context Scan + Gray Area Analysis
+**Action:** Read `${CLAUDE_SKILL_DIR}/implement-reference.md` section "Phase 1: Auto-Detection Table" for argument parsing rules.
 
-Before asking anything, explore the codebase (Glob/Grep) to understand: which modules/files the task touches, what patterns exist, what data model changes might be needed, what's clear vs ambiguous.
+**Steps:**
+1. **Parse `$ARGUMENTS`.** Detect Linear reference, mode signals, extract core description. If Linear issue detected: fetch via MCP, update status to "In Progress".
+2. **Retrieve prior knowledge.** Spawn `knowledge-retrieval-agent` with task keywords. It searches learnings, sessions, debug history, and planning docs.
+3. Scan codebase for relevant patterns, conventions, architecture
+4. **Convention Discovery:** Read README, CONTRIBUTING, ADRs. Find 2-3 exemplar files closest to the change area. Capture in CONVENTIONS_BRIEF section within spec file.
+5. Identify ambiguities and gray areas
+6. **MANDATORY: Resolve gray areas.** You MUST stop here and ask the user questions before proceeding. Do NOT synthesize the spec without user input first.
+   - **Interactive (default):** Use `AskUserQuestion` with 2-4 options each, recommend default
+   - **Auto mode:** Pick recommended defaults, log choices in spec
+   - **Assumptions mode:** Propose plan, let user correct
+   - **Include git workspace question** in this batch (new branch / current branch / worktree)
+7. Synthesize into spec document (only AFTER step 6). Write to `<task-dir>/spec.md`
+8. Document assumptions in spec file
+9. **Git workspace setup** — execute user's choice from step 6
 
-Group ambiguities by topic: scope boundaries, data model, API surface, UI behavior, edge cases, integration, migration/compatibility.
+**Outputs:** spec.md, affected files list, Definition of Done
 
-### Step 2: Present Gray Areas or Auto-Proceed
-
-**If no gray areas found** (task description + codebase patterns resolve everything): auto-proceed to Architecture. Output a brief "No ambiguities found -- proceeding to architecture" message.
-
-**If gray areas found:** Present via `AskUserQuestion` with header "Discovery". For each gray area, include a proposed answer based on codebase patterns. The user confirms, adjusts, or provides a different answer (the tool auto-adds an "Other" option for custom input). If more than 4 gray areas, chunk into batches of 4 questions per `AskUserQuestion` call (the tool supports max 4 questions).
-
-Answering gray areas IS the confirmation -- no separate "Confirm & Lock" step. After the user responds, proceed directly to Architecture.
-
-**Scope creep guardrail:** If user introduces new capability (not a clarification), note it as a deferred idea for the Ship summary, and redirect to current scope. If the user insists on expanding scope, ask: "Should we expand scope and re-run Setup to re-assess pipeline and scope?" If yes, go back to Setup Phase with the expanded requirements.
-
-### Step 3: Final Confirmation (WAIT)
-
-Before handing off to Architecture, present a concise summary of all accumulated decisions:
-
-1. **Task**: what we're building (one sentence)
-2. **Scope**: selected areas (API / Web)
-3. **Pipeline**: Full / Fast-path
-4. **User decisions**: list every gray area question and the user's chosen answer verbatim (e.g., "Which filters to expose? -> Enum filters + date range", "Where should the new field appear? -> Below the existing cards"). Include ALL answers — these are the requirements the architect will design against.
-5. **Constraints**: anything that limits the approach
-
-`AskUserQuestion` with header "Confirm":
-- "Looks good -- proceed to Architecture"
-- "Need to adjust" -- user describes changes
-
-If user adjusts: re-check whether the adjustment introduces new ambiguities. If so, re-ask via `AskUserQuestion`. Loop until confirmed. If adjustments change the scope or pipeline, go back to Setup Phase Step 2.
-
-**-> After confirmation, proceed to Architecture.**
+**Checkpoint:** Write to `<task-dir>/state.md`: "Phase 1 completed."
 
 ---
 
-## Architecture Phase
+## PHASE 2: ARCHITECT & VALIDATE
 
-Required for full pipeline. Don't skip or write an inline plan yourself.
+**Purpose:** Produce full implementation plan, validate it.
 
-### Step 1: Architecture (Architect Agent)
+**Action:** Spawn architect-agent.
 
-Create `.claude/.artifacts/` if needed, then delegate to `architect-agent` with:
-- Full task description + confirmed requirements from Discovery
-- Constraints identified during discovery
-- Key files from Context phase
-- Scope (selected areas: API / Web) -- architect skips irrelevant sections
-- Instruction to write the spec to `.claude/.artifacts/spec-<task-name>.md`
+**Pre-check:** Look for existing approved plan (glob `plan-*.md`, check staleness). If user provided a plan in $ARGUMENTS, parse it directly.
 
-The architect already knows its output format and methodology. Let it produce a full architecture proposal and write it to disk.
+1. Read `.claude/skills/plan/plan-criteria.md` for plan structure
+2. **Spawn architect-agent** with spec + plan criteria + relevant codebase files (pre-inlined)
+3. **Spawn skeptic-agent** with plan + spec. Explicit instruction: "Write report to `<task-dir>/concerns.md`"
+4. If NEEDS REVISION: route back to architect. Max 3 iterations.
 
-After the architect completes, verify the spec file exists and is non-empty. If missing or empty, retry the architect once. If the retry also fails, follow the Agent Failure Handling rule.
-
-### Step 2: Spec Validation Gate (Skeptic)
-
-Delegate to `skeptic-agent` with the spec file path and the original task description.
-
-**Processing:**
-- Skeptic mirages or dropped requirements -> route to `architect-agent` with the report. Re-run skeptic. Max 2 rounds.
-- Skeptic passes -> proceed.
-
-The reviewer agent covers security concerns during code review.
-
-**-> After validation passes, proceed to Approval.**
+**Checkpoint:** Write to `<task-dir>/state.md`: "Phase 2 completed. Plan: <filename>. Skeptic: PASS."
 
 ---
 
-## Approval Phase (WAIT)
+## PHASE 3: APPROVAL (WAIT)
 
-Present the architect's specification as a detailed summary (read from the spec file). The user needs enough context to make an informed approval decision without reading the full spec:
+**Purpose:** Present plan to user for approval.
 
-1. **What we're building** -- 2-3 sentence summary of the feature/change
-2. **Implementation tasks** -- numbered list of discrete implementation tasks from the spec, each with a one-line description of what it does (e.g., "1. Add filter params to message hooks — extends useMessages with enum + date range filters")
-3. **Per-task file changes** -- for each task, list the files that will be created or modified with a short note on what changes in each
-4. **Key decisions & trade-offs** -- architectural choices made (e.g., "Filter state local not URL", "Events lazy-loaded on expand")
-5. **User decisions carried forward** -- the gray area answers from Discovery that shaped this architecture
-6. **Risk assessment** -- scope, confidence, rollback strategy
-7. **Validation summary** -- "N claims verified, 0 mirages." (or list issues)
+**Action:** Read and present the full plan file (do NOT summarize).
 
-`AskUserQuestion` with header "Approval":
-- "Yes -- start building"
-- "No -- different approach"
+1. Read plan from `<task-dir>/plan-<slug>.md`
+2. Present complete plan content to user
+3. Add metadata: plan location, skeptic verdict
+
+**Gate:** Use `AskUserQuestion`:
+- A) **Approve — start building**
+- B) **Adjust** — user describes changes
+- C) **Too large — split** — decompose into smaller pieces
+
+**Routing:** Approve -> Phase 4. Adjust -> architect revises, re-validate, re-present. Too large -> help decompose.
+
+**After approval:** Add remaining phases to TodoWrite checklist:
+- Phase 4: Implement — decompose into WUs, execute waves
+- Phase 5: Simplify — spawn simplify agent on changed files
+- Phase 6: Review & Validate — automated checks, spec compliance, code quality
+- Phase 7: Ship & Finalize — finalize (docs, learnings), then ship decision
+
+**Checkpoint:** Write to `<task-dir>/state.md`: "Phase 3 completed. Plan approved."
+
+**Strategic compact point:** All discovery, architecture, and validation context is now captured in files (spec.md, plan.md, concerns.md, state.md). Phases 1-3 consumed significant context that Phase 4 agents don't need — they get fresh context with pre-inlined files. Tell the user:
+
+> "All planning artifacts are saved. Before starting implementation, I recommend compacting to free context: type `/compact` then say 'continue'. This improves quality for Phases 4-7. (Optional — you can also just continue.)"
+
+If the user compacts: after compaction, read `<task-dir>/state.md` to resume, then re-read the SKILL.md for phase instructions.
+
+If the user says "continue" or proceeds without compacting: continue normally to Phase 4.
+
+---
+
+## PHASE 4: IMPLEMENT
+
+**Purpose:** Execute architecture with parallel agents.
+
+**Action:** Decompose plan into Work Units, arrange into waves, spawn agents.
+
+Read `${CLAUDE_SKILL_DIR}/implement-reference.md` sections "Phase 4: Decomposition Example", "Phase 4: Agent Delegation Template", and "Phase 4: Error Handling" for templates and examples.
+
+### Step 1: Decompose into Work Units (WUs)
+
+Read the plan's steps and group into WUs — clusters of tightly coupled files. Each WU gets its own agent.
+
+**Rules:**
+- Every plan step must be assigned to a WU. No step is "too small" to delegate.
+- WU = 1-5 tightly coupled files. 6+ files -> split further.
+- **Each WU that creates or modifies source files MUST include corresponding test files in its scope.** If the plan lists `auth.service.ts`, the WU scope must also list `auth.service.test.ts` (or equivalent). No source file without its test file.
+- Files in different WUs must be independently changeable
+- Hotspot files (routing, config, barrel exports) -> LAST wave
+- Each WU needs a clear Definition of Done (including: "tests written and passing for all new/changed logic")
+
+**Scope-aware ordering:** Backend first -> codegen -> frontend. Never parallel when types flow between stacks.
+
+**When NOT to decompose:** Total change <=3 files -> single agent. **Still delegate even without decomposition.** 1 WU = 1 agent, NOT "orchestrator does it directly."
+
+### Step 2: Arrange into Waves
+
+- **Wave 1:** WUs with no dependencies (all parallel)
+- **Wave N:** WUs depending on prior waves
+- **Hotspot wave (last):** Orchestrator micro-edits only
+- Max 4-5 agents per wave. All spawned in a single message.
+- Same-stack agents MUST work on non-overlapping files
+
+### Step 3: Execute waves
+
+For each wave:
+1. **Spawn all WU agents in a single message** (use delegation template from reference file — it includes a mandatory `## Tests` section. Do NOT omit it.)
+2. **Collect results** — each agent must report: files created/modified, tests created/modified, test results
+3. **Quick gate** (build + test) — pass/fail only. If fails, forward raw error output to fixer agent.
+4. **Start next wave**
+
+### Step 4: Hotspot files (orchestrator micro-edits only)
+
+Strictly limited to 1-2 line registrations. If >3 lines or any logic -> delegate to subagent.
+
+### Step 5: Post-wave validation
+
+- Run **build + test** — pass/fail gate only. Do NOT include lint (Phase 5 handles that).
+- If fails, forward raw error output to fixer agent.
+
+### Step 6: Test creation verification
+
+**Action:** Check that tests were actually created for new/changed source files.
+
+1. Get the list of changed source files: `git diff --name-only main...HEAD | grep -v test | grep -v spec | grep -v node_modules`
+2. For each new source file, verify a corresponding test file exists (same directory or `__tests__/` directory, matching the project's test file naming convention)
+3. If any source file is missing tests, spawn a fixer agent with:
+   - The source file contents (pre-inlined)
+   - The nearest existing test file as an exemplar pattern
+   - Instruction: "Write tests for this file following the exemplar pattern"
+4. Re-run tests after fixer completes
+
+**Skip test verification for:** config files, migrations, type-only files, barrel/index files, CSS/style files.
+
+**Anti-rationalization:**
+| Your reasoning | Why it's wrong |
+|---|---|
+| "The implementation agents already wrote tests" | Verify, don't trust. Check the file system. Agents skip tests under context pressure. |
+| "Tests will be caught by Phase 6 reviewers" | Phase 6 reviews test QUALITY. Phase 4 must ensure tests EXIST. Don't defer creation to review. |
+| "This code is too simple to need tests" | Every new source file gets tests. Simplicity is not an exemption — simple code is the easiest to test. |
+| "I'll write the tests myself to save time" | You are an orchestrator. Spawn a fixer agent. |
+
+**Checkpoint:** Write to `<task-dir>/state.md`: "Phase 4 completed. Waves: N. Files changed: [list]. Test files created: [list]."
+
+---
+
+## PHASE 5: SIMPLIFY
+
+**Purpose:** Code quality pass on changed files — catch AI-generated anti-patterns.
+
+**Action:** Spawn simplify agent. Read `${CLAUDE_SKILL_DIR}/implement-reference.md` section "Phase 5: Simplify Agent Template" for the agent prompt.
+
+### Step 1: Spawn simplify agent
+
+Read `.claude/skills/deep-simplify/simplify-criteria.md`. Spawn a **general-purpose** subagent with `model: "sonnet"` using the template from the reference file. Pre-inline the criteria and the changed file list.
+
+### Step 2: Verify after simplification
+
+1. Run lint/format fix
+2. Run build + lint + test
+3. **If checks fail:** revert simplification (`git checkout -- .`), note "Simplification skipped — caused CI failures." Proceed to Phase 6.
+
+**Anti-rationalization:**
+| Your reasoning | Why it's wrong |
+|---|---|
+| "The code is already clean enough" | AI-generated code almost always has over-abstraction or verbose patterns. Run the check. |
+| "Simplification might break things" | That's why we run checks after. If it breaks, we revert. Zero risk. |
+| "Let me run CI first (Stage A), then decide on simplification" | Phase 5 comes BEFORE Phase 6. Simplify first, validate after. Do NOT merge or reorder phases. |
+
+**Checkpoint:** Write to `<task-dir>/state.md`: "Phase 5 completed. Simplify agent ran. Post-simplify verification: PASS/REVERTED."
+
+---
+
+## PHASE 6: REVIEW & VALIDATE
+
+**Purpose:** Single quality gate — verify code compiles, passes tests, meets spec, and is well-written.
+
+**Action:** Run Stage A checks, then spawn Stage B agent, then spawn Stage C agents.
+
+Read `${CLAUDE_SKILL_DIR}/implement-reference.md` sections "Phase 6: Stage A", "Phase 6: Stage B", "Phase 6: Stage C", and "Phase 6: Fix Loop" for detailed procedures and templates.
+
+**Three stages, run in order:**
+
+### Stage A — Automated Checks
+
+Run autofix, full check (build + lint + test), codegen check, runtime startup check. If any fails, forward raw error output to fixer agent. Max 2 attempts, then continue to Stage B with failures noted.
+
+**Checkpoint:** Update `<task-dir>/state.md`: "Phase 6 Stage A completed."
+
+### Stage B — Spec Compliance
+
+**Action:** Spawn spec-compliance subagent using the template from the reference file. Pre-inline spec, plan, changed files.
+
+Read `<task-dir>/compliance.md` after agent completes. If any requirement unmet -> route to Phase 4 implementer. Max 2 rounds.
+
+**Checkpoint:** Update `<task-dir>/state.md`: "Phase 6 Stage B completed. Compliance: PASS."
+
+### Stage C — Code Quality
+
+**Action:** Spawn 5 parallel reviewer agents in a single message (bugs, security, architecture, tests, guidelines). Use templates from reference file.
+
+Aggregate findings. Drop Medium. Pass CRITICAL/HIGH to fix loop. Write `<task-dir>/review-feedback.md`.
+
+**Fix loop:** Max 3 rounds. Spawn NEW fixer + FRESH reviewers each round (anchoring bias). After 3 rounds, present handoff to user.
+
+**Checkpoint:** Update `<task-dir>/state.md`: "Phase 6 completed. All stages passed."
+
+---
+
+## PHASE 7: SHIP & FINALIZE (WAIT)
+
+**Precondition — do NOT enter Phase 7 until ALL of these are true:**
+- Phase 5 completed — check `state.md` for "Phase 5 completed"
+- Phase 6 Stage A completed — check `state.md`
+- Phase 6 Stage B completed — check `state.md`
+- Phase 6 Stage C completed — check `state.md`
+
+If any is missing, go back and complete it. Do NOT skip phases.
+
+### PART A: FINALIZE (Steps 1-4 — runs automatically, no user input needed)
+
+These steps run BEFORE presenting the ship decision. They cannot be skipped.
+
+**Step 1: Update Docs** — Check if existing docs need patching. Delegate if needed, skip silently if not. See reference file for details.
+
+**Step 2: Extract Learnings** — Scan conversation for corrections, gotchas, decisions. Save to learnings.jsonl and/or memory. Write session summary. See reference file for signal table.
+
+**Step 3: Suggest Improvements** — Analyze pipeline run for harness improvements (rules gaps, skill gaps, agent prompt gaps). Draft changes. See reference file for details.
+
+**Step 4: Present Summary**
+
+1. **Features implemented** (list)
+2. **Files changed** (grouped by area: backend/frontend/tests/config)
+3. **Tests added/modified**
+4. **Review feedback addressed** (count of issues fixed)
+5. **Validation results** (lint, build, test, startup, codegen — pass/fail each)
+6. **Learnings extracted** (count, or "none")
+7. **Deferred ideas** (if any)
+
+### PART B: SHIP DECISION (Steps 5-8 — interactive)
+
+### Step 5: Ship Decision (WAIT)
+
+Use `AskUserQuestion` (max 4 options). The user can always type a custom response via "Other" (e.g., "review diff first", "leave uncommitted"):
+- A) **Commit + PR** — commit, push, and create a pull request via `gh pr create`
+- B) **Commit + push** — commit and push to remote (`git push origin [branch]`)
+- C) **Commit only** — stage and commit on current branch with conventional commit message
+- D) **Minor tweaks needed** — small adjustments before shipping (I'll describe)
 
 **Routing:**
-- **"Yes"** -> proceed to Implementation
-- **"No"** -> ask what to change. Route feedback to `architect-agent` for revision, then re-run `skeptic-agent` validation on the updated spec, then re-present for approval. Soft limit: after 3 rounds, suggest starting fresh with the Architecture Phase. Non-blocking — user can continue if they want.
+- **A, B, C** -> proceed to Step 7 (Commit)
+- **D** -> proceed to Step 6 (Adjustment Routing)
+- **"Review diff"** (via Other) -> show diff, loop back to Step 5
+- **"Leave uncommitted"** (via Other) -> skip commit, proceed to Step 8 (Cleanup)
 
-**-> After approval, proceed to Implementation.**
+### Step 6: Adjustment Routing (if user chose D)
 
----
+| Size | Signal | Action |
+|---|---|---|
+| **Big** | Changes to data model, API contract, new endpoints | Re-run architect -> skeptic -> Phase 3 |
+| **Medium** | New logic, additional fields | Assess scope, delegate to implementer |
+| **Small** | Styling, typo, logic tweak | Delegate to implementer, re-run Stage A |
 
-## Implementation Phase
+After adjustment: re-run codegen if applicable, re-run full check, **loop back to Step 4** (re-present summary).
 
-### Step 1: Decompose Into Tasks
+**Soft limit:** After 3 tweak rounds, suggest `/follow-up` for remaining changes.
 
-Read the spec file (full pipeline) or task description + Context phase findings (fast-path) and break into discrete tasks (1-2 per agent), each a vertical slice with a clear verify step. Agent quality degrades after 2 tasks as context fills up.
+### Step 7: Commit
 
-If more than 2 tasks per side (API/Web), plan sequential agents -- each agent gets 1-2 tasks and reads the previous agent's summary for alignment.
+Execute user's chosen method. See reference file for commit details per option.
 
-**Scope-aware decomposition:** Only create tasks for the selected scope areas. When both API and Web are selected, create API tasks first.
+### Step 8: Worktree Exit + Linear Update + Cleanup
 
-### Step 2: Execute Tasks
+- **Worktree:** If in worktree, call `ExitWorktree` to merge back
+- **Linear:** Update issue status based on ship choice
+- **Cleanup:** Kill orphaned processes (startup checks, dev servers). Remove temp files.
+- **Planning artifacts:** Ask the user what to do with `<task-dir>/`:
 
-**Wave-based execution:** Run API tasks first -> run codegen check (see Codegen Rule) -> Run Web tasks. Skip waves that don't apply to the current scope.
+`AskUserQuestion` with header "Planning artifacts":
+- "Keep" — useful if you plan to run `/follow-up` on this branch (follow-up loads these for context)
+- "Delete" — implementation is complete, no further changes expected
 
-For each task, delegate to a fresh `api-agent` or `web-agent` using this template:
+If "Keep": leave `<task-dir>/` as-is (it's already in `.gitignore`).
+If "Delete": remove `<task-dir>/` recursively.
 
-```
-## Task
-[One specific task description — what to build, not the full list]
-
-## Spec
-Read the full architecture at: [spec file path]
-(Fast-path: omit this section; include task context inline under ## Task instead)
-
-## Key Files
-[List of file paths the agent should read for context]
-
-## Acceptance Criteria
-[Grep-verifiable checks — e.g., "Grep for 'NewService' in new.module.ts exports"]
-
-## Tests
-Write tests alongside your implementation:
-- API: unit tests (`*.spec.ts`) next to the source for isolated logic, integration tests (`*.int.ts`) in `src/__tests__/integration/` for DAO/service/query logic
-- Web: component/hook tests next to the source
-Follow patterns from nearby existing test files. Extend existing specs — don't rewrite.
-
-## Prior Agent Summary
-[Include only when this agent follows a previous agent in a sequential chain]
-```
-
-**Partial failure:** Keep successful work. Re-delegate only the failed task, including successful agent's summary for alignment.
-
-**For Web tasks with UI-visible changes** (new pages, component changes, layout):
-- Playwright visual verification for UI-visible changes
-- Log in with test account: `claude-test` / `claude-test-2026`
-- NEVER modify existing entities — create NEW test entities, delete when done
-
-### Step 3: Completion Gate
-
-1. **Artifact check:** Full pipeline: confirm new/modified files match the spec's implementation plan. Fast-path: confirm files match task description expectations (git diff to see what changed vs what was requested).
-2. **Verify-step check:** Confirm each agent report includes verify-step results (from the spec's per-task verify commands). If missing, re-prompt: "Run the verify command from your task spec and report results."
-
-**-> Proceed to Validate.**
+**Anti-rationalization:**
+| Your reasoning | Why it's wrong |
+|---|---|
+| "Skip learning extraction, it takes too long" | Learnings make future sessions faster. Part A runs automatically — you cannot skip it. |
+| "Skip doc updates, they're boring" | Doc drift is the #1 source of confusion in future sessions. |
+| "The user said 'just finish' so skip finalize" | Part A (finalize) runs BEFORE the ship decision. It is not optional regardless of user urgency. |
+| "Implementation is done, the user can test it" | Phase 4 is one of 7 phases. Follow the pipeline to completion. |
+| "I'll skip review since the agents already tested" | Agent self-reports are unreliable. Phase 6 exists to catch what agents miss. |
 
 ---
 
-## Validate Phase
+## TASK EXECUTION
 
-**Gate:** Implementation completion gate passed.
+0. **Check for existing state.** Glob for `<task-dir>/state.md`. If found, resume from next incomplete phase.
 
-### Step 1: Run Full Validation
+1. Take user's description: `$ARGUMENTS`
+2. **Create TodoWrite checklist** (planning phases only — implementation phases added after Phase 3 approval):
+   - Phase 1: Discover
+   - Phase 2: Architect & validate
+   - Phase 3: Approval
+   Mark Phase 1 as `in_progress`. Update status as each phase completes.
+3. Begin Phase 1 (Discover)
 
-Run `pnpm run full-check` with a 10-minute Bash timeout, saving output for analysis:
+**Token conservation — delegate ALL implementation work:**
+The orchestrator's job is to coordinate, not to code. Every line of code the orchestrator writes wastes expensive context. Delegate ALL work to subagents — including deletions, cleanups, "simple" edits. If you catch yourself thinking "I'll just do this directly since it's simple" — that's the rationalization. Spawn an agent.
 
-```bash
-pnpm run full-check 2>&1 | tee /tmp/ci-output.log | tail -80
-```
-
-To search the saved output later (use Bash, Grep, or Read tool on `/tmp/ci-output.log`):
-```bash
-grep -i "error\|fail" /tmp/ci-output.log | head -20
-```
-
-**This pattern applies to ALL long-running commands** — always `tee` to a temp file, then analyze the file. Never re-run the command just to search its output differently.
-
-Review the last 80 lines for pass/fail status. If full-check times out, run the steps separately (`pnpm build`, `pnpm build:tests`, `pnpm lint:fix`, `pnpm test:unit`) to isolate the slow step.
-
-### Step 2: Codegen Check
-
-Only if DTOs or controllers changed:
-
-```bash
-git diff --name-only "$(git merge-base HEAD origin/main)"...HEAD | grep -E '\.(controller|dto)\.ts$' | head -5
-```
-
-If matches found:
-```bash
-pnpm --filter @geniro/web generate:api
-```
-
-Then re-run `pnpm run full-check` to verify codegen didn't break anything.
-
-### Step 3: Runtime Startup Check
-
-After full-check passes, verify the app can actually boot. Only start whichever side was changed (scope-aware).
-
-**API** (if API scope): Run `PORT=4200 pnpm --filter @geniro/api start:dev` in background. Wait 15 seconds, then check the output for errors (NestJS DI failures, missing providers, env validation crashes). Kill the process afterward (`lsof -ti :4200 | xargs kill 2>/dev/null || true`).
-
-**Web** (if Web scope): Run `PORT=4201 pnpm --filter @geniro/web dev` in background. Wait 15 seconds, then check the output for compilation errors or runtime crashes. Kill the process afterward (`lsof -ti :4201 | xargs kill 2>/dev/null || true`).
-
-If startup errors are found, treat them like full-check failures — categorize and delegate to an implementer agent for fixing.
-
-### Step 4: Verify Test Coverage
-
-Check each test type separately. Use the diff against main to identify new/changed classes, services, and endpoints.
-
-#### 4a: Unit Tests (`*.spec.ts`)
-
-Glob for `*.spec.ts` files adjacent to changed source files. For each new or significantly changed service/class:
-
-1. **Spec exists?** Grep the spec file for the new class/function name.
-2. **Spec covers the change?** If the spec exists but doesn't reference the new code, delegate to a fresh `api-agent` or `web-agent`: "Add unit test coverage for [class/function] in [existing spec file]. Read the file first — extend, don't rewrite."
-3. **No spec at all?** Delegate to a fresh `api-agent` or `web-agent`: "Create a unit test file `[source-file].spec.ts` next to the source. Test [class/function] with [key scenarios from the spec or task description]. Follow existing spec patterns in the same module."
-
-Run `pnpm test:unit` after any new/updated specs to verify they pass.
-
-#### 4b: Integration Tests (`*.int.ts`)
-
-**MANDATORY** when the change touches any of: DAO methods, service methods with DB calls, entity changes, migrations, complex query logic, or multi-service orchestration. The only exception is pure frontend (Web-only) changes with no API involvement.
-
-1. **Identify integration test candidates:** From the diff, list every changed DAO, service method that calls a DAO, or entity. Each one needs integration test coverage.
-2. **Check if the changed module already has integration tests** in `src/__tests__/integration/`. Grep for the changed function/method name.
-3. **If integration tests exist but don't cover the change**: delegate to a fresh `api-agent`: "Add integration test cases for [method] in [existing int file]. Follow the existing test patterns in that file."
-4. **If no integration tests exist**: delegate to a fresh `api-agent`: "Create an integration test file for [module] in `src/__tests__/integration/`. Test [specific scenarios]. Follow existing `.int.ts` patterns in nearby modules."
-5. **Run every affected integration test file** explicitly: `pnpm test:integration [filename]`. Do NOT skip this — integration tests must pass before proceeding.
-6. **Report results** — list each integration test file run with pass/fail status. If any fail, enter the Fix Loop (Step 5).
-
-#### 4c: E2E Tests (`*.cy.ts`) — new endpoints only
-
-**Skip if no new API endpoints were added.** E2E tests are only required for new endpoints, not for modifications to existing ones.
-
-If new endpoints were added:
-
-1. **Check for existing E2E coverage** in `apps/api/cypress/e2e/` for the module.
-2. **If a Cypress spec exists for the module**: delegate to a fresh `api-agent`: "Add E2E test cases for the new [endpoint] in [existing cy file]. Import request/response types from `../../api-definitions` — never define inline types. Use `cy.task('log', message)` for terminal output."
-3. **If no Cypress spec exists**: delegate to a fresh `api-agent`: "Create `apps/api/cypress/e2e/[module]/[module].cy.ts`. Smoke-test the new [endpoint(s)]. Regenerate API types first: `cd apps/api && pnpm test:e2e:generate-api`. Import types from `../../api-definitions`."
-
-E2E tests require a running server — note in the Ship summary if E2E tests were added but not run (no server available). The user can run them with `pnpm test:e2e:local --spec "cypress/e2e/path/to/spec.cy.ts"`.
-
-### Step 5: Fix Loop
-
-If full-check fails, startup check fails, or tests missing:
-
-1. **Lint/format errors only?** Run `pnpm lint:fix` as a quick autofix, then re-run `pnpm run full-check`.
-2. **Type/build/test errors:** Categorize and delegate to fresh implementer agent with exact error output (strip verbose traces).
-3. After each fix round, run codegen check (see Codegen Rule), then re-run `pnpm run full-check`. Max 2 rounds.
-
-### Step 6: Structured Handoff (conditional -- if rounds exhausted)
-
-```
-## Remaining Failures (handoff to user)
-
-### Fixed in this cycle
-- [what was fixed, which round]
-
-### Still failing
-- **Error**: [message] -- **File**: [path:line] -- **Suggested fix**: [steps]
-
-### CI status
-- Lint: PASS/FAIL -- Types: PASS/FAIL -- Build: PASS/FAIL -- Tests: N/M passing
-```
-
-Present to user and ask whether to proceed or stop.
-
-**-> Proceed to Simplify (full pipeline) or Review (fast-path).**
+**Anti-rationalization:**
+| Your reasoning | Why it's wrong |
+|---|---|
+| "I'll execute this directly since it's simple / just deletion / cleanup" | Orchestrator tokens are the most expensive resource. Delegate ALL implementation to subagents. |
+| "Steps X-Y are small, I'll handle them myself" | Every plan step becomes a WU. Group small related steps into one WU, but never execute as orchestrator. |
 
 ---
 
-## Simplify Phase (full pipeline only)
-
-**Gate:** full-check passed (or user chose to proceed despite failures).
-
-**Skip for fast-path** — go directly to Review Phase.
-
-Run the `/simplify` skill on the changed files. This handles clarity, consistency, and maintainability improvements — reducing nesting, eliminating redundancy, improving naming, consolidating related logic, and checking for reuse of existing codebase utilities.
-
-After simplification completes:
-
-1. Run `pnpm lint:fix` to clean up any formatting drift
-2. Run `pnpm run full-check` to verify simplifications didn't break anything
-3. If full-check fails, revert the simplification changes (`git checkout -- .`) and note "Simplification skipped — caused CI failures" in the Review summary
-
-**-> Proceed to Review.**
-
----
-
-## Review Phase
-
-**Gate:** Simplify phase passed (full pipeline) or full-check passed (fast-path).
-
-**Fast-path with ≤2 files changed:** Do an inline review yourself — read the full diff against main (`git diff main`), check for obvious issues (types, imports, patterns, missing error handling, security). Skip spawning `reviewer-agent`. If issues found, fix inline. Proceed to Ship.
-
-**All other cases (including fast-path with >2 files):** Max 3 fix rounds.
-
-### Step 1: Code Review
-
-Capture the changed file list from the diff against main.
-
-Spawn a `reviewer-agent` with: feature summary, changed file list, and spec file path (full pipeline only). **Tell the reviewer:** "Focus on code review only — CI validation already passed. Still flag missing test files as a review finding."
-
-### Step 2: Process Results
-
-- Reviewer **CHANGES REQUIRED** -> blocking fix loop
-- Reviewer **APPROVED WITH MINOR IMPROVEMENTS** -> route MEDIUM+ findings to implementers for fixing before proceeding
-- Reviewer **APPROVED** -> proceed (no fixes needed)
-
-### Step 3: Fix Loop
-
-Spawn a fresh implementer agent per fix round with: findings to fix (CRITICAL/HIGH/MEDIUM from reviewer), original task context, spec file path (full pipeline), and the files they own. After fixes, re-run reviewer (full diff against main). Max 3 rounds -- then escalate to user.
-
-**Stuck detection:** Same file + same error across 2 rounds -> stop and escalate to user.
-
-**-> After reviewer verdict is APPROVED, or APPROVED WITH MINOR with no remaining MEDIUM+ findings, proceed. Run codegen check (see Codegen Rule). Re-run `pnpm run full-check` if any fixes were applied (fixes may introduce new issues). If 3 fix rounds exhausted with MEDIUM+ still present, escalate to user.**
-
-**-> Proceed to Ship.**
-
----
-
-## Ship Phase (WAIT)
-
-**Gate:** Reviewer verdict is APPROVED (or escalated to user). full-check passed (or user chose to proceed despite failures).
-
-### Step 1: Present Results & Ship Decision
-
-Present:
-
-1. **Summary** of what was implemented
-2. **Files changed** (API vs Web)
-3. **Key decisions** made
-4. **Review verdict** and improvements applied
-5. **full-check** pass/fail
-6. **Deferred ideas** (if any were captured in Discovery) -- present as follow-up suggestions
-
-Then ask the user for feedback and ship method in a single interaction. If full-check has unresolved failures, note them in the summary (e.g., "full-check: FAIL — 2 type errors remaining").
-
-`AskUserQuestion` with header "Ship":
-- "Just commit (Recommended)" -- commit to current branch
-- "Leave uncommitted" -- manual review first
-- "Minor tweaks / Fix issues" -- small adjustments or CI fixes needed (I'll describe)
-
-**Routing:**
-- **Just commit** -> proceed to Finalize phase
-- **Minor tweaks / Fix issues** -> ask what to change. **Route based on adjustment size:**
-  - **Big adjustments** (changes to data model, API contract, new endpoints/pages, or fundamentally different approach): re-run `architect-agent` with the changes -> `skeptic-agent` -> then back to Implementation Phase for the affected tasks. This ensures the spec stays accurate.
-  - **Medium adjustments** (new logic, new component sections, additional fields that require codebase research): run an `Explore` subagent scoped to the requested change to understand patterns and dependencies. If the research reveals complexity (multiple files, cross-module coordination, ambiguous approach), run `architect-agent` for a targeted spec update -> `skeptic-agent` -> then delegate to implementer agents. If research shows it's straightforward, delegate directly to implementer agents with the research context.
-  - **Small adjustments** (styling, logic tweaks, missing fields, CI fixes): delegate directly to implementer agents. Use Validate Step 5 for CI failures, re-run `pnpm run full-check`. If 10+ lines changed, re-run `reviewer-agent` and process findings as a fix loop (max 3 rounds, then escalate).
-  - After any adjustment: run codegen check (see Codegen Rule), re-run `pnpm run full-check`. Then loop back and re-present results. Soft limit: after 3 tweak rounds, suggest using `/follow-up` for further changes.
-- **Leave uncommitted** -> skip to Finalize phase (Finalize will skip the commit step)
-
-**-> Proceed to Finalize.**
-
----
-
-## Finalize Phase
-
-**Gate:** User chose a ship method in Ship Phase.
-
-This phase collects ALL remaining work (docs, learnings, improvements) BEFORE committing, so everything ships in a single commit.
-
-### Step 1: Update Docs
-
-Check whether existing documentation needs updating based on what was implemented. **Skip if nothing changed that affects documented surfaces.**
-
-#### What to check
-
-Scan the diff against main and compare against these doc sources:
-
-| Change type | Docs to check |
-|-------------|---------------|
-| New/changed API endpoints, DTOs, controllers | Swagger is auto-generated — no action. But check if `docs/code-guidelines.md` or `docs/making-changes.md` reference affected patterns that are now outdated |
-| New/changed entities, relations, migrations | `docs/project-structure.md` — verify examples still match reality |
-| New module, module promotion, or architecture change | `docs/project-structure.md` — update module layer diagrams or examples if the new module is a good canonical example |
-| New env vars | `apps/api/.env.example` (should already be done in Implementation), `CLAUDE.md` quick reference if relevant |
-| New/changed auth, permissions, roles | `docs/code-guidelines.md` |
-| New integration or external service | `docs/code-guidelines.md` — add as canonical example if it follows the pattern |
-| New web patterns (pages, components, hooks) | `CLAUDE.md` (Web Frontend section) |
-| New testing patterns | `docs/testing.md` |
-| New tool definitions or agent patterns | `docs/tool-definitions-best-practices.md` |
-
-#### How to update
-
-1. **Read the relevant doc files** identified above
-2. **Check for stale examples** — does the doc reference files, functions, or patterns that were renamed, moved, or superseded by this implementation?
-3. **Check for missing coverage** — did this implementation introduce a new pattern that should be documented as a canonical example?
-4. **Apply updates** directly using Edit — keep changes minimal and focused. Don't rewrite docs, just patch what's stale or add a new example/reference.
-5. If no docs need updating, skip silently — don't mention it to the user.
-
-### Step 2: Extract Learnings
-
-Scan the full conversation for events worth remembering. Look for these signals:
-
-| Signal | Memory type | What to save |
-|--------|-------------|--------------|
-| **User corrections** — "don't do X", "do Y instead" | `feedback` | The correction + why + how to apply next time |
-| **Discovered problems** — bugs, gotchas, unexpected behaviors | `feedback` or `project` | The problem + root cause + resolution |
-| **Workarounds** — documented pattern failed, alternative used | `feedback` | What failed, what worked instead, why |
-| **User design decisions** — gray area choices not obvious from code | `project` | The decision + rationale + context |
-| **Reviewer CRITICAL/HIGH findings** revealing a recurring pattern | `feedback` | The anti-pattern + why it's dangerous + how to detect it |
-| **CI failure resolutions** requiring non-obvious fixes | `feedback` | The error + non-obvious root cause + fix |
-| **Architectural deviations** from spec that worked better | `project` | What changed + why + outcome |
-| **Cross-module dependency gotchas** hard to discover | `feedback` | The dependency + why it's surprising + how to check |
-| **New codebase patterns** established by this feature | `project` | The pattern + where established + when to follow it |
-
-Before writing, check if an existing memory covers this topic — UPDATE rather than duplicate. Skip if nothing genuinely novel was discovered.
-
-### Step 3: Suggest Improvements (WAIT)
-
-Analyze the full pipeline run and identify potential improvements to the system itself:
-
-| Category | What to look for | Target files |
-|----------|-----------------|--------------|
-| **Rules gaps** | Agent made a mistake a rule would have prevented? Reviewer found a missing convention? | `.claude/rules/*.md` |
-| **Rules conflicts** | A rule contradicted what actually works? Had to work around a documented pattern? | `.claude/rules/*.md` |
-| **Skill gaps** | Pipeline hit a scenario it wasn't designed for? User had to manually intervene where automation should have handled it? | `.claude/skills/*/SKILL.md` |
-| **Agent prompt gaps** | An agent consistently missed something or produced wrong output? | `.claude/agents/*.md` |
-| **Stale documentation** | CLAUDE.md, rules, or agent prompts reference patterns/files that no longer exist? | Any doc file |
-
-For each improvement, draft: **File** (which file), **Section** (which part), **Current** (what it says now or "missing"), **Proposed** (what it should say), **Why** (what went wrong that this would prevent).
-
-Present via `AskUserQuestion` with header "Improve":
-- "Apply all" — implement all proposed changes
-- "Review one-by-one" — approve each separately
-- "Skip" — no improvements needed
-
-### Step 4: Commit (conditional)
-
-**If user chose "Just commit" in Ship Phase:**
-
-Commit ALL changes (implementation + docs + rules/skill updates) with conventional format: `type(scope): message`.
-
-**If user chose "Leave uncommitted":**
-
-Skip the commit. If working in a worktree, warn them that changes remain in the worktree directory (include the path) and they'll need to manually commit and run `ExitWorktree` later to merge back.
-
-### Step 5: Worktree Exit
-
-If working in a worktree (from Setup) and user chose any commit option, call `ExitWorktree` to merge changes back and clean up. Do this before cleanup so cleanup runs in the main branch context.
-
-### Step 6: Cleanup
-
-Run these cleanup commands directly (no agent needed — this is deterministic work):
-
-```bash
-# Remove Playwright screenshots and temp artifacts
-find . -maxdepth 5 \( -name '*screenshot*.png' -o -name '*page-*.png' -o -name '*playwright*.png' -o -name '*screenshot*.jpeg' -o -name '*.tmp' -o -name '*.bak' -o -name 'debug-*' \) -not -path '*/node_modules/*' -not -path '*/.git/*' -delete 2>/dev/null
-
-# Remove stray .log files (not in node_modules/.git)
-find . -maxdepth 5 -name '*.log' -not -path '*/node_modules/*' -not -path '*/.git/*' -delete 2>/dev/null
-
-# Kill orphaned processes on agent ports (4200-4299) — never touch dev ports (5000, 5174, 5432, 6379)
-lsof -ti :4200-4299 2>/dev/null | xargs kill 2>/dev/null || true
-```
-
-If any command fails silently, that's fine — cleanup is best-effort.
-
-### Step 7: Archive Feature Spec (if from backlog)
-
-If this task came from a feature spec in `.claude/.artifacts/project-features/`:
-```bash
-mkdir -p .claude/.artifacts/project-features/completed
-```
-Update YAML frontmatter: `status: completed`, `updated: <today>`. Move to `completed/`.
-
-**-> Pipeline complete.**
+## REFERENCE
+
+- Agent templates, examples, error tables: `${CLAUDE_SKILL_DIR}/implement-reference.md`
+- Plan criteria: `.claude/skills/plan/plan-criteria.md`
+- Review criteria: `.claude/skills/review/` (bugs, security, architecture, tests, guidelines)
+- Simplify criteria: `.claude/skills/deep-simplify/simplify-criteria.md`

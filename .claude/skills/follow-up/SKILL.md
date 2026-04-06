@@ -1,15 +1,17 @@
 ---
 name: follow-up
-description: "Lightweight change pipeline for small adjustments after /implement. Skips discovery and architecture - goes straight to implement, lint, test, and ship. Use for tweaks, fixes, style changes, or missing fields. Do NOT use for new features, new entities, new endpoints/pages, auth/permissions changes, or changes requiring architecture decisions (use /implement instead)."
+description: "Use when making small post-implementation changes that skip architecture. Assesses complexity (trivial/small/medium), implements, validates, reviews, ships. Escalates to /implement if scope is too large. Do NOT use for new features, new entities, new endpoints/pages, auth/permissions changes, new modules, or changes requiring architecture decisions."
+context: main
 model: inherit
-argument-hint: "[description of what to change]"
+allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, TodoWrite, WebSearch]
+argument-hint: "[description of the change]"
 ---
 
 # Follow-Up Change Pipeline
 
-You are a **lightweight implementation orchestrator** for Geniro. This skill handles changes that don't need the full `/implement` pipeline — streamlined assessment, implementation, validation, review, and ship.
+**You are a coordinator.** You delegate implementation work to subagents. You do NOT write code directly — except Trivial changes (1-2 files, obvious fix, no logic). For Small and Medium changes, you MUST delegate to subagents. You run shell commands (build, test, lint) and read their output to determine pass/fail. When something fails, you forward the raw error output to a fixer agent.
 
-**Pipeline:** Assess -> Implement -> Validate -> Review -> Ship (includes Learn & Improve before commit)
+**Pipeline:** Assess → Implement → Simplify → Validate → Review → Ship (includes Learn & Improve before commit)
 
 Phases marked **(WAIT)** require user input before proceeding.
 
@@ -23,7 +25,7 @@ If any delegated agent fails (timeout, error, empty/garbage result): retry once 
 
 ## Codegen Rule
 
-After any step that modifies `.dto.ts` or `.controller.ts` files, run `pnpm --filter @geniro/web generate:api` before proceeding to the next phase. This prevents stale API client types from causing downstream failures.
+If the project uses code generation (e.g., OpenAPI client generation, GraphQL codegen, Prisma client, etc.), run the appropriate codegen command after any step that modifies files that feed into the generator (DTOs, schemas, controllers, etc.). This prevents stale generated types from causing downstream failures. Check CLAUDE.md or package.json for the project's codegen commands.
 
 ## Change Request
 
@@ -39,10 +41,12 @@ Determine what needs to change, how complex it is, and whether this skill can ha
 
 ### Step 1: Context Scan
 
-1. **Read the change request** and identify which files likely need to change
-2. **Codebase scan** (Glob/Grep) to find the exact files and understand current patterns
-3. **Read the files** that will be modified — understand current state before changing anything
-4. **Check current state:**
+1. **Load prior planning context** — `Glob(".claude/.artifacts/planning/*/")`, match against current branch (`git branch --show-current`). If found, read: `spec.md`, `plan-*.md`, `state.md`, `concerns.md`, `notes.md`, `review-feedback.md`. These prevent re-discovering conventions and contradicting prior decisions. If none found, proceed without.
+
+2. **Read the change request** and identify which files likely need to change
+3. **Codebase scan** (Glob/Grep) to find the exact files and understand current patterns
+4. **Read the files** that will be modified — understand current state before changing anything
+5. **Check current state:**
    ```bash
    git branch --show-current
    git log --oneline -5
@@ -57,46 +61,35 @@ Assess the change by checking for **hard escalation signals first**, then evalua
 
 | Signal | Why it escalates |
 |--------|-----------------|
-| **New entity, table, or migration** | Irreversible schema change, requires architecture |
-| **New API endpoint or new page/route** | Cross-stack coordination, OpenAPI spec change, auth decisions |
-| **Auth, permissions, or role changes** | Infinite blast radius, failure mode is invisible |
-| **New module or module layer promotion** | Architectural decision about dependency graph and public API |
-| **Open-closed principle violation** | Modifies existing behavior for all users, needs rollback strategy |
-| **3+ modules coordinated** | Distributed-transaction-level coordination, needs a spec |
-| **New async/queue work** (BullMQ jobs, event handlers) | Runtime failure modes not caught by full-check |
-| **New external integration or new env vars** | Cross-cutting infra work |
-| **Ambiguous intent** — multiple valid design approaches | Needs Discovery phase to resolve before implementation |
+| New entity/table/migration | Irreversible schema change, requires architecture |
+| New API endpoint or page/route | Cross-stack coordination, API spec, auth decisions |
+| Auth/permissions/role changes | Infinite blast radius, invisible failure mode |
+| New module or layer promotion | Architectural decision about dependency graph |
+| 3+ modules coordinated | Distributed-transaction-level coordination |
+| Open-closed violation (changing public signatures, shared middleware, routing logic) | Unbounded regression risk |
+| New async/queue/background work | Runtime failures not caught by static checks |
+| New external integration or env vars | Cross-cutting infra work |
+| Ambiguous intent — multiple valid approaches | Needs Discovery phase first |
 
 #### Complexity Levels (when no hard escalation signal is present)
 
-- **Trivial**: 1-2 files, single module, fix/patch to existing logic, intent is unambiguous. *Examples: fix a validation message, correct a query filter, adjust a CSS class.*
-- **Small**: 3-5 files, 1-2 modules, modifies existing endpoints/pages/fields, clear bounded logic. *Examples: add a filter param to an existing endpoint + DTO + query + web hook, rename a response field across DTO and consumer.*
-- **Medium**: 6-8 files, up to 2 modules, may add fields to existing entities (no new tables), non-trivial but clear logic. *Examples: add a column to an entity + migration + DTO + query + web table + test, change an existing calculation.*
+- **Trivial**: 1–2 files, single module, fix/patch to existing logic, intent is unambiguous. *Examples: fix a validation message, correct a query filter, adjust a CSS class.*
+- **Small**: 3–5 files, 1–2 modules, modifies existing endpoints/pages/fields, clear bounded logic. *Examples: add a filter param to an existing endpoint + DTO + query + hook, rename a response field across DTO and consumer.*
+- **Medium**: 6–8 files, up to 2 modules, may add fields to existing entities (no new tables), non-trivial but clear logic. *Examples: add a column to an entity + migration + DTO + query + UI table + test, change an existing calculation.*
 - **Too large**: 9+ files, OR any hard escalation signal above. Escalate to `/implement`.
 
-**File count is a smell detector, not a complexity detector.** A 2-file change that adds a new entity is "Too large." A 7-file change that propagates an existing filter through DTO -> service -> query -> web hook -> test is "Medium." When file count is high, ask "why?" — the answer contains the actual complexity signal.
+**File count is a smell detector, not a complexity detector.** A 2-file change adding a new entity is "Too large." A 7-file change propagating an existing filter is "Medium." When file count is high, ask "why?" — the answer contains the actual complexity signal.
 
 ### Step 3: Escalation Gate
 
 **If complexity is "Too large":**
 
-Present findings to the user:
+Present escalation signals to user. `AskUserQuestion` with header "Scope":
+- "Escalate to /implement" → output `/implement [change request]` and stop
+- "Proceed anyway" → continue, treat as Medium complexity (full validation + review)
+- "Reduce scope" → ask what to cut, re-assess, loop back to Step 2
 
-> This change is larger than a follow-up:
-> - [specific escalation signals detected]
->
-> Recommend running `/implement [description]` for proper architecture and planning.
-
-`AskUserQuestion` with header "Scope":
-- "Escalate to /implement" — hand off to the full pipeline
-- "Proceed anyway" — I understand the risk, keep going as follow-up
-- "Reduce scope" — I'll narrow what I want changed
-
-If user selects "Escalate to /implement": output the command `/implement [original change request]` and stop.
-If user selects "Reduce scope": ask what to cut, re-assess, loop back to Step 2.
-If user selects "Proceed anyway": continue — but enforce full validation and review (treat as Medium complexity).
-
-**-> Proceed to Phase 2.**
+**→ Proceed to Phase 2.**
 
 ---
 
@@ -118,157 +111,238 @@ Present the plan to the user:
 
 ### Step 2: Execute
 
-**Scope detection** — determine which side(s) to change:
-- **API-only**: changes in `apps/api/`
-- **Web-only**: changes in `apps/web/`
-- **Both**: API first -> codegen check (see Codegen Rule) -> Web
+**Trivial** (1–2 files, obvious fix): Implement directly using Edit/Write tools. No subagent needed. **Guard:** If you find yourself reading more than 2 files or the fix touches logic (not just text/config), re-assess — it's probably Small, not Trivial. Delegate instead.
 
-**Trivial** (1-2 files, obvious fix): Implement directly using Edit/Write tools. No subagent needed.
-
-**Small/Medium** (3+ files): Delegate to a fresh `api-agent` or `web-agent`:
+**Small** (3–5 files, 1–2 modules): Delegate to a single agent:
 
 ```
+Agent(model="sonnet", prompt="""
 ## Task
 [describe the specific change needed]
 
 ## Pre-Inlined Context
-[paste the content of files you read in Phase 1 - save the agent from re-reading them]
+[paste the content of files you read in Phase 1 — save the agent from re-reading them]
 
 ## Codebase Conventions
 Match existing patterns exactly. Find the closest existing example and follow it.
 
+## Tests — MANDATORY
+- For each new/changed source file, create or update the corresponding test file
+- Follow existing test patterns in the same module (find the nearest test file as exemplar)
+- Run tests after changes and report results
+
 ## Requirements
 - Follow project rules in CLAUDE.md and docs/
-- Do NOT run git add/commit/push - the orchestrator handles git
-- Run `pnpm run full-check` after changes
+- Do NOT run git add/commit/push — the orchestrator handles git
+- Run the project's validation commands after changes
 - Report: files changed, what was done, any issues encountered
+""")
 ```
 
-**-> After implementation, proceed to Phase 3.**
+**Medium** (6–8 files, up to 2 modules): Decompose into 2–3 parallel agents by module/layer and spawn in a **single message**:
+
+1. Group the files from your plan by module or layer (e.g., backend vs frontend, entity+service vs DTO+hook)
+2. Each agent gets its own file group — no overlap between agents
+3. Pre-inline the file contents each agent needs from Phase 1
+
+```
+# Spawn ALL agents in a SINGLE message for parallel execution:
+
+Agent(model="sonnet", prompt="""
+## Task — Group 1: [module/layer name]
+[changes for this group]
+
+## Pre-Inlined Context
+[file contents this agent needs]
+
+## Tests — MANDATORY
+- For each new/changed source file, create or update the corresponding test file
+- Follow existing test patterns in the same module (find the nearest test file as exemplar)
+- Run tests after changes and report results
+
+## Requirements
+- Scope: ONLY modify files in your group: [list files]
+- Follow project rules in CLAUDE.md and docs/
+- Do NOT run git add/commit/push
+- Report: files changed, what was done, any issues
+""", description="Implement [group 1]")
+
+Agent(model="sonnet", prompt="""
+## Task — Group 2: [module/layer name]
+[changes for this group]
+...
+""", description="Implement [group 2]")
+```
+
+If all files are tightly coupled (same module, sequential dependencies), use a single agent instead — don't force parallelism where it doesn't fit.
+
+**→ After implementation, proceed to Phase 3.**
 
 ---
 
-## Phase 3: Validate
+## Phase 3: Simplify (Medium and "Proceed anyway" only)
+
+**Purpose:** Code quality pass on changed files — catch AI-generated anti-patterns before validation.
+
+**Skip for Trivial and Small changes** — proceed directly to Phase 4 (Validate).
+
+### Step 1: Spawn simplify agent
+
+Pre-read `.claude/skills/deep-simplify/simplify-criteria.md`. Spawn a **general-purpose** subagent with `model: "sonnet"`:
+
+```
+Agent(model="sonnet", prompt="""
+## Task: Simplify Changed Files
+You are a code simplifier. Make changed files cleaner, simpler, more consistent — without changing behavior.
+
+## Criteria
+[Pre-inline `.claude/skills/deep-simplify/simplify-criteria.md`]
+
+## Changed Files: [List from git diff --name-only]
+
+## Pipeline
+1. Read each changed file + immediate neighbors for context
+2. Run three analysis passes (Reuse, Quality, Efficiency) from criteria
+3. Classify findings as P1/P2/P3 — apply P1+P2, report P3 only
+4. Report using Completion Report format from criteria
+
+## Requirements
+- Zero behavior change — preserve exact inputs, outputs, side effects
+- Do NOT run git add/commit/push
+- Do NOT modify files outside changed list (unless extracting shared utility)
+- Never delete or weaken test assertions
+""", description="Simplify: changed files")
+```
+
+### Step 2: Verify after simplification
+
+1. Run lint/format fix
+2. Run build + lint + test
+3. **If checks fail:** revert simplification (`git checkout -- .`), note "Simplification skipped — caused CI failures." Proceed to Phase 4.
+
+**→ Proceed to Phase 4 (Validate).**
+
+---
+
+## Phase 4: Validate
 
 ### Step 1: Autofix
 
+Run the project's autofix command from CLAUDE.md (e.g., `lint --fix`, `format`). If CLAUDE.md doesn't specify one, check `package.json` scripts. If still unknown, ask the user via `AskUserQuestion`.
 ```bash
-pnpm lint:fix 2>/dev/null || true
+<lint_fix_cmd> 2>/dev/null || true
 ```
 
-### Step 2: Full check
+### Step 2: Full Check
 
-Run `pnpm run full-check` **once** and save output to a temp file:
-```bash
-pnpm run full-check 2>&1 | tee /tmp/ci-output.log | tail -80
-```
+Run the project's full validation suite (build + lint + test) from CLAUDE.md. Prefer backpressure if available (`source .claude/hooks/backpressure.sh && run_silent "Full Check" "<cmd>"`), otherwise pipe to temp file (`<cmd> 2>&1 | tee /tmp/ci-output.log | tail -80`). Search saved output: `grep -i "error\|fail" /tmp/ci-output.log | head -20`
 
-To search the saved output later (use Bash, Grep, or Read tool on `/tmp/ci-output.log`):
-```bash
-grep -i "error\|fail" /tmp/ci-output.log | head -20
-```
+### Step 3: Codegen Check
 
-**This pattern applies to ALL long-running commands** — always `tee` to a temp file, then analyze the file.
-
-### Step 3: Codegen check
-
-Only if DTOs or controllers changed:
-
-```bash
-git diff --name-only "$(git merge-base HEAD origin/main)"...HEAD | grep -E '\.(controller|dto)\.ts$' | head -5
-```
-
-If matches found:
-```bash
-pnpm --filter @geniro/web generate:api
-```
-
-Then re-run `pnpm run full-check` to verify codegen didn't break anything.
+If the project uses code generation AND DTOs/schemas/controllers changed: run codegen, then re-run validation.
 
 ### Step 4: Runtime Startup Check (Medium complexity only)
 
-Verify the app can boot. Only start whichever side was changed:
-
-**API** (if API scope): Run `PORT=4200 pnpm --filter @geniro/api start:dev` in background. Wait 15 seconds, check output for errors (NestJS DI failures, missing providers). Kill afterward (`lsof -ti :4200 | xargs kill 2>/dev/null || true`).
-
-**Web** (if Web scope): Run `PORT=4201 pnpm --filter @geniro/web dev` in background. Wait 15 seconds, check for compilation errors. Kill afterward (`lsof -ti :4201 | xargs kill 2>/dev/null || true`).
-
-If startup errors found, treat like full-check failures — fix and re-validate.
+Start the changed side in background, wait 10–15s, check for startup errors (DI failures, missing providers, compilation). Kill afterward. Startup errors → fix and re-validate.
 
 ### Step 5: Test Coverage Check (Small/Medium complexity)
 
 Check each test type based on what changed. Use `git diff --name-only` against main to identify changed files.
 
-#### Unit Tests (`*.spec.ts`)
+#### Unit Tests
 
-1. **Find spec files** adjacent to changed source files (Glob for `*.spec.ts` near each changed file)
-2. **Grep** existing specs for the changed function/class names
-3. **If spec exists but doesn't cover the change**: delegate to a fresh `api-agent` or `web-agent`: "Add unit test cases for [function/class] in [existing spec file]. Extend, don't rewrite."
-4. **If no spec exists and non-trivial logic changed** (not just a field rename or style fix): delegate to a fresh `api-agent` or `web-agent`: "Create `[source-file].spec.ts` next to the source. Test [function/class] with [key scenarios]. Follow existing spec patterns in the same module."
+1. Find test files adjacent to changed source files (Glob), grep for changed function/class names
+2. Tests exist but don't cover change → delegate: "Add test cases in [existing test file]. Extend, don't rewrite."
+3. No tests + non-trivial logic changed → delegate: "Create test file next to source. Follow existing patterns."
+4. Run unit tests after any new/updated test files.
 
-Run `pnpm test:unit` after any new/updated specs.
+#### Integration Tests — only if DAO/query/multi-service logic changed
 
-#### Integration Tests (`*.int.ts`) — only if DAO/query/multi-service logic changed
-
-1. **Check** `src/__tests__/integration/` for existing tests covering the changed module
-2. **If tests exist but don't cover the change**: delegate to a fresh `api-agent`: "Add integration test cases for [method] in [existing int file]."
-3. **If no tests exist and the change warrants them** (new DAO method, complex query): delegate to a fresh `api-agent` to create one. Run with `pnpm test:integration [filename]`.
-4. **If the change is minor** (field addition, filter tweak) and existing integration tests pass: skip — note in Ship summary if you think integration coverage should be expanded later.
+1. Check for existing integration tests covering the changed module
+2. Tests exist but don't cover change → delegate to extend. No tests + change warrants them → delegate to create.
+3. Minor change (field addition, filter tweak) + existing tests pass → skip, note in Ship summary.
 
 ### Step 6: Fix Loop
 
-If full-check fails, startup check fails, or tests fail:
+If validation, startup, or tests fail:
+1. Lint/format only → autofix, re-validate
+2. Type/build/test → fix directly (Trivial) or delegate with exact error output
+3. After each fix round, run codegen check if applicable, then re-validate
+4. **Max 2 fix rounds** — then escalate: present structured handoff (Fixed / Still failing with error+file+suggested fix / CI status per category). `AskUserQuestion` with header "Stuck": "Try a different approach" / "Escalate to /implement" / "Show current state". Do NOT retry same approach a 3rd time.
 
-1. **Lint/format errors only?** Run `pnpm lint:fix`, then re-run `pnpm run full-check`
-2. **Type/build/test errors:** Fix directly (Trivial) or delegate to fresh implementer with exact error output
-3. After each fix round, run codegen check (see Codegen Rule), then re-run `pnpm run full-check`
-4. **Max 2 fix rounds** — then present structured handoff to user:
-
-```
-## Remaining Failures
-
-### Fixed
-- [what was fixed, which round]
-
-### Still failing
-- **Error**: [message] — **File**: [path:line] — **Suggested fix**: [steps]
-
-### CI status
-- Lint: PASS/FAIL — Types: PASS/FAIL — Build: PASS/FAIL — Tests: N/M passing
-```
-
-**-> After validation passes, proceed to Phase 4.**
+**→ After validation passes, proceed to Phase 5.**
 
 ---
 
-## Phase 4: Review (Small/Medium complexity)
-
-**Skip for Trivial changes** (1-2 files, obvious fix) — go directly to Phase 5.
+## Phase 5: Review
 
 ### Step 1: Code Review
 
 Capture the changed file list from the diff against main.
 
-Spawn a `reviewer-agent` with: change summary and changed file list. **Tell the reviewer:** "This is a follow-up change — focus on correctness and regressions. CI already passed. Keep review proportional to change size."
+**Trivial changes (1–2 files):** Review the diff yourself — no subagent needed. Check for: typos in the fix itself, accidental deletions, logic inversion, missed second occurrence. If anything looks off, fix it and re-validate (Phase 4 Step 2 only). This takes 30 seconds and catches "obvious fix" mistakes that cause rollbacks.
+
+**Small changes (3–5 files):** Pre-read all 5 review criteria files from `.claude/skills/review/` (bugs-criteria.md, security-criteria.md, architecture-criteria.md, tests-criteria.md, guidelines-criteria.md). Spawn a single reviewer-agent with the criteria pre-inlined and the change summary + changed file list:
+
+```
+Agent(model="sonnet", prompt="""
+## Review: Follow-Up Change
+This is a follow-up change — focus on correctness and regressions. CI already passed. Keep review proportional to change size.
+
+CHANGED FILES: [list]
+CHANGE SUMMARY: [summary]
+
+## Review Criteria
+[Pre-inline the contents of all 5 criteria files from `.claude/skills/review/`]
+
+Review across all 5 dimensions. Report findings with severity (CRITICAL/HIGH/MEDIUM). Skip MEDIUM — only report CRITICAL and HIGH.
+""", description="Review: follow-up change")
+```
+
+**Medium changes (6–8 files):** Pre-read the relevant criteria files from `.claude/skills/review/`. Spawn 2–3 reviewer-agent instances in a **single message**, each reviewing its own dimension with the corresponding criteria file pre-inlined:
+
+```
+# Spawn ALL reviewers in a SINGLE message for parallel execution:
+
+Agent(model="sonnet", prompt="""
+DIMENSION: Bugs & Correctness
+[Pre-inline `.claude/skills/review/bugs-criteria.md`]
+CHANGED FILES: [list]
+CHANGE SUMMARY: [summary]
+This is a follow-up change. CI already passed. Keep review proportional.
+""", description="Review: bugs")
+
+Agent(model="sonnet", prompt="""
+DIMENSION: Security & Edge Cases
+[Pre-inline `.claude/skills/review/security-criteria.md`]
+CHANGED FILES: [list]
+CHANGE SUMMARY: [summary]
+This is a follow-up change. CI already passed. Keep review proportional.
+""", description="Review: security")
+```
+
+Add a 3rd reviewer (architecture + tests + guidelines criteria combined from `.claude/skills/review/architecture-criteria.md`, `tests-criteria.md`, `guidelines-criteria.md`) only if changes touch cross-module boundaries.
 
 ### Step 2: Process Results
 
-- Reviewer **CHANGES REQUIRED** -> fix loop: delegate to implementer, re-validate (Phase 3 Step 2 only — skip autofix/startup), re-review. Max 1 fix round for follow-ups.
-- Reviewer **APPROVED WITH MINOR** -> note improvements in Ship summary. Only fix MEDIUM+ findings — delegate to implementer if any, then proceed.
-- Reviewer **APPROVED** -> proceed directly.
+Aggregate findings from all reviewers. Deduplicate (same file:line from multiple reviewers = single finding, keep highest severity).
 
-**-> Proceed to Phase 5.**
+- Any reviewer **CHANGES REQUIRED** → fix loop: delegate to fresh agent, re-validate (Step 2 only — skip autofix/startup), re-review with **fresh** reviewer (avoid anchoring). Max 1 fix round for follow-ups.
+- All reviewers **APPROVED WITH MINOR** → note improvements in Ship summary. Only fix MEDIUM+ findings — delegate if any, then proceed.
+- All reviewers **APPROVED** → proceed directly.
+
+**→ Proceed to Phase 6.**
 
 ---
 
-## Phase 5: Ship (WAIT)
+## Phase 6: Ship (WAIT)
 
 Show a summary:
 
 **Done. Here's what changed:**
 - [file]: [what changed]
-- full-check: PASS/FAIL
-- Review: [verdict] (or "skipped — trivial change")
+- Validation: PASS/FAIL
+- Review: [verdict]
 - Test coverage: [covered / gaps noted / tests added]
 
 ### Step 1: Review Gate (loop entry point)
@@ -283,8 +357,8 @@ Show a summary:
 2. **Assess the tweak** — if it's another small fix, apply it directly. If it expands scope significantly (new files, new endpoints), warn:
    > "This is growing beyond follow-up scope. Want to continue here or escalate to `/implement`?"
 3. Apply changes (directly or via agent)
-4. Re-run validation (Phase 3 Step 2 only)
-5. If 10+ lines changed, re-run reviewer (Phase 4). Max 1 review round for tweaks.
+4. Re-run validation (Phase 4 Step 2 only)
+5. If 10+ lines changed, re-run reviewer (Phase 5). Max 1 review round for tweaks.
 6. **Loop back to Step 1** — re-present summary and ask the Review question again. Do NOT skip ahead to Step 2.
 7. Soft limit: after 3 tweak rounds, suggest creating a new `/follow-up` or `/implement` for remaining changes.
 
@@ -298,13 +372,7 @@ Two jobs: save what we learned, suggest improvements. **Skip entirely for Trivia
 
 #### Extract Learnings
 
-Scan the conversation for:
-- **User corrections** — "don't do X", "do Y instead" -> save as `feedback` memory with the correction, why, and how to apply
-- **Discovered problems** — bugs, gotchas, unexpected behaviors -> save as `feedback` or `project` memory
-- **Workarounds** — when a documented pattern failed -> save as `feedback` memory (what failed, what worked, why)
-- **CI failure resolutions** that required non-obvious fixes -> save as `feedback` memory
-
-Before writing, check if an existing memory covers this topic — UPDATE rather than duplicate. Skip if nothing novel was discovered.
+Scan conversation for learnings. Save as `feedback` memory: user corrections/preferences, workarounds, non-obvious fix resolutions. Save as `project` memory: discovered bugs/gotchas. Check existing memories first — UPDATE rather than duplicate. Skip if nothing novel.
 
 #### Suggest Improvements (WAIT)
 
@@ -338,12 +406,59 @@ fix(module): description of what changed
 
 ### Cleanup
 
-```bash
-# Kill orphaned processes on agent ports — never touch dev ports
-lsof -ti :4200-4299 2>/dev/null | xargs kill 2>/dev/null || true
-```
+Kill any orphaned background processes started during validation (startup checks, dev servers, etc.).
 
-**-> Pipeline complete.**
+**→ Pipeline complete.**
+
+---
+
+## Compliance — Do Not Skip Phases
+
+| Your reasoning | Why it's wrong |
+|---|---|
+| "The change is too small for full review" | Small changes cause production incidents too. Follow the process. |
+| "I already know how to do this" | Skills encode process knowledge beyond individual capability. Follow them. |
+| "The tests are obviously fine" | Run them. "Obviously fine" is the #1 predictor of broken tests. |
+| "This doesn't need a complexity assessment" | The assessment takes 30 seconds. Skipping it risks building something that should be `/implement`. |
+| "I can do this in one step" | Multi-step exists for a reason. Each step catches different failures. |
+| "The user seems impatient" | Cutting corners costs more time than following the process. |
+| "I'll implement this Medium change in one agent" | If files span 2 modules, decompose into parallel agents. Single-agent Medium misses parallelism. |
+| "One reviewer is enough for Medium" | Single reviewers miss cross-dimensional issues. Spawn 2–3 in parallel — it's the same wall-clock time. |
+| "I'll spawn agents one at a time" | All parallel agents MUST be in a SINGLE message. Sequential spawning defeats the purpose. |
+| "I'll implement this Small/Medium change directly — it's straightforward" | Orchestrator tokens are the most expensive resource. Small/Medium changes MUST be delegated to subagents. Only Trivial (1-2 files, no logic) can be done directly. |
+| "I'll just quickly edit these files myself since I already read them" | Reading files for assessment is fine. Writing code is implementation — delegate it. The assessment context goes into the agent prompt. |
+| "Spawning an agent for this is overkill" | A single-agent delegation costs fewer tokens than the orchestrator doing the work, because the orchestrator's context window is more expensive and accumulates garbage. |
+
+---
+
+## Task Tracking
+
+Use `TodoWrite` to track progress:
+- Create todos at the start: Assess complexity, Implement, Simplify, Validate, Review, Ship
+- Mark each as `in_progress` when starting, `completed` when done
+- For medium complexity: add the plan outline as a todo before implementation
+
+## Definition of Done
+
+For each change, confirm:
+
+- [ ] Complexity assessed and routed correctly (trivial/small/escalated)
+- [ ] Prior context loaded (spec, plan, concerns, notes, review-feedback from task directory if they exist)
+- [ ] Implementation complete and matches `$ARGUMENTS`
+- [ ] Simplification pass completed (Medium) or skipped (Trivial/Small)
+- [ ] All tests pass (new and existing)
+- [ ] No type/lint errors
+- [ ] Code quality reviewed for edge cases and clarity
+- [ ] User approved the change before shipping
+- [ ] Change is committed or staged (or delivered for user to commit)
+
+---
+
+## When to Use This Skill vs. `/implement`
+
+**`/follow-up`:** Change builds on existing code, scope is clear and bounded, no new architecture, complexity ≤ Medium.
+
+**`/implement`:** New major feature/component, ambiguous intent, new entity/endpoint/auth, 3+ modules, multiple decision points, needs design review.
 
 ---
 
@@ -351,8 +466,18 @@ lsof -ti :4200-4299 2>/dev/null | xargs kill 2>/dev/null || true
 
 | Problem | Cause | Fix |
 |---------|-------|-----|
-| full-check fails after 2 fix rounds | Agent is stuck on the same error | Present error to user with structured handoff |
+| Validation fails after 2 fix rounds | Agent is stuck on the same error | Present error to user with structured handoff |
 | Change is larger than expected | Scope grew beyond follow-up | Escalate to `/implement` |
-| Codegen not detected | Controller/DTO changes not showing in diff | Run `pnpm --filter @geniro/web generate:api` manually if API surface changed |
 | Agent re-reads files already scanned | Pre-inlined context was not passed | Always paste file contents from Phase 1 into the agent delegation prompt |
 | Reviewer finds architectural issues | Change needs design work | Escalate to `/implement` with reviewer findings as context |
+| Codegen not detected | Schema/DTO changes not showing in diff | Run codegen manually if API surface changed |
+
+---
+
+## Examples
+
+- **Trivial:** `/follow-up Fix typo in src/auth.ts line 42` → Read, fix, validate, review, ship
+- **Small:** `/follow-up Better error message when API returns 429` → Find call sites, improve, test, review, ship
+- **Small:** `/follow-up Fix double-render bug in Dashboard` → Reproduce, fix, test, review, ship
+- **Medium:** `/follow-up Rename userId to ownerId across UserService` → Plan, refactor all sites, simplify, validate, review, ship
+- **Too Large:** `/follow-up Add Notifications service with websockets` → Escalate to `/implement`
