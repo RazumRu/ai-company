@@ -5,7 +5,6 @@
   "description": "",
   "types": "dist/main.d.ts",
   "author": "",
-  "license": "Apache-2.0",
   "scripts": {
     "lint:fix": "pnpm run lint --fix",
     "lint": "pnpm eslint src cypress",
