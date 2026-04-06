@@ -1,274 +1,341 @@
 ---
 name: spec
-description: "Gather requirements through adaptive questioning, scout the codebase for context, and produce a complete feature spec. Combines structured interview with gray-area discovery inspired by GSD discuss-phase. Saves specs to .claude/.artifacts/project-features/. Use before /implement for non-trivial features."
-allowed-tools:
-  - Read
-  - Glob
-  - Grep
-  - Bash
-  - Task
-  - Write
-  - Edit
-  - AskUserQuestion
-argument-hint: "[feature or problem description]"
+description: "Use when gathering requirements and producing a feature specification before implementation. Clarifies intent through adaptive questioning, scouts the codebase for patterns and constraints, produces a canonical spec file."
+context: main
+model: inherit
+allowed-tools: [Read, Bash, Glob, Grep, Write, AskUserQuestion, WebSearch]
+argument-hint: "[feature or change to specify]"
 ---
 
-# Requirements Gathering — Adaptive Spec Builder
+# Spec: Gather Requirements and Produce Feature Specifications
 
-You are gathering requirements for the Geniro platform. Your goal is to produce a complete, unambiguous feature specification through adaptive questioning — ask only what the codebase and description can't answer, stop when you have enough to architect.
+Use this skill to clarify what a feature should do before building it. Combines adaptive questioning (from GSD discuss-phase, Superpowers brainstorming, Orchestrator Kit) with codebase analysis to produce a canonical specification that guides implementation.
 
-User = visionary. You = thinking partner. Don't interview — collaborate.
+## When to Use This Skill
+
+- **Vague requests:** "Make the dashboard better"
+- **Multi-faceted features:** Features with visual, API, and business logic components
+- **Architectural decisions:** "Should we cache this?" "REST or GraphQL?"
+- **Cross-module work:** Features touching multiple systems
+- **Ambiguous scope:** "Add notifications"—to what? How?
+
+**When NOT to use:** Trivial bugfixes, copy edits, or changes with crystal-clear intent (use `/follow-up` instead).
+
+---
+
+## Pipeline: Read Request → Scout Codebase → Identify Gray Areas → Ask Questions → Write Spec
 
 ## Feature Request
 
 $ARGUMENTS
 
-## Phase 0: Initialize
+**If `$ARGUMENTS` is empty**, ask the user via `AskUserQuestion` with header "Feature": "What feature would you like to specify?" with options "Describe the feature" / "Point to an existing issue". Do not proceed until a feature description is provided.
 
-1. **Create the features directory** if it doesn't exist:
-   ```bash
-   mkdir -p .claude/.artifacts/project-features/completed
-   ```
+### 0. Initialize (before anything else)
 
-2. **Propose a kebab-case name** for this feature based on the description (e.g., `graph-template-marketplace`, `thread-auto-naming`). Ask the user to confirm or suggest a different name.
+1. Ensure output directory exists: `mkdir -p .claude/.artifacts/planning/`
+2. Check for existing spec files: `ls .claude/.artifacts/planning/*/*.md 2>/dev/null`
+   - If specs exist, list them and ask: "Found existing specs. Creating a new one or updating existing?"
+3. Check for prior context: glob `.claude/.artifacts/planning/*/` for task directories. If any exist, read their `spec.md` and `state.md` for context that informs this spec
 
-3. **Check for existing feature** with the same name:
-   ```bash
-   ls .claude/.artifacts/project-features/*.md 2>/dev/null
-   ```
-   If a feature with this name already exists, warn the user and ask if they want to update it or choose a different name.
+### 1. Read User's Request (1 minute)
 
-4. **Load prior context** — check for existing specs to avoid re-asking settled decisions:
-   ```bash
-   ls .claude/.artifacts/project-features/*.md 2>/dev/null | head -20
-   ```
-   Scan existing specs for patterns and decisions that carry forward. Build an internal list of prior decisions to reference (don't re-ask what's already decided).
+Extract the raw intent:
+- What problem does this solve?
+- Who uses it (internal tool, end user, other system)?
+- What's the rough scope?
 
-## Phase 1: Codebase Scout
+Note ambiguities and unknowns—these become gray areas.
 
-Before asking a single question, explore the codebase to understand what already exists. This takes ~10% of your effort but prevents 50% of unnecessary questions.
+### 2. Scout the Codebase (5–10 minutes)
 
-### Step 1: Scope Detection
+Understand patterns and constraints **before** asking questions. Reduces back-and-forth.
 
-Infer scope from the description:
-- Mentions entities, endpoints, services, migrations, DTOs → **API** (`apps/api/`)
-- Mentions pages, components, hooks, UI, routes → **Web** (`apps/web/`)
-- Both or unclear → **Full-stack** (both)
+**Search for:**
+- Existing similar features (how are they structured?)
+- Architectural patterns (where do API endpoints live? State management?)
+- Database schema (relevant tables, constraints)
+- Auth/permissions model (how are permissions enforced?)
+- UI patterns (existing component library, design system)
+- Integration patterns (how do systems talk to each other?)
+- Config/feature flag patterns
 
-### Step 2: Targeted Exploration
+**Tools:**
+- `Glob` to find files by pattern
+- `Grep` to search for keywords (e.g., "notification", "webhook")
+- `Read` to examine existing implementations
+- `Bash` to explore directory structure
 
-Search for terms from the feature description in the relevant scope:
+Document findings with file paths and line numbers—you'll reference these in the spec.
 
-**API scope:**
-- Existing entities, services, controllers related to the feature
-- Database schema implications (related entities, FK relationships)
-- Existing notification/WebSocket patterns if relevant
-- Similar features already implemented
+### 3. Identify Gray Areas (5 minutes)
 
-**Web scope:**
-- Existing pages, components, hooks related to the feature
-- Available API types in `src/autogenerated/`
-- Existing state management patterns
-- Similar UI patterns already built
+From the request and codebase, list specific **ambiguities** that block implementation:
 
-Store findings internally as `<codebase_context>` — you'll use this to:
-- Annotate questions with "you already have X"
-- Skip questions the code answers
-- Propose informed default options
+**Visual/UX:**
+- Where does this UI live? (new page, sidebar widget, modal, inline?)
+- What's the user workflow? (click→see→update→save?)
 
-## Phase 2: Gray Area Analysis
+**API/Data:**
+- What's the input shape? Output shape?
+- Pagination? Filtering? Sorting?
+- Error cases—what goes wrong and how is it signaled?
 
-Analyze the feature against your codebase findings. Identify **gray areas** — implementation decisions that could go multiple ways and would change the result.
+**Business Logic:**
+- Rules/constraints (what can the user do, what's forbidden?)
+- Permissions (who can access this? edit this?)
+- State transitions (if stateful, what are valid transitions?)
 
-### What makes a good gray area:
-- Specific to THIS feature, not generic categories
-- Could genuinely go multiple ways
-- The answer changes what gets built
-- Can't be resolved by reading the code alone
+**Architecture:**
+- New table? Schema changes?
+- Async work needed? (jobs, webhooks, polling)
+- Cache/performance concerns?
 
-### What is NOT a gray area:
-- Questions the description already answers
-- Questions the codebase answers (existing patterns to follow)
-- Generic concerns that apply to everything ("should we add tests?")
-- Scope expansion (that's a different feature)
+**Integration:**
+- Does this talk to external systems?
+- Real-time? Or eventual consistency?
 
-### Categorize gray areas by topic:
-- **Scope boundaries** — what's in vs out
-- **Data model** — entity structure, relationships
-- **API surface** — endpoints, request/response shapes
-- **UI behavior** — interaction patterns, layout, empty states
-- **Edge cases** — error handling, concurrent access, permissions
-- **Integration** — how this connects to existing features
-- **Migration** — how existing data/users transition
+List 3–6 concrete questions, not vague ones.
 
-## Phase 3: Adaptive Questioning
+### 4. Ask Structured Questions (5–10 minutes)
 
-### Step 1: Present Gray Areas (or Auto-Proceed)
+**Use the `AskUserQuestion` tool** to present gray areas as **multiple-choice questions** (2–4 options per question, recommended default, batched together). Do NOT output questions as plain text — always use the tool so the user gets a structured interface to respond.
 
-**If no gray areas found** (description + codebase patterns resolve everything):
-Auto-proceed to spec generation. Output: "No ambiguities found — codebase patterns are clear. Proceeding to generate spec."
+**If no gray areas remain** (codebase patterns + request fully resolve the feature), present assumed decisions to the user via `AskUserQuestion` with header "Confirm": "Codebase patterns resolve all decisions. Here's what I'll assume: [list decisions]" with options "Looks good, write the spec" / "I have additional requirements". Do not silently skip to spec writing.
 
-**If gray areas found:**
-Present them via `AskUserQuestion` with `multiSelect: true`. For each gray area, annotate with codebase context:
+**Step 1: Triage gray areas.** Present all identified gray areas via `AskUserQuestion` with `multiSelect: true`: "Which areas need discussion? (Unselected items will use the recommended default.)" If more than 4 gray areas, split into 2 grouped questions.
 
+**Step 2: Discuss selected areas.** For each selected gray area, use `AskUserQuestion` with 2–4 concrete options. Include a recommended default based on codebase patterns.
+
+**Example question structure:**
 ```
-Which areas should we discuss? (select all that apply)
+## UI Location
+Where should the notifications panel appear?
 
-- Layout style — Cards vs list vs timeline?
-  (You already have a Card component with shadow/rounded variants in src/components/ui/)
+A) Top-right dropdown (like email inbox)
+   - Pro: Familiar, non-intrusive
+   - Con: Takes screen real estate
+B) Sidebar widget (persistent)
+   - Pro: Always visible, good for count badges
+   - Con: Takes up sidebar space
+C) Modal on login (users don't miss it)
+   - Pro: Users see it immediately
+   - Con: Can feel pushy
 
-- Loading behavior — Infinite scroll or pagination?
-  (Similar pages use Refine's useTable with server-side pagination)
-
-- Permission model — Per-graph or per-project?
-  (Current auth uses Keycloak roles, no per-resource permissions yet)
+Recommendation: A (dropdown). Matches product's notification style.
 ```
 
-The user selects which areas to discuss. Unselected areas = you decide based on codebase patterns.
+**Guidelines:**
+- Present options concisely (2–3 lines each)
+- Include a recommended default based on codebase patterns
+- Batch 2–4 questions together (not one per turn)
+- After user answers, confirm you understand before moving to spec writing
 
-### Step 2: Discuss Selected Areas
+If user picks non-default, use `AskUserQuestion` to ask "What's the reasoning?" once—don't debate.
 
-For each selected area, use `AskUserQuestion`:
+**AskUserQuestion fallback:** If `AskUserQuestion` returns an empty or blank answer, fall back to plain text: print the questions as formatted text and ask the user to respond before proceeding. Do not continue with empty answers.
 
-1. **Formulate 2-4 concrete options** based on codebase patterns and best practices
-2. **Lead with your recommendation** — mark it "(Recommended)" with a description explaining why
-3. **Use short labels** (1-5 words) with descriptions explaining implications
-4. **Group related questions** — up to 4 per `AskUserQuestion` call
-5. **Use `multiSelect: true`** when multiple options can apply
+**Max 2 follow-up rounds.** After the initial questions and 2 rounds of follow-up clarification, document remaining ambiguities in the spec's "Open Questions" section and proceed to writing. If 2 rounds are insufficient, suggest splitting into smaller specs.
 
-**After every `AskUserQuestion`, check for empty answers.** If answers are empty/auto-completed, immediately fall back to plain text:
-```
-It seems the picker didn't capture your answers. Let me ask as plain text:
+### Scope Creep Guard
 
-**1. [Question text]**
-   a) [Option 1] — [description] (Recommended)
-   b) [Option 2] — [description]
-   c) [Option 3] — [description]
+If the user introduces new capabilities during discussion (beyond clarification of existing scope):
+1. Note them as "Related but separate: [description]"
+2. At spec completion, present captured items: "These came up but are outside current scope. Include in Out of Scope section?"
+3. If user insists on expanding, ask: "This changes feature size. Expand this spec or create a separate `/spec`?"
 
-Reply with your choices (e.g., "1a, 2b") or describe your preference.
-```
+### 5. Write the Spec File (15–30 minutes)
 
-### Step 3: Follow-Up (if needed)
+Create a `<feature-name>-spec.md` file in `.claude/.artifacts/planning/` (e.g., `notification-center-spec.md`). Derive the filename: lowercase, spaces to hyphens, remove special characters, max 40 chars. Include canonical references to user decisions.
 
-After discussing selected areas, assess completeness. Run follow-ups if:
-- A user answer was ambiguous or contradictory
-- User selected "Other" with custom input raising new questions
-- Codebase exploration revealed complexities not yet addressed
-- You can't confidently fill a required spec section
-
-**Stop asking when:**
-- You can confidently write every section of the spec
-- User signals "that's enough", "just write it", "move on"
-- You've done 3+ follow-up rounds — make your best judgment and note assumptions
-
-### Scope Creep Guardrail
-
-If the user introduces new capability during discussion (not a clarification of existing scope):
-1. Capture it: "Noted as a deferred idea: [description]"
-2. Redirect to current scope
-3. If user insists, ask: "Should we expand scope? This changes the feature size."
-4. Include deferred ideas in the spec's "Out of Scope" section
-
-## Phase 4: Generate Spec
-
-After all questions resolved, produce the spec and save to `.claude/.artifacts/project-features/<feature-name>.md`:
+**Spec structure:**
 
 ```markdown
----
-name: <feature-name>
-status: approved
-created: <today's date>
-updated: <today's date>
-size: S|M|L
-type: feature|bugfix|refactor|task
----
+# Feature Spec: [Feature Name]
 
-# <Feature Title>
+## Summary
+[1–2 sentence problem statement and high-level solution]
 
-## Problem Statement
-[1-2 sentences: what problem, who it affects]
+## Use Cases
+- [User type/role] wants to [action] so that [outcome]
+- [User type/role] wants to [action] so that [outcome]
+
+## Scope
+- [In scope: what this feature does]
+- [Out of scope: related work not included]
 
 ## Requirements
 
-### Must-Have
-1. [R1: requirement with clear acceptance criterion]
-2. [R2: requirement with clear acceptance criterion]
+### UI/UX
+- [Location]: [where in the app]
+- [Workflow]: [step-by-step user actions]
+- [Look and feel]: [reference existing component or design pattern]
 
-### Nice-to-Have
-1. [requirement with acceptance criterion]
+### API
+- **Endpoint:** [GET/POST /path]
+- **Input:** [schema or example]
+- **Output:** [schema or example]
+- **Errors:** [what can go wrong, how is it signaled]
+- **Pagination/Filtering:** [if applicable]
 
-## Scope
+### Data Model
+- **New tables/fields:** [schema]
+- **Constraints:** [uniqueness, foreign keys]
+- **Migrations:** [if breaking changes]
 
-### In Scope
-- [specific deliverable]
+### Business Logic
+- [Rule 1]
+- [Rule 2]
+- **Permissions:** [who can do what]
+- **State machine:** [valid transitions, if stateful]
 
-### Out of Scope
-- [explicitly excluded item with reason]
-- [deferred ideas from discussion]
+### Integration
+- [External systems touched]
+- [Webhooks, events, or polling]
+- [Real-time or eventual consistency]
 
-## Implementation Decisions
-[Decisions locked during discussion — downstream agents follow these]
+### Performance & Caching
+- [Estimated scale: X users, Y requests/sec]
+- [Caching strategy, if any]
+- [Background work, if any]
 
-### [Area 1 name]
-- **D-01:** [Specific decision with rationale]
-- **D-02:** [Another decision]
+## Open Decisions
+- [ ] [Decision point from question 1] → User chose: [choice]
+- [ ] [Decision point from question 2] → User chose: [choice]
 
-### Claude's Discretion
-[Areas where user said "you decide" — document what you'll choose and why]
+## Canonical References
+- **Implementation guide:** See `/implement` skill
+- **Related code:** [Link to similar feature in codebase]
+- **Design system:** [Link to component library or design doc, if applicable]
 
-## Data Model Impact
-- [entity changes, new fields, migrations needed]
-
-## API Changes
-- [new/modified endpoints, request/response shapes]
-
-## UI Changes
-- [new/modified pages, components, interactions]
-
-## Edge Cases & Error Handling
-1. [edge case] — [expected behavior]
-
-## Success Criteria
-1. [measurable, testable criterion]
-
-## Constraints
-- [technical, timeline, or compatibility constraints]
-
-## Code Research Findings
-- [key codebase findings that inform implementation]
-- [existing patterns to reuse, relevant files, integration points]
-- [reusable assets discovered during scout]
-
-## Open Questions
-- [anything still unresolved — should be empty if interview was thorough]
+## Definition of Done
+- [ ] Spec reviewed and approved
+- [ ] Implementation satisfies all Requirements section
+- [ ] API tested (if applicable)
+- [ ] Permission checks tested (if applicable)
+- [ ] Migrations run successfully (if applicable)
 ```
 
-## Phase 5: Save & Confirm
+**Guidelines:**
+- Keep spec under 3 pages (focus on essentials, not minutiae)
+- Reference user's codebase patterns consistently
+- Link to existing code or design docs
+- Use the exact language user chose (e.g., if they said "panel" not "modal", use "panel")
+- Mark assumptions with "Assumption:" if needed
+- If a requirement is ambiguous, say so and note it for `/implement`
 
-1. **Write the spec** to `.claude/.artifacts/project-features/<feature-name>.md`
+### 6. Confirm & Close
 
-2. **Show the user the saved spec** and confirm:
-   ```
-   Feature spec saved to: .claude/.artifacts/project-features/<feature-name>.md
+Read the spec aloud to user:
+- "Here's the spec I wrote. Does this match what you're building?"
+- "Are there requirements missing or anything that feels off?"
 
-   Status: approved | Size: [S/M/L]
+If user says "that's it," confirm:
+- "Spec is ready. Next step is `/implement [feature name]` to build it."
 
-   To implement: /implement feature: <feature-name>
-   To see all features: /features list
-   ```
+If user revises, update spec and re-confirm (usually 1–2 rounds).
 
-3. **If the user wants changes**, edit the file and re-confirm.
+---
 
-## Rules
+## Example: Notification Center Feature
 
-- **Scout before asking** — never ask what the codebase can answer
-- **Annotate with context** — every option should reference what exists ("you have X", "similar to Y pattern")
-- **Be opinionated** — always lead with a recommendation, not open-ended "what do you want?"
-- **Try AskUserQuestion first, fall back to plain text** — check for empty answers after every call
-- **Be concise** — 1-2 sentences per question, not paragraphs
-- **Don't repeat** — if the user already stated something, reference it, don't re-ask
-- **Don't over-interview** — for simple features, compress or skip rounds
-- **Ground in code** — questions reference actual files, patterns, and entities you found
-- **Always save to file** — even simple specs get saved for tracking
-- **Set status to approved** — the interview itself is the approval
-- **Lock decisions** — the Implementation Decisions section is authoritative for downstream agents
+### User's Initial Request
+"Add notifications so users know when something important happens."
+
+### Codebase Scout Findings
+```
+- Existing notifications: toast messages in /src/components/Toast
+- Email service: /src/services/EmailService (uses third-party API)
+- WebSocket setup: /src/lib/websocket (already used for chat)
+- Users table: /db/schema.sql (has id, email, preferences)
+- Auth: permission checks in /src/middleware/auth.ts
+- UI patterns: Dropdowns in /src/components/Dropdown, Modals in /src/components/Modal
+```
+
+### Gray Areas Identified
+1. Where do notifications live UI-wise? (toast, dropdown, page, sidebar?)
+2. What types of notifications? (system alerts, user actions, integrations?)
+3. Real-time or polling?
+4. Does user need to manage notification preferences?
+
+### Questions Asked (condensed)
+```
+Q1. Notification delivery method?
+A) Real-time via WebSocket (low latency, can cost more)
+B) Polling every 10s (cheaper, slight delay)
+C) Both—WebSocket for critical, polling fallback
+
+Recommendation: A (WebSocket). You already use it for chat.
+User chose: A
+
+Q2. Notification persistence?
+A) In-memory (disappears on refresh)
+B) Database (users can see history)
+C) Database + read receipts (enterprise feature)
+
+Recommendation: B (database). Matches your email notification pattern.
+User chose: B
+```
+
+### Resulting Spec (excerpt)
+```markdown
+# Feature Spec: Notification Center
+
+## Summary
+Users receive real-time notifications for important events (new messages, updates to shared items, system alerts) via a bell icon dropdown in the top nav. Notifications persist in the database so users can review history.
+
+## UI/UX
+- **Location:** Top-right bell icon (matches existing dropdown pattern)
+- **Workflow:** Click bell → dropdown shows 5 most recent → "See all" link to full page → click to mark read
+- **Look and feel:** Reuse /src/components/Dropdown + /src/components/Badge for count
+
+## API
+- **Endpoint:** GET /api/notifications?limit=5&unreadOnly=true
+- **Output:** { notifications: [ { id, type, title, message, createdAt, read, link } ], total }
+
+## Data Model
+- **New table:** notifications (id, userId, type, title, message, read, createdAt, updatedAt)
+
+## Integration
+- **Real-time:** WebSocket event "notification:new" (reuse /src/lib/websocket)
+- **Sync:** Fetch on page load + subscribe to new events
+
+## Permissions
+- Users can see only their own notifications
+```
+
+---
+
+## Definition of Done for Spec Skill
+
+- [ ] Codebase scouted; patterns documented
+- [ ] Gray areas identified (3–6 concrete questions)
+- [ ] Questions asked and answered by user
+- [ ] Spec file written with full Requirements section
+- [ ] Spec references canonical code examples
+- [ ] User confirmed spec is complete
+- [ ] Spec file saved to `.claude/.artifacts/planning/<feature-name>-spec.md`
+
+---
+
+## Compliance — Do Not Skip Steps
+
+| Your reasoning | Why it's wrong |
+|---|---|
+| "I already know the codebase" | You'll ask questions the code already answers. Scout first. |
+| "Let me just ask 'What do you want?'" | Vague questions get vague answers. Ask specific, bounded questions with options. |
+| "I'll write the spec and fill in gaps later" | Specs without user input are wrong. Always ask about tradeoffs before writing. |
+| "The spec looks complete enough" | A spec the user didn't confirm is a spec that causes rework. Always get explicit confirmation. |
+| "This is simple, I can skip straight to writing" | Simple-seeming features hide complex tradeoffs. Scout → Ask → Write → Confirm. Always. |
+
+---
+
+## Sources & Frameworks
+
+This skill draws from:
+- **GSD (Getting Stuff Done):** Discuss-phase for clarifying intent
+- **Superpowers framework:** Brainstorming with multiple options
+- **Orchestrator Kit:** speckit.clarify + speckit.specify for structured requirements
+- **SuperClaude:** Confidence-check before implementation
+
+See [Extend Claude with skills - Claude Code Docs](https://code.claude.com/docs/en/skills) for more on skill design.
