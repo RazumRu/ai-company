@@ -724,9 +724,15 @@ export class AiSuggestionsService {
       const fromLabel = this.getNodeDisplayName(compiledGraph, from);
 
       if (message.role === 'human') {
+        const content = Array.isArray(message.content)
+          ? message.content
+              .filter((b) => b.type === 'text')
+              .map((b) => (b.type === 'text' ? b.text : ''))
+              .join('\n')
+          : message.content;
         sanitized.push({
           role: 'human',
-          content: message.content,
+          content,
           from: fromLabel,
         });
         continue;

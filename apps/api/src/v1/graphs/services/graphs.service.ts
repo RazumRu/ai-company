@@ -260,7 +260,7 @@ export class GraphsService {
         // Lock the graph row for update (prevents race conditions)
         const graph = await this.graphDao.getOne(
           {
-            id: id,
+            id,
             createdBy: userId,
           },
           { lockMode: LockMode.PESSIMISTIC_WRITE },
@@ -458,8 +458,6 @@ export class GraphsService {
         name: graph.name,
         version: graph.version,
       });
-
-      // Graph is already registered by compiler, no need to register again
 
       // Update status to running
       await this.graphDao.updateById(id, {
@@ -709,7 +707,14 @@ export class GraphsService {
       );
     }
 
-    const messages = dto.messages.map((msg) => new HumanMessage(msg));
+    const messages = dto.messages.map((msg) => {
+      if (typeof msg === 'string') {
+        return new HumanMessage(msg);
+      }
+      // Structured message with content blocks — LangChain HumanMessage
+      // natively supports content block arrays in the OpenAI vision format.
+      return new HumanMessage({ content: msg.content });
+    });
 
     if (!trigger.invokeAgent) {
       throw new BadRequestException(
@@ -781,7 +786,7 @@ export class GraphsService {
           (error as { code: string }).code === '23505';
         if (isUniqueViolation) {
           this.logger.debug(
-            `Eager thread creation skipped (race with notification handler): ${error instanceof Error ? error.message : String(error)}`,
+            `Eager thread creation skipped (race with notification handler): ${(error as Error).message}`,
           );
         } else {
           this.logger.warn(

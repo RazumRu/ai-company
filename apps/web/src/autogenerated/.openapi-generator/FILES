@@ -21,6 +21,12 @@ docs/CreateLiteLlmModelDtoLitellmParams.md
 docs/CreateProjectDto.md
 docs/CreateRepositoryDto.md
 docs/ExecuteTriggerDto.md
+docs/ExecuteTriggerDtoMessagesInner.md
+docs/ExecuteTriggerDtoMessagesInnerAnyOf.md
+docs/ExecuteTriggerDtoMessagesInnerAnyOfContentInner.md
+docs/ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf.md
+docs/ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1.md
+docs/ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrl.md
 docs/ExecuteTriggerResponseDto.md
 docs/GetRepoIndexesBranchesParameter.md
 docs/GitAuthApi.md
@@ -56,6 +62,7 @@ docs/OAuthLinkRequestDto.md
 docs/ProjectDto.md
 docs/ProjectsApi.md
 docs/RepoIndexDto.md
+docs/ResumeThreadDto.md
 docs/RuntimeHealthDto.md
 docs/RuntimeInstanceDto.md
 docs/RuntimesApi.md
@@ -89,6 +96,7 @@ docs/ThreadMessageDtoMessageOneOf1ToolCallsInner.md
 docs/ThreadMessageDtoMessageOneOf2.md
 docs/ThreadMessageDtoMessageOneOf3.md
 docs/ThreadMessageDtoMessageOneOf4.md
+docs/ThreadMessageDtoMessageOneOfContent.md
 docs/ThreadMessageDtoRequestTokenUsage.md
 docs/ThreadUsageStatisticsDto.md
 docs/ThreadUsageStatisticsDtoByNodeValue.md

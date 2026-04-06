@@ -566,11 +566,11 @@ export type CreateRepositoryDtoProviderEnum =
  */
 export interface ExecuteTriggerDto {
   /**
-   * Array of messages to send to the trigger
-   * @type {Array<string>}
+   * Array of messages — plain strings or structured objects with content blocks
+   * @type {Array<ExecuteTriggerDtoMessagesInner>}
    * @memberof ExecuteTriggerDto
    */
-  'messages': Array<string>;
+  'messages': Array<ExecuteTriggerDtoMessagesInner>;
   /**
    * Optional thread sub-ID that will be used to create the full thread ID.
    * @type {string}
@@ -590,6 +590,124 @@ export interface ExecuteTriggerDto {
    */
   'metadata'?: { [key: string]: any };
 }
+/**
+ *
+ * @export
+ * @interface ExecuteTriggerDtoMessagesInner
+ */
+export interface ExecuteTriggerDtoMessagesInner {
+  /**
+   * Content blocks for multimodal messages
+   * @type {Array<ExecuteTriggerDtoMessagesInnerAnyOfContentInner>}
+   * @memberof ExecuteTriggerDtoMessagesInner
+   */
+  'content': Array<ExecuteTriggerDtoMessagesInnerAnyOfContentInner>;
+}
+/**
+ *
+ * @export
+ * @interface ExecuteTriggerDtoMessagesInnerAnyOf
+ */
+export interface ExecuteTriggerDtoMessagesInnerAnyOf {
+  /**
+   * Content blocks for multimodal messages
+   * @type {Array<ExecuteTriggerDtoMessagesInnerAnyOfContentInner>}
+   * @memberof ExecuteTriggerDtoMessagesInnerAnyOf
+   */
+  'content': Array<ExecuteTriggerDtoMessagesInnerAnyOfContentInner>;
+}
+/**
+ * @type ExecuteTriggerDtoMessagesInnerAnyOfContentInner
+ * @export
+ */
+export type ExecuteTriggerDtoMessagesInnerAnyOfContentInner =
+  | ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf
+  | ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1;
+
+/**
+ *
+ * @export
+ * @interface ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf
+ */
+export interface ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf {
+  /**
+   *
+   * @type {string}
+   * @memberof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf
+   */
+  'type': ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOfTypeEnum;
+  /**
+   * Text content
+   * @type {string}
+   * @memberof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf
+   */
+  'text': string;
+}
+
+export const ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOfTypeEnum = {
+  Text: 'text',
+} as const;
+
+export type ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOfTypeEnum =
+  (typeof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOfTypeEnum)[keyof typeof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOfTypeEnum];
+
+/**
+ *
+ * @export
+ * @interface ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1
+ */
+export interface ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1 {
+  /**
+   *
+   * @type {string}
+   * @memberof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1
+   */
+  'type': ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1TypeEnum;
+  /**
+   *
+   * @type {ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrl}
+   * @memberof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1
+   */
+  'image_url': ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrl;
+}
+
+export const ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1TypeEnum = {
+  ImageUrl: 'image_url',
+} as const;
+
+export type ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1TypeEnum =
+  (typeof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1TypeEnum)[keyof typeof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1TypeEnum];
+
+/**
+ *
+ * @export
+ * @interface ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrl
+ */
+export interface ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrl {
+  /**
+   * Base64 data URL (data:image/...;base64,...)
+   * @type {string}
+   * @memberof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrl
+   */
+  'url': string;
+  /**
+   * Vision detail level
+   * @type {string}
+   * @memberof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrl
+   */
+  'detail'?: ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrlDetailEnum;
+}
+
+export const ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrlDetailEnum =
+  {
+    Auto: 'auto',
+    Low: 'low',
+    High: 'high',
+  } as const;
+
+export type ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrlDetailEnum =
+  (typeof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrlDetailEnum)[keyof typeof ExecuteTriggerDtoMessagesInnerAnyOfContentInnerOneOf1ImageUrlDetailEnum];
+
 /**
  *
  * @export
@@ -1860,6 +1978,19 @@ export type RepoIndexDtoStatusEnum =
 /**
  *
  * @export
+ * @interface ResumeThreadDto
+ */
+export interface ResumeThreadDto {
+  /**
+   * Optional message to inject instead of the stored checkPrompt
+   * @type {string}
+   * @memberof ResumeThreadDto
+   */
+  'message'?: string;
+}
+/**
+ *
+ * @export
  * @interface RuntimeHealthDto
  */
 export interface RuntimeHealthDto {
@@ -2669,11 +2800,11 @@ export interface ThreadMessageDtoMessageOneOf {
    */
   'role': ThreadMessageDtoMessageOneOfRoleEnum;
   /**
-   * Message content
-   * @type {string}
+   *
+   * @type {ThreadMessageDtoMessageOneOfContent}
    * @memberof ThreadMessageDtoMessageOneOf
    */
-  'content': string;
+  'content': ThreadMessageDtoMessageOneOfContent;
   /**
    *
    * @type {string}
@@ -2924,6 +3055,12 @@ export const ThreadMessageDtoMessageOneOf4RoleEnum = {
 export type ThreadMessageDtoMessageOneOf4RoleEnum =
   (typeof ThreadMessageDtoMessageOneOf4RoleEnum)[keyof typeof ThreadMessageDtoMessageOneOf4RoleEnum];
 
+/**
+ * Message content — plain string or array of content blocks
+ * @export
+ * @interface ThreadMessageDtoMessageOneOfContent
+ */
+export interface ThreadMessageDtoMessageOneOfContent {}
 /**
  *
  * @export
@@ -12321,6 +12458,55 @@ export const ThreadsApiAxiosParamCreator = function (
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
+    cancelWait: async (
+      threadId: string,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'threadId' is not null or undefined
+      assertParamExists('cancelWait', 'threadId', threadId);
+      const localVarPath = `/api/v1/threads/{threadId}/cancel-wait`.replace(
+        `{${'threadId'}}`,
+        encodeURIComponent(String(threadId)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'POST',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {string} threadId
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
     deleteThread: async (
       threadId: string,
       options: RawAxiosRequestConfig = {},
@@ -12693,6 +12879,66 @@ export const ThreadsApiAxiosParamCreator = function (
         ...headersFromBaseOptions,
         ...options.headers,
       };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {string} threadId
+     * @param {ResumeThreadDto} resumeThreadDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    resumeThread: async (
+      threadId: string,
+      resumeThreadDto: ResumeThreadDto,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'threadId' is not null or undefined
+      assertParamExists('resumeThread', 'threadId', threadId);
+      // verify required parameter 'resumeThreadDto' is not null or undefined
+      assertParamExists('resumeThread', 'resumeThreadDto', resumeThreadDto);
+      const localVarPath = `/api/v1/threads/{threadId}/resume`.replace(
+        `{${'threadId'}}`,
+        encodeURIComponent(String(threadId)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'POST',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      localVarHeaderParameter['Content-Type'] = 'application/json';
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+      localVarRequestOptions.data = serializeDataIfNeeded(
+        resumeThreadDto,
+        localVarRequestOptions,
+        configuration,
+      );
 
       return {
         url: toPathString(localVarUrlObj),
@@ -13176,6 +13422,35 @@ export const ThreadsApiFp = function (configuration?: Configuration) {
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
+    async cancelWait(
+      threadId: string,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (axios?: AxiosInstance, basePath?: string) => AxiosPromise<ThreadDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.cancelWait(
+        threadId,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['ThreadsApi.cancelWait']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {string} threadId
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
     async deleteThread(
       threadId: string,
       options?: RawAxiosRequestConfig,
@@ -13393,6 +13668,38 @@ export const ThreadsApiFp = function (configuration?: Configuration) {
       const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
       const localVarOperationServerBasePath =
         operationServerMap['ThreadsApi.getThreads']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {string} threadId
+     * @param {ResumeThreadDto} resumeThreadDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async resumeThread(
+      threadId: string,
+      resumeThreadDto: ResumeThreadDto,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (axios?: AxiosInstance, basePath?: string) => AxiosPromise<ThreadDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.resumeThread(
+        threadId,
+        resumeThreadDto,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['ThreadsApi.resumeThread']?.[
           localVarOperationServerIndex
         ]?.url;
       return (axios, basePath) =>
@@ -13672,6 +13979,20 @@ export const ThreadsApiFactory = function (
      * @param {*} [options] Override http request option.
      * @throws {RequiredError}
      */
+    cancelWait(
+      threadId: string,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<ThreadDto> {
+      return localVarFp
+        .cancelWait(threadId, options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {string} threadId
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
     deleteThread(
       threadId: string,
       options?: RawAxiosRequestConfig,
@@ -13774,6 +14095,22 @@ export const ThreadsApiFactory = function (
     ): AxiosPromise<Array<ThreadDto>> {
       return localVarFp
         .getThreads(graphId, statuses, limit, offset, options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {string} threadId
+     * @param {ResumeThreadDto} resumeThreadDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    resumeThread(
+      threadId: string,
+      resumeThreadDto: ResumeThreadDto,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<ThreadDto> {
+      return localVarFp
+        .resumeThread(threadId, resumeThreadDto, options)
         .then((request) => request(axios, basePath));
     },
     /**
@@ -13928,6 +14265,19 @@ export class ThreadsApi extends BaseAPI {
    * @throws {RequiredError}
    * @memberof ThreadsApi
    */
+  public cancelWait(threadId: string, options?: RawAxiosRequestConfig) {
+    return ThreadsApiFp(this.configuration)
+      .cancelWait(threadId, options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {string} threadId
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof ThreadsApi
+   */
   public deleteThread(threadId: string, options?: RawAxiosRequestConfig) {
     return ThreadsApiFp(this.configuration)
       .deleteThread(threadId, options)
@@ -14033,6 +14383,24 @@ export class ThreadsApi extends BaseAPI {
   ) {
     return ThreadsApiFp(this.configuration)
       .getThreads(graphId, statuses, limit, offset, options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {string} threadId
+   * @param {ResumeThreadDto} resumeThreadDto
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof ThreadsApi
+   */
+  public resumeThread(
+    threadId: string,
+    resumeThreadDto: ResumeThreadDto,
+    options?: RawAxiosRequestConfig,
+  ) {
+    return ThreadsApiFp(this.configuration)
+      .resumeThread(threadId, resumeThreadDto, options)
       .then((request) => request(this.axios, this.basePath));
   }
 

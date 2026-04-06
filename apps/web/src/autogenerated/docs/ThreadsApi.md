@@ -5,6 +5,7 @@ All URIs are relative to _http://localhost_
 | Method                                                              | HTTP request                                                          | Description |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------- | ----------- |
 | [**analyzeThread**](#analyzethread)                                 | **POST** /api/v1/threads/{threadId}/analyze                           |             |
+| [**cancelWait**](#cancelwait)                                       | **POST** /api/v1/threads/{threadId}/cancel-wait                       |             |
 | [**deleteThread**](#deletethread)                                   | **DELETE** /api/v1/threads/{threadId}                                 |             |
 | [**exportThread**](#exportthread)                                   | **GET** /api/v1/threads/{threadId}/export                             |             |
 | [**getThreadByExternalId**](#getthreadbyexternalid)                 | **GET** /api/v1/threads/external/{externalThreadId}                   |             |
@@ -12,6 +13,7 @@ All URIs are relative to _http://localhost_
 | [**getThreadMessages**](#getthreadmessages)                         | **GET** /api/v1/threads/{threadId}/messages                           |             |
 | [**getThreadUsageStatistics**](#getthreadusagestatistics)           | **GET** /api/v1/threads/{threadId}/usage-statistics                   |             |
 | [**getThreads**](#getthreads)                                       | **GET** /api/v1/threads                                               |             |
+| [**resumeThread**](#resumethread)                                   | **POST** /api/v1/threads/{threadId}/resume                            |             |
 | [**setThreadMetadata**](#setthreadmetadata)                         | **PUT** /api/v1/threads/{threadId}/metadata                           |             |
 | [**setThreadMetadataByExternalId**](#setthreadmetadatabyexternalid) | **PUT** /api/v1/threads/external/{externalThreadId}/metadata          |             |
 | [**stopThread**](#stopthread)                                       | **POST** /api/v1/threads/{threadId}/stop                              |             |
@@ -59,6 +61,50 @@ const { status, data } = await apiInstance.analyzeThread(
 ### HTTP request headers
 
 - **Content-Type**: application/json
+- **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+| ----------- | ----------- | ---------------- |
+| **201**     |             | -                |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **cancelWait**
+
+> ThreadDto cancelWait()
+
+### Example
+
+```typescript
+import { ThreadsApi, Configuration } from './api';
+
+const configuration = new Configuration();
+const apiInstance = new ThreadsApi(configuration);
+
+let threadId: string; // (default to undefined)
+
+const { status, data } = await apiInstance.cancelWait(threadId);
+```
+
+### Parameters
+
+| Name         | Type         | Description | Notes                 |
+| ------------ | ------------ | ----------- | --------------------- |
+| **threadId** | [**string**] |             | defaults to undefined |
+
+### Return type
+
+**ThreadDto**
+
+### Authorization
+
+[bearer](../README.md#bearer)
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
 - **Accept**: application/json
 
 ### HTTP response details
@@ -358,7 +404,9 @@ const configuration = new Configuration();
 const apiInstance = new ThreadsApi(configuration);
 
 let graphId: string; //Filter by graph ID (optional) (default to undefined)
-let statuses: Array<'running' | 'done' | 'need_more_info' | 'stopped'>; //Filter by thread statuses (optional) (default to undefined)
+let statuses: Array<
+  'running' | 'done' | 'need_more_info' | 'stopped' | 'waiting'
+>; //Filter by thread statuses (optional) (default to undefined)
 let limit: number; //Maximum number of threads to return (optional) (default to 50)
 let offset: number; //Number of threads to skip (optional) (default to 0)
 
@@ -372,12 +420,12 @@ const { status, data } = await apiInstance.getThreads(
 
 ### Parameters
 
-| Name         | Type                                                                                                        | Description                         | Notes                            |
-| ------------ | ----------------------------------------------------------------------------------------------------------- | ----------------------------------- | -------------------------------- |
-| **graphId**  | [**string**]                                                                                                | Filter by graph ID                  | (optional) defaults to undefined |
-| **statuses** | **Array<&#39;running&#39; &#124; &#39;done&#39; &#124; &#39;need_more_info&#39; &#124; &#39;stopped&#39;>** | Filter by thread statuses           | (optional) defaults to undefined |
-| **limit**    | [**number**]                                                                                                | Maximum number of threads to return | (optional) defaults to 50        |
-| **offset**   | [**number**]                                                                                                | Number of threads to skip           | (optional) defaults to 0         |
+| Name         | Type                                                                                                                                 | Description                         | Notes                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- | -------------------------------- |
+| **graphId**  | [**string**]                                                                                                                         | Filter by graph ID                  | (optional) defaults to undefined |
+| **statuses** | **Array<&#39;running&#39; &#124; &#39;done&#39; &#124; &#39;need_more_info&#39; &#124; &#39;stopped&#39; &#124; &#39;waiting&#39;>** | Filter by thread statuses           | (optional) defaults to undefined |
+| **limit**    | [**number**]                                                                                                                         | Maximum number of threads to return | (optional) defaults to 50        |
+| **offset**   | [**number**]                                                                                                                         | Number of threads to skip           | (optional) defaults to 0         |
 
 ### Return type
 
@@ -397,6 +445,55 @@ const { status, data } = await apiInstance.getThreads(
 | Status code | Description | Response headers |
 | ----------- | ----------- | ---------------- |
 | **200**     |             | -                |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **resumeThread**
+
+> ThreadDto resumeThread(resumeThreadDto)
+
+### Example
+
+```typescript
+import { ThreadsApi, Configuration, ResumeThreadDto } from './api';
+
+const configuration = new Configuration();
+const apiInstance = new ThreadsApi(configuration);
+
+let threadId: string; // (default to undefined)
+let resumeThreadDto: ResumeThreadDto; //
+
+const { status, data } = await apiInstance.resumeThread(
+  threadId,
+  resumeThreadDto,
+);
+```
+
+### Parameters
+
+| Name                | Type                | Description | Notes                 |
+| ------------------- | ------------------- | ----------- | --------------------- |
+| **resumeThreadDto** | **ResumeThreadDto** |             |                       |
+| **threadId**        | [**string**]        |             | defaults to undefined |
+
+### Return type
+
+**ThreadDto**
+
+### Authorization
+
+[bearer](../README.md#bearer)
+
+### HTTP request headers
+
+- **Content-Type**: application/json
+- **Accept**: application/json
+
+### HTTP response details
+
+| Status code | Description | Response headers |
+| ----------- | ----------- | ---------------- |
+| **201**     |             | -                |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

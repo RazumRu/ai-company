@@ -46,6 +46,7 @@ bootstrapper.addExtension(
       },
       fastifyOptions: {
         trustProxy: 'loopback',
+        bodyLimit: 50 * 1024 * 1024, // 50 MB — supports up to 5 base64-encoded images at 5 MB each
       },
     },
     (app: INestApplication) => {
@@ -99,7 +100,6 @@ process.on('unhandledRejection', (reason: unknown) => {
   console.error('Unhandled promise rejection (non-fatal):', reason);
 });
 
-// Initialize the application
 bootstrapper.init().catch((err) => {
   console.error('Failed to bootstrap application', err);
   process.exit(1);

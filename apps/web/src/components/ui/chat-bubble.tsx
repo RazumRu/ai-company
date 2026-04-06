@@ -46,6 +46,8 @@ export interface ChatBubbleProps {
   // Content — data only
   content: string;
   copyContent?: string;
+  /** Image data URLs from multimodal content blocks */
+  images?: string[];
 
   // Timestamps & metrics
   timestamp?: string;
@@ -72,6 +74,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = React.memo(
     avatarTooltip,
     content,
     copyContent,
+    images,
     timestamp,
     tokens,
     isPending,
@@ -145,6 +148,26 @@ export const ChatBubble: React.FC<ChatBubbleProps> = React.memo(
             className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${bubbleClass}`}
             style={bubbleStyle}>
             {body}
+            {images && images.length > 0 && (
+              <div className="flex gap-2 flex-wrap mt-2">
+                {images.map((url, i) => (
+                  <img
+                    key={i}
+                    src={url}
+                    alt={`Attachment ${i + 1}`}
+                    className="max-h-48 max-w-xs rounded-md border border-border cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => {
+                      if (
+                        /^data:image\//.test(url) ||
+                        /^https?:\/\//.test(url)
+                      ) {
+                        window.open(url, '_blank');
+                      }
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div

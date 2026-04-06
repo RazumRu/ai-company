@@ -2,12 +2,12 @@
 
 ## Properties
 
-| Name                 | Type                        | Description                 | Notes                             |
-| -------------------- | --------------------------- | --------------------------- | --------------------------------- |
-| **role**             | **string**                  | Message role                | [default to undefined]            |
-| **content**          | **string**                  | Message content             | [default to undefined]            |
-| **runId**            | **string**                  |                             | [optional] [default to undefined] |
-| **additionalKwargs** | **{ [key: string]: any; }** | Additional message metadata | [optional] [default to undefined] |
+| Name                 | Type                                                                              | Description                 | Notes                             |
+| -------------------- | --------------------------------------------------------------------------------- | --------------------------- | --------------------------------- |
+| **role**             | **string**                                                                        | Message role                | [default to undefined]            |
+| **content**          | [**ThreadMessageDtoMessageOneOfContent**](ThreadMessageDtoMessageOneOfContent.md) |                             | [default to undefined]            |
+| **runId**            | **string**                                                                        |                             | [optional] [default to undefined] |
+| **additionalKwargs** | **{ [key: string]: any; }**                                                       | Additional message metadata | [optional] [default to undefined] |
 
 ## Example
 

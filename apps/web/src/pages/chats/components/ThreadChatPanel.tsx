@@ -24,6 +24,7 @@ import { GithubIcon as Github } from '@/components/ui/icons';
 
 import { gitRepositoriesApi, graphsApi, threadsApi } from '../../../api';
 import type {
+  ExecuteTriggerDtoMessagesInner,
   GitRepositoryDto,
   ThreadDto,
   ThreadMessageDto,
@@ -58,6 +59,14 @@ import {
   extractThreadSubId,
   type TriggerNodeInfo,
 } from '../../../utils/graphThreads';
+import {
+  buildContentBlocks,
+  extractTextFromContentBlocks,
+  fileToDataUrl,
+  type ImageAttachment,
+  MAX_IMAGES_PER_MESSAGE,
+  validateImageFile,
+} from '../../../utils/imageAttachments';
 import { sortMessagesChronologically } from '../../../utils/threadMessages';
 import ThreadMessagesView from '../../graphs/components/ThreadMessagesView';
 import type { PendingMessage } from '../../graphs/types/messages';
@@ -121,6 +130,9 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
     string | undefined
   >(() => triggerNodes[0]?.id);
   const [messageInput, setMessageInput] = useState('');
+  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>(
+    [],
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [stoppingThread, setStoppingThread] = useState(false);
@@ -188,6 +200,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
     }
 
     setMessageInput('');
+    setImageAttachments([]);
     setThreadStatusOverride(undefined);
 
     // Sync repo state from thread metadata
@@ -258,7 +271,8 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
         return;
       }
 
-      const messageText = message.content;
+      const messageText = extractTextFromContentBlocks(message.content);
+      const isStructured = Array.isArray(message.content);
       const now = new Date().toISOString();
       const optimisticMessageId = `optimistic-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
@@ -272,7 +286,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
         updatedAt: now,
         message: {
           role: 'human',
-          content: messageText,
+          content: isStructured ? message.content : messageText,
         } as ThreadMessageDto['message'],
       };
 
@@ -291,7 +305,11 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
           thread.externalThreadId ?? selectedThreadExternalId,
         );
         const executeTriggerDto = {
-          messages: [messageText],
+          messages: (isStructured
+            ? [{ content: message.content }]
+            : [
+                { content: [{ type: 'text' as const, text: messageText }] },
+              ]) as ExecuteTriggerDtoMessagesInner[],
           async: true,
           ...(threadSubId ? { threadSubId } : {}),
         };
@@ -435,13 +453,17 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
 
     // If thread is running, add to pending messages instead of sending immediately
     if (isThreadRunning && !isDraft && onUpdatePendingMessages) {
+      const hasImages = imageAttachments.length > 0;
       const pendingMessage: PendingMessage = {
         role: 'human',
-        content: messageText,
+        content: hasImages
+          ? buildContentBlocks(messageText, imageAttachments)
+          : messageText,
       };
 
       onUpdatePendingMessages(thread.id, (prev) => [...prev, pendingMessage]);
       setMessageInput('');
+      setImageAttachments([]);
       toast.info(
         newMessageMode === 'inject_after_tool_call'
           ? 'Message will be sent after next tool execution'
@@ -466,6 +488,10 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
         ? `${messageText}\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n${repoSignature}, Branch: ${selectedRepo.defaultBranch}`
         : messageText;
 
+    const hasImages = imageAttachments.length > 0;
+    const messageContent = hasImages
+      ? buildContentBlocks(effectiveMessageText, imageAttachments)
+      : effectiveMessageText;
     const now = new Date().toISOString();
     const optimisticMessageId = `optimistic-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
@@ -479,7 +505,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
       updatedAt: now,
       message: {
         role: 'human',
-        content: effectiveMessageText,
+        content: messageContent,
       } as ThreadMessageDto['message'],
     };
 
@@ -494,6 +520,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
     );
 
     setMessageInput('');
+    setImageAttachments([]);
 
     // Lock the repo selector after first message is sent
     if (isFirstMessageWithRepo) {
@@ -506,7 +533,15 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
         thread.externalThreadId ?? selectedThreadExternalId,
       );
       const executeTriggerDto = {
-        messages: [effectiveMessageText],
+        messages: (hasImages
+          ? [{ content: messageContent }]
+          : [
+              {
+                content: [
+                  { type: 'text' as const, text: effectiveMessageText },
+                ],
+              },
+            ]) as ExecuteTriggerDtoMessagesInner[],
         async: true,
         ...(threadSubId ? { threadSubId } : {}),
         ...(isFirstMessageWithRepo && selectedRepo
@@ -594,6 +629,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
   }, [
     selectedTriggerId,
     messageInput,
+    imageAttachments,
     graphId,
     thread.id,
     thread.externalThreadId,
@@ -651,6 +687,50 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
       textareaRef.current.style.overflowY = 'hidden';
     }
   }, [messageInput]);
+
+  // Paste handler: intercept image items from clipboard
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent) => {
+      const items = Array.from(e.clipboardData.items);
+      const imageItems = items.filter((item) => item.type.startsWith('image/'));
+      if (imageItems.length === 0) {
+        return; // let default paste handle text
+      }
+
+      e.preventDefault();
+      const remainingSlots = MAX_IMAGES_PER_MESSAGE - imageAttachments.length;
+      const itemsToProcess = imageItems.slice(0, remainingSlots);
+      if (imageItems.length > remainingSlots) {
+        toast.error(`Maximum ${MAX_IMAGES_PER_MESSAGE} images per message`);
+      }
+
+      const newAttachments: ImageAttachment[] = [];
+      for (const item of itemsToProcess) {
+        const file = item.getAsFile();
+        if (!file) {
+          continue;
+        }
+        const error = validateImageFile(file);
+        if (error) {
+          toast.error(error);
+          continue;
+        }
+        const dataUrl = await fileToDataUrl(file);
+        newAttachments.push({
+          id: crypto.randomUUID(),
+          dataUrl,
+          fileName: file.name || 'pasted-image',
+          sizeBytes: file.size,
+        });
+      }
+      if (newAttachments.length > 0) {
+        setImageAttachments((prev) =>
+          [...prev, ...newAttachments].slice(0, MAX_IMAGES_PER_MESSAGE),
+        );
+      }
+    },
+    [imageAttachments.length],
+  );
 
   // Memoize input enter handler
   const handleInputEnter = useCallback(
@@ -876,6 +956,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
                 value={messageInput}
                 onChange={handleInputChange}
                 onKeyDown={handleInputEnter}
+                onPaste={handlePaste}
                 disabled={sendingMessage || !selectedTriggerId}
                 className="flex-1 resize-none min-h-[36px] overflow-hidden"
                 rows={1}
@@ -917,6 +998,43 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
                 Send
               </Button>
             </div>
+            {/* Image attachment previews */}
+            {imageAttachments.length > 0 && (
+              <div className="flex gap-2 px-1 py-1.5 flex-wrap items-center">
+                {imageAttachments.map((img) => (
+                  <div key={img.id} className="relative group">
+                    <img
+                      src={img.dataUrl}
+                      alt={img.fileName}
+                      className="h-16 w-16 object-cover rounded-md border border-border"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setImageAttachments((prev) =>
+                          prev.filter((a) => a.id !== img.id),
+                        )
+                      }
+                      className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                      <CircleX className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <span className="text-[11px] text-muted-foreground">
+                  {imageAttachments.length}/{MAX_IMAGES_PER_MESSAGE} images
+                </span>
+              </div>
+            )}
+            {/* Vision model warning */}
+            {imageAttachments.length > 0 && (
+              <div className="flex items-center gap-1.5 px-1 text-[11px] text-amber-600 dark:text-amber-400">
+                <AlertTriangle className="h-3 w-3 shrink-0" />
+                <span>
+                  Images require a vision-capable model (e.g. GPT-4o, Claude
+                  Sonnet). Non-vision models will ignore images.
+                </span>
+              </div>
+            )}
             {/* Sub row: small text links for trigger + repo */}
             <div className="flex items-center gap-3 pl-0.5">
               <DropdownMenu>
@@ -996,6 +1114,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
       triggerNodes,
       selectedTriggerId,
       messageInput,
+      imageAttachments,
       sendingMessage,
       isDraft,
       isThreadRunning,
@@ -1005,6 +1124,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
       triggerHelperText,
       handleInputChange,
       handleInputEnter,
+      handlePaste,
       handleStopThread,
       handleSendMessage,
       selectedRepoDisplay,

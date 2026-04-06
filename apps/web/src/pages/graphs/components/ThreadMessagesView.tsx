@@ -34,9 +34,11 @@ import {
   type RawTokenUsage,
   toTokenInfo,
 } from '../../../components/ui/token-display';
+import { extractTextFromContentBlocks } from '../../../utils/imageAttachments';
 import { STREAMING_REASONING_FLAG } from '../../../utils/threadMessages';
 import type { PendingMessage } from '../types/messages';
 import {
+  extractImageUrls,
   formatMessageContent,
   isBlankContent,
   limitConsecutiveNewlines,
@@ -646,6 +648,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
     const renderMessage = (message: ThreadMessageDto) => {
       const role = (message.message?.role as string) || '';
       const content = formatMessageContent(message.message?.content);
+      const images = extractImageUrls(message.message?.content);
       if (isToolLikeRole(role)) {
         const name = getMessageString(message.message, 'name') || 'tool';
         const title = getMessageTitle(message.message);
@@ -704,6 +707,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
             isReport
             content={content}
             copyContent={content}
+            images={images.length > 0 ? images : undefined}
             timestamp={message.createdAt}
             tokens={
               message.requestTokenUsage
@@ -727,6 +731,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
             timestamp={message.createdAt}
             content={content}
             copyContent={content}
+            images={images.length > 0 ? images : undefined}
           />
         );
       }
@@ -749,13 +754,14 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
           }
           content={content}
           copyContent={content}
+          images={images.length > 0 ? images : undefined}
         />
       );
     };
 
     const renderPendingMessage = (message: PendingMessage) => {
       const isHuman = message.role === 'human';
-      const content = message.content;
+      const content = extractTextFromContentBlocks(message.content);
 
       const sendTimeText =
         newMessageMode === 'inject_after_tool_call'
@@ -821,12 +827,8 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
       const datePart = createdAt
         ? new Date(createdAt).toLocaleString()
         : undefined;
-      const descriptorParts: string[] = [];
       const senderLabel = resolveSenderLabel(roleLabel, sourceNodeId);
-      if (senderLabel) {
-        descriptorParts.push(`from ${senderLabel}`);
-      }
-      const descriptor = descriptorParts.join(' ');
+      const descriptor = senderLabel ? `from ${senderLabel}` : undefined;
       const parts = [datePart, descriptor].filter(
         (part) => part && part.length,
       );

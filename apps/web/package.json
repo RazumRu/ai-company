@@ -40,6 +40,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@uiw/react-json-view": "2.0.0-alpha.41",
     "@uiw/react-md-editor": "^4.0.11",
+    "@vitejs/plugin-react": "^6.0.1",
     "@xyflow/react": "^12.10.1",
     "@zitadel/react": "^1.1.1",
     "ajv": "^8.18.0",
@@ -73,8 +74,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.2",
-    "vite": "^8.0.2",
-    "@vitejs/plugin-react": "^6.0.1"
+    "vite": "^8.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -95,7 +95,8 @@
     "semantic-release": "^25.0.3",
     "type-fest": "^5.5.0",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.2"
+    "typescript-eslint": "^8.57.2",
+    "vitest": "^4.1.1"
   },
   "scripts": {
     "dev": "vite --port 5174",
@@ -103,7 +104,8 @@
     "lint:fix": "pnpm prettier --write . && pnpm eslint src --fix",
     "start": "vite preview",
     "lint": "eslint src",
-    "generate:api": "SWAGGER_URL=http://localhost:5000/swagger-api-json ./scripts/generate-api.sh && pnpm run lint:fix"
+    "generate:api": "SWAGGER_URL=http://localhost:5000/swagger-api-json ./scripts/generate-api.sh && pnpm run lint:fix",
+    "test:unit": "vitest run --passWithNoTests --fileParallelism"
   },
   "browserslist": {
     "production": [

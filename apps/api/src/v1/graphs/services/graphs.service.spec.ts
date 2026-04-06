@@ -2392,6 +2392,113 @@ describe('GraphsService', () => {
         );
       });
     });
+
+    describe('message conversion', () => {
+      const triggerId = 'trigger-1';
+      const agentId = 'agent-1';
+      const threadSubId = 'test-thread';
+
+      function makeTriggerSetup() {
+        const mockGraph = createMockGraphEntity({
+          status: GraphStatus.Running,
+          schema: {
+            nodes: [
+              {
+                id: triggerId,
+                template: 'manual-trigger',
+                config: { agentId },
+              },
+            ],
+            edges: [],
+          },
+        });
+
+        const capturedMessages: BaseMessage[] = [];
+        const mockTrigger = {
+          isStarted: true,
+          invokeAgent: vi
+            .fn()
+            .mockImplementation(async (msgs: BaseMessage[], _opts: unknown) => {
+              capturedMessages.push(...msgs);
+              return {
+                messages: [],
+                threadId: `${mockGraphId}:${threadSubId}`,
+                checkpointNs: `${mockGraphId}:${threadSubId}:${agentId}`,
+              };
+            }),
+        };
+        const mockTriggerNode = {
+          id: triggerId,
+          type: NodeKind.Trigger,
+          template: 'manual-trigger',
+          instance: mockTrigger,
+          handle: {
+            provide: async () => mockTrigger,
+            configure: vi.fn().mockResolvedValue(undefined),
+            destroy: vi.fn().mockResolvedValue(undefined),
+          },
+          getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
+        };
+        const mockCompiledGraph = createMockCompiledGraph();
+
+        vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+        vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+        vi.mocked(graphRegistry.getNode).mockReturnValue(
+          mockTriggerNode as unknown as CompiledGraphNode,
+        );
+
+        return { capturedMessages };
+      }
+
+      it('should convert plain string message to HumanMessage with string content', async () => {
+        const { capturedMessages } = makeTriggerSetup();
+
+        await service.executeTrigger(mockCtx, mockGraphId, triggerId, {
+          messages: ['Hello world'],
+          threadSubId,
+        });
+
+        expect(capturedMessages).toHaveLength(1);
+        expect(capturedMessages[0]!.content).toBe('Hello world');
+      });
+
+      it('should convert structured message with content blocks to HumanMessage with content array', async () => {
+        const { capturedMessages } = makeTriggerSetup();
+
+        await service.executeTrigger(mockCtx, mockGraphId, triggerId, {
+          messages: [
+            {
+              content: [
+                { type: 'text', text: 'Describe this image' },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: 'data:image/png;base64,abc123',
+                    detail: 'auto',
+                  },
+                },
+              ],
+            },
+          ],
+          threadSubId,
+        });
+
+        expect(capturedMessages).toHaveLength(1);
+        expect(Array.isArray(capturedMessages[0]!.content)).toBe(true);
+        const blocks = capturedMessages[0]!.content as {
+          type: string;
+          text?: string;
+        }[];
+        expect(blocks[0]).toEqual({
+          type: 'text',
+          text: 'Describe this image',
+        });
+        expect(blocks[1]).toEqual({
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,abc123', detail: 'auto' },
+        });
+      });
+    });
   });
 
   describe('integration scenarios', () => {

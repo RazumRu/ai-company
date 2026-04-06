@@ -11,6 +11,7 @@ import { useNavigate, useParams } from 'react-router';
 import { graphsApi } from '../../api';
 import {
   ExecuteTriggerDto,
+  ExecuteTriggerDtoMessagesInner,
   GraphDto,
   GraphDtoStatusEnum,
   GraphNodeWithStatusDto,
@@ -222,8 +223,6 @@ export const GraphPage = () => {
     draftStateRef,
   });
 
-  // Helper to rebuild state from server graph response
-  // This is called after revision applied / save completed
   const rebuildStateFromGraph = useCallback(
     (graphData: GraphDto): GraphDiffState =>
       buildGraphDiffState(graphData, templates, {
@@ -232,7 +231,6 @@ export const GraphPage = () => {
     [templates],
   );
 
-  // Use draft state flags - single source of truth!
   const hasUnsavedChanges = draftState.hasUnsavedChanges;
   const hasStructuralChanges = draftState.hasStructuralChanges;
   const handleViewportPersistChange = useCallback(
@@ -642,7 +640,9 @@ export const GraphPage = () => {
         }
 
         const executeTriggerDto: ExecuteTriggerDto = {
-          messages: [triggerMessage],
+          messages: [
+            { content: [{ type: 'text' as const, text: triggerMessage }] },
+          ] as ExecuteTriggerDtoMessagesInner[],
           async: true,
         };
 

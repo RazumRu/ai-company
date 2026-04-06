@@ -161,11 +161,71 @@ const INVISIBLE_RE =
 const stripInvisibleUnicode = (text: string): string =>
   text.replace(INVISIBLE_RE, '');
 
+// Content block schemas for multimodal messages
+export const TextContentBlockSchema = z.object({
+  type: z.literal('text'),
+  text: z.string().min(1).describe('Text content'),
+});
+
+export const ImageUrlContentBlockSchema = z.object({
+  type: z.literal('image_url'),
+  image_url: z.object({
+    url: z
+      .string()
+      .refine(
+        (url) => /^data:image\/(png|jpeg|gif|webp);base64,/.test(url),
+        'Image URL must be a valid base64 data URL (png, jpeg, gif, or webp)',
+      )
+      .refine((url) => {
+        const base64 = url.split(',')[1];
+        if (!base64) {
+          return false;
+        }
+        const sizeBytes = Math.ceil((base64.length * 3) / 4);
+        return sizeBytes <= 5 * 1024 * 1024;
+      }, 'Image must be 5 MB or smaller')
+      .describe('Base64 data URL (data:image/...;base64,...)'),
+    detail: z
+      .enum(['auto', 'low', 'high'])
+      .optional()
+      .default('auto')
+      .describe('Vision detail level'),
+  }),
+});
+
+export const ContentBlockSchema = z.discriminatedUnion('type', [
+  TextContentBlockSchema,
+  ImageUrlContentBlockSchema,
+]);
+
+export type ContentBlockData = z.infer<typeof ContentBlockSchema>;
+
 export const ExecuteTriggerSchema = z.object({
   messages: z
-    .array(z.string().transform(stripInvisibleUnicode))
+    .array(
+      z.union([
+        z.string().transform(stripInvisibleUnicode),
+        z.object({
+          content: z
+            .array(ContentBlockSchema)
+            .min(1)
+            .refine(
+              (blocks) => blocks.some((b) => b.type === 'text'),
+              'At least one text content block is required',
+            )
+            .refine(
+              (blocks) =>
+                blocks.filter((b) => b.type === 'image_url').length <= 5,
+              'Maximum 5 images per message',
+            )
+            .describe('Content blocks for multimodal messages'),
+        }),
+      ]),
+    )
     .min(1)
-    .describe('Array of messages to send to the trigger'),
+    .describe(
+      'Array of messages — plain strings or structured objects with content blocks',
+    ),
   threadSubId: z
     .string()
     .optional()
@@ -211,7 +271,9 @@ export const ToolCallSchema = z.object({
 // Human message schema
 export const HumanMessageSchema = z.object({
   role: z.literal(MessageRole.Human).describe('Message role'),
-  content: z.string().describe('Message content'),
+  content: z
+    .union([z.string(), z.array(ContentBlockSchema).min(1)])
+    .describe('Message content — plain string or array of content blocks'),
   runId: z
     .string()
     .optional()
