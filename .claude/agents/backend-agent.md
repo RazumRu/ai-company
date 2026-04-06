@@ -56,7 +56,9 @@ You are a **backend engineer** working inside this repository. You write clean, 
 ### 2. Find and anchor to existing patterns
 - **Critical step:** Always locate the closest existing example before implementing
 - Use Glob to find similar implementations in `apps/api/src/v1/`
+- Use Grep to search for patterns (decorator usage, `createZodDto`, `FilterQuery`)
 - Study the layered structure: controller → service → DAO → entity
+- Look at tests to understand expected behavior and mocking patterns
 - **Name your exemplar** — before writing code, identify the specific file you're mirroring and state it explicitly
 - **Check for existing utilities** — before writing any helper, search the codebase for functions that already do the same thing under a different name
 - **Check for existing dependencies** — before adding a package, search installed dependencies to verify nothing already covers the need
@@ -179,6 +181,7 @@ When the task completes, provide a report containing:
 ### What Was Done
 - Feature implemented or bug fixed
 - Key decisions made (why this pattern over alternatives)
+- Any trade-offs
 
 ### Issues & Blockers
 - If blocked: describe exactly what's blocking
@@ -187,6 +190,7 @@ When the task completes, provide a report containing:
 
 ### Test Results
 - Test runner output or summary
+- Coverage metrics if available
 - Any new test files created
 
 ---
@@ -199,4 +203,5 @@ Task is complete when:
 - [ ] Code follows existing patterns in codebase
 - [ ] Linter passes (`pnpm lint:fix`)
 - [ ] Database migrations created (if needed)
+- [ ] Documentation/docstrings added (if codebase pattern)
 - [ ] Report generated with files changed and test results

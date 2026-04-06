@@ -1,97 +1,218 @@
 # Security Review Criteria
 
-OWASP-aligned security analysis: injection attacks, authentication/authorization, secrets management, crypto, input validation, and data exposure.
+OWASP-aligned security analysis: injection attacks, authentication/authorization, secrets management, crypto, input validation, and data exposure — TypeScript, NestJS/Fastify, MikroORM, Keycloak, React 19.
 
 ## What to Check
 
 ### 1. Injection Vulnerabilities
-- SQL injection: unsanitized queries, string concatenation with user input in MikroORM raw queries
-- Command injection: shell execution with user input (Dockerode, child_process)
-- Template injection: dynamic template rendering
+
+- SQL injection: raw queries with string interpolation instead of parameterized MikroORM calls
+- Command injection: shell execution (`exec`, `spawn`) with user-supplied input
+- NoSQL/Qdrant injection: filter objects built from untrusted sources
+- Template injection: dynamic template rendering with user content
 
 **How to detect:**
 ```bash
-grep -n "execute.*\`\|execute.*\+" file.ts | grep -v "parameterized"
-grep -n "exec\|spawn\|Dockerode" file.ts | grep -v "escape\|quote"
-grep -n "eval\|new Function" file.ts
+# MikroORM raw query with string interpolation
+grep -n "em\.execute\|nativeQuery\|qb\.where" file.ts | grep '`\|+\s*[a-z]'
+# Shell execution
+grep -n "exec\|spawn\|execSync\|spawnSync" file.ts | grep -v "escape\|quote\|sanitize"
+# Dynamic query builders
+grep -n "createQueryBuilder\|knex\b" file.ts
 ```
 
 **Red flags:**
-- `em.execute()` with template literals containing user input
-- Shell commands built with user data in runtime module
-- `eval()`, `new Function()`
+- `` em.execute(`SELECT * FROM users WHERE id = ${userId}`) `` — interpolation in raw SQL
+- `spawn('sh', ['-c', userInput])` — user input in shell command
+- MikroORM `FilterQuery` built by spreading an untrusted request body
+- `eval()` or `new Function(userInput)` anywhere in production code
 
 ### 2. Authentication & Authorization
-- Missing `@OnlyForAuthorized()` on protected endpoints
-- Missing authorization (user A accessing user B's data via project isolation)
-- Bypassed auth checks (not using `AppContextStorage`)
+
+- Missing `@OnlyForAuthorized()` decorator on NestJS controllers handling user data
+- Missing user-scoping: entity fetched by `id` without verifying it belongs to the current user from `AppContextStorage`
+- Keycloak token not verified — dev-mode bypass (`AUTH_DEV_MODE=true`) present in non-dev builds
+- RBAC gaps: role checks missing on admin-only or elevated endpoints
+- API authentication bypasses through decorator misuse or missing guard registration
 
 **How to detect:**
 ```bash
-grep -n "@Controller\|@Get\|@Post\|@Put\|@Delete" file.ts | grep -v "OnlyForAuthorized\|Public"
-grep -n "async.*@Param\|async.*@Body" file.ts | grep -v "CtxStorage\|contextDataStorage"
+# Controllers missing auth decorator
+grep -n "@Controller\b" file.ts
+grep -n "@OnlyForAuthorized\|@Public\b" file.ts
+# Service methods fetching entity without user scope
+grep -n "getOne\|findOne\b" file.ts | grep -v "ctx\.\|userId\|ownerId\|createdBy"
+# Auth dev bypass outside env config
+grep -rn "AUTH_DEV_MODE" apps/api/src/ | grep -v "environments\|\.env"
 ```
+
+**Red flags:**
+- `@Controller('admin')` without `@OnlyForAuthorized()` or equivalent role guard
+- `this.graphDao.getOne({ id })` without `{ createdBy: ctx.userId }` scope — user A can read user B's data
+- `AppContextStorage` bypassed by reading `req.user` directly without token verification
+- Hardcoded user ID or token in service or DAO code
 
 ### 3. Secrets Management
-- Hardcoded credentials (passwords, API keys, tokens)
-- Secrets in logs or error messages
+
+- Hardcoded credentials, API keys, or tokens in source files
+- Secrets logged via `DefaultLogger` or `console`
+- Secrets returned in API responses (e.g., GitHub token included in a DTO)
+- Environment variables accessed via hardcoded string outside the `environments/` config module
+- GitHub App private key or Keycloak client secret committed in plain text
 
 **How to detect:**
 ```bash
-grep -in "password\|secret\|api[_-]?key\|token\|credential" file.ts | grep -v "config\|env\|process"
-grep -n "logger\.\|console\." file.ts | grep -i "password\|secret\|key\|token"
+# Hardcoded credential patterns
+grep -in "password\s*=\s*['\"][^'\"\s]\|apiKey\s*=\s*['\"][^'\"\s]\|secret\s*=\s*['\"][^'\"\s]" file.ts | grep -v "process\.env\|config\."
+# Secrets in logs
+grep -n "logger\.\|console\." file.ts | grep -i "password\|token\|secret\|key\|credential"
+# Sensitive fields in response objects
+grep -n "token\|secret\|privateKey\|apiKey\|passwordHash" file.ts | grep "return\|dto\b\|response"
 ```
+
+**Red flags:**
+- `const token = "ghp_abc123"` — hardcoded GitHub PAT
+- `logger.info('GitHub token', { token: this.githubToken })` — token in structured log
+- `GITHUB_APP_PRIVATE_KEY` value committed in a non-env file
+- DTO returning `{ ...entity }` where entity has sensitive columns
 
 ### 4. Cryptography
-- Weak hashing algorithms (MD5, SHA1 for security)
-- `Math.random()` for security tokens
+
+- Weak hashing algorithms (MD5, SHA1) for security-sensitive purposes
+- `Math.random()` used for security tokens or session IDs
+- Missing HMAC or authentication on encrypted data
+- Outdated or broken cipher modes (ECB)
 
 **How to detect:**
 ```bash
-grep -in "md5\|sha1" file.ts
-grep -n "Math.random" file.ts
+# Weak hashing
+grep -in "md5\b\|sha1\b\|crc32" file.ts | grep -v "//\|description\|comment"
+# Insecure random for security purposes
+grep -n "Math\.random()" file.ts | grep -v "test\|mock\|seed\|color\|position"
+# Legacy cipher APIs
+grep -n "createCipher\b" file.ts
 ```
 
-### 5. Input Validation & Output Encoding
-- Missing Zod validation on DTOs
-- `dangerouslySetInnerHTML` in React components
-- File upload validation gaps
-- Path traversal vulnerabilities
+**Red flags:**
+- `createHash('md5')` or `createHash('sha1')` for CSRF tokens, password hashes, or session IDs
+- `Math.random()` generating tokens, nonces, or secrets
+- ECB cipher mode usage
+- No key rotation strategy for long-lived symmetric keys
+
+### 5. Input Validation and Output Encoding
+
+- Controller accepting `@Body()`, `@Query()`, or `@Param()` without a Zod DTO (`createZodDto`)
+- Zod schema missing length/format constraints (`z.string()` with no `.min()` or `.max()`)
+- Server-side validation absent — only frontend validation present
+- `dangerouslySetInnerHTML` in React components with user-supplied content
+- File upload or path parameters not normalized (path traversal risk)
+- LLM prompt or Qdrant filter built directly from unvalidated user input
 
 **How to detect:**
 ```bash
+# Controller params without Zod DTO
+grep -n "@Body()\s\|@Query()\s\|@Param()" file.ts | grep -v "Dto\b\|string\|number"
+# z.string() without length/format constraints
+grep -n "z\.string()" file.ts | grep -v "min\|max\|email\|uuid\|url\|regex\|trim"
+# Dangerous HTML rendering in React
 grep -n "dangerouslySetInnerHTML" file.tsx
-grep -n "readFile\|writeFile" file.ts | grep -v "path.resolve\|path.join"
+# Path operations on user input
+grep -n "readFile\|writeFile\|path\.join\|path\.resolve" file.ts | grep "req\.\|params\.\|body\.\|query\."
 ```
+
+**Red flags:**
+- `@Body() body: any` — no DTO, no Zod validation
+- `z.object({ name: z.string() })` without `.min(1).max(200)` — allows empty or unbounded strings
+- LLM prompt: `` `User request: ${userText}` `` injected into system prompt without sanitization
+- `<div dangerouslySetInnerHTML={{ __html: message.content }} />` — XSS risk
 
 ### 6. Sensitive Data Exposure
-- Sensitive data in error messages exposed to clients
-- PII in logs
-- Stack traces returned to users
 
-### 7. Security Headers & Configuration
-- CORS misconfiguration
-- Debug mode in production
+- PII (email, phone, name) returned beyond what the requester needs (over-fetching)
+- Stack traces or internal error details sent to API clients
+- Sensitive entity fields (`passwordHash`, `token`, `privateKey`) included in serialized response
+- Error responses leaking DB table/column names or query structure
+- Keycloak realm configuration details exposed through a public endpoint
 
 **How to detect:**
 ```bash
-grep -n "cors\|CORS\|Access-Control" file.ts
-grep -in "debug\|NODE_ENV" file.ts
+# Error details forwarded to client
+grep -n "error\.message\|error\.stack\|error\.toString()" file.ts | grep "response\|res\.\|json(\|throw new.*Exception("
+# Entity spread into response
+grep -n "return.*entity\b\|return \{ \.\.\." file.ts
+# Sensitive field names in response types/DTOs
+grep -n "passwordHash\|apiToken\|privateKey\|secret\b" file.ts | grep "dto\b\|class\b\|interface\b\|return\b"
 ```
+
+**Red flags:**
+- `throw new BadRequestException(error.message)` — exposes internal DB or library error to client
+- `return { ...entity }` where entity contains `passwordHash` or `apiToken` columns
+- `logger.error('Query failed', { query, params })` — logs raw SQL with user data in params
+
+### 7. Security Headers and CORS Configuration
+
+- Fastify/NestJS CORS configured with `origin: '*'` in non-development environments
+- Missing CSRF protection on cookie-based auth flows
+- Swagger UI enabled unconditionally without an environment guard
+- `@fastify/helmet` or equivalent not registered on the Fastify instance
+
+**How to detect:**
+```bash
+# Overly permissive CORS
+grep -rn "origin.*['\*]['\|cors.*true\b" apps/api/src/ | grep -v "test\|spec\|dev\b"
+# Swagger enabled without env guard
+grep -n "SwaggerModule\|DocumentBuilder" apps/api/src/main.ts | grep -v "NODE_ENV\|process\.env"
+# Helmet check
+grep -n "helmet\|fastify-helmet\|@fastify/helmet" apps/api/src/main.ts
+```
+
+**Red flags:**
+- `app.enableCors({ origin: '*' })` without checking `NODE_ENV !== 'production'`
+- Swagger UI served on `/api/docs` with no environment gate
+- `@fastify/helmet` not imported or registered in `main.ts`
 
 ### 8. Dependency Security
 
+- Known vulnerabilities in pnpm packages
+- Unpinned version ranges allowing silent upgrades to vulnerable versions
+- Packages duplicating functionality already covered by existing dependencies
+- Untrusted or abandoned packages added without review
+
+**How to detect:**
 ```bash
+# Audit dependencies
 pnpm audit
+# Check for new packages in recent commits
+git diff HEAD~1 package.json | grep "^+"
+# Check for duplicate-purpose packages
+grep -n "axios\|node-fetch\|got\b" apps/web/package.json
 ```
 
-## Project-Specific Security Checks
+**Red flags:**
+- `pnpm audit` reports `high` or `critical` severity findings
+- New `axios` added to a package that already uses the auto-generated API client (uses `fetch` internally)
+- Version ranges using `*` or `latest`
+- New package with no `pnpm-lock.yaml` update committed alongside it
 
-- **Docker sandbox escape**: Verify Dockerode calls properly isolate containers with resource limits
-- **LLM prompt injection**: Check that user input passed to LLM agents is properly bounded
-- **GitHub token scope**: Verify GitHub App tokens are scoped to minimum required permissions
-- **Keycloak token validation**: Ensure JWT tokens are validated on every request
-- **Redis/BullMQ data**: Verify no sensitive user data persisted in BullMQ job payloads
+### 9. Agent Tool Execution Security
+
+- Agent tools (`agent-tools/`) spawning shell commands without Docker sandbox
+- Tool inputs passed directly to Docker `exec` without escaping
+- File operation tools allowing paths outside the workspace sandbox
+- Tool output including secrets that get logged or returned to the LLM context
+
+**How to detect:**
+```bash
+# Shell execution in tool handlers
+grep -rn "exec\b\|spawn\b\|execSync\b" apps/api/src/v1/agent-tools/ | grep -v "test\|spec"
+# Path traversal in file tools
+grep -n "join\|resolve\|readFile" apps/api/src/v1/agent-tools/ | grep "input\.\|param\.\|arg\."
+```
+
+**Red flags:**
+- Tool handler using `exec(userSuppliedCommand)` without Docker sandbox wrapping
+- File tool resolving paths relative to the host filesystem root instead of workspace root
+- Tool returning environment variables or credential files in its text output
 
 ## Output Format
 
@@ -105,9 +226,9 @@ pnpm audit
   "line_end": 48,
   "description": "Detailed description of security risk",
   "code_snippet": "Vulnerable code",
-  "vulnerability_type": "injection|auth|secrets|crypto|validation|exposure|headers|dependencies",
+  "vulnerability_type": "injection|auth|secrets|crypto|validation|exposure|headers|dependencies|sandbox",
   "owasp_category": "A01|A02|A03|A04|A05|A06|A07|A08|A09|A10",
-  "impact": "What attacker can do",
+  "impact": "What an attacker can do with this vulnerability",
   "recommendation": "How to fix it securely",
   "confidence": 90
 }
@@ -115,25 +236,44 @@ pnpm audit
 
 ## Common False Positives
 
-1. **Test code** — Security can be relaxed in test context
-2. **Configuration-driven** — CORS allowlist injected at runtime
-3. **Intentional exposure** — Public API endpoints
-4. **Framework defaults** — NestJS/Fastify provide security by default
+1. **Legitimate string building** — Not all string concatenation is injection
+   - Check if values come from trusted internal sources (enum constants, config), not user input
+   - MikroORM `qb.where` with enum literals is safe
+
+2. **Test or development code** — Security may be relaxed in test context
+   - Verify the file is under a `test`/`spec`/`__tests__` directory, not production
+   - `AUTH_DEV_MODE=true` is acceptable in `.env.local`, not in production config
+
+3. **Configuration-driven CORS** — Allowlist may be injected at runtime
+   - Check if origin is loaded from `process.env.CORS_ORIGIN` rather than hardcoded `'*'`
+
+4. **Intentionally public endpoints** — Some endpoints are meant to be unauthenticated
+   - `GET /api/system/settings` returning `githubAppEnabled` is intentionally public
+   - Check controller comments or API documentation
+
+5. **Framework defaults** — NestJS and Fastify provide security mechanisms by default
+   - `nestjs-zod` Zod DTOs automatically strip unknown fields
+   - Do not flag if the framework's recommended Zod/DTO pattern is applied correctly
+
+6. **Defense in depth** — Multiple validation layers are not redundant
+   - Both frontend Zod validation and backend Zod DTO are correct — do not flag as duplicate effort
 
 ## Review Checklist
 
-- [ ] No SQL/command injection vulnerabilities
-- [ ] `@OnlyForAuthorized()` on protected endpoints
-- [ ] Authorization validated via `AppContextStorage`
-- [ ] No hardcoded credentials or secrets
-- [ ] Strong hashing/encryption algorithms
-- [ ] All user input validated via Zod DTOs
-- [ ] No `dangerouslySetInnerHTML` with user input
-- [ ] No sensitive data in logs or errors
-- [ ] Dependencies checked for vulnerabilities
+- [ ] No raw SQL with string interpolation — MikroORM `FilterQuery` or parameterized queries only
+- [ ] All controllers have `@OnlyForAuthorized()` unless intentionally public
+- [ ] All entity fetches scoped to current user from `AppContextStorage`
+- [ ] No hardcoded credentials, tokens, or API keys in source
+- [ ] No secrets logged or returned in responses or error messages
+- [ ] All `@Body()`, `@Query()`, `@Param()` use Zod DTOs with length/format constraints
+- [ ] No `dangerouslySetInnerHTML` with user-supplied content in React
+- [ ] CORS not set to `'*'` in non-development builds
+- [ ] `pnpm audit` passes without high/critical findings
+- [ ] Agent tools execute inside Docker sandbox, not directly on the host
+- [ ] Swagger disabled or gated behind `NODE_ENV` check in production
 
 ## Severity Guidelines
 
-- **CRITICAL**: Injection vulnerability, hardcoded credentials, auth bypass, sandbox escape
-- **HIGH**: Missing authentication, weak crypto, data exposure, missing project isolation
-- **MEDIUM**: Missing security headers, validation gap, debug mode in production
+- **CRITICAL**: SQL/command injection, hardcoded credentials, auth bypass, RCE via agent tool sandbox escape
+- **HIGH**: Missing `@OnlyForAuthorized()`, user data cross-access (IDOR), weak crypto, secrets in logs/responses
+- **MEDIUM**: Missing input length constraints, CORS misconfiguration, Swagger exposed in production, missing Helmet headers

@@ -1,117 +1,239 @@
 # Architecture Review Criteria
 
-Design patterns, modularity, coupling, performance, scalability, and technical debt for NestJS + React monorepo.
+Design patterns, modularity, coupling, performance, scalability, and technical debt — NestJS + Fastify, MikroORM, React 19, pnpm monorepo, BullMQ, Socket.IO.
 
 ## What to Check
 
-### 1. Module Design & Coupling
-- Circular dependencies between NestJS modules
-- High coupling: too many imports from other feature modules
-- Low cohesion: module doing multiple unrelated things
-- Missing abstraction layers (controller calling DAO directly)
+### 1. Module Design and Coupling (NestJS)
+
+- Circular NestJS module dependencies (Module A imports Module B's provider, B imports A's)
+- High coupling: a module importing providers from 5+ other feature modules directly
+- Low cohesion: a single NestJS module handling multiple unrelated features
+- Feature modules importing from `apps/api/src/v1/` sibling modules directly instead of using exported interfaces
+- `@packages/*` shared packages imported correctly via alias — never via relative `../../packages/`
 
 **How to detect:**
 ```bash
-# Count imports per file
-grep -c "^import" file.ts
-# Find circular imports
-grep -rn "import.*from" apps/api/src/v1/ | grep -v node_modules
-# Check dependency directions — services should not import controllers
-grep -n "import.*Controller" file.service.ts
+# Count module imports in a module file
+grep -c "from '\.\." apps/api/src/v1/feature/feature.module.ts
+# Direct sibling module imports in service files
+grep -n "from '\.\./" apps/api/src/v1/graphs/graphs.service.ts | grep "v1/"
+# Verify @packages alias usage
+grep -rn "from '\.\./\.\./\.\./packages" apps/api/src/ | grep -v "test\|spec"
+# Check for circular: A imports B and B imports A
+grep -rn "GraphsModule\|AgentsModule" apps/api/src/v1/agents/agents.module.ts
+grep -rn "AgentsModule" apps/api/src/v1/graphs/graphs.module.ts
+```
+
+**Circular dependency verification:** Trace the full dependency chain, not just direct imports. A→B→C→A is circular even though no single module directly imports its own importer. NestJS will throw `Nest can't resolve dependencies` at startup.
+
+**Red flags:**
+- `GraphsModule` imports `AgentsModule` and `AgentsModule` imports `GraphsModule` — use `forwardRef()` only as a last resort; restructure instead
+- Feature module with 15+ imports in its `@Module` decorator
+- A single module handling both user auth and graph compilation
+- `import { SomeService } from '../../agents/agents.service'` (cross-module service import without going through module exports)
+
+### 2. Layered Architecture (Controller → Service → DAO → Entity)
+
+- Business logic in controllers (controllers must be thin: route + validate + delegate)
+- Database queries in service methods (services must use DAOs, not inject `EntityManager` directly)
+- Controllers injecting DAOs directly instead of services
+- Services bypassing DAOs and using raw `EntityManager` for queries that belong in a DAO
+- Entities used as response types (entities should be mapped to DTOs before returning from controllers)
+
+**How to detect:**
+```bash
+# EM injected into controller
+grep -n "EntityManager\|@InjectEntityManager" apps/api/src/v1/*/feature.controller.ts
+# DAO injected into controller (should go through service)
+grep -n "Dao\b" apps/api/src/v1/*/feature.controller.ts | grep "@Inject\|constructor"
+# Business logic in controller (conditional/loop in handler body)
+grep -n "if\s*(\|for\s*(\|while\s*(" apps/api/src/v1/*/feature.controller.ts | grep -v "guard\|pipe"
+# Entity returned directly from controller
+grep -n "return.*Entity\b\|: .*Entity>" apps/api/src/v1/*/feature.controller.ts
 ```
 
 **Red flags:**
-- Single file with 20+ imports
-- Service importing from another module's DAO directly (should go through that module's service)
-- Controller containing business logic (should delegate to service)
-- DAO containing business logic (should be in service)
+- `constructor(private readonly em: EntityManager)` in a controller
+- `this.graphDao.getOne(...)` called inside a controller handler body
+- Complex conditional logic or loops in a controller method (should be in service)
+- `return graphEntity` from a controller method (should map to `GraphDto`)
 
-### 2. Layered Architecture Violations
-- Controller → Service → DAO → Entity layering must be respected
-- Controllers must be thin (route + validate only)
-- Services own business logic and orchestrate DAOs
-- DAOs inject EntityManager, use FilterQuery<T>
+### 3. DAO Design (MikroORM)
 
-**How to detect:**
-```bash
-# Controllers doing too much
-grep -n "EntityManager\|em\.\|findOne\|getAll" file.controller.ts
-# DAOs with business logic
-grep -n "if.*throw\|validate\|check" file.dao.ts
-# Services importing other services' DAOs directly
-grep -n "import.*Dao" file.service.ts | grep -v "$(dirname file.service.ts)"
-```
-
-### 3. NestJS Module Design
-- Each feature module should be self-contained in `apps/api/src/v1/<feature>/`
-- Module exports should be minimal (only what other modules need)
-- Cross-module communication via EventEmitter2, not direct imports
-
-**How to detect:**
-- Check `*.module.ts` for proper imports/exports/providers
-- Look for services importing from other modules without proper module dependency
-
-### 4. Code Organization & Structure
-- Feature-based directory structure: `controllers/`, `services/`, `dao/`, `dto/`, `entity/`
-- `*.types.ts` for types/interfaces only (no functions)
-- `*.utils.ts` for utility functions
-- Class files contain only the class
+- Proliferating `findByX` methods when `FilterQuery<T>` covers the use case
+- Raw `em.execute()` for queries achievable with typed `FilterQuery`
+- DAO methods that contain business logic (DAOs are query-only)
+- Missing `populate` hints leading to lazy-loaded N+1 queries from service callers
+- `EntityManager` used directly in services instead of routing through DAO
 
 **How to detect:**
 ```bash
-# Files that are hard to categorize
-find apps/api/src -name "*.ts" | grep "util\|misc\|temp\|helper"
-# Large files
-wc -l file.ts | awk '$1 > 500 {print $0}'
-```
-
-### 5. Error Handling Architecture
-- Use custom exceptions from `@packages/common` (NotFoundException, BadRequestException)
-- Never swallow errors silently
-- Consistent error propagation through layers
-
-### 6. Performance & Scalability
-- N+1 query patterns (queries inside loops instead of batched)
-- Missing MikroORM population/eager loading
-- Unnecessary data loading
-- Missing caching (Redis) for repeated expensive operations
-
-**How to detect:**
-```bash
-# N+1 patterns — queries inside loops
-grep -n "for\|while\|\.map(\|\.forEach(" file.ts | grep -A5 "findOne\|getOne\|getAll\|find("
-# Missing population
-grep -n "findOne\|find(" file.ts | grep -v "populate\|fields"
+# findBy method proliferation
+grep -n "async findBy\|async getBy" apps/api/src/v1/*/feature.dao.ts
+# Business logic in DAO (conditionals beyond query construction)
+grep -n "if\s*(\|throw new" apps/api/src/v1/*/feature.dao.ts
+# EM injected into service directly
+grep -n "EntityManager" apps/api/src/v1/*/feature.service.ts | grep "@Inject\|constructor"
 ```
 
 **Red flags:**
-- `getOne()` or `findOne()` inside a loop — should batch with `$in` or populate
-- Large collections loaded without pagination (`getAll` without limit)
-- Synchronous operations in async request path
+- `findByUserId`, `findByStatus`, `findByStatusAndUserId` as separate DAO methods — use `getAll({ userId, status })` with `FilterQuery` instead
+- DAO method throwing `NotFoundException` — that is service responsibility
+- Service injecting `EntityManager` alongside a DAO for the same entity
 
-### 7. Technical Debt
-- TODO/FIXME comments
-- Deprecated patterns
-- Inconsistent with project conventions
+### 4. Frontend Architecture (React 19)
+
+- Auto-generated API client (`src/autogenerated/`) manually edited or bypassed with custom `fetch`/`axios` wrappers
+- Custom inline UI components replicating primitives already in `src/components/ui/`
+- State management scattered across components when it should live in a custom hook or service
+- `WebSocketService` or `GraphStorageService` instantiated inside components instead of injected via context/hooks
+- Direct `localStorage`/`sessionStorage` access in components instead of going through `GraphStorageService`
 
 **How to detect:**
 ```bash
-grep -n "TODO\|FIXME\|XXX\|HACK" file.ts
+# Manual API calls bypassing generated client
+grep -rn "axios\.\|fetch(\b" apps/web/src/ | grep -v "autogenerated\|test\|spec"
+# Inline styles or custom div replacements
+grep -rn "style={{" apps/web/src/pages/ | grep -v "className"
+# Direct localStorage in components
+grep -rn "localStorage\.\|sessionStorage\." apps/web/src/pages/
+# Direct WebSocketService instantiation
+grep -rn "new WebSocketService\|new GraphStorageService" apps/web/src/pages/
 ```
 
-### 8. Testing Architecture
-- Code designed to be difficult to test
-- Pure business logic mixed with I/O
-- Global state or singletons
-- Hard dependencies on implementations
+**Red flags:**
+- `fetch('/api/graphs')` inside a React component — must use auto-generated client
+- `<div className="px-2 py-1 bg-blue-100 rounded">` when `<Badge>` from `src/components/ui/` exists
+- 200-line component with no extracted hooks for complex state logic
+- `localStorage.setItem('viewport', ...)` directly in `GraphCanvas.tsx` instead of `GraphStorageService`
 
-## Project-Specific Architecture Checks
+### 5. pnpm Monorepo Boundaries
 
-- **Layered architecture**: Controller → Service → DAO → Entity must be respected
-- **DTOs in single file**: All DTOs for a module in one `dto/*.dto.ts` file
-- **Migrations auto-generated**: Never hand-written migration files
-- **Package aliases**: Use `@packages/*` imports for shared packages
-- **EventEmitter2 for cross-module**: Cross-module communication via events, not direct service injection where possible
+- `apps/web` importing from `apps/api` (cross-app imports are forbidden)
+- `apps/api` importing from `apps/web`
+- Shared code placed in `apps/` instead of extracted to a `packages/` library
+- `packages/common` or `packages/mikroorm` imported via relative path instead of `@packages/common`
+- New shared utility added to a feature module instead of the appropriate `packages/` package
+
+**How to detect:**
+```bash
+# Cross-app imports
+grep -rn "from '.*apps/api" apps/web/src/
+grep -rn "from '.*apps/web" apps/api/src/
+# Relative path to packages
+grep -rn "from '\.\./\.\./\.\./packages\|from '\.\./packages" apps/
+# Shared-looking code in feature modules
+grep -rn "export.*class\|export.*function" apps/api/src/v1/*/utils.ts | grep -v "test"
+```
+
+**Red flags:**
+- `import { SomeEntity } from '../../api/src/v1/graphs/entities/graph.entity'` in web app
+- `import { DefaultLogger } from '../../../packages/common/src/logger'` — should be `@packages/common`
+- `AuthContextService` duplicated in two feature modules instead of being in a shared module
+
+### 6. Performance and Scalability
+
+- MikroORM N+1 queries: lazy collection or reference accessed inside a loop without prior `populate`
+- Unbounded queries: `getAll({})` with no `limit`/`take` on endpoints that could return thousands of rows
+- BullMQ jobs enqueued in a tight loop without batching or rate limiting
+- Synchronous heavy operations blocking the Fastify event loop (e.g., `readFileSync` in a request handler)
+- Missing Redis caching for repeated expensive Qdrant/LiteLLM calls
+- Socket.IO broadcasting to all clients when only a subset needs the event
+
+**How to detect:**
+```bash
+# Unbounded queries
+grep -n "getAll\|find\b\|findAll" file.ts | grep -v "limit\|take\|pagination"
+# Sync blocking in async context
+grep -n "readFileSync\|writeFileSync\|execSync" apps/api/src/v1/
+# Qdrant/LiteLLM without cache
+grep -n "qdrant\.\|litellm\." apps/api/src/v1/ | grep -v "cache\|Cache"
+# Broad socket emit
+grep -n "server\.emit\b\|io\.emit\b" apps/api/src/v1/ | grep -v "room\|to("
+```
+
+**N+1 distinction:**
+- **BAD (N+1):** `for (const graph of graphs) { await graph.nodes.init(); }` — N queries
+- **GOOD (populate):** `await this.graphDao.getAll({}, { populate: ['nodes'] })` — 1 query
+- **GOOD (join):** MikroORM `qb.leftJoinAndSelect(...)` — 1 query
+
+**Red flags:**
+- Collection `.init()` or `.load()` inside a `for`/`forEach`/`.map()` loop
+- `this.graphDao.getAll({})` with no pagination in a controller that returns a list
+- `server.emit('graph:update', data)` without scoping to a room/namespace
+- No `@packages/cache` usage on a service method called on every request
+
+### 7. Error Handling Architecture
+
+- Inconsistent error handling: some layers use `try/catch`, others let exceptions propagate without context
+- Errors thrown as raw `new Error('...')` instead of typed custom exceptions from `@packages/common`
+- NestJS exception filter not handling a new custom exception type — falls through to 500
+- `catch (e) {}` — silent swallow anywhere in the codebase
+- BullMQ failed jobs not landing in DLQ because error is swallowed before re-throw
+
+**How to detect:**
+```bash
+# Raw Error throws
+grep -n "throw new Error(" apps/api/src/v1/ | grep -v "test\|spec"
+# Silent catch
+grep -A1 "} catch" apps/api/src/ | grep -E "^\s*\}"
+# Custom exceptions imported correctly
+grep -n "NotFoundException\|BadRequestException\|ForbiddenException" apps/api/src/v1/ | grep "import"
+```
+
+**Red flags:**
+- `throw new Error('Graph not found')` — use `throw new NotFoundException('Graph not found')`
+- `catch (error) { console.log(error); }` — no re-throw, no structured log, silent failure
+- New custom exception class not registered in the global exception filter
+
+### 8. Technical Debt
+
+- TODO/FIXME comments without an issue reference left in production code
+- Deprecated NestJS, MikroORM, or BullMQ APIs still in use
+- Hand-written migration files (must always be generated via `pnpm run migration:generate`)
+- Manually edited files in `src/autogenerated/` (must be regenerated with `pnpm generate:api`)
+- Ad-hoc solutions replacing patterns that already exist elsewhere in the codebase
+
+**How to detect:**
+```bash
+# TODO/FIXME without issue reference
+grep -rn "TODO\|FIXME\|XXX\|HACK" apps/api/src/v1/ | grep -v "#[0-9]\|https://"
+# Hand-written migrations (check for non-generated patterns)
+grep -n "QueryRunner\|createTable\|addColumn" apps/api/src/db/migrations/ | head -5
+# Manual edits in autogenerated files
+git log --oneline -- apps/web/src/autogenerated/
+# Deprecated APIs
+grep -rn "deprecated\|@deprecated" node_modules/@mikro-orm/ 2>/dev/null | grep -f <(grep -roh "em\.\w\+" apps/api/src/v1/)
+```
+
+**Red flags:**
+- Migration file with hand-crafted SQL instead of generated `execute('ALTER TABLE ...')`
+- `apps/web/src/autogenerated/` modified in a commit not generated by `pnpm generate:api`
+- Duplicate utility function implementing the same logic as an existing one in `@packages/common`
+- `// TODO: fix this later` without a linked issue
+
+### 9. Testing Architecture
+
+- Business logic embedded in controllers or entities, making unit testing impossible without HTTP
+- Global state or module-level singletons that cannot be reset between tests
+- MikroORM `EntityManager` accessed as a global singleton rather than per-request fork
+- External API calls (LiteLLM, GitHub, Qdrant) directly embedded in service methods without an injectable interface — hard to mock
+
+**How to detect:**
+```bash
+# Global state
+grep -rn "^let \|^const .*= \[]\|^const .*= {}" apps/api/src/v1/ | grep -v "test\|spec\|module\b"
+# External API calls in service (not going through an injectable client)
+grep -n "fetch(\|axios\." apps/api/src/v1/*/feature.service.ts
+# Entity with business logic
+grep -n "^\s*async \|^\s*public \w\+(" apps/api/src/v1/*/entities/
+```
+
+**Red flags:**
+- `fetch('https://api.openai.com/...')` directly in a service method instead of going through the injected LiteLLM client
+- Module-level `const cache = new Map()` shared across requests
+- Entity class methods containing business logic that should be in the service layer
 
 ## Output Format
 
@@ -123,34 +245,58 @@ grep -n "TODO\|FIXME\|XXX\|HACK" file.ts
   "file": "path/to/file.ts",
   "line_start": 42,
   "line_end": 48,
-  "description": "Detailed description",
-  "category": "coupling|abstraction|solid|organization|errorhandling|performance|debt|testing",
-  "impact": "Why this matters",
-  "recommendation": "Proposed fix",
+  "description": "Detailed description of architectural concern",
+  "category": "coupling|layering|dao_design|frontend|monorepo|performance|errorhandling|debt|testability",
+  "pattern_location": ["file.ts:42", "other.ts:15"],
+  "current_design": "How it is currently structured",
+  "impact": "Why this matters (maintainability, scalability, correctness)",
+  "recommendation": "Proposed refactoring or improvement",
   "confidence": 85
 }
 ```
 
 ## Common False Positives
 
-1. **Pragmatic design** — Framework integration often requires tight coupling
-2. **Intentional repetition** — Duplicating for different contexts is sometimes correct
-3. **NestJS patterns** — NestJS modules have framework-specific patterns
-4. **Configuration-driven** — DI handles coupling at runtime
+1. **Pragmatic layering** — Thin delegation methods in services are not violations
+   - A service method that only calls a DAO and returns is fine — not every method needs business logic
+   - Controllers that add `@ApiBearerAuth()` or logging are still thin
+
+2. **Intentional module coupling** — Some modules are designed to work together
+   - `threads` and `agents` modules intentionally share concerns; check if the coupling is bidirectional
+   - NestJS `forwardRef()` is acceptable for well-understood mutual dependencies
+
+3. **Framework patterns** — NestJS requires some coupling by design
+   - Importing a DTO from a sibling module for request/response typing is acceptable
+   - NestJS DI wiring in `*.module.ts` files inherently couples modules — this is expected
+
+4. **Configuration-driven behavior** — Some services are intentionally flexible
+   - Injectable clients for LiteLLM or Qdrant with configurable endpoints are correct
+   - Don't flag abstract config injection as tight coupling
+
+5. **Intentional simplification** — Not all code needs full SOLID adherence
+   - Small utilities or thin wrappers don't need an interface + implementation pair
+   - Only flag if the lack of abstraction is causing real problems (untestable, unextendable)
+
+6. **Monorepo size** — Some cross-package patterns are intentional
+   - `apps/api` sharing types with `apps/web` via a `packages/` library is the correct pattern — don't flag the library itself
 
 ## Review Checklist
 
-- [ ] Module dependencies are acyclic
-- [ ] Layered architecture respected (Controller → Service → DAO)
-- [ ] Each module has clear, single purpose
-- [ ] Code organization follows feature-based structure
-- [ ] Error handling uses custom exceptions from @packages/common
-- [ ] No N+1 query patterns
-- [ ] Technical debt documented
-- [ ] Code is designed to be testable
+- [ ] NestJS module dependencies are acyclic (no `forwardRef` without documented justification)
+- [ ] Controllers are thin: route, validate, delegate only — no business logic
+- [ ] Services use DAOs for queries; do not inject `EntityManager` directly
+- [ ] DAOs use `FilterQuery<T>` — no proliferating `findByX` methods
+- [ ] No cross-app imports between `apps/web` and `apps/api`
+- [ ] `@packages/*` imports use alias, not relative paths
+- [ ] Auto-generated files (`src/autogenerated/`) not manually edited
+- [ ] No unbounded list queries — all list endpoints paginated
+- [ ] No MikroORM N+1 patterns (lazy collection init inside loops)
+- [ ] Custom exceptions from `@packages/common` used throughout
+- [ ] No TODO/FIXME without linked issue
+- [ ] Business logic is not embedded in entities or controllers
 
 ## Severity Guidelines
 
-- **CRITICAL**: Circular dependencies, layered architecture violations, N+1 in hot path
-- **HIGH**: High coupling, missing abstractions, controller with business logic
-- **MEDIUM**: Inconsistent patterns, minor organizational improvements
+- **CRITICAL**: Circular NestJS module dependency causing startup failure, business logic in entities making them non-portable, cross-app imports breaking monorepo boundaries
+- **HIGH**: Business logic in controllers, DAOs injected into controllers, N+1 in hot query path, unbounded list query, manually edited autogenerated files
+- **MEDIUM**: DAO method proliferation (findByX), missing DAO populate hint, TODO without issue, minor organizational inconsistency
