@@ -187,6 +187,41 @@ describe('SystemAgentTemplateFactory', () => {
       expect(invokeModelField).toBeDefined();
       expect(invokeModelField!._def.defaultValue).toBe('gpt-4o');
     });
+
+    it('description field has the definition description as default', () => {
+      const template = factory.createTemplate(ENGINEER_DEFINITION);
+      const schema = (template as unknown as Record<string, unknown>)
+        .schema as {
+        shape: Record<
+          string,
+          {
+            _def: { defaultValue: unknown; innerType: { meta: () => unknown } };
+          }
+        >;
+      };
+      const descriptionField = schema.shape['description'];
+      expect(descriptionField).toBeDefined();
+      expect(descriptionField!._def.defaultValue).toBe(
+        ENGINEER_DEFINITION.description,
+      );
+    });
+
+    it('instructions field has x-ui:readonly meta and does not have x-ui:ai-suggestions', () => {
+      const template = factory.createTemplate(ENGINEER_DEFINITION);
+      const schema = (template as unknown as Record<string, unknown>)
+        .schema as {
+        shape: Record<
+          string,
+          { _def: { innerType: { meta: () => Record<string, unknown> } } }
+        >;
+      };
+      const instructionsField = schema.shape['instructions'];
+      expect(instructionsField).toBeDefined();
+      const meta = instructionsField!._def.innerType.meta();
+      expect(meta).toBeDefined();
+      expect(meta!['x-ui:readonly']).toBe(true);
+      expect(meta!['x-ui:ai-suggestions']).toBeUndefined();
+    });
   });
 
   describe('template.create() — configure', () => {

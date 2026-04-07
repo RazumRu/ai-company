@@ -51,13 +51,19 @@ export class SystemAgentTemplateFactory {
         .min(1)
         .describe('Unique name for this agent')
         .default(def.name),
+      description: z
+        .string()
+        .min(1)
+        .describe('Description of what this agent does')
+        .meta({ 'x-ui:textarea': true })
+        .default(def.description),
       instructions: z
         .string()
         .describe(
           'System prompt injected at the start of each turn: role, goals, constraints, style.',
         )
         .meta({ 'x-ui:textarea': true })
-        .meta({ 'x-ui:ai-suggestions': true })
+        .meta({ 'x-ui:readonly': true })
         .default(def.instructions),
       ...(def.defaultModel
         ? {

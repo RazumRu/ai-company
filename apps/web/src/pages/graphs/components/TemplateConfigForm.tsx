@@ -174,6 +174,10 @@ const buildUiSchema = (schema: RjsfSchema): UiSchemaShape => {
       fieldUi['ui:field'] = 'githubRepoSelect';
     }
 
+    if (prop['x-ui:readonly'] === true) {
+      fieldUi['ui:readonly'] = true;
+    }
+
     ui[key] = fieldUi;
   }
 
@@ -330,7 +334,7 @@ const SearchableSelect = ({
         className="p-0"
         style={{ width: 'var(--radix-popover-trigger-width)' }}>
         <Command>
-          <CommandInput placeholder={`Search...`} />
+          <CommandInput placeholder="Search..." />
           <CommandList>
             <CommandEmpty>{emptyMessage ?? 'No results found.'}</CommandEmpty>
             <CommandGroup>
@@ -484,7 +488,6 @@ const RjsfTextWithAiWidget = (
           variant="link"
           size="sm"
           className="h-auto p-0 text-xs"
-          disabled={ctx.aiSuggestionEnabled !== true}
           onClick={() =>
             ctx.openAiSuggestion?.(
               props.name,
@@ -539,7 +542,6 @@ const RjsfTextareaWithExpandWidget = (
           variant="link"
           size="sm"
           className="h-auto p-0 text-xs"
-          disabled={ctx.aiSuggestionEnabled !== true}
           onClick={() =>
             ctx.openAiSuggestion?.(
               props.name,

@@ -31,6 +31,14 @@ import {
 import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../../components/ui/dialog';
 import { Input } from '../../../components/ui/input';
 import { JsonViewer } from '../../../components/ui/json-view';
 import {
@@ -162,6 +170,12 @@ export const NodeEditSidebar = React.memo(
     const [aiSuggestionState, setAiSuggestionState] =
       useState<AiSuggestionState | null>(null);
 
+    const [updatePreview, setUpdatePreview] = useState<{
+      currentInstructions: string;
+      newInstructions: string;
+      newContentHash: string;
+    } | null>(null);
+
     const computeHasLocalUnsavedChanges = useCallback(
       (nextData?: Record<string, unknown>) => {
         const currentValues = nextData ?? configFormData;
@@ -187,9 +201,8 @@ export const NodeEditSidebar = React.memo(
     );
 
     // For AI suggestion modal, we need to warn if there are unsaved changes that AI won't see
-    const nodeDirtyWarning = useMemo(() => {
-      return hasLocalUnsavedChanges || Boolean(hasNodeUnsavedChangesFromServer);
-    }, [hasLocalUnsavedChanges, hasNodeUnsavedChangesFromServer]);
+    const nodeDirtyWarning =
+      hasLocalUnsavedChanges || Boolean(hasNodeUnsavedChangesFromServer);
 
     // Track the previous node ID to detect node switches
     const prevNodeIdRef = useRef<string | undefined>(undefined);
@@ -869,7 +882,7 @@ export const NodeEditSidebar = React.memo(
       );
     }, []);
 
-    const handleSystemAgentUpdate = useCallback(async () => {
+    const handleSystemAgentPreview = useCallback(async () => {
       if (!node || !systemAgentId) {
         return;
       }
@@ -880,22 +893,42 @@ export const NodeEditSidebar = React.memo(
           string,
           unknown
         >;
-        const updatedConfig: Record<string, unknown> = {
-          ...currentConfig,
-          instructions: agent.instructions,
-          systemAgentContentHash: agent.contentHash,
-        };
-        onNodeDraftChange(node.id, { config: updatedConfig });
-        setHasLocalUnsavedChanges(true);
-        toastMessage.success('System agent updated successfully');
+        const currentInstructions =
+          typeof currentConfig.instructions === 'string'
+            ? currentConfig.instructions
+            : '';
+        setUpdatePreview({
+          currentInstructions,
+          newInstructions: agent.instructions,
+          newContentHash: agent.contentHash,
+        });
       } catch (error) {
         const errorMessage = extractApiErrorMessage(
           error,
-          'Failed to update system agent',
+          'Failed to fetch system agent update',
         );
         toastMessage.error(errorMessage);
       }
-    }, [node, systemAgentId, onNodeDraftChange]);
+    }, [node, systemAgentId]);
+
+    const handleSystemAgentConfirmUpdate = useCallback(() => {
+      if (!node || !updatePreview) {
+        return;
+      }
+      const currentConfig = (getNodeData(node)?.config ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const updatedConfig: Record<string, unknown> = {
+        ...currentConfig,
+        instructions: updatePreview.newInstructions,
+        systemAgentContentHash: updatePreview.newContentHash,
+      };
+      onNodeDraftChange(node.id, { config: updatedConfig });
+      setHasLocalUnsavedChanges(true);
+      setUpdatePreview(null);
+      toastMessage.success('System agent updated successfully');
+    }, [node, updatePreview, onNodeDraftChange]);
 
     const handleNameEdit = () => {
       setIsEditingName(true);
@@ -1356,7 +1389,7 @@ export const NodeEditSidebar = React.memo(
                 variant="outline"
                 size="sm"
                 className="h-6 text-xs shrink-0"
-                onClick={handleSystemAgentUpdate}>
+                onClick={handleSystemAgentPreview}>
                 Update
               </Button>
             </div>
@@ -1465,6 +1498,64 @@ export const NodeEditSidebar = React.memo(
             }
           }}
         />
+
+        <Dialog
+          open={updatePreview !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setUpdatePreview(null);
+            }
+          }}>
+          <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Update System Agent</DialogTitle>
+              <DialogDescription>
+                Review the changes before applying the update.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex-1 overflow-y-auto space-y-4 py-2">
+              {updatePreview &&
+                updatePreview.currentInstructions !==
+                  updatePreview.newInstructions && (
+                  <div className="space-y-2">
+                    <span className="text-sm font-medium">Instructions</span>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">
+                        Current:
+                      </span>
+                      <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                        {updatePreview.currentInstructions || '(empty)'}
+                      </pre>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">
+                        Updated:
+                      </span>
+                      <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                        {updatePreview.newInstructions}
+                      </pre>
+                    </div>
+                  </div>
+                )}
+              {updatePreview &&
+                updatePreview.currentInstructions ===
+                  updatePreview.newInstructions && (
+                  <div className="text-sm text-muted-foreground">
+                    No visible changes to instructions. The content hash will be
+                    updated.
+                  </div>
+                )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setUpdatePreview(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSystemAgentConfirmUpdate}>
+                Confirm Update
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </aside>
     );
   },
