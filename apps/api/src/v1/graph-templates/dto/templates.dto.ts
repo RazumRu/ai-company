@@ -26,6 +26,10 @@ export const TemplateSchema = z.object({
   schema: z.record(z.string(), z.unknown()),
   inputs: z.array(NodeConnectionSchema).optional(),
   outputs: z.array(NodeConnectionSchema).optional(),
+  // System agent metadata (present only for system agent templates)
+  systemAgentId: z.string().optional(),
+  systemAgentContentHash: z.string().optional(),
+  systemAgentPredefinedTools: z.array(z.string()).optional(),
 });
 
 export class TemplateDto extends createZodDto(TemplateSchema) {}

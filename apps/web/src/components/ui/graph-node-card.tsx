@@ -7,12 +7,14 @@ import {
 } from '@xyflow/react';
 import {
   AlertCircle,
+  AlertTriangle,
   BookOpen,
   ChevronDown,
   ChevronUp,
   Cpu,
   Play,
   Plug,
+  RefreshCw,
   Server,
   Trash2,
   Wrench,
@@ -602,6 +604,19 @@ export const CustomNode = React.memo(
     const templateKind = nodeTemplate?.kind ?? nodeData.templateKind;
     const templateKindLower = (templateKind || '').toLowerCase();
     const isAgentNode = templateKindLower === 'simpleagent';
+    const isSystemAgent = Boolean(
+      (nodeData.config as Record<string, unknown>)?.systemAgentId,
+    );
+    const systemAgentTemplate = isSystemAgent
+      ? templates.find((t) => t.id === nodeData.template)
+      : undefined;
+    const isSystemAgentDeprecated = isSystemAgent && !systemAgentTemplate;
+    const isSystemAgentOutdated =
+      isSystemAgent &&
+      Boolean(systemAgentTemplate) &&
+      (nodeData.config as Record<string, unknown>)?.systemAgentContentHash !==
+        (systemAgentTemplate as Record<string, unknown> | undefined)
+          ?.systemAgentContentHash;
     const showNodeStatus = ['runtime', 'mcp', 'trigger'].includes(
       templateKindLower,
     );
@@ -698,6 +713,26 @@ export const CustomNode = React.memo(
                   </div>
                 )}
               </div>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {isSystemAgentOutdated && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <RefreshCw className="size-3.5 shrink-0 text-amber-500" />
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              Update available for this system agent
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {isSystemAgentDeprecated && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              This system agent definition has been removed
             </TooltipContent>
           </Tooltip>
         )}

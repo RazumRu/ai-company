@@ -347,6 +347,37 @@ export class GraphValidationService {
       });
     }
 
+    // Prevent connecting a tool that's already in the system agent's predefined tool set
+    type TemplateWithSystemAgent = TemplateDto & {
+      systemAgentPredefinedTools?: string[];
+    };
+    const sourcePredefinedTools = (sourceTemplate as TemplateWithSystemAgent)
+      .systemAgentPredefinedTools;
+    const targetPredefinedTools = (targetTemplate as TemplateWithSystemAgent)
+      .systemAgentPredefinedTools;
+
+    if (
+      Array.isArray(sourcePredefinedTools) &&
+      sourcePredefinedTools.includes(targetData.template)
+    ) {
+      errors.push({
+        nodeId: sourceNode.id,
+        message: `Tool '${targetData.label}' is already included in this system agent's predefined tool set`,
+        type: 'connection',
+      });
+    }
+
+    if (
+      Array.isArray(targetPredefinedTools) &&
+      targetPredefinedTools.includes(sourceData.template)
+    ) {
+      errors.push({
+        nodeId: targetNode.id,
+        message: `Tool '${sourceData.label}' is already included in this system agent's predefined tool set`,
+        type: 'connection',
+      });
+    }
+
     return {
       isValid: errors.length === 0,
       errors,

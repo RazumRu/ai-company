@@ -74,6 +74,8 @@ docs/SuggestGraphInstructionsDto.md
 docs/SuggestGraphInstructionsResponseDto.md
 docs/SuggestGraphInstructionsResponseDtoUpdatesInner.md
 docs/SyncRepositoriesResponseDto.md
+docs/SystemAgentResponseDto.md
+docs/SystemAgentsApi.md
 docs/SystemApi.md
 docs/SystemSettingsResponseDto.md
 docs/TemplateDto.md

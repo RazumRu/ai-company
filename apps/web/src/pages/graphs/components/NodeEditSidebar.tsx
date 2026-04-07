@@ -3,11 +3,13 @@ import { createTwoFilesPatch } from 'diff';
 import { isEqual } from 'lodash';
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   FileText,
   Info,
   Pencil,
   Play,
+  RefreshCw,
   Wrench,
   X,
 } from 'lucide-react';
@@ -19,7 +21,7 @@ import React, {
   useState,
 } from 'react';
 
-import { graphsApi, litellmApi } from '../../../api';
+import { graphsApi, litellmApi, systemAgentsApi } from '../../../api';
 import {
   GraphDtoStatusEnum,
   GraphNodeWithStatusDto,
@@ -96,6 +98,11 @@ interface NodeEditSidebarProps {
   /** Whether the GitHub App integration is enabled (for conditional form fields). */
   githubAppEnabled?: boolean;
 }
+
+const SYSTEM_AGENT_INTERNAL_FIELDS = [
+  'systemAgentId',
+  'systemAgentContentHash',
+] as const;
 
 export type AiSuggestionState = {
   fieldKey: string;
@@ -258,6 +265,17 @@ export const NodeEditSidebar = React.memo(
     const templateKind = nodeTemplate?.kind ?? nodeData?.templateKind;
     const templateKindLower = (templateKind || '').toLowerCase();
     const isAgentNode = templateKindLower === 'simpleagent';
+    const nodeConfig = (nodeData?.config ?? {}) as Record<string, unknown>;
+    const isSystemAgent = Boolean(nodeConfig.systemAgentId);
+    const systemAgentId = isSystemAgent
+      ? String(nodeConfig.systemAgentId)
+      : null;
+    const isSystemAgentDeprecated = isSystemAgent && !nodeTemplate;
+    const isSystemAgentOutdated =
+      isSystemAgent &&
+      Boolean(nodeTemplate) &&
+      nodeConfig.systemAgentContentHash !==
+        nodeTemplate?.systemAgentContentHash;
     const isGraphRunning = graphStatus === GraphDtoStatusEnum.Running;
     const showNodeStatus = ['runtime', 'simpleagent', 'trigger'].includes(
       templateKindLower,
@@ -863,6 +881,34 @@ export const NodeEditSidebar = React.memo(
       );
     }, []);
 
+    const handleSystemAgentUpdate = useCallback(async () => {
+      if (!node || !systemAgentId) {
+        return;
+      }
+      try {
+        const response = await systemAgentsApi.getById(systemAgentId);
+        const agent = response.data;
+        const currentConfig = (getNodeData(node)?.config ?? {}) as Record<
+          string,
+          unknown
+        >;
+        const updatedConfig: Record<string, unknown> = {
+          ...currentConfig,
+          instructions: agent.instructions,
+          systemAgentContentHash: agent.contentHash,
+        };
+        onNodeDraftChange(node.id, { config: updatedConfig });
+        setHasLocalUnsavedChanges(true);
+        toastMessage.success('System agent updated successfully');
+      } catch (error) {
+        const errorMessage = extractApiErrorMessage(
+          error,
+          'Failed to update system agent',
+        );
+        toastMessage.error(errorMessage);
+      }
+    }, [node, systemAgentId, onNodeDraftChange]);
+
     const handleNameEdit = () => {
       setIsEditingName(true);
       setEditingName(nodeName);
@@ -995,79 +1041,102 @@ export const NodeEditSidebar = React.memo(
     const isTriggerNode = templateKindLower === 'trigger';
     const canTrigger = isTriggerNode && isGraphRunning;
 
-    const renderOptionsTabContent = useCallback(() => {
-      return (
+    const visibleTemplateSchema = useMemo(() => {
+      if (!templateSchema || !isSystemAgent) {
+        return templateSchema;
+      }
+      const props = (templateSchema as { properties?: Record<string, unknown> })
+        ?.properties;
+      if (!props) {
+        return templateSchema;
+      }
+      const filteredProps = Object.fromEntries(
+        Object.entries(props).filter(
+          ([key]) =>
+            !SYSTEM_AGENT_INTERNAL_FIELDS.includes(
+              key as (typeof SYSTEM_AGENT_INTERNAL_FIELDS)[number],
+            ),
+        ),
+      );
+      return { ...templateSchema, properties: filteredProps };
+    }, [templateSchema, isSystemAgent]);
+
+    const visibleSchemaPropertyKeys = useMemo(
+      () =>
+        (
+          visibleTemplateSchema as {
+            properties?: Record<string, unknown>;
+          } | null
+        )?.properties
+          ? Object.keys(
+              (
+                visibleTemplateSchema as {
+                  properties: Record<string, unknown>;
+                }
+              ).properties,
+            )
+          : schemaPropertyKeys,
+      [visibleTemplateSchema, schemaPropertyKeys],
+    );
+
+    const optionsTabContent = (
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '8px 4px 0 4px',
+          }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}>
+            <span className="text-base font-semibold">Configuration</span>
+          </div>
+        </div>
+
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
+            overflow: 'auto',
+            padding: '0 4px 8px 4px',
           }}>
-          <div
-            style={{
-              flexShrink: 0,
-              padding: '8px 4px 0 4px',
-            }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-              }}>
-              <span className="text-base font-semibold">Configuration</span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'auto',
-              padding: '0 4px 8px 4px',
-            }}>
-            {templateSchema && schemaPropertyKeys.length > 0 ? (
-              <TemplateConfigForm
-                schema={templateSchema}
-                formData={configFormData}
-                onChange={handleConfigFormChange}
-                liteLlmModels={liteLlmModels}
-                litellmModelsLoading={litellmModelsLoading}
-                onOpenExpandedTextarea={(fieldKey, value) =>
-                  setExpandedTextarea({ fieldKey, value })
-                }
-                onOpenAiSuggestion={(fieldKey, fieldLabel, value) =>
-                  openAiSuggestionModal(fieldKey, fieldLabel, value)
-                }
-                aiSuggestionEnabled={Boolean(
-                  isGraphRunning && graphId && node?.id,
-                )}
-                githubAppEnabled={githubAppEnabled}
-                templateId={nodeData?.template}
-              />
-            ) : (
-              <span className="text-muted-foreground">
-                No configuration options available for this template.
-              </span>
-            )}
-          </div>
+          {visibleTemplateSchema && visibleSchemaPropertyKeys.length > 0 ? (
+            <TemplateConfigForm
+              schema={visibleTemplateSchema}
+              formData={configFormData}
+              onChange={handleConfigFormChange}
+              liteLlmModels={liteLlmModels}
+              litellmModelsLoading={litellmModelsLoading}
+              onOpenExpandedTextarea={(fieldKey, value) =>
+                setExpandedTextarea({ fieldKey, value })
+              }
+              onOpenAiSuggestion={(fieldKey, fieldLabel, value) =>
+                openAiSuggestionModal(fieldKey, fieldLabel, value)
+              }
+              aiSuggestionEnabled={Boolean(
+                isGraphRunning && graphId && node?.id,
+              )}
+              githubAppEnabled={githubAppEnabled}
+              templateId={nodeData?.template}
+            />
+          ) : (
+            <span className="text-muted-foreground">
+              No configuration options available for this template.
+            </span>
+          )}
         </div>
-      );
-    }, [
-      configFormData,
-      githubAppEnabled,
-      graphId,
-      handleConfigFormChange,
-      isGraphRunning,
-      liteLlmModels,
-      litellmModelsLoading,
-      node?.id,
-      nodeData?.template,
-      openAiSuggestionModal,
-      schemaPropertyKeys.length,
-      templateSchema,
-    ]);
+      </div>
+    );
 
     if (!visible) {
       return null;
@@ -1287,6 +1356,62 @@ export const NodeEditSidebar = React.memo(
             )}
           </div>
 
+          {isSystemAgentOutdated && (
+            <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between gap-2 flex-shrink-0 mb-2 rounded-md">
+              <div className="flex items-center gap-1.5">
+                <RefreshCw className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="text-xs text-amber-700 dark:text-amber-400">
+                  Update available — instructions may have changed
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 text-xs shrink-0"
+                onClick={handleSystemAgentUpdate}>
+                Update
+              </Button>
+            </div>
+          )}
+
+          {isSystemAgentDeprecated && (
+            <div className="px-4 py-2 bg-destructive/10 border border-destructive/20 flex-shrink-0 mb-2 rounded-md">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="size-3.5 text-destructive shrink-0" />
+                <span className="text-xs text-destructive">
+                  This system agent definition has been removed. The node
+                  continues to work with its saved configuration.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {nodeTemplate?.systemAgentPredefinedTools &&
+            nodeTemplate.systemAgentPredefinedTools.length > 0 && (
+              <div className="px-1 py-2 flex-shrink-0 mb-2">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Recommended Tools
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {nodeTemplate.systemAgentPredefinedTools.map(
+                    (toolId: string) => {
+                      const toolTemplate = templates.find(
+                        (t) => t.id === toolId,
+                      );
+                      return (
+                        <Badge
+                          key={toolId}
+                          variant="outline"
+                          className="text-xs">
+                          {toolTemplate?.name ?? toolId}
+                        </Badge>
+                      );
+                    },
+                  )}
+                </div>
+              </div>
+            )}
+
           <div
             style={{
               flex: 1,
@@ -1295,7 +1420,7 @@ export const NodeEditSidebar = React.memo(
               display: 'flex',
               flexDirection: 'column',
             }}>
-            {renderOptionsTabContent()}
+            {optionsTabContent}
           </div>
         </div>
 
