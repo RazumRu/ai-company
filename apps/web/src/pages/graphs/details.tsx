@@ -810,8 +810,6 @@ export const GraphPage = () => {
             onTemplateClick={handleTemplateClick}
             onClose={() => setLeftSidebarCollapsed(true)}
             templates={templates}
-            selectedNode={selectedNode ?? undefined}
-            allNodes={nodes}
           />
         </aside>
       ) : (

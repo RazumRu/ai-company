@@ -142,7 +142,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         const graphId = params.metadata.graphId;
         const config = params.config;
 
-        // Collect all tools from connected nodes
         const allTools: BuiltAgentTool[] = [];
         const toolGroupInstructions: string[] = [];
         const mcpOutputs: BaseMcp<unknown>[] = [];
@@ -164,7 +163,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
           const inst = node.instance;
 
           if (node.type === NodeKind.Tool) {
-            // Handle new ToolNodeOutput format
             if (inst && typeof inst === 'object' && 'tools' in inst) {
               const toolNodeOutput = inst as ToolNodeOutput;
               allTools.push(...toolNodeOutput.tools);
@@ -172,7 +170,6 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
                 toolGroupInstructions.push(toolNodeOutput.instructions);
               }
             } else {
-              // Backward compatibility: handle old format
               const tools = Array.isArray(inst) ? inst : [inst];
               tools.forEach((tool) => allTools.push(tool as BuiltAgentTool));
             }

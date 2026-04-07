@@ -7,6 +7,7 @@ import type {
   GraphNode,
   GraphNodeData,
 } from '../pages/graphs/types';
+import { makeHandleId, slug } from '../pages/graphs/utils/graphCanvasUtils';
 
 export interface ValidationError {
   nodeId: string;
@@ -35,17 +36,6 @@ export interface ConfigValidationResult {
   errors: ValidationError[];
   normalizedConfigsByNodeId: Record<string, Record<string, unknown>>;
 }
-
-const slug = (v: string | number | undefined | null): string =>
-  String(v ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-');
-
-const makeHandleId = (
-  dir: 'source' | 'target',
-  rule: Pick<ConnectionRule, 'type' | 'value'>,
-): string => `${dir}-${rule.type}-${slug(rule.value)}`;
 
 const getNodeData = (node: GraphNode): GraphNodeData =>
   node.data as unknown as GraphNodeData;

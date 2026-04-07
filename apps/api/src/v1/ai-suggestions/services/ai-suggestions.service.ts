@@ -641,24 +641,28 @@ export class AiSuggestionsService {
       ? this.formatMessagesCompact(data.messages)
       : 'No messages available for this thread.';
 
-    const wrapBlock = (id: string, purpose: string, content: string): string =>
+    const wrapSectionBlock = (
+      id: string,
+      purpose: string,
+      content: string,
+    ): string =>
       [
         `<<<BLOCK id=${id} purpose="${purpose}">>>`,
         content,
         `<<<END BLOCK id=${id}>>>`,
       ].join('\n');
 
-    const statusBlock = wrapBlock(
+    const statusBlock = wrapSectionBlock(
       'information',
       'General information',
       [threadStatusLine, ...(userInputSection || [])].join('\n\n'),
     );
-    const agentsBlock = wrapBlock(
+    const agentsBlock = wrapSectionBlock(
       'agents',
       'Providing information about agents',
       ['Agents configuration:', agentSection].join('\n\n'),
     );
-    const messagesBlock = wrapBlock(
+    const messagesBlock = wrapSectionBlock(
       'messages',
       'Thread messages',
       ['Thread messages (oldest first):', messagesSection].join('\n\n'),

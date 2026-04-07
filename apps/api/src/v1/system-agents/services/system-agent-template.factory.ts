@@ -117,6 +117,11 @@ export class SystemAgentTemplateFactory {
       ] as const;
 
       async create() {
+        const predefinedHandles: {
+          handle: GraphNodeInstanceHandle<unknown, unknown>;
+          toolInstance: unknown;
+        }[] = [];
+
         return {
           provide: async (_params: GraphNode<SystemAgentSchemaType>) =>
             await this.createNewInstance(moduleRef, SimpleAgent),
@@ -132,6 +137,7 @@ export class SystemAgentTemplateFactory {
             const allTools: BuiltAgentTool[] = [];
             const toolGroupInstructions: string[] = [];
             const mcpOutputs: BaseMcp<unknown>[] = [];
+            const manualToolTemplateIds = new Set<string>();
 
             for (const nodeId of outputNodeIds) {
               const node = graphRegistry.getNode<
@@ -150,6 +156,7 @@ export class SystemAgentTemplateFactory {
               const inst = node.instance;
 
               if (node.type === NodeKind.Tool) {
+                manualToolTemplateIds.add(node.template);
                 if (inst && typeof inst === 'object' && 'tools' in inst) {
                   const toolNodeOutput = inst as ToolNodeOutput;
                   allTools.push(...toolNodeOutput.tools);
@@ -170,31 +177,14 @@ export class SystemAgentTemplateFactory {
               }
             }
 
-            // Collect manual tool template IDs to detect manual overrides
-            const manualToolTemplateIds = new Set<string>();
-            for (const nodeId of outputNodeIds) {
-              const node = graphRegistry.getNode(graphId, nodeId);
-              if (node && node.type === NodeKind.Tool) {
-                manualToolTemplateIds.add(node.template);
-              }
-            }
-
-            // Find Runtime node IDs among outputs
             const runtimeNodeIds = graphRegistry.filterNodesByType(
               graphId,
               outputNodeIds,
               NodeKind.Runtime,
             );
 
-            // Predefined tool handles/instances for cleanup
-            const predefinedHandles: {
-              handle: GraphNodeInstanceHandle<unknown, unknown>;
-              toolInstance: unknown;
-            }[] = [];
-
-            // Auto-instantiate predefined tools
+            predefinedHandles.length = 0;
             for (const toolId of def.tools) {
-              // Skip if manually connected (manual override)
               if (manualToolTemplateIds.has(toolId)) {
                 continue;
               }
@@ -210,7 +200,6 @@ export class SystemAgentTemplateFactory {
                 continue;
               }
 
-              // Dependency satisfaction check
               let unsatisfiable = false;
               for (const output of toolTemplate.outputs as readonly NodeConnection[]) {
                 if (output.required !== true) {
@@ -239,7 +228,6 @@ export class SystemAgentTemplateFactory {
                 continue;
               }
 
-              // Try to get default config via schema.parse({})
               let defaultConfig: unknown;
               try {
                 defaultConfig = toolTemplate.schema.parse({});
@@ -276,12 +264,6 @@ export class SystemAgentTemplateFactory {
               }
 
               predefinedHandles.push({ handle, toolInstance });
-              // Assign eagerly so destroy() always has the latest state
-              (
-                instance as SimpleAgent & {
-                  _predefinedHandles?: typeof predefinedHandles;
-                }
-              )._predefinedHandles = predefinedHandles;
 
               const output = toolInstance as {
                 tools: BuiltAgentTool[];
@@ -328,15 +310,6 @@ export class SystemAgentTemplateFactory {
           },
 
           destroy: async (instance: SimpleAgent) => {
-            const predefinedHandles =
-              (
-                instance as SimpleAgent & {
-                  _predefinedHandles?: {
-                    handle: GraphNodeInstanceHandle<unknown, unknown>;
-                    toolInstance: unknown;
-                  }[];
-                }
-              )._predefinedHandles ?? [];
             for (const { handle, toolInstance } of predefinedHandles) {
               await handle.destroy(toolInstance);
             }

@@ -12,22 +12,16 @@ import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { ScrollArea } from '../../../components/ui/scroll-area';
-import type { GraphNode } from '../types';
-
 interface TemplateSidebarProps {
   onTemplateClick: (template: TemplateDto) => void;
   onClose: () => void;
   templates: TemplateDto[];
-  selectedNode?: GraphNode;
-  allNodes?: GraphNode[];
 }
 
 export const TemplateSidebar = ({
   onTemplateClick,
   onClose,
   templates,
-  selectedNode: _selectedNode,
-  allNodes: _allNodes = [],
 }: TemplateSidebarProps) => {
   const [searchText, setSearchText] = useState('');
   const [expandedKinds, setExpandedKinds] = useState<Set<string>>(

@@ -32,7 +32,7 @@ import type {
   GraphNodeData,
 } from '../../pages/graphs/types';
 import type { ConnectionRule } from '../../pages/graphs/utils/graphCanvasUtils';
-import { makeHandleId } from '../../pages/graphs/utils/graphCanvasUtils';
+import { makeHandleId, slug } from '../../pages/graphs/utils/graphCanvasUtils';
 import { GraphValidationService } from '../../services/GraphValidationService';
 import { Avatar, AvatarFallback } from './avatar';
 import { Badge } from './badge';
@@ -303,12 +303,6 @@ const ensureNodeStatusPulseStyle = (() => {
     injected = true;
   };
 })();
-
-const slug = (v: string | number | undefined | null): string =>
-  String(v ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-');
 
 type HandleHighlight = 'allowed' | 'blocked' | 'none';
 
@@ -790,7 +784,7 @@ export const CustomNode = React.memo(
               <Handle
                 type="target"
                 id={id}
-                isConnectable={isConnectable ?? true}
+                isConnectable={isConnectable}
                 position={Position.Left}
                 style={{
                   width: '12px',
@@ -893,7 +887,7 @@ export const CustomNode = React.memo(
                 key={id}
                 type="target"
                 id={id}
-                isConnectable={isConnectable ?? true}
+                isConnectable={isConnectable}
                 position={Position.Left}
                 style={{
                   width: '12px',
@@ -1002,7 +996,7 @@ export const CustomNode = React.memo(
               <Handle
                 type="source"
                 id={id}
-                isConnectable={isConnectable ?? true}
+                isConnectable={isConnectable}
                 position={Position.Right}
                 style={{
                   background: visuals.background,
@@ -1026,23 +1020,28 @@ export const CustomNode = React.memo(
             <span className="text-[10px] text-muted-foreground mr-2 whitespace-nowrap">
               output
             </span>
-            <Handle
-              type="source"
-              id="source-out"
-              isConnectable={isConnectable ?? true}
-              position={Position.Right}
-              style={{
-                background: color('source', false, outMissing).bg,
-                border: color('source', false, outMissing).br,
-                boxShadow: color('source', false, outMissing).sh,
-                width: '12px',
-                height: '12px',
-                position: 'absolute',
-                right: '-18px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-              }}
-            />
+            {(() => {
+              const outColor = color('source', false, outMissing);
+              return (
+                <Handle
+                  type="source"
+                  id="source-out"
+                  isConnectable={isConnectable}
+                  position={Position.Right}
+                  style={{
+                    background: outColor.bg,
+                    border: outColor.br,
+                    boxShadow: outColor.sh,
+                    width: '12px',
+                    height: '12px',
+                    position: 'absolute',
+                    right: '-18px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                  }}
+                />
+              );
+            })()}
           </div>
         )}
       </div>
@@ -1126,7 +1125,7 @@ export const CustomNode = React.memo(
                     key={id}
                     type="source"
                     id={id}
-                    isConnectable={isConnectable ?? true}
+                    isConnectable={isConnectable}
                     position={Position.Right}
                     style={{
                       width: '12px',
@@ -1177,23 +1176,28 @@ export const CustomNode = React.memo(
         <span className="text-[10px] text-muted-foreground mr-2 whitespace-nowrap">
           output
         </span>
-        <Handle
-          type="source"
-          id="source-out"
-          isConnectable={isConnectable ?? true}
-          position={Position.Right}
-          style={{
-            background: color('source', false, outMissing).bg,
-            border: color('source', false, outMissing).br,
-            boxShadow: color('source', false, outMissing).sh,
-            width: '12px',
-            height: '12px',
-            position: 'absolute',
-            right: '-18px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-          }}
-        />
+        {(() => {
+          const outColor = color('source', false, outMissing);
+          return (
+            <Handle
+              type="source"
+              id="source-out"
+              isConnectable={isConnectable}
+              position={Position.Right}
+              style={{
+                background: outColor.bg,
+                border: outColor.br,
+                boxShadow: outColor.sh,
+                width: '12px',
+                height: '12px',
+                position: 'absolute',
+                right: '-18px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            />
+          );
+        })()}
       </div>
     );
 
