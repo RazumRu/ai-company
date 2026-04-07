@@ -130,7 +130,7 @@ At the next phase checkpoint, read `notes.md` and assess: (1) no impact -> conti
 2. Present complete plan content to user
 3. Add metadata: plan location, skeptic verdict
 
-**Gate:** Use `AskUserQuestion`:
+**Gate:** Use the `AskUserQuestion` tool (do NOT output options as plain text) to present:
 - A) **Approve — start building**
 - B) **Adjust** — user describes changes
 - C) **Too large — split** — decompose into smaller pieces
