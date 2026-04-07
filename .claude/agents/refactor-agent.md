@@ -64,22 +64,6 @@ Scan the target codebase for:
 - Inconsistent error handling or null-safety patterns
 - Report: code quality impacts
 
-#### Framework-Specific Smells (NestJS API)
-- **Business logic in controllers** — move to services
-- **Database queries in services** — move to DAOs
-- **God services** — split by bounded context or feature
-- **DTO validation logic scattered** — consolidate into Zod schemas with `createZodDto()`
-- **Manual service instantiation** — replace with constructor injection
-- **Magic strings/numbers** — extract as named constants
-
-#### Framework-Specific Smells (React Web)
-- **Business logic inside components** — extract into custom hooks
-- **Direct API calls in components** — move to service layers or hooks
-- **Prop drilling >2 levels** — introduce context or lift to a custom hook
-- **Giant components** (>200 lines) — split into focused sub-components
-- **Inline styles** instead of Tailwind utility classes
-- **`useEffect` with multiple concerns** — split into single-responsibility effects
-
 ### Step 2: Change Impact Scoring
 
 For each detected smell, score its change impact before including it in the plan:
