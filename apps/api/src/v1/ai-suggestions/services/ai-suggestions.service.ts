@@ -14,6 +14,7 @@ import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { wrapBlock } from '../../graph-templates/templates/agents/agent-instructions.utils';
 import { ToolNodeOutput } from '../../graph-templates/templates/base-node.template';
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageDto } from '../../graphs/dto/graphs.dto';
@@ -1009,7 +1010,7 @@ export class AiSuggestionsService {
           return undefined;
         }
 
-        return this.wrapBlock(trimmed, 'mcp_instructions');
+        return wrapBlock(trimmed, 'mcp_instructions');
       })
       .filter((block): block is string => Boolean(block));
 
@@ -1193,7 +1194,7 @@ export class AiSuggestionsService {
 
     if (tool.instructions) {
       details.push(
-        `Instructions:\n${this.wrapBlock(tool.instructions, 'tool_description')}`,
+        `Instructions:\n${wrapBlock(tool.instructions, 'tool_description')}`,
       );
     }
 
@@ -1258,10 +1259,7 @@ export class AiSuggestionsService {
         const details = [`Name: ${mcp.name}`];
         if (mcp.instructions) {
           details.push(
-            `Instructions:\n${this.wrapBlock(
-              mcp.instructions,
-              'mcp_instructions',
-            )}`,
+            `Instructions:\n${wrapBlock(mcp.instructions, 'mcp_instructions')}`,
           );
         }
         return details.join('\n');
@@ -1346,10 +1344,6 @@ export class AiSuggestionsService {
       'Remember: reference-only blocks must never be copied into output.',
       'Return JSON only. Only include updates for agents whose instructions must change.',
     ].join('\n\n');
-  }
-
-  private wrapBlock(content: string, tag: string): string {
-    return [`<${tag}>`, content, `</${tag}>`].join('\n');
   }
 
   private validateKnowledgeSuggestionResponse(value: unknown):

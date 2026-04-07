@@ -15,6 +15,11 @@ import {
   SimpleAgentNodeBaseTemplate,
   ToolNodeOutput,
 } from '../base-node.template';
+import {
+  collectMcpInstructions,
+  collectToolGroupInstructions,
+  collectToolInstructions,
+} from './agent-instructions.utils';
 
 export const SimpleAgentTemplateSchema = z.object({
   name: z.string().min(1).describe('Unique name for this agent'),
@@ -186,16 +191,16 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         instance.resetTools();
         allTools.forEach((tool) => instance.addTool(tool));
 
-        const mcpInstructions = this.collectMcpInstructions(mcpOutputs);
+        const mcpInstructions = collectMcpInstructions(mcpOutputs);
 
         instance.setConfig(config);
         instance.setMcpServices(mcpOutputs);
         await instance.initTools(config);
 
-        const toolInstructions = this.collectToolInstructions(
+        const toolInstructions = collectToolInstructions(
           instance.getTools() as BuiltAgentTool[],
         );
-        const toolGroupInstructionsText = this.collectToolGroupInstructions(
+        const toolGroupInstructionsText = collectToolGroupInstructions(
           toolGroupInstructions,
         );
 
@@ -217,65 +222,5 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         await instance.stop();
       },
     };
-  }
-
-  private collectToolInstructions(tools: BuiltAgentTool[]): string | undefined {
-    // Collect individual tool instructions
-    const toolBlocks = tools
-      .filter((tool): tool is BuiltAgentTool => Boolean(tool))
-      .map((tool) => {
-        if (!tool.__instructions) {
-          return null;
-        }
-
-        return this.wrapBlock(
-          `### ${tool.name}\n${tool.__instructions}`,
-          'tool_description',
-        );
-      })
-      .filter((block): block is string => Boolean(block));
-
-    if (!toolBlocks.length) {
-      return undefined;
-    }
-
-    return ['## Tool Instructions', ...toolBlocks].join('\n\n');
-  }
-
-  private collectToolGroupInstructions(
-    instructions: string[],
-  ): string | undefined {
-    if (!instructions.length) {
-      return undefined;
-    }
-
-    const wrapped = instructions.map((block) =>
-      this.wrapBlock(block, 'tool_group_instructions'),
-    );
-
-    return ['## Tool Group Instructions', ...wrapped].join('\n\n');
-  }
-
-  private collectMcpInstructions(
-    mcpOutputs: BaseMcp<unknown>[],
-  ): string | undefined {
-    const blocks = mcpOutputs
-      .map((mcp) => {
-        const instructions = mcp.getDetailedInstructions?.(mcp.config as never);
-        return instructions
-          ? this.wrapBlock(instructions, 'mcp_instructions')
-          : null;
-      })
-      .filter((block): block is string => Boolean(block));
-
-    if (!blocks.length) {
-      return undefined;
-    }
-
-    return ['## MCP Instructions', ...blocks].join('\n\n');
-  }
-
-  private wrapBlock(content: string, tag: string): string {
-    return [`<${tag}>`, content, `</${tag}>`].join('\n');
   }
 }
