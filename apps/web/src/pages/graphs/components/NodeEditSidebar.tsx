@@ -199,7 +199,7 @@ export const NodeEditSidebar = React.memo(
 
     useEffect(() => {
       nodeRef.current = node;
-    }, [node, selectedNodeId]);
+    }, [node]);
 
     // Reset local unsaved changes when the parent signals that the graph was saved
     useEffect(() => {
@@ -282,27 +282,32 @@ export const NodeEditSidebar = React.memo(
     );
     const [instructionsVisible, setInstructionsVisible] = useState(false);
     const [toolsVisible, setToolsVisible] = useState(false);
+
+    const formatInstructionsValue = useCallback((value: unknown) => {
+      if (value === undefined || value === null) {
+        return '';
+      }
+      if (typeof value === 'string') {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.map((item) => String(item)).join('\n\n');
+      }
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    }, []);
+
     const agentInstructionsText = useMemo(() => {
       const instructions = (
         compiledNode?.additionalNodeMetadata as unknown as {
           instructions?: unknown;
         }
       )?.instructions;
-      if (instructions === undefined || instructions === null) {
-        return '';
-      }
-      if (typeof instructions === 'string') {
-        return instructions;
-      }
-      if (Array.isArray(instructions)) {
-        return instructions.map((item) => String(item)).join('\n\n');
-      }
-      try {
-        return JSON.stringify(instructions, null, 2);
-      } catch {
-        return String(instructions);
-      }
-    }, [compiledNode?.additionalNodeMetadata]);
+      return formatInstructionsValue(instructions);
+    }, [compiledNode?.additionalNodeMetadata, formatInstructionsValue]);
 
     const connectedTools = useMemo(() => {
       return (
@@ -355,23 +360,6 @@ export const NodeEditSidebar = React.memo(
         expandedTextarea.fieldKey;
       return { prop, label };
     }, [expandedTextarea, schemaProperties]);
-
-    const formatInstructionsValue = useCallback((value: unknown) => {
-      if (value === undefined || value === null) {
-        return '';
-      }
-      if (typeof value === 'string') {
-        return value;
-      }
-      if (Array.isArray(value)) {
-        return value.map((item) => String(item)).join('\n\n');
-      }
-      try {
-        return JSON.stringify(value, null, 2);
-      } catch {
-        return String(value);
-      }
-    }, []);
 
     const aiInitialInstructions = aiSuggestionState?.initialInstructions ?? '';
     const aiLastSuggestedInstructions =
@@ -1390,7 +1378,7 @@ export const NodeEditSidebar = React.memo(
             nodeTemplate.systemAgentPredefinedTools.length > 0 && (
               <div className="px-1 py-2 flex-shrink-0 mb-2">
                 <p className="text-xs font-medium text-muted-foreground mb-1.5">
-                  Recommended Tools
+                  Predefined Tools
                 </p>
                 <div className="flex flex-wrap gap-1">
                   {nodeTemplate.systemAgentPredefinedTools.map(
@@ -1409,6 +1397,9 @@ export const NodeEditSidebar = React.memo(
                     },
                   )}
                 </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Connect a tool manually to override its default configuration.
+                </p>
               </div>
             )}
 

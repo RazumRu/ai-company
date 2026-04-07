@@ -159,8 +159,7 @@ export class GraphValidationService {
         derefSchemasByTemplateId.set(templateId, schema);
       }
 
-      const cacheKey = templateId;
-      const cached = validatorCache.get(cacheKey);
+      const cached = validatorCache.get(templateId);
       let validate: ValidateFunction;
       if (cached && cached.schemaRef === schema) {
         validate = cached.validate;
@@ -168,7 +167,7 @@ export class GraphValidationService {
         // Ajv schema type is `object | boolean`. Our templates always send an object schema,
         // but we keep this cast explicit to satisfy TS without weakening other types.
         validate = ajv.compile(schema as object);
-        validatorCache.set(cacheKey, { schemaRef: schema, validate });
+        validatorCache.set(templateId, { schemaRef: schema, validate });
       }
 
       const config = cloneJson(nodeData.config as Record<string, unknown>);
@@ -347,37 +346,6 @@ export class GraphValidationService {
       });
     }
 
-    // Prevent connecting a tool that's already in the system agent's predefined tool set
-    type TemplateWithSystemAgent = TemplateDto & {
-      systemAgentPredefinedTools?: string[];
-    };
-    const sourcePredefinedTools = (sourceTemplate as TemplateWithSystemAgent)
-      .systemAgentPredefinedTools;
-    const targetPredefinedTools = (targetTemplate as TemplateWithSystemAgent)
-      .systemAgentPredefinedTools;
-
-    if (
-      Array.isArray(sourcePredefinedTools) &&
-      sourcePredefinedTools.includes(targetData.template)
-    ) {
-      errors.push({
-        nodeId: sourceNode.id,
-        message: `Tool '${targetData.label}' is already included in this system agent's predefined tool set`,
-        type: 'connection',
-      });
-    }
-
-    if (
-      Array.isArray(targetPredefinedTools) &&
-      targetPredefinedTools.includes(sourceData.template)
-    ) {
-      errors.push({
-        nodeId: targetNode.id,
-        message: `Tool '${sourceData.label}' is already included in this system agent's predefined tool set`,
-        type: 'connection',
-      });
-    }
-
     return {
       isValid: errors.length === 0,
       errors,
@@ -453,16 +421,13 @@ export class GraphValidationService {
     );
   }
 
-  /**
-   * Checks if a connection is allowed based on outputs rules
-   */
   private static isConnectionAllowed(
     outputs: ConnectionRule[],
     targetTemplate: TemplateDto,
   ): boolean {
-    return outputs.some((rule) => {
-      return this.isRuleAllowingTemplate(rule, targetTemplate);
-    });
+    return outputs.some((rule) =>
+      this.isRuleAllowingTemplate(rule, targetTemplate),
+    );
   }
 
   private static isTemplateAcceptedByInputs(
@@ -593,9 +558,6 @@ export class GraphValidationService {
     return errors;
   }
 
-  /**
-   * Checks if a node has a specific required connection
-   */
   private static hasRequiredConnection(
     node: GraphNode,
     requiredRule: TemplateDtoInputsInner,

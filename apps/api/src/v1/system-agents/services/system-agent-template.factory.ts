@@ -1,11 +1,13 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import { DefaultLogger } from '@packages/common';
 import { z } from 'zod';
 
 import type { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
+import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import {
   collectMcpInstructions,
   collectToolGroupInstructions,
@@ -13,10 +15,14 @@ import {
 } from '../../graph-templates/templates/agents/agent-instructions.utils';
 import { SimpleAgentTemplateSchema } from '../../graph-templates/templates/agents/simple-agent.template';
 import {
+  NodeConnection,
   SimpleAgentNodeBaseTemplate,
   ToolNodeOutput,
 } from '../../graph-templates/templates/base-node.template';
-import type { GraphNode } from '../../graphs/graphs.types';
+import type {
+  GraphNode,
+  GraphNodeInstanceHandle,
+} from '../../graphs/graphs.types';
 import { NodeKind } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import type { SystemAgentDefinition } from '../system-agents.types';
@@ -32,6 +38,8 @@ export class SystemAgentTemplateFactory {
   constructor(
     private readonly moduleRef: ModuleRef,
     private readonly graphRegistry: GraphRegistry,
+    private readonly templateRegistry: TemplateRegistry,
+    private readonly logger: DefaultLogger,
   ) {}
 
   createTemplate(
@@ -78,6 +86,8 @@ export class SystemAgentTemplateFactory {
 
     const moduleRef = this.moduleRef;
     const graphRegistry = this.graphRegistry;
+    const templateRegistry = this.templateRegistry;
+    const logger = this.logger;
 
     const template = new (class extends SimpleAgentNodeBaseTemplate<
       typeof schema,
@@ -103,6 +113,7 @@ export class SystemAgentTemplateFactory {
       readonly outputs = [
         { type: 'kind' as const, value: NodeKind.Tool, multiple: true },
         { type: 'kind' as const, value: NodeKind.Mcp, multiple: true },
+        { type: 'kind' as const, value: NodeKind.Runtime, multiple: false },
       ] as const;
 
       async create() {
@@ -159,6 +170,131 @@ export class SystemAgentTemplateFactory {
               }
             }
 
+            // Collect manual tool template IDs to detect manual overrides
+            const manualToolTemplateIds = new Set<string>();
+            for (const nodeId of outputNodeIds) {
+              const node = graphRegistry.getNode(graphId, nodeId);
+              if (node && node.type === NodeKind.Tool) {
+                manualToolTemplateIds.add(node.template);
+              }
+            }
+
+            // Find Runtime node IDs among outputs
+            const runtimeNodeIds = graphRegistry.filterNodesByType(
+              graphId,
+              outputNodeIds,
+              NodeKind.Runtime,
+            );
+
+            // Predefined tool handles/instances for cleanup
+            const predefinedHandles: {
+              handle: GraphNodeInstanceHandle<unknown, unknown>;
+              toolInstance: unknown;
+            }[] = [];
+
+            // Auto-instantiate predefined tools
+            for (const toolId of def.tools) {
+              // Skip if manually connected (manual override)
+              if (manualToolTemplateIds.has(toolId)) {
+                continue;
+              }
+
+              const toolTemplate = templateRegistry.getTemplate<
+                z.ZodTypeAny,
+                ToolNodeOutput
+              >(toolId);
+              if (!toolTemplate) {
+                logger.warn(
+                  `Predefined tool template '${toolId}' not found in registry — skipping`,
+                );
+                continue;
+              }
+
+              // Dependency satisfaction check
+              let unsatisfiable = false;
+              for (const output of toolTemplate.outputs as readonly NodeConnection[]) {
+                if (output.required !== true) {
+                  continue;
+                }
+                if (output.type === 'template') {
+                  logger.warn(
+                    `Predefined tool '${toolId}' requires a template output connection that cannot be satisfied — skipping`,
+                  );
+                  unsatisfiable = true;
+                  break;
+                }
+                if (
+                  output.type === 'kind' &&
+                  output.value !== NodeKind.Runtime
+                ) {
+                  logger.warn(
+                    `Predefined tool '${toolId}' requires a kind='${output.value}' output connection that cannot be satisfied — skipping`,
+                  );
+                  unsatisfiable = true;
+                  break;
+                }
+              }
+
+              if (unsatisfiable) {
+                continue;
+              }
+
+              // Try to get default config via schema.parse({})
+              let defaultConfig: unknown;
+              try {
+                defaultConfig = toolTemplate.schema.parse({});
+              } catch (err) {
+                logger.warn(
+                  `Predefined tool '${toolId}' has no parseable default config — skipping: ${String(err)}`,
+                );
+                continue;
+              }
+
+              const syntheticNodeId = `${params.metadata.nodeId}:predefined:${toolId}`;
+              const syntheticParams = {
+                config: defaultConfig,
+                inputNodeIds: new Set<string>(),
+                outputNodeIds: new Set(runtimeNodeIds),
+                metadata: { ...params.metadata, nodeId: syntheticNodeId },
+              } as GraphNode<z.ZodTypeAny>;
+
+              let handle: GraphNodeInstanceHandle<unknown, unknown>;
+              let toolInstance: unknown;
+              try {
+                handle =
+                  (await toolTemplate.create()) as GraphNodeInstanceHandle<
+                    unknown,
+                    unknown
+                  >;
+                toolInstance = await handle.provide(syntheticParams);
+                await handle.configure(syntheticParams, toolInstance);
+              } catch (err) {
+                logger.warn(
+                  `Predefined tool '${toolId}' failed to instantiate — skipping: ${String(err)}`,
+                );
+                continue;
+              }
+
+              predefinedHandles.push({ handle, toolInstance });
+              // Assign eagerly so destroy() always has the latest state
+              (
+                instance as SimpleAgent & {
+                  _predefinedHandles?: typeof predefinedHandles;
+                }
+              )._predefinedHandles = predefinedHandles;
+
+              const output = toolInstance as {
+                tools: BuiltAgentTool[];
+                instructions?: string;
+              };
+              if (output.tools) {
+                allTools.push(...output.tools);
+              }
+              if (output.instructions) {
+                toolGroupInstructions.push(output.instructions);
+              }
+            }
+
             instance.resetTools();
             allTools.forEach((tool) => instance.addTool(tool));
 
@@ -192,6 +328,18 @@ export class SystemAgentTemplateFactory {
           },
 
           destroy: async (instance: SimpleAgent) => {
+            const predefinedHandles =
+              (
+                instance as SimpleAgent & {
+                  _predefinedHandles?: {
+                    handle: GraphNodeInstanceHandle<unknown, unknown>;
+                    toolInstance: unknown;
+                  }[];
+                }
+              )._predefinedHandles ?? [];
+            for (const { handle, toolInstance } of predefinedHandles) {
+              await handle.destroy(toolInstance);
+            }
             await instance.stop();
           },
         };
