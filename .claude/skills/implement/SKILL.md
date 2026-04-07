@@ -21,7 +21,7 @@ argument-hint: "[what to implement — description, Linear issue ID, or Linear U
 
 # Implement Skill: 7-Phase Pipeline Orchestrator
 
-**You are a coordinator.** You delegate ALL implementation work to subagents. You do NOT read source files to diagnose errors, fix code, or verify logic yourself. You run shell commands (build, test, lint) and read their output to determine pass/fail. When something fails, you forward the raw error output to a fixer agent. The fixer agent has fresh context and will diagnose faster than you.
+**You are a coordinator.** You delegate ALL implementation work to subagents. You do NOT read source files to diagnose errors, fix code, or verify logic yourself — not even for "simple" type errors or one-line fixes. You run shell commands (build, test, lint) and read their output to determine pass/fail. When something fails, you copy the raw terminal output into a fixer agent prompt and let it handle diagnosis and repair. Never open a source file to understand an error — forward the error verbatim.
 
 **The ONLY code you write directly:** Phase 4 Step 5 hotspot micro-edits (1-2 line registrations in routing/config/barrel files). Everything else is delegated.
 
@@ -83,17 +83,17 @@ At the next phase checkpoint, read `notes.md` and assess: (1) no impact -> conti
 **Action:** Read `${CLAUDE_SKILL_DIR}/implement-reference.md` section "Phase 1: Auto-Detection Table" for argument parsing rules.
 
 **Steps:**
-1. **Parse `$ARGUMENTS`.** Detect Linear reference, mode signals, extract core description. If Linear issue detected: fetch via MCP, update status to "In Progress".
+1. **Parse `$ARGUMENTS`.** Detect Linear reference, mode signals, extract core description. If Linear issue detected: fetch via MCP. **Do NOT update the issue status automatically** — use `AskUserQuestion` with header "Linear Status" to ask: "Move [ISSUE-ID] to In Progress?" with options "Yes — move to In Progress" / "No — leave current status". Only update if the user approves.
 2. **Retrieve prior knowledge.** Spawn `knowledge-retrieval-agent` with task keywords. It searches learnings, sessions, debug history, and planning docs.
 3. Scan codebase for relevant patterns, conventions, architecture
 4. **Convention Discovery:** Read README, CONTRIBUTING, ADRs. Find 2-3 exemplar files closest to the change area. Capture in CONVENTIONS_BRIEF section within spec file.
-5. Identify ambiguities and gray areas
+5. Identify ambiguities and gray areas. If `state.md` contained `Pipeline: COMPLETE` (second run): use prior `spec.md` and `plan-*.md` already loaded in Step 0 as "Prior iteration context" so gray-area questions reference what was decided before.
 6. **MANDATORY: Resolve gray areas.** You MUST stop here and ask the user questions before proceeding. Do NOT synthesize the spec without user input first.
    - **Interactive (default):** Use `AskUserQuestion` with 2-4 options each, recommend default
    - **Auto mode:** Pick recommended defaults, log choices in spec
    - **Assumptions mode:** Propose plan, let user correct
    - **Include git workspace question** in this batch (new branch / current branch / worktree)
-7. Synthesize into spec document (only AFTER step 6). Write to `<task-dir>/spec.md`
+7. Synthesize into spec document (only AFTER step 6). If prior `spec.md` exists, rename to `spec-v{N}.md` (glob `spec-v*.md` for highest N, use N+1; start at 1); rename `plan-<slug>.md` to `plan-<slug>-v{N}.md` likewise. Note which decisions changed vs carried forward. Write to `<task-dir>/spec.md`
 8. Document assumptions in spec file
 9. **Git workspace setup** — execute user's choice from step 6
 
@@ -147,7 +147,7 @@ At the next phase checkpoint, read `notes.md` and assess: (1) no impact -> conti
 
 **Strategic compact point:** All discovery, architecture, and validation context is now captured in files (spec.md, plan.md, concerns.md, state.md). Phases 1-3 consumed significant context that Phase 4 agents don't need — they get fresh context with pre-inlined files. Tell the user:
 
-> "All planning artifacts are saved. Before starting implementation, I recommend compacting to free context: type `/compact` then say 'continue'. This improves quality for Phases 4-7. (Optional — you can also just continue.)"
+> "All planning artifacts are saved. Before starting implementation, I recommend compacting to free context. Type `/compact`, then type `/implement continue` to resume from Phase 4. This improves quality for Phases 4-7. (Optional — you can also just continue now.)"
 
 If the user compacts: after compaction, read `<task-dir>/state.md` to resume, then re-read the SKILL.md for phase instructions.
 
@@ -192,7 +192,7 @@ Read the plan's steps and group into WUs — clusters of tightly coupled files. 
 For each wave:
 1. **Spawn all WU agents in a single message** (use delegation template from reference file — it includes a mandatory `## Tests` section. Do NOT omit it.)
 2. **Collect results** — each agent must report: files created/modified, tests created/modified, test results
-3. **Quick gate** (build + test) — pass/fail only. If fails, forward raw error output to fixer agent.
+3. **Quick gate** (build + test) — pass/fail only. If fails, forward the raw error output to a fixer agent. Do NOT read source files, diagnose the error, or apply fixes yourself — copy the terminal output into the agent prompt and let it handle everything.
 4. **Start next wave**
 
 ### Step 4: Hotspot files (orchestrator micro-edits only)
@@ -202,7 +202,7 @@ Strictly limited to 1-2 line registrations. If >3 lines or any logic -> delegate
 ### Step 5: Post-wave validation
 
 - Run **build + test** — pass/fail gate only. Do NOT include lint (Phase 5 handles that).
-- If fails, forward raw error output to fixer agent.
+- If fails, forward the raw error output to a fixer agent. Do NOT read source files, diagnose the error, or apply fixes yourself — copy the terminal output into the agent prompt and let it handle everything.
 
 ### Step 6: Test creation verification
 
@@ -225,6 +225,7 @@ Strictly limited to 1-2 line registrations. If >3 lines or any logic -> delegate
 | "Tests will be caught by Phase 6 reviewers" | Phase 6 reviews test QUALITY. Phase 4 must ensure tests EXIST. Don't defer creation to review. |
 | "This code is too simple to need tests" | Every new source file gets tests. Simplicity is not an exemption — simple code is the easiest to test. |
 | "I'll write the tests myself to save time" | You are an orchestrator. Spawn a fixer agent. |
+| "Let me read the file and fix this type error / build error" | You are an orchestrator. Forward the raw terminal output to a fixer agent. Do NOT open source files, diagnose errors, or apply edits — even if the fix looks trivial. The fixer agent has fresh context and will diagnose faster. |
 
 **Checkpoint:** Write to `<task-dir>/state.md`: "Phase 4 completed. Waves: N. Files changed: [list]. Test files created: [list]."
 
@@ -269,7 +270,7 @@ Read `${CLAUDE_SKILL_DIR}/implement-reference.md` sections "Phase 6: Stage A", "
 
 ### Stage A — Automated Checks
 
-Run autofix, full check (build + lint + test), codegen check, runtime startup check. If any fails, forward raw error output to fixer agent. Max 2 attempts, then continue to Stage B with failures noted.
+Run autofix, full check (build + lint + test), codegen check, runtime startup check. If any fails, forward the raw error output to a fixer agent — do NOT read source files, diagnose, or fix it yourself. Max 2 attempts, then continue to Stage B with failures noted.
 
 **Checkpoint:** Update `<task-dir>/state.md`: "Phase 6 Stage A completed."
 
@@ -381,8 +382,9 @@ Execute user's chosen method. See reference file for commit details per option.
 ### Step 8: Worktree Exit + Linear Update + Cleanup
 
 - **Worktree:** If in worktree, call `ExitWorktree` to merge back
-- **Linear:** Update issue status based on ship choice
+- **Linear:** Ask user before updating issue status (see reference file for details)
 - **Cleanup:** Kill orphaned processes (startup checks, dev servers). Remove temp files.
+- **State:** Append `Pipeline: COMPLETE` to `<task-dir>/state.md`.
 - **Planning artifacts:** Use `AskUserQuestion` (do NOT ask as plain text — use the tool):
 
 `AskUserQuestion` with header "Artifacts":
@@ -406,7 +408,10 @@ If "Delete": remove `<task-dir>/` recursively.
 
 ## TASK EXECUTION
 
-0. **Check for existing state.** Glob for `<task-dir>/state.md`. If found, resume from next incomplete phase.
+0. **Check for existing state.** Glob for `<task-dir>/state.md`. Three cases:
+   - **No state.md** → fresh first run, proceed normally.
+   - **state.md exists, no "Pipeline: COMPLETE"** → interrupted run, resume from next incomplete phase.
+   - **state.md exists, has "Pipeline: COMPLETE"** → second run with changed requirements. Read all prior artifacts (`spec.md`, `plan-*.md`, `concerns.md`) into context now (before any renames). Proceed to Phase 1 with this prior context available.
 
 1. Take user's description: `$ARGUMENTS`
 2. **Create TodoWrite checklist** (planning phases only — implementation phases added after Phase 3 approval):
@@ -424,6 +429,7 @@ The orchestrator's job is to coordinate, not to code. Every line of code the orc
 |---|---|
 | "I'll execute this directly since it's simple / just deletion / cleanup" | Orchestrator tokens are the most expensive resource. Delegate ALL implementation to subagents. |
 | "Steps X-Y are small, I'll handle them myself" | Every plan step becomes a WU. Group small related steps into one WU, but never execute as orchestrator. |
+| "The build failed, let me read the source and fix it quickly" | Run the check, copy the raw terminal output into a fixer agent prompt. Do NOT open source files, diagnose, search for types, or apply edits yourself. |
 
 ---
 
