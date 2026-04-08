@@ -1092,7 +1092,10 @@ export class DaytonaRuntime extends BaseRuntime {
    * Finds and deletes the cached Daytona snapshot built from the given image
    * so that the next sandbox creation triggers a fresh snapshot build.
    */
-  private async invalidateStaleSnapshot(imageName: string, error?: unknown): Promise<void> {
+  private async invalidateStaleSnapshot(
+    imageName: string,
+    error?: unknown,
+  ): Promise<void> {
     try {
       // Strategy 1: Extract snapshot name from error and delete directly
       const snapshotName = this.extractSnapshotNameFromError(error);

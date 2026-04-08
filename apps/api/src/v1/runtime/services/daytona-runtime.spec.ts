@@ -702,8 +702,12 @@ describe('DaytonaRuntime', () => {
       });
 
       // Verify snapshot was looked up and deleted directly from error
-      expect(mockDaytonaInstance.snapshot.get).toHaveBeenCalledWith('daytona-abc123hash');
-      expect(mockDaytonaInstance.snapshot.delete).toHaveBeenCalledWith(mockSnapshot);
+      expect(mockDaytonaInstance.snapshot.get).toHaveBeenCalledWith(
+        'daytona-abc123hash',
+      );
+      expect(mockDaytonaInstance.snapshot.delete).toHaveBeenCalledWith(
+        mockSnapshot,
+      );
       // Verify create was called 4 times: 3 retries in first createSandbox + 1 success after invalidation
       expect(mockDaytonaInstance.create).toHaveBeenCalledTimes(4);
     });
