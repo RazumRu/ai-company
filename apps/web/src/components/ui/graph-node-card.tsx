@@ -628,9 +628,6 @@ export const CustomNode = React.memo(
     const isSystemAgent = Boolean(
       (nodeData.config as Record<string, unknown>)?.systemAgentId,
     );
-    const isPredefinedInstructionBlock = Boolean(
-      (nodeData.config as Record<string, unknown>)?.instructionBlockId,
-    );
     const systemAgentTemplate = isSystemAgent
       ? templates.find((t) => t.id === nodeData.template)
       : undefined;
@@ -743,13 +740,6 @@ export const CustomNode = React.memo(
               This system agent definition has been removed
             </TooltipContent>
           </Tooltip>
-        )}
-        {isPredefinedInstructionBlock && (
-          <Badge
-            variant="secondary"
-            className="text-[9px] px-1 py-0 leading-tight shrink-0">
-            Predefined
-          </Badge>
         )}
         {ctxOnNodeDelete && (
           <button

@@ -271,7 +271,9 @@ export const NodeEditSidebar = React.memo(
     const isAgentNode = templateKindLower === 'simpleagent';
     const nodeConfig = (nodeData?.config ?? {}) as Record<string, unknown>;
     const isSystemAgent = Boolean(nodeConfig.systemAgentId);
-    const isInstructionBlock = Boolean(nodeConfig.instructionBlockId);
+    const isInstructionBlock = Boolean(
+      (nodeTemplate as Record<string, unknown> | undefined)?.instructionBlockId,
+    );
     const systemAgentId = isSystemAgent
       ? String(nodeConfig.systemAgentId)
       : null;

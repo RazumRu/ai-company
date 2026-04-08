@@ -32,6 +32,7 @@ export class InstructionBlockTemplateFactory {
       content: z
         .string()
         .describe('Instruction content provided to connected agents')
+        .meta({ 'x-ui:textarea': true })
         .default(def.instructions),
       instructionBlockId: z.string().default(def.id),
       instructionBlockContentHash: z.string().default(def.contentHash),

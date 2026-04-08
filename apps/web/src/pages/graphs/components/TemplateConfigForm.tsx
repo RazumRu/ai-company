@@ -534,7 +534,7 @@ const RjsfTextareaWithExpandWidget = (
             typeof props.value === 'string' ? props.value : '',
           )
         }
-        disabled={props.disabled || props.readonly}>
+        disabled={props.disabled}>
         <Maximize2 className="size-3.5" />
       </Button>
       {hasAiSuggestions && ctx.aiSuggestionEnabled === true && (
