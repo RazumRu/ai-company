@@ -89,6 +89,50 @@ return <div>{userComment}</div>;
 return <div dangerouslySetInnerHTML={{ __html: userInput }} />;
 ```
 
+## CSRF Prevention
+
+**Pattern**: Use CSRF tokens for state-changing operations; Fastify handles this via SameSite cookies and origin validation
+
+```typescript
+// GOOD — Fastify CSRF protection with @fastify/csrf-protection
+await app.register(fastifyCsrf, {
+  sessionPlugin: '@fastify/cookie',
+});
+
+// GOOD — SameSite cookie attribute prevents cross-origin requests
+reply.setCookie('session', token, {
+  httpOnly: true,
+  sameSite: 'strict',
+  secure: true,
+});
+
+// BAD — No CSRF protection on state-changing endpoint
+@Post('transfer')
+async transfer(@Body() dto: TransferDto) {
+  // Process without CSRF validation
+}
+```
+
+## Authorization Checks
+
+**Pattern**: Always verify user has permission before allowing access; use `AppContextStorage` for ownership checks
+
+```typescript
+// GOOD — Authorization check via context
+async deleteGraph(ctx: AppContextStorage, graphId: string): Promise<void> {
+  const graph = await this.graphDao.getOne({ id: graphId });
+  if (graph.createdBy !== ctx.userId && !ctx.isAdmin) {
+    throw new ForbiddenException('Not authorized to delete this graph');
+  }
+  await this.graphDao.delete(graph);
+}
+
+// BAD — No authorization check
+async deleteGraph(graphId: string): Promise<void> {
+  await this.graphDao.delete({ id: graphId }); // Anyone can delete!
+}
+```
+
 ## Secrets Management
 
 **Pattern**: Never hardcode secrets; use environment variables
@@ -160,6 +204,18 @@ pnpm audit
 
 # Update dependencies
 pnpm up-versions
+```
+
+## HTTPS/TLS
+
+**Pattern**: Always use HTTPS in production; enforce HSTS headers
+
+```typescript
+// GOOD — HSTS headers via Fastify hook
+app.addHook('onSend', (request, reply, payload, done) => {
+  reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  done();
+});
 ```
 
 ## Domain-Specific Security Rules

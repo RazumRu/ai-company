@@ -5,153 +5,140 @@ Design patterns, modularity, coupling, performance, scalability, and technical d
 ## What to Check
 
 ### 1. Module Design & Coupling
-- Circular dependencies between modules
-- High coupling: too many imports from other modules
+- Circular dependencies between NestJS modules
+- High coupling: too many imports from other feature modules
 - Low cohesion: module doing multiple unrelated things
-- Missing abstraction layers
+- Missing abstraction layers (Controller → Service → DAO violated)
 - Tight coupling to external services/libraries
 
 **How to detect:**
 ```bash
 # Count imports per file
-grep -c "^import\|^require\|^from" file.js
-# Find circular imports — build dependency graph and check for cycles
-# Step 1: Extract all import relationships
-grep -rn "import.*from\|require(" src/ | awk -F: '{print $1, $0}' > /tmp/deps.txt
-# Step 2: For each file, check if any of its imports also import it back
-for file in $(grep -rl "import\|require" src/); do
-  deps=$(grep "import\|require" "$file" | grep -oP "from ['\"]\./(.*?)['\"]" | sed "s/from ['\"]\.\\///;s/['\"]//g")
-  for dep in $deps; do
-    grep -q "$(basename "$file" .js)\|$(basename "$file" .ts)" "src/$dep"* 2>/dev/null && echo "CIRCULAR: $file <-> src/$dep"
-  done
-done
-# Check dependency directions
-grep "import\|require" file.js | sort
+grep -c "^import" file.ts
+# Find cross-module imports (feature importing from another feature)
+grep -n "from.*v1/" file.ts | grep -v "from.*v1/$(dirname file.ts | xargs basename)"
+# Check dependency directions — DAO should not import Controller
+grep "import.*controller\|import.*Controller" file.dao.ts
 ```
-
-**Circular dependency verification:** Don't just grep for import patterns — actually trace the dependency chain. A→B→C→A is circular even though no single file imports from its direct importer. Use `madge --circular` (Node) or equivalent tooling when available.
 
 **Red flags:**
 - Single file with 20+ imports
-- A imports from B, B imports from A (direct circular)
-- A→B→C→A (transitive circular — equally dangerous)
-- File doing auth AND data processing AND caching
-- Direct external API calls scattered throughout
-- Hard to test due to tight coupling
+- Service importing directly from another feature's DAO
+- Controller containing business logic (should be in Service)
+- DAO importing from Service layer (wrong direction)
+- Direct external API calls scattered throughout (should go through dedicated service)
 
 ### 2. Abstraction & Interface Design
-- Missing abstraction layers (business logic tightly coupled to implementation)
+- Missing abstraction layers (business logic in controllers)
 - Poor interface design (leaky abstractions)
-- Violation of Dependency Injection pattern
+- Violation of NestJS Dependency Injection pattern
 - Hard dependencies on concrete implementations
-- Public methods/properties that expose internals
+- Controllers doing more than route + validate
 
 **How to detect:**
-- Look for direct database queries in business logic
-- Find service classes importing UI components
-- Check for hardcoded configuration values
-- Identify classes/modules with unclear purpose
-- Look for "god objects" doing too much
+- Look for direct `EntityManager` usage in controllers
+- Find service classes importing from other features' DAOs directly
+- Check for hardcoded configuration values in services
+- Identify services with unclear purpose (doing too much)
 
 **Red flags:**
-- Business logic directly calls database driver
-- Controllers importing service implementation details
+- Controller with `em.findOne()` calls (bypass service/DAO)
+- Service importing another feature's entity directly
 - Utils importing from domain layers
-- Files/modules that are hard to name (too many responsibilities)
-- Difficult to mock/test due to hard dependencies
+- Services that are hard to name (too many responsibilities)
 
-### 3. SOLID Principles Violations
-- **Single Responsibility**: Classes doing multiple things
-- **Open/Closed**: Hard to extend without modifying
-- **Liskov Substitution**: Subclasses breaking base contracts
-- **Interface Segregation**: Forced to depend on unused methods
-- **Dependency Inversion**: High-level modules depending on low-level
-
-**How to detect:**
-- Find classes with mixed responsibilities
-- Look for `if` statements checking subclass types
-- Identify base classes with many unused methods
-- Check if changing one thing breaks unrelated code
-- Find hard dependencies on implementations
-
-### 4. Code Organization & Structure
-- Inconsistent file structure across codebase
-- Related functionality scattered across modules
-- Poor naming conventions (unclear file/function purposes)
-- Missing separation of concerns (UI, business logic, data)
-- Inconsistent patterns/styles
+### 3. Layered Architecture Compliance
+- **Controller → Service → DAO → Entity** layer violations
+- Controllers containing business logic
+- Services bypassing DAOs for direct EntityManager access
+- DAOs containing business logic
+- Cross-feature DAO access without going through the feature's service
 
 **How to detect:**
 ```bash
-# Find files that are hard to categorize
-ls -la | grep "util\|misc\|temp\|helper"
-# Check function/class naming consistency
-grep "^class\|^function\|^export" file.js
-# Look for large files (potential split opportunity)
-wc -l file.js | awk '$1 > 500 {print $0}'
+# Controllers with business logic
+grep -n "em\.\|EntityManager\|findOne\|findAll" file.controller.ts
+# Services bypassing DAO
+grep -n "em\.\|EntityManager" file.service.ts | grep -v "constructor"
+# Cross-feature DAO imports
+grep -n "import.*Dao" file.service.ts | grep -v "$(basename $(dirname file.service.ts))"
 ```
 
 **Red flags:**
-- Many "utils" or "misc" modules
+- `em.findOne()` in a controller (should be in DAO via service)
+- Service directly querying database without DAO
+- Controller creating/manipulating entities
+- Cross-feature DAO access (should go through that feature's service)
+
+### 4. Code Organization & Structure
+- Inconsistent file structure across feature modules
+- Related functionality scattered across modules
+- Poor naming conventions (unclear file/function purposes)
+- Missing separation of concerns
+- Inconsistent patterns/styles between `src/v1/` feature modules
+
+**How to detect:**
+```bash
+# Check feature module structure consistency
+for dir in apps/api/src/v1/*/; do
+  echo "=== $dir ==="
+  ls "$dir" | sort
+done
+# Find large files (potential split opportunity)
+wc -l file.ts | awk '$1 > 500 {print $0}'
+```
+
+**Red flags:**
+- Feature module missing expected files (dto/, entities/, *.module.ts)
 - Same feature scattered across multiple directories
-- Inconsistent naming patterns
 - Very large files (500+ lines)
 - Functions with vague names (do, process, handle)
 
 ### 5. Error Handling Architecture
 - Inconsistent error handling patterns
 - Missing error context propagation
-- Poor error recovery strategies
+- Not using custom exceptions from `@packages/common`
 - Swallowing errors without logging
 - No error hierarchy/classification
 
 **How to detect:**
 - Look for inconsistent try-catch patterns
 - Find places where errors are silently caught
-- Check if errors are logged with context
-- Identify error types being thrown
-- Look for recovery strategies
+- Check if `NotFoundException`, `BadRequestException` from `@packages/common` are used
+- Identify generic `Error` thrown instead of custom exceptions
 
 **Red flags:**
-- Some functions use try-catch, others use .catch()
 - `catch (e) {}` (empty catch)
+- `throw new Error()` instead of `throw new NotFoundException()`
 - Errors logged without context
-- No error hierarchy
-- Different error handling per layer
+- Different error handling per feature module
 
 ### 6. Performance & Scalability
-- N+1 query patterns (queries inside loops instead of batched/joined queries)
-- Inefficient algorithms (O(n²) where O(n) possible)
-- Unnecessary data loading/processing
-- Synchronous operations in async context
-- Missing caching or memoization opportunities
-- Resource exhaustion (unbounded loops, memory growth)
-
-**N+1 vs Batching — the key distinction:**
-- **N+1 pattern (BAD):** Loop over items, execute one query per item. E.g., `for (user of users) { await db.query("SELECT * FROM orders WHERE user_id = ?", user.id) }` — this is O(N) queries.
-- **Batched query (GOOD):** Collect all IDs, execute one query. E.g., `await db.query("SELECT * FROM orders WHERE user_id IN (?)", userIds)` — this is O(1) queries.
-- **Joined query (GOOD):** Use a JOIN to fetch related data in the original query. E.g., `SELECT u.*, o.* FROM users u LEFT JOIN orders o ON u.id = o.user_id` — this is O(1) queries.
-- **ORM eager loading (GOOD):** Use the ORM's built-in mechanism. E.g., `User.findAll({ include: Order })` (Sequelize), `User.objects.prefetch_related('orders')` (Django).
+- N+1 query patterns (queries inside loops instead of batched/joined)
+- Inefficient algorithms (O(n^2) where O(n) possible)
+- Missing MikroORM eager loading / `populate` option
+- Synchronous operations blocking event loop
+- Missing caching or memoization (Redis cache layer available)
+- Unbounded queries without pagination
 
 **How to detect:**
 ```bash
-# Find nested loops
-grep -n "for.*for\|while.*while" file.js
-# Potential N+1 patterns — queries inside loops
-grep -n "for\|while\|\.map(\|\.forEach(" file.js | grep -A5 "query\|fetch\|request\|findOne\|findById\|get("
-# ORM N+1 — model access in loops
-grep -n "\.map(\|\.forEach(\|for " file.js | grep -A3 "\.\(find\|get\|load\|fetch\)"
+# Potential N+1 — queries inside loops
+grep -n "for\|while\|\.map(\|\.forEach(" file.ts | grep -A5 "findOne\|getOne\|em\."
+# Missing populate/eager loading
+grep -n "findOne\|find(" file.ts | grep -v "populate\|fields"
 # Blocking operations
-grep -n "readFileSync\|query\|request" file.js | grep -v "async"
+grep -n "Sync(" file.ts
+# Unbounded queries
+grep -n "findAll\|getAll\|find(" file.ts | grep -v "limit\|offset\|take"
 ```
 
 **Red flags:**
-- Queries in loops without batching (the classic N+1)
-- ORM lazy-loading inside iteration (e.g., accessing `.related_model` in a loop)
-- Nested loops without obvious reason
+- `em.findOne()` inside a loop (classic N+1)
+- MikroORM lazy-loading in iteration (accessing relations in a loop)
 - Large data structures not paginated
-- Synchronous I/O in main code path
-- No caching for repeated expensive operations
+- Synchronous I/O in request handlers
+- Missing Redis caching for repeated expensive operations
 
 ### 7. Technical Debt
 - Deprecated patterns or libraries still in use
@@ -163,40 +150,38 @@ grep -n "readFileSync\|query\|request" file.js | grep -v "async"
 **How to detect:**
 ```bash
 # Find TODO/FIXME comments
-grep -n "TODO\|FIXME\|XXX\|HACK" file.js
+grep -n "TODO\|FIXME\|XXX\|HACK" file.ts
 # Deprecated API usage
-grep -n "deprecated\|obsolete" file.js
+grep -n "deprecated\|obsolete" file.ts
 # Comments indicating problems
-grep -n "workaround\|temporary\|quick fix" file.js
+grep -n "workaround\|temporary\|quick fix" file.ts
 ```
-
-**Red flags:**
-- Many unresolved TODO comments
-- Using deprecated library versions
-- Inconsistent patterns (old style mixed with new)
-- Comments saying "this is hacky but it works"
-- Code that duplicates existing patterns elsewhere
 
 ### 8. Testing Architecture
 - Code designed to be difficult to test
 - Heavy use of mocks indicates poor design
-- Brittle tests tied to implementation details
-- No test coverage for critical paths
-- Difficult to set up test context
+- Missing integration test coverage for critical paths
+- Difficult to set up test context due to tight coupling
 
 **How to detect:**
-- Check if functions are testable (pure or injectable)
-- Look for functions with many side effects
-- Identify areas with complex setup required
+- Check if services are testable via constructor injection
+- Look for services with many side effects
+- Identify areas requiring complex `Test.createTestingModule()` setup
 - Check for hardcoded values/dependencies
-- See if logic is embedded in infrastructure code
 
 **Red flags:**
-- Pure business logic mixed with I/O
-- Global state or singletons used throughout
+- Business logic mixed with I/O (untestable)
+- Global state or singletons used outside NestJS DI
 - Functions doing both computation and side effects
-- Difficult to create isolated test contexts
-- External API calls in core logic
+- External API calls embedded in core logic
+
+## Project-Specific Checks
+
+- **Layer violations**: Controller → Service → DAO → Entity must be respected — services should never bypass DAOs, controllers should never contain business logic (from project architecture)
+- **Feature module isolation**: Each `src/v1/<feature>/` should be self-contained with its own dto/, entities/, controller, service, dao, module files
+- **Socket.IO event architecture**: Real-time events should go through the notifications module — not emitted directly from services
+- **BullMQ job design**: Background jobs should be idempotent and handle failures gracefully
+- **MikroORM identity map**: Be aware of EntityManager scope — forking EM for background operations
 
 ## Output Format
 
@@ -205,12 +190,12 @@ grep -n "workaround\|temporary\|quick fix" file.js
   "type": "architecture",
   "severity": "critical|high|medium",
   "title": "Brief architecture issue",
-  "file": "path/to/file.js",
+  "file": "path/to/file.ts",
   "line_start": 42,
   "line_end": 48,
   "description": "Detailed description of architectural concern",
   "category": "coupling|abstraction|solid|organization|errorhandling|performance|debt|testing",
-  "pattern_location": ["file.js:42", "other.js:15"],
+  "pattern_location": ["file.ts:42", "other.ts:15"],
   "current_design": "How it's currently structured",
   "impact": "Why this matters (maintainability, scalability, etc.)",
   "recommendation": "Proposed refactoring or improvement",
@@ -221,60 +206,43 @@ grep -n "workaround\|temporary\|quick fix" file.js
 ## Common False Positives
 
 1. **Pragmatic design** — Sometimes coupling is acceptable for simplicity
-   - Framework integration often requires tight coupling
-   - Small projects don't need full SOLID adherence
+   - NestJS module integration often requires some cross-module awareness
+   - Small features don't need full layered architecture
    - Check project size and constraints
 
 2. **Intentional repetition** — Code reuse isn't always beneficial
    - Duplicating code for different contexts is sometimes correct
    - Premature abstraction creates worse problems
-   - Only flag if obvious shared logic exists
+   - Only flag obvious shared logic
 
-3. **Framework patterns** — Many frameworks violate SOLID on purpose
-   - Rails/Django models do multiple things by design
-   - Framework code patterns don't apply to app code
-   - Check if pattern is framework-recommended
+3. **Framework patterns** — NestJS has specific patterns by design
+   - Module providers/exports create intentional coupling
+   - Decorators mix concerns by design
+   - Check if pattern is NestJS-recommended
 
 4. **Configuration-driven behavior** — Behavior controlled externally
-   - Configuration injection addresses tight coupling
+   - NestJS DI handles most configuration injection
    - Check if values come from proper config sources
-   - Don't flag if using DI framework
 
-5. **Learning code** — New developers might use older patterns
-   - Code reviews should mentor, not just criticize
-   - Consistency matters, but growth is important
-   - Consider context and codebase age
-
-6. **Intentional simplification** — Simple code beats perfect design
+5. **Intentional simplification** — Simple code beats perfect design
    - Don't flag over-engineering fears
    - Some coupling is acceptable for simplicity
    - Only flag if causing real problems
-
-## Stack-Agnostic Patterns
-
-Works across languages/frameworks:
-- Module/package import patterns (all languages)
-- Dependency directions (acyclic dependencies)
-- Class/function responsibility (all OOP languages)
-- Error handling strategies (all languages)
-- Performance patterns (all runtimes)
-- Code organization principles (language-agnostic)
 
 ## Review Checklist
 
 - [ ] Module dependencies are acyclic
 - [ ] Each module has clear, single purpose
-- [ ] Abstractions properly hide implementation details
-- [ ] SOLID principles generally followed
-- [ ] Code organization is consistent
-- [ ] Error handling follows patterns
-- [ ] No obvious performance red flags
+- [ ] Controller → Service → DAO layering respected
+- [ ] Feature modules are self-contained
+- [ ] Error handling uses custom exceptions from `@packages/common`
+- [ ] No obvious performance red flags (N+1, unbounded queries)
 - [ ] Technical debt is documented/addressed
 - [ ] Code is designed to be testable
 - [ ] Patterns align with codebase standards
 
 ## Severity Guidelines
 
-- **CRITICAL**: Circular dependencies, architectural patterns preventing scalability
-- **HIGH**: High coupling, missing abstractions, SOLID violations, N+1 patterns
+- **CRITICAL**: Circular dependencies, layer violations in critical paths, architectural patterns preventing scalability
+- **HIGH**: High coupling, missing abstractions, N+1 patterns, cross-feature DAO access
 - **MEDIUM**: Inconsistent patterns, minor organizational improvements, refactoring opportunities

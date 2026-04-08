@@ -6,101 +6,86 @@ Code style, naming conventions, documentation, consistency, and compliance with 
 
 ### 1. Naming Conventions
 - Variable names unclear or misleading (`data`, `x`, `temp`, `result`)
-- Inconsistent naming style (camelCase vs snake_case mixed)
-- Names don't reflect purpose (`fn`, `proc`, `handler` without context)
+- Inconsistent naming style (must be camelCase for variables/functions, PascalCase for classes/interfaces/enums/types)
+- Names don't reflect purpose
 - Magic numbers and strings without explanation
 - Misleading names (name doesn't match behavior)
 
 **How to detect:**
 ```bash
 # Find single-letter or vague variables
-grep -nE "^\s*[a-z]\s*=" file.js
-grep -nE "var (x|y|z|data|temp|result|obj|arr|str)\b" file.js
-# Check naming inconsistency
-grep -n "const\|let\|var" file.js | head -20 | cut -d: -f2 | sort | uniq -c
+grep -nE "^\s*(const|let)\s+(x|y|z|data|temp|result|obj|arr|str)\b" file.ts
+# Check naming inconsistency — snake_case in TypeScript is wrong
+grep -nE "\b[a-z]+_[a-z]+" file.ts | grep -v "import\|require\|'.*_.*'"
 # Find magic numbers
-grep -nE "[0-9]{2,}" file.js | grep -v "200\|404\|timestamp\|size"
+grep -nE "[0-9]{2,}" file.ts | grep -v "200\|404\|timestamp\|size\|port\|5000\|4000"
 ```
 
 **Red flags:**
 - Variables: `x`, `d`, `v`, `data`, `temp`, `result`, `obj`
-- Inconsistent style in same file
+- snake_case in TypeScript code (should be camelCase)
 - Constants without names (magic numbers/strings)
 - Names that don't match what variable stores
-- Abbreviations that aren't obvious
+- PascalCase for enum members not followed
 
 ### 2. Function & Class Naming
 - Generic function names (`process`, `handle`, `do`, `execute` without context)
 - Function names not describing what they do
 - Inconsistent verb tense (get vs gets, create vs creating)
 - Class names that don't represent their purpose
-- Private methods without clear naming
 
 **How to detect:**
 ```bash
 # Find generic function names
-grep -nE "function (do|process|handle|execute|run|work|test)\(" file.js
-grep -nE "(async |)function\s+[a-z0-9]+\(" file.js | grep -v "get\|create\|fetch\|validate\|check"
-# Look for generic class names
-grep -n "class [A-Z]" file.js | grep -E "Utils|Manager|Handler|Service"
+grep -nE "(async\s+)?function\s+(do|process|handle|execute|run|work)\(" file.ts
+grep -nE "(async\s+)?(do|process|handle|execute|run)\s*\(" file.ts
+# NestJS service/controller naming
+grep -n "class [A-Z]" file.ts | grep -E "Utils|Manager|Handler" | grep -v "Service\|Controller\|Module"
 ```
 
 **Red flags:**
-- Functions: `doSomething()`, `processData()`, `handleIt()`, `executeTask()`
+- Functions: `doSomething()`, `processData()`, `handleIt()`
 - Classes: `UtilityManager`, `DataService`, `GeneralHandler`
 - No clear verb (get, create, fetch, validate, check, transform)
-- Private methods unclear (\_process, \_handle)
 
 ### 3. Code Formatting & Style
-- Inconsistent indentation (tabs vs spaces mixed)
-- Line length exceeding standard (>100 chars)
+- Inconsistent indentation
+- Line length exceeding standard (>120 chars)
 - Missing blank lines between logical sections
 - Inconsistent brace placement
-- Inconsistent spacing around operators
 
 **How to detect:**
 ```bash
-# Check indentation consistency
-head -20 file.js | cat -A | grep -E "^\s" | cut -c1-5 | sort | uniq -c
 # Check line length
-awk 'length > 100 {print NR": length=" length}' file.js
-# Check brace style consistency
-grep -n "{\|}" file.js | head -10
+awk 'length > 120 {print NR": length=" length}' file.ts
 ```
 
 **Red flags:**
-- Mixed tabs and spaces in same file
 - Lines >120 characters
 - Inconsistent spacing before/after braces
 - No blank lines between functions/logic blocks
-- Random blank lines within functions
 
-### 4. Comments & Documentation
-- Missing comments on complex logic
-- Comments that state the obvious
-- Comments that don't match code
-- Function/method documentation missing
-- No JSDoc/docstrings on public APIs
-- TODO/FIXME comments without context
+### 4. File Organization
+- Functions in `.types.ts` files (types files must only contain types, interfaces, enums, constants)
+- Standalone functions in class files (should be in `.utils.ts`)
+- Inline imports (`require()` inside functions)
+- All imports not at top of file
 
 **How to detect:**
 ```bash
-# Find functions without comments
-grep -n "^function\|^async function\|^  [a-z].*() {" file.js
-# Find obvious comments
-grep -n "//" file.js | grep -E "increment|add one|set variable"
-# Find TODO/FIXME
-grep -n "TODO\|FIXME\|XXX\|HACK" file.js
-# Check for JSDoc
-grep -B2 "^function\|^class" file.js | grep -c "/\*\*"
+# Functions in types files
+grep -n "^export function\|^function\|^export const.*=>" file.types.ts
+# Inline imports
+grep -n "require(" file.ts | grep -v "^import"
+# Missing *.utils.ts for shared helpers
+grep -n "^export function" file.service.ts | grep -v "class"
 ```
 
 **Red flags:**
-- Public functions without documentation
-- Comments like "// increment counter"
-- Complex logic without explanation
-- TODO comments without issue reference
-- No function parameter/return documentation
+- `export function` in a `.types.ts` file
+- Helper functions defined in a `.service.ts` or `.controller.ts` file
+- `require()` calls inside function bodies
+- Imports scattered throughout the file
 
 ### 5. Code Duplication
 - Copy-pasted code blocks (>5 lines repeated)
@@ -111,12 +96,8 @@ grep -B2 "^function\|^class" file.js | grep -c "/\*\*"
 
 **How to detect:**
 ```bash
-# Find similar code patterns
-grep -n "for.*in\|forEach\|map\|reduce" file.js
-# Look for repeated constant values
-grep -nE ":\s*['\"].*['\"]\s*[,;}]" file.js | cut -d: -f2 | sort | uniq -c | sort -rn
-# Find duplicate function definitions
-grep -n "function\|const.*=" file.js | awk '{print $1}' | sort | uniq -c | sort -rn
+# Find repeated constant values
+grep -nE ":\s*['\"].*['\"]\s*[,;}]" file.ts | cut -d: -f2 | sort | uniq -c | sort -rn
 ```
 
 **Red flags:**
@@ -124,124 +105,88 @@ grep -n "function\|const.*=" file.js | awk '{print $1}' | sort | uniq -c | sort 
 - Multiple places doing same validation
 - Constants defined in multiple files
 - Similar function implementations
-- Utility code duplicated across tests
 
 ### 6. Imports & Dependencies
 - Unnecessary imports (unused modules)
 - Wildcard imports (import *)
-- Circular import patterns
-- Incorrect import paths
+- Incorrect import paths (should use `@packages/*` aliases)
 - Too many imports in single file
 
 **How to detect:**
 ```bash
-# Find unused imports
-grep -n "^import\|^require" file.js
 # Find wildcard imports
-grep -n "import \*\|from '.*\*'\|require('.*')" file.js
+grep -n "import \*" file.ts
+# Check for @packages alias usage
+grep -n "from '../../packages" file.ts  # Should use @packages/*
 # Count imports per file
-grep -c "^import\|^require" file.js
-# Check for unused variables
-grep -n "import {.*} from\|const.*require" file.js
+grep -c "^import" file.ts
 ```
 
 **Red flags:**
 - `import * as everything from 'module'`
-- `const _ = require('lodash')` if only using 2 functions
+- Relative imports to packages (should use `@packages/*`)
 - Imports not used in file
 - Relative imports going up many levels (`../../..`)
-- Circular dependency patterns
 
-### 7. Type Safety & Validation
-- Missing type annotations (if using TypeScript)
-- `any` type used too broadly
-- Type mismatches in assignments
-- No input validation at API boundaries
-- Missing null/undefined checks for external input
+### 7. Type Safety
+- `any` type used (forbidden by project rules)
+- Missing type annotations on public functions
+- `as` type assertions when proper typing is possible
+- `// eslint-disable` without explanation comment
 
 **How to detect:**
 ```bash
-# Find 'any' usage in TypeScript
-grep -n ": any\|as any" file.ts
-# Find missing type annotations
-grep -n "function.*{" file.ts | grep -v ":"
-# Check for loose types
-grep -n "Object\|Function" file.ts
+# Find 'any' usage
+grep -n ": any\|as any\|<any>" file.ts
+# Find eslint-disable without explanation
+grep -n "eslint-disable" file.ts | grep -v "//"
+# Missing return types on exported functions
+grep -n "^export.*function\|^export.*async" file.ts | grep -v ":" 
 ```
 
 **Red flags:**
-- Functions without parameter types (TypeScript)
-- Return types omitted on public functions
-- Broad use of `any` type
-- Missing input validation in API routes
-- Type-unsafe casts or assertions
+- `any` type anywhere (use specific types, generics, or `unknown` + type guards)
+- `as any` type assertions
+- Functions without parameter/return types
+- `// eslint-disable` without justification comment
 
 ### 8. Consistency with Codebase (Convention Guard)
 
 This is the most important guideline dimension — AI-generated code's #1 failure mode is introducing new patterns that differ from the repo's existing conventions ("convention drift").
 
 - Different patterns than rest of codebase
-- Inconsistent error handling approach
+- Inconsistent error handling approach (must use `@packages/common` exceptions)
 - Different naming style than existing code
 - Import styles differ from convention
-- Inconsistent module structure
-- File placed in wrong directory for its type
-- ADR contradictions (violating recorded architectural decisions)
+- DTOs not using Zod with `createZodDto()`
+- `return somePromise()` instead of `return await somePromise()`
 
 **How to detect — Exemplar File Comparison:**
-
-The key technique: find the closest existing file to each changed file, then diff the patterns.
-
 ```bash
-# Step 1: Find exemplar files — the closest existing files to the changed ones
-# For a new API route:
-ls src/routes/ | head -5                    # See existing route files
-# For a new component:
-ls src/components/ | head -5                # See existing component files
-# For a new service:
-ls src/services/ | head -5                  # See existing service files
-
-# Step 2: Compare patterns between new code and exemplar
-# Naming convention check
-grep -n "^export\|^function\|^class\|^const\|^interface" new_file.ts > /tmp/new_exports.txt
-grep -n "^export\|^function\|^class\|^const\|^interface" exemplar_file.ts > /tmp/old_exports.txt
-# Compare: are they using same naming style? (camelCase vs PascalCase vs snake_case)
-
-# Import style check
-head -20 new_file.ts | grep "import"        # New file imports
-head -20 exemplar_file.ts | grep "import"   # Exemplar imports
-# Compare: relative vs absolute paths? Named vs default? Order?
-
+# Find exemplar files — the closest existing files to the changed ones
+ls apps/api/src/v1/graphs/ | head -10    # See existing feature files
+# Compare patterns between new code and exemplar
+head -20 new_file.ts | grep "import"     # New file imports
+head -20 exemplar_file.ts | grep "import" # Exemplar imports
 # Error handling pattern check
-grep -n "try\|catch\|throw\|Error\|error" new_file.ts
-grep -n "try\|catch\|throw\|Error\|error" exemplar_file.ts
-# Compare: same error handling approach?
-
-# File structure check — does new file follow same section ordering?
-grep -n "^//\|^/\*\|^export\|^class\|^interface\|^type" new_file.ts | head -20
-grep -n "^//\|^/\*\|^export\|^class\|^interface\|^type" exemplar_file.ts | head -20
-
-# Step 3: Check for ADR violations (if ADRs exist)
-find . -path "*/adr/*.md" -o -path "*/decisions/*.md" 2>/dev/null | head -10
-# Read relevant ADRs and verify new code doesn't contradict them
+grep -n "throw\|Error\|Exception" new_file.ts
+grep -n "throw\|Error\|Exception" exemplar_file.ts
 ```
 
 **Convention drift signals (specific to AI-generated code):**
-- New code uses a pattern that exists NOWHERE else in the codebase
-- Error handling wraps in try/catch when codebase uses Result types (or vice versa)
-- File exports a default when codebase uses named exports (or vice versa)
-- New utility function duplicates an existing one under a different name
-- Code uses a library/package not in package.json when an existing dep does the same thing
-- Test file structure doesn't match existing test files (describe/it vs test(), file naming)
+- New code uses `throw new Error()` when codebase uses `throw new NotFoundException()` from `@packages/common`
+- New DTO uses class-validator instead of Zod + `createZodDto()`
+- New code uses `return promise` instead of `return await promise`
+- File exports a default when codebase uses named exports
+- New utility duplicates an existing one under a different name
+- Test file uses `jest` patterns when codebase uses `vitest`
 
 **Red flags:**
 - New code using different naming style
 - Different error handling than existing code
 - New patterns not used elsewhere in the codebase
 - Breaks existing architectural patterns
-- Differs from style guide or linter config
-- New dependency added when existing dependency covers the use case
-- File placed in unexpected location vs codebase convention
+- New dependency added when existing dep covers the use case
 
 ## Output Format
 
@@ -250,7 +195,7 @@ find . -path "*/adr/*.md" -o -path "*/decisions/*.md" 2>/dev/null | head -10
   "type": "guidelines",
   "severity": "critical|high|medium",
   "title": "Style or guideline violation",
-  "file": "path/to/file.js",
+  "file": "path/to/file.ts",
   "line_start": 42,
   "line_end": 48,
   "description": "Description of the guideline violation",
@@ -270,57 +215,38 @@ find . -path "*/adr/*.md" -o -path "*/decisions/*.md" 2>/dev/null | head -10
    - Check scope: if var used in 5+ lines, needs better name
 
 2. **Generic names in tests** — Often acceptable for test setup
-   - `const user = createTestUser()`
-   - `const data = { id: 1, name: 'Test' }`
+   - `const mockGraph = { id: '123', name: 'Test' }`
    - Only flag if confusing within test
 
 3. **Pragmatic duplication** — Sometimes better than premature abstraction
    - Two similar implementations might have different requirements
-   - Duplicating for different contexts is acceptable
    - Only flag obvious shared logic
 
-4. **Type-safe "any"** — Exceptions exist for special cases
-   - `JSON.parse()` returns any (by design)
-   - Bridge code to untyped libraries uses any
-   - Check if there's legitimate reason
-
-5. **Comments explaining "why"** — These are good, not obvious
+4. **Comments explaining "why"** — These are good, not obvious
    - Explaining business logic or tricky decisions is valuable
    - Only flag comments that state the obvious code
 
-6. **Linter conflicts** — If codebase uses specific config
-   - Project might enforce different style than standard
-   - Check `.eslintrc`, `prettier.config`, etc.
+5. **Linter conflicts** — If codebase uses specific config
+   - Project uses ESLint + Prettier with specific config
    - Don't flag if matches project config
-
-## Stack-Agnostic Patterns
-
-Works across all languages/frameworks:
-- Naming conventions (all languages)
-- Code formatting (all languages)
-- Documentation (all languages)
-- Code duplication (all languages)
-- Import/dependency patterns (all languages)
-- Consistency patterns (all languages)
-- Type safety (statically typed languages)
 
 ## Review Checklist
 
-- [ ] Variable names clear and descriptive
-- [ ] Function names describe what they do
-- [ ] Class names represent their purpose
-- [ ] Code formatting consistent
-- [ ] Complex logic has explanatory comments
-- [ ] Public APIs documented
+- [ ] Variable names clear and descriptive (camelCase)
+- [ ] Class/interface/enum names PascalCase
+- [ ] No `any` type usage
+- [ ] No functions in `.types.ts` files
+- [ ] No standalone functions in class files (use `.utils.ts`)
+- [ ] All imports at top of file, using `@packages/*` aliases
+- [ ] Code formatting consistent with ESLint/Prettier config
 - [ ] No significant code duplication
-- [ ] Imports are necessary and used
-- [ ] Type annotations complete (if applicable)
-- [ ] Code follows project style guide
-- [ ] Naming consistent with codebase
-- [ ] No TODO without issue reference
+- [ ] `return await` used for all async returns
+- [ ] Error handling uses `@packages/common` exceptions
+- [ ] DTOs use Zod with `createZodDto()`
+- [ ] Naming consistent with codebase conventions
 
 ## Severity Guidelines
 
-- **CRITICAL**: Breaks language/framework standards, dangerous patterns
-- **HIGH**: Violates team style guide, difficult to understand, significant duplication
-- **MEDIUM**: Minor style issues, inconsistency, documentation gaps, naming improvements
+- **CRITICAL**: `any` type usage, functions in types files, convention drift introducing incompatible patterns
+- **HIGH**: Violates team style guide, naming inconsistency, missing type annotations
+- **MEDIUM**: Minor style issues, documentation gaps, minor naming improvements
