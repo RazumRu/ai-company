@@ -12,9 +12,9 @@ import {
   ChevronDown,
   ChevronUp,
   Cpu,
+  FileText,
   Play,
   Plug,
-  RefreshCw,
   Server,
   Trash2,
   Wrench,
@@ -49,6 +49,7 @@ export const graphNodeKindIconMap: Record<string, React.ReactNode> = {
   trigger: <Zap className="w-3 h-3" />,
   knowledge: <BookOpen className="w-3 h-3" />,
   resource: <Cpu className="w-3 h-3" />,
+  instruction: <FileText className="w-3 h-3" />,
 };
 
 /** Handle style for target (input) handles — matches the main graph canvas. */
@@ -601,16 +602,13 @@ export const CustomNode = React.memo(
     const isSystemAgent = Boolean(
       (nodeData.config as Record<string, unknown>)?.systemAgentId,
     );
+    const isPredefinedInstructionBlock = Boolean(
+      (nodeData.config as Record<string, unknown>)?.instructionBlockId,
+    );
     const systemAgentTemplate = isSystemAgent
       ? templates.find((t) => t.id === nodeData.template)
       : undefined;
     const isSystemAgentDeprecated = isSystemAgent && !systemAgentTemplate;
-    const isSystemAgentOutdated =
-      isSystemAgent &&
-      Boolean(systemAgentTemplate) &&
-      (nodeData.config as Record<string, unknown>)?.systemAgentContentHash !==
-        (systemAgentTemplate as Record<string, unknown> | undefined)
-          ?.systemAgentContentHash;
     const showNodeStatus = ['runtime', 'mcp', 'trigger'].includes(
       templateKindLower,
     );
@@ -710,16 +708,6 @@ export const CustomNode = React.memo(
             </TooltipContent>
           </Tooltip>
         )}
-        {isSystemAgentOutdated && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <RefreshCw className="size-3.5 shrink-0 text-amber-500" />
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Update available for this system agent
-            </TooltipContent>
-          </Tooltip>
-        )}
         {isSystemAgentDeprecated && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -729,6 +717,13 @@ export const CustomNode = React.memo(
               This system agent definition has been removed
             </TooltipContent>
           </Tooltip>
+        )}
+        {isPredefinedInstructionBlock && (
+          <Badge
+            variant="secondary"
+            className="text-[9px] px-1 py-0 leading-tight shrink-0">
+            Predefined
+          </Badge>
         )}
         {ctxOnNodeDelete && (
           <button

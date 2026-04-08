@@ -9,7 +9,6 @@ import {
   Info,
   Pencil,
   Play,
-  RefreshCw,
   Wrench,
   X,
 } from 'lucide-react';
@@ -21,7 +20,7 @@ import React, {
   useState,
 } from 'react';
 
-import { graphsApi, litellmApi, systemAgentsApi } from '../../../api';
+import { graphsApi, litellmApi } from '../../../api';
 import {
   GraphDtoStatusEnum,
   GraphNodeWithStatusDto,
@@ -31,14 +30,6 @@ import {
 import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { Badge } from '../../../components/ui/badge';
 import { Button } from '../../../components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '../../../components/ui/dialog';
 import { Input } from '../../../components/ui/input';
 import { JsonViewer } from '../../../components/ui/json-view';
 import {
@@ -110,6 +101,13 @@ interface NodeEditSidebarProps {
 const SYSTEM_AGENT_INTERNAL_FIELDS = [
   'systemAgentId',
   'systemAgentContentHash',
+  'instructions',
+] as const;
+
+const INSTRUCTION_BLOCK_INTERNAL_FIELDS = [
+  'instructionBlockId',
+  'instructionBlockContentHash',
+  'content',
 ] as const;
 
 export type AiSuggestionState = {
@@ -169,12 +167,6 @@ export const NodeEditSidebar = React.memo(
     const [litellmModelsLoading, setLitellmModelsLoading] = useState(false);
     const [aiSuggestionState, setAiSuggestionState] =
       useState<AiSuggestionState | null>(null);
-
-    const [updatePreview, setUpdatePreview] = useState<{
-      currentInstructions: string;
-      newInstructions: string;
-      newContentHash: string;
-    } | null>(null);
 
     const computeHasLocalUnsavedChanges = useCallback(
       (nextData?: Record<string, unknown>) => {
@@ -280,15 +272,11 @@ export const NodeEditSidebar = React.memo(
     const isAgentNode = templateKindLower === 'simpleagent';
     const nodeConfig = (nodeData?.config ?? {}) as Record<string, unknown>;
     const isSystemAgent = Boolean(nodeConfig.systemAgentId);
+    const isInstructionBlock = Boolean(nodeConfig.instructionBlockId);
     const systemAgentId = isSystemAgent
       ? String(nodeConfig.systemAgentId)
       : null;
     const isSystemAgentDeprecated = isSystemAgent && !nodeTemplate;
-    const isSystemAgentOutdated =
-      isSystemAgent &&
-      Boolean(nodeTemplate) &&
-      nodeConfig.systemAgentContentHash !==
-        nodeTemplate?.systemAgentContentHash;
     const isGraphRunning = graphStatus === GraphDtoStatusEnum.Running;
     const showNodeStatus = ['runtime', 'simpleagent', 'trigger'].includes(
       templateKindLower,
@@ -882,54 +870,6 @@ export const NodeEditSidebar = React.memo(
       );
     }, []);
 
-    const handleSystemAgentPreview = useCallback(async () => {
-      if (!node || !systemAgentId) {
-        return;
-      }
-      try {
-        const response = await systemAgentsApi.getById(systemAgentId);
-        const agent = response.data;
-        const currentConfig = (getNodeData(node)?.config ?? {}) as Record<
-          string,
-          unknown
-        >;
-        const currentInstructions =
-          typeof currentConfig.instructions === 'string'
-            ? currentConfig.instructions
-            : '';
-        setUpdatePreview({
-          currentInstructions,
-          newInstructions: agent.instructions,
-          newContentHash: agent.contentHash,
-        });
-      } catch (error) {
-        const errorMessage = extractApiErrorMessage(
-          error,
-          'Failed to fetch system agent update',
-        );
-        toastMessage.error(errorMessage);
-      }
-    }, [node, systemAgentId]);
-
-    const handleSystemAgentConfirmUpdate = useCallback(() => {
-      if (!node || !updatePreview) {
-        return;
-      }
-      const currentConfig = (getNodeData(node)?.config ?? {}) as Record<
-        string,
-        unknown
-      >;
-      const updatedConfig: Record<string, unknown> = {
-        ...currentConfig,
-        instructions: updatePreview.newInstructions,
-        systemAgentContentHash: updatePreview.newContentHash,
-      };
-      onNodeDraftChange(node.id, { config: updatedConfig });
-      setHasLocalUnsavedChanges(true);
-      setUpdatePreview(null);
-      toastMessage.success('System agent updated successfully');
-    }, [node, updatePreview, onNodeDraftChange]);
-
     const handleNameEdit = () => {
       setIsEditingName(true);
       setEditingName(nodeName);
@@ -1063,7 +1003,7 @@ export const NodeEditSidebar = React.memo(
     const canTrigger = isTriggerNode && isGraphRunning;
 
     const visibleTemplateSchema = useMemo(() => {
-      if (!templateSchema || !isSystemAgent) {
+      if (!templateSchema || (!isSystemAgent && !isInstructionBlock)) {
         return templateSchema;
       }
       const props = (templateSchema as { properties?: Record<string, unknown> })
@@ -1074,31 +1014,29 @@ export const NodeEditSidebar = React.memo(
       const filteredProps = Object.fromEntries(
         Object.entries(props).filter(
           ([key]) =>
-            !SYSTEM_AGENT_INTERNAL_FIELDS.includes(
-              key as (typeof SYSTEM_AGENT_INTERNAL_FIELDS)[number],
+            !(
+              isSystemAgent &&
+              SYSTEM_AGENT_INTERNAL_FIELDS.includes(
+                key as (typeof SYSTEM_AGENT_INTERNAL_FIELDS)[number],
+              )
+            ) &&
+            !(
+              isInstructionBlock &&
+              INSTRUCTION_BLOCK_INTERNAL_FIELDS.includes(
+                key as (typeof INSTRUCTION_BLOCK_INTERNAL_FIELDS)[number],
+              )
             ),
         ),
       );
       return { ...templateSchema, properties: filteredProps };
-    }, [templateSchema, isSystemAgent]);
+    }, [templateSchema, isSystemAgent, isInstructionBlock]);
 
-    const visibleSchemaPropertyKeys = useMemo(
-      () =>
-        (
-          visibleTemplateSchema as {
-            properties?: Record<string, unknown>;
-          } | null
-        )?.properties
-          ? Object.keys(
-              (
-                visibleTemplateSchema as {
-                  properties: Record<string, unknown>;
-                }
-              ).properties,
-            )
-          : schemaPropertyKeys,
-      [visibleTemplateSchema, schemaPropertyKeys],
-    );
+    const visibleSchemaPropertyKeys = useMemo(() => {
+      const props = (
+        visibleTemplateSchema as { properties?: Record<string, unknown> } | null
+      )?.properties;
+      return props ? Object.keys(props) : schemaPropertyKeys;
+    }, [visibleTemplateSchema, schemaPropertyKeys]);
 
     const optionsTabContent = (
       <div
@@ -1377,24 +1315,6 @@ export const NodeEditSidebar = React.memo(
             )}
           </div>
 
-          {isSystemAgentOutdated && (
-            <div className="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between gap-2 flex-shrink-0 mb-2 rounded-md">
-              <div className="flex items-center gap-1.5">
-                <RefreshCw className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span className="text-xs text-amber-700 dark:text-amber-400">
-                  Update available — instructions may have changed
-                </span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-6 text-xs shrink-0"
-                onClick={handleSystemAgentPreview}>
-                Update
-              </Button>
-            </div>
-          )}
-
           {isSystemAgentDeprecated && (
             <div className="px-4 py-2 bg-destructive/10 border border-destructive/20 flex-shrink-0 mb-2 rounded-md">
               <div className="flex items-center gap-1.5">
@@ -1498,64 +1418,6 @@ export const NodeEditSidebar = React.memo(
             }
           }}
         />
-
-        <Dialog
-          open={updatePreview !== null}
-          onOpenChange={(open) => {
-            if (!open) {
-              setUpdatePreview(null);
-            }
-          }}>
-          <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle>Update System Agent</DialogTitle>
-              <DialogDescription>
-                Review the changes before applying the update.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex-1 overflow-y-auto space-y-4 py-2">
-              {updatePreview &&
-                updatePreview.currentInstructions !==
-                  updatePreview.newInstructions && (
-                  <div className="space-y-2">
-                    <span className="text-sm font-medium">Instructions</span>
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">
-                        Current:
-                      </span>
-                      <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-48 overflow-y-auto">
-                        {updatePreview.currentInstructions || '(empty)'}
-                      </pre>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">
-                        Updated:
-                      </span>
-                      <pre className="text-xs bg-muted rounded-md p-3 whitespace-pre-wrap max-h-48 overflow-y-auto">
-                        {updatePreview.newInstructions}
-                      </pre>
-                    </div>
-                  </div>
-                )}
-              {updatePreview &&
-                updatePreview.currentInstructions ===
-                  updatePreview.newInstructions && (
-                  <div className="text-sm text-muted-foreground">
-                    No visible changes to instructions. The content hash will be
-                    updated.
-                  </div>
-                )}
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setUpdatePreview(null)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSystemAgentConfirmUpdate}>
-                Confirm Update
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </aside>
     );
   },

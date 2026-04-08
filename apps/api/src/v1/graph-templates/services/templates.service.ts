@@ -28,13 +28,24 @@ export class TemplatesService {
         systemAgentId?: string;
         systemAgentContentHash?: string;
         systemAgentPredefinedTools?: string[];
+        instructionBlockId?: string;
+        instructionBlockContentHash?: string;
       };
+
       if (tmpl.systemAgentId) {
         return {
           ...base,
           systemAgentId: tmpl.systemAgentId,
           systemAgentContentHash: tmpl.systemAgentContentHash,
           systemAgentPredefinedTools: tmpl.systemAgentPredefinedTools,
+        };
+      }
+
+      if (tmpl.instructionBlockId) {
+        return {
+          ...base,
+          instructionBlockId: tmpl.instructionBlockId,
+          instructionBlockContentHash: tmpl.instructionBlockContentHash,
         };
       }
 

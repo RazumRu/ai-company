@@ -15,6 +15,7 @@ import {
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import type { SystemAgentDefinition } from '../system-agents.types';
 import { SystemAgentTemplateFactory } from './system-agent-template.factory';
+import { SystemAgentsService } from './system-agents.service';
 
 const makeHandle = <TInstance>(
   instance: TInstance,
@@ -55,6 +56,7 @@ describe('SystemAgentTemplateFactory', () => {
   let mockModuleRef: ModuleRef;
   let mockGraphRegistry: GraphRegistry;
   let mockTemplateRegistry: TemplateRegistry;
+  let mockSystemAgentsService: { getById: ReturnType<typeof vi.fn> };
 
   afterEach(() => {
     vi.clearAllMocks();
@@ -88,12 +90,17 @@ describe('SystemAgentTemplateFactory', () => {
       getTemplate: vi.fn().mockReturnValue(undefined),
     } as unknown as TemplateRegistry;
 
+    mockSystemAgentsService = {
+      getById: vi.fn().mockReturnValue(ENGINEER_DEFINITION),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SystemAgentTemplateFactory,
         { provide: ModuleRef, useValue: mockModuleRef },
         { provide: GraphRegistry, useValue: mockGraphRegistry },
         { provide: TemplateRegistry, useValue: templateRegistryValue },
+        { provide: SystemAgentsService, useValue: mockSystemAgentsService },
         {
           provide: DefaultLogger,
           useValue: {
@@ -147,6 +154,7 @@ describe('SystemAgentTemplateFactory', () => {
         { type: 'kind', value: NodeKind.Tool, multiple: true },
         { type: 'kind', value: NodeKind.Mcp, multiple: true },
         { type: 'kind', value: NodeKind.Runtime, multiple: false },
+        { type: 'kind', value: NodeKind.Instruction, multiple: true },
       ]);
     });
 
@@ -206,7 +214,7 @@ describe('SystemAgentTemplateFactory', () => {
       );
     });
 
-    it('instructions field has x-ui:readonly meta and does not have x-ui:ai-suggestions', () => {
+    it('instructions field does not have x-ui:readonly meta', () => {
       const template = factory.createTemplate(ENGINEER_DEFINITION);
       const schema = (template as unknown as Record<string, unknown>)
         .schema as {
@@ -219,7 +227,8 @@ describe('SystemAgentTemplateFactory', () => {
       expect(instructionsField).toBeDefined();
       const meta = instructionsField!._def.innerType.meta();
       expect(meta).toBeDefined();
-      expect(meta!['x-ui:readonly']).toBe(true);
+      expect(meta!['x-ui:textarea']).toBe(true);
+      expect(meta!['x-ui:readonly']).toBeUndefined();
       expect(meta!['x-ui:ai-suggestions']).toBeUndefined();
     });
   });
@@ -337,17 +346,27 @@ describe('SystemAgentTemplateFactory', () => {
       );
     });
 
-    it('appends additionalInstructions to base instructions', async () => {
-      const configWithAdditional = {
-        ...baseConfig,
-        additionalInstructions: 'Also follow these extra rules.',
-      };
+    it('collects content from connected instruction nodes', async () => {
+      const instructionNode = buildCompiledNode({
+        id: 'instruction-node-1',
+        type: NodeKind.Instruction,
+        template: 'custom-instruction',
+        instance: 'Follow these coding rules.',
+      });
+
+      vi.mocked(mockGraphRegistry.getNode).mockImplementation((_gid, id) => {
+        if (id === 'instruction-node-1') {
+          return instructionNode;
+        }
+        return undefined;
+      });
+
       const template = factory.createTemplate(ENGINEER_DEFINITION);
       const handle = await template.create();
-      const params: GraphNode<typeof configWithAdditional> = {
-        config: configWithAdditional,
+      const params: GraphNode<typeof baseConfig> = {
+        config: baseConfig,
         inputNodeIds: new Set(),
-        outputNodeIds: new Set(),
+        outputNodeIds: new Set(['instruction-node-1']),
         metadata,
       };
       const instance = await handle.provide(params);
@@ -358,12 +377,62 @@ describe('SystemAgentTemplateFactory', () => {
         .mock.calls.at(1);
       expect(finalConfigCall).toBeDefined();
       const finalConfig = finalConfigCall![0] as { instructions: string };
+      expect(finalConfig.instructions).toContain('Follow these coding rules.');
+      expect(finalConfig.instructions).toContain('<instruction_block>');
+    });
+
+    it('uses live instructions from SystemAgentsService when definition exists', async () => {
+      const updatedDef = {
+        ...ENGINEER_DEFINITION,
+        instructions: 'Updated instructions from .md file',
+      };
+      mockSystemAgentsService.getById.mockReturnValue(updatedDef);
+
+      const template = factory.createTemplate(ENGINEER_DEFINITION);
+      const handle = await template.create();
+      const params: GraphNode<typeof baseConfig> = {
+        config: baseConfig,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(params);
+      await handle.configure(params, instance);
+
+      const finalConfigCall = vi
+        .mocked(mockSimpleAgent.setConfig)
+        .mock.calls.at(1);
+      const finalConfig = finalConfigCall![0] as { instructions: string };
       expect(finalConfig.instructions).toContain(
-        'Also follow these extra rules.',
+        'Updated instructions from .md file',
       );
-      expect(finalConfig.instructions).toContain(
+      expect(finalConfig.instructions).not.toContain(
         ENGINEER_DEFINITION.instructions,
       );
+    });
+
+    it('falls back to config.instructions when system agent definition is deleted', async () => {
+      const { NotFoundException } = await import('@packages/common');
+      mockSystemAgentsService.getById.mockImplementation(() => {
+        throw new NotFoundException('SYSTEM_AGENT_NOT_FOUND', 'Not found');
+      });
+
+      const template = factory.createTemplate(ENGINEER_DEFINITION);
+      const handle = await template.create();
+      const params: GraphNode<typeof baseConfig> = {
+        config: baseConfig,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(params);
+      await handle.configure(params, instance);
+
+      const finalConfigCall = vi
+        .mocked(mockSimpleAgent.setConfig)
+        .mock.calls.at(1);
+      const finalConfig = finalConfigCall![0] as { instructions: string };
+      expect(finalConfig.instructions).toContain(baseConfig.instructions);
     });
 
     it('collects tools from connected tool nodes', async () => {

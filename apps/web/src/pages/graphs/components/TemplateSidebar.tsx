@@ -91,6 +91,8 @@ export const TemplateSidebar = ({
         return 'Resource';
       case 'runtime':
         return 'Runtime';
+      case 'instruction':
+        return 'Instructions';
       default:
         return kind;
     }

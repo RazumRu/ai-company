@@ -30,6 +30,9 @@ export const TemplateSchema = z.object({
   systemAgentId: z.string().optional(),
   systemAgentContentHash: z.string().optional(),
   systemAgentPredefinedTools: z.array(z.string()).optional(),
+  // Instruction block metadata (present only for predefined instruction block templates)
+  instructionBlockId: z.string().optional(),
+  instructionBlockContentHash: z.string().optional(),
 });
 
 export class TemplateDto extends createZodDto(TemplateSchema) {}

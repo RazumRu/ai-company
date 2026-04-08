@@ -16,6 +16,7 @@ import {
   ToolNodeOutput,
 } from '../base-node.template';
 import {
+  collectInstructionBlockContent,
   collectMcpInstructions,
   collectToolGroupInstructions,
   collectToolInstructions,
@@ -121,6 +122,11 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
       value: NodeKind.Mcp,
       multiple: true,
     },
+    {
+      type: 'kind',
+      value: NodeKind.Instruction,
+      multiple: true,
+    },
   ] as const;
 
   constructor(
@@ -145,6 +151,7 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
         const allTools: BuiltAgentTool[] = [];
         const toolGroupInstructions: string[] = [];
         const mcpOutputs: BaseMcp<unknown>[] = [];
+        const instructionContents: string[] = [];
 
         for (const nodeId of outputNodeIds) {
           const node = this.graphRegistry.getNode<
@@ -181,6 +188,15 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
             if (mcpService) {
               mcpOutputs.push(mcpService);
             }
+            continue;
+          }
+
+          if (node.type === NodeKind.Instruction) {
+            const content = node.instance as unknown as string;
+            if (content) {
+              instructionContents.push(content);
+            }
+            continue;
           }
         }
 
@@ -201,10 +217,14 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
           toolGroupInstructions,
         );
 
+        const instructionBlockContent =
+          collectInstructionBlockContent(instructionContents);
+
         const finalConfig = {
           ...config,
           instructions: [
             config.instructions,
+            instructionBlockContent,
             toolGroupInstructionsText,
             toolInstructions,
             mcpInstructions,

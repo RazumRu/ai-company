@@ -9,6 +9,7 @@ import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import {
+  collectInstructionBlockContent,
   collectMcpInstructions,
   collectToolGroupInstructions,
   collectToolInstructions,
@@ -26,11 +27,11 @@ import type {
 import { NodeKind } from '../../graphs/graphs.types';
 import { GraphRegistry } from '../../graphs/services/graph-registry';
 import type { SystemAgentDefinition } from '../system-agents.types';
+import { SystemAgentsService } from './system-agents.service';
 
 type SystemAgentSchemaType = z.infer<typeof SimpleAgentTemplateSchema> & {
   systemAgentId: string;
   systemAgentContentHash: string;
-  additionalInstructions?: string;
 };
 
 @Injectable()
@@ -40,6 +41,7 @@ export class SystemAgentTemplateFactory {
     private readonly graphRegistry: GraphRegistry,
     private readonly templateRegistry: TemplateRegistry,
     private readonly logger: DefaultLogger,
+    private readonly systemAgentsService: SystemAgentsService,
   ) {}
 
   createTemplate(
@@ -63,7 +65,6 @@ export class SystemAgentTemplateFactory {
           'System prompt injected at the start of each turn: role, goals, constraints, style.',
         )
         .meta({ 'x-ui:textarea': true })
-        .meta({ 'x-ui:readonly': true })
         .default(def.instructions),
       ...(def.defaultModel
         ? {
@@ -80,20 +81,13 @@ export class SystemAgentTemplateFactory {
         : {}),
       systemAgentId: z.string().default(def.id),
       systemAgentContentHash: z.string().default(def.contentHash),
-      additionalInstructions: z
-        .string()
-        .optional()
-        .describe(
-          'Additional instructions appended to the predefined system prompt',
-        )
-        .meta({ 'x-ui:textarea': true })
-        .meta({ 'x-ui:ai-suggestions': true }),
     });
 
     const moduleRef = this.moduleRef;
     const graphRegistry = this.graphRegistry;
     const templateRegistry = this.templateRegistry;
     const logger = this.logger;
+    const systemAgentsService = this.systemAgentsService;
 
     const template = new (class extends SimpleAgentNodeBaseTemplate<
       typeof schema,
@@ -120,6 +114,7 @@ export class SystemAgentTemplateFactory {
         { type: 'kind' as const, value: NodeKind.Tool, multiple: true },
         { type: 'kind' as const, value: NodeKind.Mcp, multiple: true },
         { type: 'kind' as const, value: NodeKind.Runtime, multiple: false },
+        { type: 'kind' as const, value: NodeKind.Instruction, multiple: true },
       ] as const;
 
       async create() {
@@ -143,6 +138,7 @@ export class SystemAgentTemplateFactory {
             const allTools: BuiltAgentTool[] = [];
             const toolGroupInstructions: string[] = [];
             const mcpOutputs: BaseMcp<unknown>[] = [];
+            const instructionContents: string[] = [];
             const manualToolTemplateIds = new Set<string>();
 
             for (const nodeId of outputNodeIds) {
@@ -180,6 +176,15 @@ export class SystemAgentTemplateFactory {
 
               if (node.type === NodeKind.Mcp) {
                 mcpOutputs.push(inst as BaseMcp<unknown>);
+                continue;
+              }
+
+              if (node.type === NodeKind.Instruction) {
+                const content = node.instance as unknown as string;
+                if (content) {
+                  instructionContents.push(content);
+                }
+                continue;
               }
             }
 
@@ -299,11 +304,22 @@ export class SystemAgentTemplateFactory {
               toolGroupInstructions,
             );
 
+            let liveInstructions: string;
+            try {
+              const latestDef = systemAgentsService.getById(def.id);
+              liveInstructions = latestDef.instructions;
+            } catch {
+              liveInstructions = config.instructions;
+            }
+
+            const instructionBlockContent =
+              collectInstructionBlockContent(instructionContents);
+
             const finalConfig = {
               ...config,
               instructions: [
-                def.instructions,
-                config.additionalInstructions,
+                liveInstructions,
+                instructionBlockContent,
                 toolGroupInstructionsText,
                 toolInstructions,
                 mcpInstructions,

@@ -51,3 +51,15 @@ export function collectMcpInstructions(
 
   return ['## MCP Instructions', ...blocks].join('\n\n');
 }
+
+export function collectInstructionBlockContent(
+  instructionContents: string[],
+): string | undefined {
+  if (!instructionContents.length) {
+    return undefined;
+  }
+  const wrapped = instructionContents.map((block) =>
+    wrapBlock(block, 'instruction_block'),
+  );
+  return ['## Additional Instructions', ...wrapped].join('\n\n');
+}

@@ -117,6 +117,7 @@ describe('SimpleAgentTemplate', () => {
       expect(template.outputs).toEqual([
         { type: 'kind', value: NodeKind.Tool, multiple: true },
         { type: 'kind', value: NodeKind.Mcp, multiple: true },
+        { type: 'kind', value: NodeKind.Instruction, multiple: true },
       ]);
     });
   });
