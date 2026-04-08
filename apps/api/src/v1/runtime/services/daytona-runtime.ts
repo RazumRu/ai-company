@@ -1012,6 +1012,11 @@ export class DaytonaRuntime extends BaseRuntime {
         attempt === 1 ? commonParams.name : `${commonParams.name}-r${attempt}`;
       const params = { ...commonParams, name };
 
+      // For retry attempts, clean up any stale sandbox from a previous run
+      if (attempt > 1) {
+        await this.cleanupSandbox(name);
+      }
+
       try {
         if (snapshotOrImage) {
           return await this.daytona!.create(
