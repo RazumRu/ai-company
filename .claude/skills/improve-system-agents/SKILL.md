@@ -27,6 +27,46 @@ Rewrites a system agent or instruction block definition using prompt engineering
 
 ---
 
+## How System Agents Work (Architecture Context)
+
+Understanding this architecture is critical for writing effective rewrites. The system agent markdown body is **not the complete system prompt** — it is one layer in a multi-layer assembly.
+
+### System Prompt Assembly (runtime)
+
+The final system prompt sent to the LLM is assembled by concatenating these blocks in order:
+
+1. **Agent markdown body** — the `instructions` from the `.md` file (re-read live each invocation, enabling hot-reload)
+2. **Instruction block content** — from any connected Instruction nodes in the graph (wrapped in `<instruction_block>` tags)
+3. **Tool group instructions** — from connected Tool node groups (wrapped in `<tool_group_instructions>` tags)
+4. **Individual tool instructions** — each tool's `__instructions` field with detailed usage guidance (wrapped in `<tool_description>` tags)
+5. **MCP instructions** — from connected MCP services (wrapped in `<mcp_instructions>` tags)
+
+### What this means for the markdown body
+
+- **Do NOT describe individual tools.** Tool descriptions, usage guidance, and disambiguation are injected automatically from each tool's own definition. Writing "use shell-tool to run commands" or "use files-tool to read files" in the markdown body is redundant.
+- **DO write cross-tool orchestration guidance.** The injected tool descriptions don't know about each other. If tool sequencing matters (e.g., "always read a file before editing it", "run tests after making changes"), that belongs in the markdown body.
+- **DO write behavioral constraints and quality standards.** Anti-patterns, code quality rules, verification discipline, git workflow — these shape how the agent uses tools, not what the tools do.
+- **Team context comes from the communication tool.** If a communication tool is connected, the agent already knows about other agents in the flow. No need to hardcode team member names.
+- **Repository context is discovered at runtime.** The agent learns about the repo (language, package manager, conventions) by reading the `agentInstructions` field from `gh_clone`. This cannot be templated in advance.
+
+### Frontmatter fields
+
+```yaml
+---
+id: engineer              # Unique identifier
+name: Engineer            # Display name
+description: ...          # Short description for UI/registry
+tools:                    # Tool template IDs — auto-instantiated with defaults
+  - shell-tool
+  - files-tool
+defaultModel: null        # Optional model override
+---
+```
+
+Tools listed in `tools:` are automatically instantiated and their instructions injected. Users can also manually connect additional tools via the graph editor, which override predefined tools of the same template ID.
+
+---
+
 ## Process
 
 ### Phase 1: Target Resolution
@@ -52,7 +92,7 @@ Which agent or instruction block do you want to improve?
 Available system agents: architect, engineer, reviewer
 Available instruction blocks: js-agent
 
-Enter the id and optionally describe what to improve (e.g. "architect add better tool usage guidance")
+Enter the id and optionally describe what to improve (e.g. "architect add better tool sequencing guidance")
 ```
 
 **If no match found:**
@@ -70,7 +110,7 @@ Use WebSearch to find domain-specific best practices for the agent's role. Const
 - `engineer` agent → search `"software engineering AI agent instructions prompt engineering"`
 - `js-agent` block → search `"JavaScript TypeScript AI coding agent instructions best practices"`
 
-Extract 3–5 concrete, actionable insights from the search results. These supplement the embedded best practices below and make the rewrite domain-aware.
+Extract 3-5 concrete, actionable insights from the search results. These supplement the embedded best practices below and make the rewrite domain-aware.
 
 ---
 
@@ -92,6 +132,21 @@ Your task: rewrite the BODY of the following agent definition file to make it cl
 (system-agent = full system prompt for a LangGraph agent running in a sandboxed environment
  instruction-block = supplementary domain instructions appended to an agent's system prompt)
 
+=== SYSTEM PROMPT ASSEMBLY (how the final prompt is built) ===
+The agent markdown body is NOT the complete system prompt. At runtime, the final prompt is assembled by concatenating:
+1. The markdown body (what you are rewriting)
+2. Instruction block content from connected Instruction nodes
+3. Tool group instructions from connected Tool nodes
+4. Individual tool instructions — each tool's detailed usage guidance (auto-injected)
+5. MCP service instructions
+
+CRITICAL IMPLICATIONS:
+- Do NOT describe what individual tools do or when to use them. Each tool injects its own description and usage guidance automatically. Writing "use shell-tool to run commands" is redundant.
+- DO write cross-tool orchestration logic (sequencing, verification workflows) — the injected tool descriptions don't know about each other.
+- DO write behavioral constraints, quality standards, and work approach — these shape HOW the agent works, not WHAT tools it has.
+- Repository-specific context (language, package manager, commands) is discovered at runtime via `agentInstructions` from `gh_clone` — never hardcode these.
+- Team context (other agents in the flow) comes from the communication tool if connected — never hardcode agent names.
+
 === USER'S IMPROVEMENT REQUEST ===
 {improvement_request or "(none — apply general best practices)"}
 
@@ -101,7 +156,7 @@ Your task: rewrite the BODY of the following agent definition file to make it cl
 === EMBEDDED BEST PRACTICES ===
 
 **Structure Principles**
-- Use a clear section hierarchy: Identity/Role → Goal/Objective → Context → Tool Usage Rules → Behavioral Constraints → Output Format → Examples
+- Use a clear section hierarchy: Identity/Role → Goal/Objective → Approach → Behavioral Constraints → Output Format
 - Use markdown headings (##) to create navigable structure — flat prose walls are an anti-pattern
 - Front-load the most critical instructions — models pay more attention to content near the start
 - Group related rules under descriptive headings — scattered rules get lost
@@ -110,13 +165,12 @@ Your task: rewrite the BODY of the following agent definition file to make it cl
 - Define a specific, actionable role — not just "be helpful" but "You are a senior code reviewer specializing in..."
 - Include a goal statement that explains WHAT the agent should accomplish
 - Add contextual backstory/motivation that shapes HOW the agent approaches tasks
-- The role should actively influence tool selection and task approach
 
-**Tool Usage Instructions**
-- Each tool mentioned should have 3-4+ sentences: what it does, when to use it, when NOT to use it, caveats
-- Add disambiguation between similar tools ("use X instead of Y when...")
-- Include sequencing guidance when tool order matters
-- Short or vague tool descriptions lead to wrong tool selection
+**Cross-Tool Orchestration (what belongs in the markdown body)**
+- Sequencing guidance when tool order matters ("read before editing", "test after implementing")
+- Verification workflows that span multiple tools
+- Fallback strategies when a tool fails
+- Do NOT describe individual tool capabilities — those are auto-injected
 
 **Constraints & Rules**
 - Prefer affirmative rules ("Always do X") over prohibitive ("Never do Y") — but use both
@@ -134,16 +188,15 @@ Your task: rewrite the BODY of the following agent definition file to make it cl
 - Vague role definitions ("be helpful", "assist the user")
 - Flat prose walls without structure
 - Contradictory rules without priority
-- Hardcoded repo-specific details that should be injected at runtime
-- Missing tool usage guidance when tools are listed in frontmatter
+- Hardcoded repo-specific details (commands, filenames, paths)
+- Redundant tool descriptions that duplicate auto-injected tool guidance
 - No examples or demonstrations of correct behavior
 - Laundry-list edge cases instead of general heuristics
 
 **For System Agents Specifically**
-- Instructions become the system prompt for a LangGraph agent
-- The agent runs inside a sandboxed environment with specific tools connected
+- Instructions become the system prompt for a LangGraph agent in a sandboxed Docker environment
 - Instructions must be GENERIC — not repo-specific — since they run against various user repos
-- Tool descriptions from the tools list are appended separately at runtime; the system prompt focuses on role, approach, and constraints
+- Tool descriptions are injected separately at runtime — the markdown body focuses on role, approach, and constraints
 - Reference "the repository's instruction file" or "the agentInstructions field from gh_clone" rather than specific filenames (CLAUDE.md) or commands (pnpm run full-check)
 
 **For Instruction Blocks Specifically**
@@ -180,13 +233,14 @@ You are a prompt engineering reviewer. Evaluate the rewritten agent definition b
 1. Clear role/identity definition (not vague, not just "be helpful")
 2. Structured with markdown headings (not a flat prose wall)
 3. Goal/objective stated explicitly
-4. Tool usage guidance present (if the frontmatter lists tools)
-5. Constraints are prioritized and include brief justifications
-6. No anti-patterns: vague roles, contradictions, hardcoded repo-specific content
-7. Appropriate altitude — strong heuristics, not exhaustive edge cases or empty platitudes
-8. User's specific request addressed: {improvement_request or "(none)"}
-9. For system agents: no repo-specific commands, filenames, or paths
-10. Overall quality strictly better than the original
+4. No redundant tool descriptions (tools self-describe via auto-injection)
+5. Cross-tool orchestration guidance present where sequencing matters
+6. Constraints are prioritized and include brief justifications
+7. No anti-patterns: vague roles, contradictions, hardcoded repo-specific content
+8. Appropriate altitude — strong heuristics, not exhaustive edge cases or empty platitudes
+9. User's specific request addressed: {improvement_request or "(none)"}
+10. For system agents: no repo-specific commands, filenames, or paths
+11. Overall quality strictly better than the original
 
 === YOUR OUTPUT ===
 Verdict: PASS or REVISE
