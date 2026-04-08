@@ -1,6 +1,6 @@
 ---
 name: ui-review
-description: "Visual review of UI via Playwright screenshots. Compares against expected layouts. Checks responsive design, visual consistency, accessibility basics, broken layouts. Produces review report in .claude/.artifacts/planning/UI_REVIEW.md."
+description: "Visual review of UI via Playwright screenshots. Compares against expected layouts. Checks responsive design, visual consistency, accessibility basics, broken layouts. Produces review report in .geniro/planning/UI_REVIEW.md."
 context: fork
 model: sonnet
 allowed-tools: [Read, Write, Edit, Bash, Grep, Glob, AskUserQuestion, mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_fill_form, mcp__plugin_playwright_playwright__browser_press_key, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_close]
@@ -52,7 +52,7 @@ For each screenshot:
 - Check loading states and error messages
 
 ### 4. Report Findings
-Generate `.claude/.artifacts/planning/UI_REVIEW.md` with:
+Generate `.geniro/planning/UI_REVIEW.md` with:
 - Screenshot gallery (key views)
 - Findings grouped by severity (critical, major, minor)
 - Before/after if fixes were tested
@@ -139,7 +139,7 @@ For each UI review, confirm:
 - [ ] Accessibility basics checked (contrast, alt text, keyboard nav)
 - [ ] Interactive elements tested (buttons, forms, navigation)
 - [ ] Performance metrics recorded
-- [ ] UI_REVIEW.md generated in .claude/.artifacts/planning/
+- [ ] UI_REVIEW.md generated in .geniro/planning/
 - [ ] Issues categorized by severity (critical/major/minor)
 - [ ] Recommendations provided with estimated effort
 

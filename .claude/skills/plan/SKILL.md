@@ -1,6 +1,6 @@
 ---
-name: plan
-description: "Create a detailed implementation plan for a feature or change. Spawns architect-agent, validates with skeptic-agent, saves to .claude/.artifacts/planning/. Use before /implement or standalone. Do NOT use for trivial 1-2 file changes (/follow-up is better) or when an approved plan already exists."
+name: geniro:plan
+description: "Create a detailed implementation plan for a feature or change. Spawns architect-agent, validates with skeptic-agent, saves to .geniro/planning/. Use before /geniro:implement or standalone. Do NOT use for trivial 1-2 file changes (/geniro:follow-up is better) or when an approved plan already exists."
 context: main
 model: inherit
 allowed-tools:
@@ -21,11 +21,11 @@ argument-hint: "[what to plan — description, Linear issue ID, or 'review' to l
 Create a detailed, file-level implementation plan before writing any code. The plan is the single source of truth for the entire implementation — all downstream agents reference it.
 
 **When to use:**
-- Before `/implement` — to get the plan approved first, then hand off
+- Before `/geniro:implement` — to get the plan approved first, then hand off
 - Standalone — when you want to think through an approach before committing
 - For planning larger initiatives that span multiple implementation cycles
 
-**Output:** A `plan-<slug>.md` file saved to `.claude/.artifacts/planning/` (flat when standalone) or `.claude/.artifacts/planning/<branch-name>/` (when a task directory exists)
+**Output:** A `plan-<slug>.md` file saved to `.geniro/planning/` (flat when standalone) or `.geniro/planning/<branch-name>/` (when a task directory exists)
 
 **No git operations:** Do NOT run `git add`, `git commit`, or `git push` — the orchestrating skill or user handles all git.
 
@@ -37,13 +37,13 @@ Parse `$ARGUMENTS` to detect intent:
 
 | What you say | What happens |
 |---|---|
-| `/plan add OAuth login` | Full planning flow: discover → architect → validate → present |
-| `/plan ENG-123` | Fetch Linear issue, use as context, then plan |
-| `/plan review` or `/plan list` | List existing plans in `.claude/.artifacts/planning/` (flat and subdirectories) with status |
-| `/plan update plan-0405-oauth.md` | Re-read and revise an existing plan |
-| `/plan just plan it` or `ASAP` | Auto mode: skip questions, pick recommended defaults |
-| `/plan I think we should add OAuth` | Assumptions mode: propose plan with assumptions, let user correct |
-| `/plan` (no arguments) | Use the `AskUserQuestion` tool to ask "What would you like to plan?" |
+| `/geniro:plan add OAuth login` | Full planning flow: discover → architect → validate → present |
+| `/geniro:plan ENG-123` | Fetch Linear issue, use as context, then plan |
+| `/geniro:plan review` or `/geniro:plan list` | List existing plans in `.geniro/planning/` (flat and subdirectories) with status |
+| `/geniro:plan update plan-0405-oauth.md` | Re-read and revise an existing plan |
+| `/geniro:plan just plan it` or `ASAP` | Auto mode: skip questions, pick recommended defaults |
+| `/geniro:plan I think we should add OAuth` | Assumptions mode: propose plan with assumptions, let user correct |
+| `/geniro:plan` (no arguments) | Use the `AskUserQuestion` tool to ask "What would you like to plan?" |
 
 **Detection rules (checked in order):**
 1. **Empty arguments** → ask what to plan via `AskUserQuestion`
@@ -57,9 +57,9 @@ Parse `$ARGUMENTS` to detect intent:
 
 ---
 
-## Plan Listing (`/plan review` or `/plan list`)
+## Plan Listing (`/geniro:plan review` or `/geniro:plan list`)
 
-1. Glob for `.claude/.artifacts/planning/plan-*.md` AND `.claude/.artifacts/planning/*/plan-*.md` (finds plans in both flat and branch-subdirectory locations)
+1. Glob for `.geniro/planning/plan-*.md` AND `.geniro/planning/*/plan-*.md` (finds plans in both flat and branch-subdirectory locations)
 2. For each file, read the first 5 lines to extract: title, date, status
 3. Present as a table:
 
@@ -72,7 +72,7 @@ Existing Plans:
 ```
 
 4. Use the `AskUserQuestion` tool (do NOT output options as plain text) to ask "Open a plan to view details, or start a new one?"
-5. If `.claude/.artifacts/planning/` doesn't exist or glob returns no results: "No plans found. Describe what you'd like to plan."
+5. If `.geniro/planning/` doesn't exist or glob returns no results: "No plans found. Describe what you'd like to plan."
 
 ---
 
@@ -129,7 +129,7 @@ For Large tasks, Phase 2 becomes two sub-phases:
 
 ---
 
-## Plan Revision (`/plan update <filename>`)
+## Plan Revision (`/geniro:plan update <filename>`)
 
 1. Read the existing plan file
 2. Ask the user what needs to change
@@ -154,13 +154,13 @@ For Large tasks, Phase 2 becomes two sub-phases:
    - Parse the user's plan into the standard plan format (read `plan-criteria.md` for structure)
    - Run skeptic validation on the parsed plan (skip for Small tasks)
    - Present to user for confirmation
-   - Save to `.claude/.artifacts/planning/plan-<slug>.md` (or into the task directory if one exists for the current branch)
+   - Save to `.geniro/planning/plan-<slug>.md` (or into the task directory if one exists for the current branch)
 
 3. **Load prior context.** Before scanning the codebase fresh, check for existing artifacts:
-   - Existing plans in `.claude/.artifacts/planning/plan-*.md` and `.claude/.artifacts/planning/*/plan-*.md` — avoid re-planning what's already decided
-   - Existing spec files in `.claude/.artifacts/planning/*/spec.md` — prior discovery decisions
-   - Learnings in `.artifacts/knowledge/learnings.jsonl` — past gotchas relevant to this area
-   - Prior session summaries in `.artifacts/knowledge/sessions/` — related work
+   - Existing plans in `.geniro/planning/plan-*.md` and `.geniro/planning/*/plan-*.md` — avoid re-planning what's already decided
+   - Existing spec files in `.geniro/planning/*/spec.md` — prior discovery decisions
+   - Learnings in `.geniro/knowledge/learnings.jsonl` — past gotchas relevant to this area
+   - Prior session summaries in `.geniro/knowledge/sessions/` — related work
    - Use findings to inform discovery — don't re-discover what previous sessions already found
 
 4. **Scan codebase** for relevant patterns, conventions, architecture:
@@ -192,7 +192,7 @@ For Large tasks, Phase 2 becomes two sub-phases:
    ## Task: Create Implementation Plan
 
    Create a detailed implementation plan following the exact structure in the Plan Criteria below.
-   Save the plan to: `.claude/.artifacts/planning/plan-<slug>.md` (or into the task directory if one exists)
+   Save the plan to: `.geniro/planning/plan-<slug>.md` (or into the task directory if one exists)
 
    ## Requirements
    [User's description + Linear issue context if any]
@@ -209,12 +209,12 @@ For Large tasks, Phase 2 becomes two sub-phases:
    ## Instructions
    - Follow the plan structure EXACTLY as specified in the criteria
    - Generate a unique filename using the slug rules from the criteria
-   - Write the plan file to `.claude/.artifacts/planning/` (or into the task directory if one exists for the current branch)
+   - Write the plan file to `.geniro/planning/` (or into the task directory if one exists for the current branch)
    - Ensure every step has exact file paths, action verbs, and verify criteria
    - The plan must be "decision-complete" — leave zero decisions to the implementer
    ```
 
-3. **Read the generated plan** — verify the architect actually wrote it to `.claude/.artifacts/planning/`
+3. **Read the generated plan** — verify the architect actually wrote it to `.geniro/planning/`
 
 ### Phase 3: Validate Plan
 
@@ -239,7 +239,7 @@ For Medium and Large tasks:
    [Pre-inline the "Validation Standard" section from `.claude/skills/plan/plan-criteria.md` — includes the 8 dimensions AND the mandatory mirage detection instructions]
 
    ## Output File
-   Write your validation report to: `.claude/.artifacts/planning/validation-report.md`
+   Write your validation report to: `.geniro/planning/validation-report.md`
    (or `<task-dir>/validation-report.md` if a task directory exists)
 
    You MUST write this file using the Write tool — do NOT just return the report as text.
@@ -260,20 +260,20 @@ For Medium and Large tasks:
 
 ### Phase 4: Present Plan to User
 
-1. **Read the plan file** from `.claude/.artifacts/planning/`
+1. **Read the plan file** from `.geniro/planning/`
 
 2. **Present the full plan** — output the complete plan content. Do NOT summarize or abbreviate. The user needs to see every step and every file.
 
 3. **Add metadata:**
-   - "Full plan saved to `.claude/.artifacts/planning/<filename>`"
+   - "Full plan saved to `.geniro/planning/<filename>`"
    - "Skeptic validation: PASS — N/8 dimensions verified"
    - If any warnings from skeptic: list them
 
 4. **Ask for approval** using the `AskUserQuestion` tool (do NOT output options as plain text):
-   - A) **Approve this plan** — mark as approved, ready for `/implement`
+   - A) **Approve this plan** — mark as approved, ready for `/geniro:implement`
    - B) **Adjust** — describe what to change (routes back to architect for revision)
    - C) **Too large — split** — decompose into smaller plans
-   - D) **Start implementing now** — approve + immediately begin `/implement` using this plan
+   - D) **Start implementing now** — approve + immediately begin `/geniro:implement` using this plan
 
 5. **Route based on answer:**
    - **A:** Update plan status to `approved`, done
@@ -287,24 +287,24 @@ Change `Status: draft` → `Status: approved`
 
 ---
 
-## Integration with /implement
+## Integration with /geniro:implement
 
-When `/implement` is invoked:
+When `/geniro:implement` is invoked:
 
-1. **Check for existing approved plans:** Glob `.claude/.artifacts/planning/plan-*.md` AND `.claude/.artifacts/planning/*/plan-*.md`, read headers, find plans with `Status: approved` that match the task description.
+1. **Check for existing approved plans:** Glob `.geniro/planning/plan-*.md` AND `.geniro/planning/*/plan-*.md`, read headers, find plans with `Status: approved` that match the task description.
 
 2. **If matching approved plan exists:** Skip Phase 2 (Architect) entirely — use the existing plan. Present it in Phase 3 (Approval) with: "Found existing approved plan: `<filename>`. Using this as the implementation plan."
 
 3. **If no matching plan exists:** Run Phase 2 as normal — spawn architect, generate plan following `plan-criteria.md`, validate with skeptic.
 
-4. **If user provides a detailed implementation plan as arguments to /implement:** Parse into plan format, validate, save, and use — skip architect generation.
+4. **If user provides a detailed implementation plan as arguments to /geniro:implement:** Parse into plan format, validate, save, and use — skip architect generation.
 
 ---
 
 ## Definition of Done
 
 Plan skill is complete when:
-- [ ] Plan file written to `.claude/.artifacts/planning/plan-<slug>.md`
+- [ ] Plan file written to `.geniro/planning/plan-<slug>.md`
 - [ ] Skeptic validation passed (or skipped for Small tasks with reason noted)
 - [ ] User approved the plan (or chose to implement immediately)
 - [ ] Plan status updated to `approved` in the file header
@@ -320,7 +320,7 @@ Plan skill is complete when:
 | Skeptic finds mirages (hallucinated files/functions) | Return to architect with specific mirages, require grep verification |
 | Plan has >15 steps | Suggest splitting into sub-plans |
 | Linear MCP unavailable | Log warning, proceed without issue context |
-| `.claude/.artifacts/planning/` doesn't exist | Create it |
+| `.geniro/planning/` doesn't exist | Create it |
 | Plan file already exists with same slug | Append `-v2`, `-v3`, etc. |
 | Empty $ARGUMENTS | Use `AskUserQuestion` to ask what to plan |
 

@@ -1,6 +1,6 @@
 ---
-name: debug
-description: "Scientific-method bug investigation with hypothesis tracking. Systematically debug complex issues using Observe → Hypothesize → Test → Isolate → Fix → Verify. Do NOT use for bugs with obvious root cause, already-understood fixes, or system-wide refactors — use /follow-up for simple fixes and /implement for deep rework."
+name: geniro:debug
+description: "Scientific-method bug investigation with hypothesis tracking. Systematically debug complex issues using Observe → Hypothesize → Test → Isolate → Fix → Verify. Do NOT use for bugs with obvious root cause, already-understood fixes, or system-wide refactors — use /geniro:follow-up for simple fixes and /geniro:implement for deep rework."
 context: main
 model: opus
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, WebSearch]
@@ -27,7 +27,7 @@ $ARGUMENTS
 
 ## Hypothesis Tracking Format
 
-Store hypotheses in `.claude/.artifacts/debug/HYPOTHESES.md`:
+Store hypotheses in `.geniro/debug/HYPOTHESES.md`:
 
 ```markdown
 # Bug: [Bug Title]
@@ -71,8 +71,8 @@ Store hypotheses in `.claude/.artifacts/debug/HYPOTHESES.md`:
 
 ### 0. Retrieve Prior Knowledge (1 min)
 Before investigating, check for relevant prior learnings:
-- Scan `.claude/.artifacts/knowledge/learnings.jsonl` for gotchas and patterns related to the affected area (use Grep with keywords from the bug description)
-- Check `.claude/.artifacts/knowledge/sessions/` for past debug sessions on similar components
+- Scan `.geniro/knowledge/learnings.jsonl` for gotchas and patterns related to the affected area (use Grep with keywords from the bug description)
+- Check `.geniro/knowledge/sessions/` for past debug sessions on similar components
 - If relevant learnings exist, use them to inform initial hypotheses — don't re-discover known issues
 
 ### 1. Observe (5 min)
@@ -86,7 +86,7 @@ Before investigating, check for relevant prior learnings:
 - Based on observation, form 2–3 competing hypotheses
 - Each hypothesis must be testable
 - Avoid "it's probably X" without evidence
-- Write hypotheses in `.claude/.artifacts/debug/HYPOTHESES.md`
+- Write hypotheses in `.geniro/debug/HYPOTHESES.md`
 - **Consider infrastructure causes alongside code causes** — connection timeouts, resource exhaustion, DNS failures, container restarts, database connection pool limits, cloud service rate limits, and deployment-related changes (new config, changed env vars, scaled-down replicas) are common root causes that code inspection alone will miss. If symptoms include timeouts, intermittent failures, or errors that only appear in deployed environments, form at least one infrastructure hypothesis.
 
 ### 3. Test (10–30 min)
@@ -114,7 +114,7 @@ Before investigating, check for relevant prior learnings:
 - If the project uses code generation (check CLAUDE.md) AND the fix modified DTOs, schemas, or controllers: run the codegen command, then re-validate.
 
 ### 7. Document
-- Update `.claude/.artifacts/debug/HYPOTHESES.md` with final outcome
+- Update `.geniro/debug/HYPOTHESES.md` with final outcome
 - **Root causes / gotchas discovered** → save as `project` memory (shared context, benefits all team members)
 - **Misleading symptoms / red herrings** → save as `project` memory (prevents others from going down the same wrong path)
 - **Debugging techniques that worked/failed** → save as `feedback` memory (operational knowledge, persists across sessions)
@@ -150,7 +150,7 @@ If user approves, draft and apply the changes. If no improvements found, skip si
 ## Escalation Limits
 
 - **Hypothesis testing**: If 5 hypothesis tests across all hypotheses are inconclusive, stop and escalate to user with findings. May need domain expertise or more reproduction data.
-- **Fix attempts**: If 2 fix attempts fail verification, stop and use the `AskUserQuestion` tool (do NOT output options as plain text) to present findings with options: A) Try different approach, B) Escalate to /implement for deeper rework, C) Show investigation summary
+- **Fix attempts**: If 2 fix attempts fail verification, stop and use the `AskUserQuestion` tool (do NOT output options as plain text) to present findings with options: A) Try different approach, B) Escalate to /geniro:implement for deeper rework, C) Show investigation summary
 
 ## Git Constraint
 
@@ -202,7 +202,7 @@ Form infrastructure hypotheses with the same rigor as code hypotheses — record
 ## Cleanup
 
 After the debug session completes (fix verified or escalated):
-- Remove `.claude/.artifacts/debug/HYPOTHESES.md` — its useful content has already been saved to memory (root causes, gotchas, techniques). The file is a working scratchpad, not a permanent record.
+- Remove `.geniro/debug/HYPOTHESES.md` — its useful content has already been saved to memory (root causes, gotchas, techniques). The file is a working scratchpad, not a permanent record.
 - Kill any background processes started during investigation (dev servers, watchers, profilers).
 - Remove any temporary test files or debug scripts created during the session.
 
@@ -213,7 +213,7 @@ Cleanup is best-effort — if a command fails silently, that's fine.
 For each debug session, confirm:
 
 - [ ] Bug reproduced consistently with clear steps
-- [ ] All hypotheses recorded in `.claude/.artifacts/debug/HYPOTHESES.md`
+- [ ] All hypotheses recorded in `.geniro/debug/HYPOTHESES.md`
 - [ ] Each hypothesis has a test plan and result
 - [ ] Root cause identified and confirmed (not guessed)
 - [ ] Fix is minimal and targeted
@@ -226,7 +226,7 @@ For each debug session, confirm:
 
 ## When to Use This Skill
 
-**Use `/debug`:**
+**Use `/geniro:debug`:**
 - Bug has unclear root cause
 - Quick fix didn't work and you need to understand why
 - Bug is intermittent or hard to reproduce
@@ -235,9 +235,9 @@ For each debug session, confirm:
 - Bug involves async code, concurrency, or state
 
 **Don't use:**
-- Obvious one-line fix (typo, off-by-one) → use `/follow-up`
+- Obvious one-line fix (typo, off-by-one) → use `/geniro:follow-up`
 - Bug is already understood and fix is clear → just implement it
-- Need system-wide refactor → use `/implement`
+- Need system-wide refactor → use `/geniro:implement`
 
 ---
 
@@ -245,7 +245,7 @@ For each debug session, confirm:
 
 ### Example 1: Cache Not Invalidating
 ```
-/debug User sees stale data after profile update
+/geniro:debug User sees stale data after profile update
 ```
 → Observe: User updates name, refresh page shows old name
 → Hypothesis 1: Cache invalidation broken
@@ -257,7 +257,7 @@ For each debug session, confirm:
 
 ### Example 2: Intermittent Timeout
 ```
-/debug API endpoint times out randomly under load
+/geniro:debug API endpoint times out randomly under load
 ```
 → Observe: Happens ~5% of requests during stress test
 → Hypothesis 1: Database query too slow
@@ -269,7 +269,7 @@ For each debug session, confirm:
 
 ### Example 3: Memory Leak
 ```
-/debug Heap grows unbounded in React component
+/geniro:debug Heap grows unbounded in React component
 ```
 → Observe: Memory increases 10MB/min over 1 hour
 → Hypothesis 1: Event listener not cleaned up

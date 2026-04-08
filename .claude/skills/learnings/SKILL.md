@@ -1,5 +1,5 @@
 ---
-name: learnings
+name: geniro:learnings
 description: "Use when a session produced corrections, gotchas, or decisions worth remembering. Extracts learnings into categorized JSONL with quality gates. Do NOT use for trivial sessions with no surprises."
 context: main
 model: haiku
@@ -9,7 +9,7 @@ argument-hint: "[optional: topic or area to focus on]"
 
 # Learnings: Continuous Learning from Sessions
 
-Use this skill at the end of a session to extract learnings and improve future work. Captures patterns, gotchas, decisions, and anti-patterns. Stored in `.claude/.artifacts/knowledge/learnings.jsonl` for reference across sessions.
+Use this skill at the end of a session to extract learnings and improve future work. Captures patterns, gotchas, decisions, and anti-patterns. Stored in `.geniro/knowledge/learnings.jsonl` for reference across sessions.
 
 ## Relationship to Built-in Memory
 
@@ -77,7 +77,7 @@ For each learning, ask:
 Drop learnings that fail these gates.
 
 ### 3. Store
-Append to `.claude/.artifacts/knowledge/learnings.jsonl` with:
+Append to `.geniro/knowledge/learnings.jsonl` with:
 - Auto-incremented ID (L1, L2, L3...)
 - Clear one-sentence learning
 - Verified flag
@@ -109,7 +109,7 @@ For each improvement session, confirm:
 - [ ] 3–5 learnings extracted (or 0 if session had no new insights)
 - [ ] Each learning passes quality gates (specific, verified, non-trivial, reusable)
 - [ ] Learnings.jsonl checked for duplicates
-- [ ] New learnings appended to `.claude/.artifacts/knowledge/learnings.jsonl`
+- [ ] New learnings appended to `.geniro/knowledge/learnings.jsonl`
 - [ ] Each learning has: id, category, verified, session, source
 - [ ] No generic or unverified lessons stored
 
@@ -117,7 +117,7 @@ For each improvement session, confirm:
 
 ## When to Use This Skill
 
-**Use `/learnings`:**
+**Use `/geniro:learnings`:**
 - End of a complex or learning-rich session
 - Made a mistake that should be remembered
 - User corrected you on a pattern or convention
@@ -128,7 +128,7 @@ For each improvement session, confirm:
 **Don't use:**
 - Simple bug fix with no learnings
 - Session was straightforward with no surprises
-- Just documenting a feature (use `/features`)
+- Just documenting a feature (use `/geniro:features`)
 - Need to refactor code (this skill is not for code changes)
 
 ---
@@ -168,7 +168,7 @@ Create a session summary document **only if** the session was complex enough to 
 
 ### Session Document Format
 
-Write to `.claude/.artifacts/knowledge/sessions/YYYY-MM-DD-<topic>.md`:
+Write to `.geniro/knowledge/sessions/YYYY-MM-DD-<topic>.md`:
 
 ```markdown
 # Session: [Topic]
@@ -196,22 +196,22 @@ Write to `.claude/.artifacts/knowledge/sessions/YYYY-MM-DD-<topic>.md`:
 
 ## Related
 - Learnings: [L12, L45] (IDs from learnings.jsonl)
-- Debug: [.claude/.artifacts/debug/HYPOTHESES.md] (if debugging was involved)
-- Spec: [.claude/.artifacts/planning/<branch-name>/spec.md] (if implementation was involved)
+- Debug: [.geniro/debug/HYPOTHESES.md] (if debugging was involved)
+- Spec: [.geniro/planning/<branch-name>/spec.md] (if implementation was involved)
 ```
 
 ### When to Create Session Documents
 
-- After any `/implement` session — captures architecture decisions, conventions discovered, and integration notes
-- After any `/debug` session — captures root cause, misleading signals, and environment-specific quirks
-- After any `/refactor` session — captures what was restructured and why
-- After significant `/follow-up` sessions — captures any non-obvious fixes or discoveries
+- After any `/geniro:implement` session — captures architecture decisions, conventions discovered, and integration notes
+- After any `/geniro:debug` session — captures root cause, misleading signals, and environment-specific quirks
+- After any `/geniro:refactor` session — captures what was restructured and why
+- After significant `/geniro:follow-up` sessions — captures any non-obvious fixes or discoveries
 - **Not needed** for trivial changes (typo fixes, config tweaks)
 
 ### Retrieval
 
 Future sessions can search these documents via the `knowledge-retrieval-agent`:
-- Pipeline skills like `/implement` and `/debug` spawn it automatically before starting work
+- Pipeline skills like `/geniro:implement` and `/geniro:debug` spawn it automatically before starting work
 - It searches learnings.jsonl, session artifacts, debug history, and planning docs
 - Returns condensed, citation-rich findings so you don't re-discover known information
 
@@ -245,7 +245,7 @@ Session Doc                  learnings.jsonl
 
 ### Example 1: End of Auth Feature
 ```
-/learnings auth
+/geniro:learnings auth
 ```
 → Scan conversation for learnings about JWT, tokens, password hashing
 → Extract pattern: "Hash passwords with bcrypt, never plain text or basic algorithms"
@@ -255,7 +255,7 @@ Session Doc                  learnings.jsonl
 
 ### Example 2: End of Performance Optimization
 ```
-/learnings
+/geniro:learnings
 ```
 → Review entire conversation
 → Extract anti-pattern: "Never SELECT * then filter in app—filter in SQL"
@@ -265,7 +265,7 @@ Session Doc                  learnings.jsonl
 
 ### Example 3: Quick Review After Bug Fix
 ```
-/learnings
+/geniro:learnings
 ```
 → Quick scan for key learnings
 → Extract gotcha if found, otherwise store nothing

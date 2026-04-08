@@ -1,6 +1,6 @@
 ---
-name: investigate
-description: "Deep investigation of codebase questions with parallel research agents. Analyzes repo structure, code behavior, git history, and internet sources to produce evidence-backed answers. Do NOT use for bug fixes (/debug), implementation (/implement), or codebase orientation (/onboard)."
+name: geniro:investigate
+description: "Deep investigation of codebase questions with parallel research agents. Analyzes repo structure, code behavior, git history, and internet sources to produce evidence-backed answers. Do NOT use for bug fixes (/geniro:debug), implementation (/geniro:implement), or codebase orientation (/geniro:onboard)."
 context: main
 model: inherit
 allowed-tools: [Read, Bash, Glob, Grep, Agent, AskUserQuestion, WebSearch, WebFetch]
@@ -38,7 +38,7 @@ From the question, extract:
 - **Depth needed**: surface-level overview vs deep trace
 - **Internet needed**: yes if question involves best practices, alternatives, framework internals, or "why" questions about external dependencies
 
-Before spawning agents, check `.claude/.artifacts/knowledge/learnings.jsonl` for existing answers to this question or closely related topics (Grep with keywords from the question). If a comprehensive answer exists, present it and ask the user if they want fresh investigation.
+Before spawning agents, check `.geniro/knowledge/learnings.jsonl` for existing answers to this question or closely related topics (Grep with keywords from the question). If a comprehensive answer exists, present it and ask the user if they want fresh investigation.
 
 If the question is ambiguous, use the `AskUserQuestion` tool to clarify scope before spawning agents. Ask one focused question, not multiple.
 
@@ -304,7 +304,7 @@ Use the `AskUserQuestion` tool with header "Follow-up" and question "Want to dig
 - "Save key findings to memory" — persist important discoveries
 - "Done — answer is sufficient"
 
-If user wants to dive deeper: re-enter Phase 2 with refined scope (reuse prior findings as context). Max 2 dive-deeper rounds — if the user needs more, suggest starting a fresh `/investigate` with the refined question.
+If user wants to dive deeper: re-enter Phase 2 with refined scope (reuse prior findings as context). Max 2 dive-deeper rounds — if the user needs more, suggest starting a fresh `/geniro:investigate` with the refined question.
 If user wants to save findings: extract non-obvious architectural insights, design rationale, or gotchas. Save as `project` memory. Before writing, check if an existing memory covers this topic — UPDATE rather than duplicate.
 
 ## Git Constraint
@@ -335,7 +335,7 @@ Do NOT run `git add`, `git commit`, `git push`, or `git checkout`. You may use `
 
 ## When to Use This Skill
 
-**Use `/investigate`:**
+**Use `/geniro:investigate`:**
 - "How does X work in this codebase?"
 - "Why was this pattern/library/approach chosen?"
 - "What would break if we changed X?"
@@ -344,9 +344,9 @@ Do NOT run `git add`, `git commit`, `git push`, or `git checkout`. You may use `
 - Complex questions requiring multiple sources of evidence
 
 **Don't use:**
-- Bug with unclear root cause → use `/debug`
-- Need to implement something → use `/implement`
-- First time in the codebase → use `/onboard`
+- Bug with unclear root cause → use `/geniro:debug`
+- Need to implement something → use `/geniro:implement`
+- First time in the codebase → use `/geniro:onboard`
 - Simple factual question answerable by reading one file → just read the file
 
 ---
@@ -355,7 +355,7 @@ Do NOT run `git add`, `git commit`, `git push`, or `git checkout`. You may use `
 
 ### Example 1: Understanding a Feature
 ```
-/investigate how does the authentication flow work?
+/geniro:investigate how does the authentication flow work?
 ```
 → Codebase agent traces auth middleware, token validation, session management
 → Git agent finds when auth was added and major changes
@@ -365,7 +365,7 @@ Do NOT run `git add`, `git commit`, `git push`, or `git checkout`. You may use `
 
 ### Example 2: Design Rationale
 ```
-/investigate why does the project use Redis for sessions instead of JWT?
+/geniro:investigate why does the project use Redis for sessions instead of JWT?
 ```
 → Git agent searches for commits mentioning Redis, JWT, sessions
 → Internet agent researches Redis vs JWT session trade-offs
@@ -375,7 +375,7 @@ Do NOT run `git add`, `git commit`, `git push`, or `git checkout`. You may use `
 
 ### Example 3: Impact Analysis
 ```
-/investigate what would break if we upgrade from Express 4 to Express 5?
+/geniro:investigate what would break if we upgrade from Express 4 to Express 5?
 ```
 → Internet agent researches Express 5 breaking changes
 → Codebase agent finds all Express 4 APIs used in the project

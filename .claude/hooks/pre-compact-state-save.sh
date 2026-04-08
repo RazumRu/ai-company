@@ -9,7 +9,7 @@ set -euo pipefail
 INPUT=$(cat)
 
 # Create .claude directory structure if needed
-STATE_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/.artifacts/state"
+STATE_DIR="./.geniro/state"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 
 # Get current state information
@@ -31,7 +31,7 @@ fi
 # Check for active pipeline state (implement skill checkpoints)
 PIPELINE_STATE=""
 TASK_DIR=""
-for state_file in .claude/.artifacts/planning/*/state.md; do
+for state_file in .geniro/planning/*/state.md; do
   if [ -f "$state_file" ]; then
     TASK_DIR=$(dirname "$state_file")
     PIPELINE_STATE=$(cat "$state_file" 2>/dev/null | head -10 || echo "")

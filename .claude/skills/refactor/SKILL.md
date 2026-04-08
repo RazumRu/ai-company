@@ -1,5 +1,5 @@
 ---
-name: refactor
+name: geniro:refactor
 description: "Use when restructuring code for better organization, reducing tech debt, or improving patterns while guaranteeing zero behavior change. Ideal for modularization, test refactoring, or pattern consolidation after implementation."
 context: main
 model: sonnet
@@ -22,8 +22,8 @@ Safe incremental refactoring that validates behavior is preserved at every step.
 
 ## When NOT to use
 
-- For behavioral changes or feature additions (use `/implement` instead)
-- To optimize performance (use `/deep-simplify` and measure first)
+- For behavioral changes or feature additions (use `/geniro:implement` instead)
+- To optimize performance (use `/geniro:deep-simplify` and measure first)
 - To add error handling not previously present
 - To reorganize without clear architectural benefit
 
@@ -128,7 +128,7 @@ Do NOT run `git add`, `git commit`, or `git push`. The orchestrating workflow ha
 | "This smell is too small to fix" | If the plan says fix it, fix it. Small smells compound. |
 | "I'll batch multiple transformations" | One transformation per step. Always. |
 | "Tests are passing so I'll skip the blocked step protocol" | The protocol exists for the NEXT failure. Follow it. |
-| "This refactoring needs a behavior change" | Then it's not a refactoring. Use `/implement` instead. |
+| "This refactoring needs a behavior change" | Then it's not a refactoring. Use `/geniro:implement` instead. |
 | "I'll skip reading project conventions" | You'll flag intentional patterns as smells. Read first. |
 | "This is just a refactor" | Refactors break things. Tests and review apply equally. |
 
@@ -186,8 +186,8 @@ If user approves, draft and apply. If no improvements found, skip silently.
 ## Example invocations
 
 ```
-/refactor Extract shared validation logic from auth and user modules
-/refactor Consolidate test helpers in utils/ to single module
-/refactor Split 1000-line service into focused domain modules
-/refactor Reduce coupling between database and business logic layers
+/geniro:refactor Extract shared validation logic from auth and user modules
+/geniro:refactor Consolidate test helpers in utils/ to single module
+/geniro:refactor Split 1000-line service into focused domain modules
+/geniro:refactor Reduce coupling between database and business logic layers
 ```

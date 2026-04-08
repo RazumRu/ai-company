@@ -1,5 +1,5 @@
 ---
-name: implement
+name: geniro:implement
 description: "Use when implementing a new feature, endpoint, page, or significant change that needs architecture review and multi-agent implementation."
 context: main
 model: inherit
@@ -41,7 +41,7 @@ argument-hint: "[what to implement — description, Linear issue ID, or Linear U
 ## Task Directory
 
 ```
-.claude/.artifacts/planning/<branch-name>/
+.geniro/planning/<branch-name>/
 ```
 
 Derive `<branch-name>` from git branch. Create at start of Phase 1. All artifacts go here: `spec.md`, `state.md`, `notes.md`, `concerns.md`, `review-feedback.md`, `plan-<slug>.md`.
@@ -147,7 +147,7 @@ At the next phase checkpoint, read `notes.md` and assess: (1) no impact -> conti
 
 **Strategic compact point:** All discovery, architecture, and validation context is now captured in files (spec.md, plan.md, concerns.md, state.md). Phases 1-3 consumed significant context that Phase 4 agents don't need — they get fresh context with pre-inlined files. Tell the user:
 
-> "All planning artifacts are saved. Before starting implementation, I recommend compacting to free context. Type `/compact`, then type `/implement continue` to resume from Phase 4. This improves quality for Phases 4-7. (Optional — you can also just continue now.)"
+> "All planning artifacts are saved. Before starting implementation, I recommend compacting to free context. Type `/compact`, then type `/geniro:implement continue` to resume from Phase 4. This improves quality for Phases 4-7. (Optional — you can also just continue now.)"
 
 If the user compacts: after compaction, read `<task-dir>/state.md` to resume, then re-read the SKILL.md for phase instructions.
 
@@ -278,7 +278,7 @@ Run autofix, full check (build + lint + test), codegen check, runtime startup ch
 
 **Action:** Spawn spec-compliance subagent using the template from the reference file. Pre-inline spec, plan, changed files.
 
-Read `<task-dir>/compliance.md` after agent completes. If any requirement unmet -> route to Phase 4 implementer. Max 2 rounds.
+Read `<task-dir>/compliance.md` after agent completes. If any requirement unmet -> spawn a fixer agent with the gap details and affected files pre-inlined. Do NOT read source files, diagnose gaps, or apply fixes yourself — delegate to the agent. Max 2 rounds.
 
 **Checkpoint:** Update `<task-dir>/state.md`: "Phase 6 Stage B completed. Compliance: PASS."
 
@@ -372,8 +372,8 @@ Ask the user to describe the tweak. Classify by size, then follow the correspond
 **Loop target:** After any tweak, loop back to **Step 4 summary re-presentation only**. Steps 1-3 (docs, learnings, improvements) run once on first entry to Phase 7 and are NOT repeated on tweak rounds.
 
 **Soft limits (by size):**
-- **Big tweaks:** After 2 rounds, suggest starting a new `/implement` session. Big tweaks compound risk — a fresh pipeline provides clean context and proper architecture review.
-- **Medium/Small tweaks:** After 3 rounds, suggest `/follow-up` for remaining changes.
+- **Big tweaks:** After 2 rounds, suggest starting a new `/geniro:implement` session. Big tweaks compound risk — a fresh pipeline provides clean context and proper architecture review.
+- **Medium/Small tweaks:** After 3 rounds, suggest `/geniro:follow-up` for remaining changes.
 
 ### Step 7: Commit
 
@@ -388,7 +388,7 @@ Execute user's chosen method. See reference file for commit details per option.
 - **Planning artifacts:** Use `AskUserQuestion` (do NOT ask as plain text — use the tool):
 
 `AskUserQuestion` with header "Artifacts":
-- A) **Keep** — "Useful if you plan to run /follow-up on this branch"
+- A) **Keep** — "Useful if you plan to run /geniro:follow-up on this branch"
 - B) **Delete** — "Implementation is complete, no further changes expected"
 
 If "Keep": leave `<task-dir>/` as-is (it's already in `.gitignore`).

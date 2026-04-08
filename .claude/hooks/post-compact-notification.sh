@@ -15,7 +15,7 @@ COMPACT_SUMMARY=$(echo "$INPUT" | jq -r '.compact_summary // ""' 2>/dev/null || 
 # Check for active pipeline state
 PIPELINE_RESUME=""
 TASK_DIR=""
-for state_file in "$CLAUDE_PROJECT_DIR"/.claude/.artifacts/planning/*/state.md; do
+for state_file in ./.geniro/planning/*/state.md; do
   if [ -f "$state_file" ]; then
     TASK_DIR=$(dirname "$state_file")
     PIPELINE_RESUME="Active pipeline detected. Read $state_file to resume from the correct phase. Then re-read the current skill file to restore phase instructions."
@@ -43,7 +43,7 @@ NOTIFICATION=$(jq -n \
       "task_dir": $task_dir,
       "suggested_files": [
         "CLAUDE.md",
-        ".claude/.artifacts/state/pre-compact-snapshot.json"
+        ".geniro/state/pre-compact-snapshot.json"
       ],
       "note": "Compaction lost SKILL.md instructions and conversation nuance. Re-read files before proceeding."
     }

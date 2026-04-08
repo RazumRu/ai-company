@@ -63,7 +63,7 @@ BAD: "Once I had a weird memory leak" — not specific, not verified, anecdotal
 Knowledge base structure:
 
 ```
-.claude/.artifacts/knowledge/
+.geniro/knowledge/
 ├── learnings.jsonl
 ├── sessions/
 │   └── YYYY-MM-DD-<topic>.md
@@ -260,7 +260,7 @@ When extracting learnings, produce:
 [Same structure]
 
 ## Storage
-- Stored in: `.claude/.artifacts/knowledge/[category]/[file].jsonl`
+- Stored in: `.geniro/knowledge/[category]/[file].jsonl`
 - Indexed by: [keywords and file references]
 - Related to: [Links to existing knowledge entries]
 

@@ -1,16 +1,16 @@
 # Plan Criteria
 
-Guidelines for generating implementation plans. Referenced by the `/plan` skill and Phase 2 of `/implement`.
+Guidelines for generating implementation plans. Referenced by the `/geniro:plan` skill and Phase 2 of `/geniro:implement`.
 
 ## Plan File Naming
 
 Every plan gets a unique, descriptive filename based on the task:
 
 ```
-.claude/.artifacts/planning/<task-dir>/plan-<slug>.md
+.geniro/planning/<task-dir>/plan-<slug>.md
 ```
 
-Where `<task-dir>` is the branch-name subdirectory (e.g., `feat-eng-123-add-oauth/`). This colocates the plan with the spec, state, and notes files for the same task. When used standalone (no branch yet), write to `.claude/.artifacts/planning/plan-<slug>.md` (flat) — `/implement` will move it into the task directory when a branch is created.
+Where `<task-dir>` is the branch-name subdirectory (e.g., `feat-eng-123-add-oauth/`). This colocates the plan with the spec, state, and notes files for the same task. When used standalone (no branch yet), write to `.geniro/planning/plan-<slug>.md` (flat) — `/geniro:implement` will move it into the task directory when a branch is created.
 
 **Slug rules:**
 - Derive from the task description: lowercase, hyphens, max 40 chars
@@ -69,7 +69,7 @@ Ordered by dependency. Each step is a discrete, independently verifiable unit of
 - **<Decision topic>**: <what was chosen> — <why>
 
 ## User Decisions (from Discovery)
-[Only present when plan is generated from /implement pipeline]
+[Only present when plan is generated from /geniro:implement pipeline]
 - <Question asked>: <user's answer — verbatim>
 
 ## Test Scenarios

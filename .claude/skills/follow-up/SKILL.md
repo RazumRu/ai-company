@@ -1,6 +1,6 @@
 ---
-name: follow-up
-description: "Use when making small post-implementation changes that skip architecture. Assesses complexity (trivial/small/medium), implements, validates, reviews, ships. Escalates to /implement if scope is too large. Do NOT use for new features, new entities, new endpoints/pages, auth/permissions changes, new modules, or changes requiring architecture decisions."
+name: geniro:follow-up
+description: "Use when making small post-implementation changes that skip architecture. Assesses complexity (trivial/small/medium), implements, validates, reviews, ships. Escalates to /geniro:implement if scope is too large. Do NOT use for new features, new entities, new endpoints/pages, auth/permissions changes, new modules, or changes requiring architecture decisions."
 context: main
 model: inherit
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, TodoWrite, WebSearch]
@@ -41,7 +41,7 @@ Determine what needs to change, how complex it is, and whether this skill can ha
 
 ### Step 1: Context Scan
 
-1. **Load prior planning context** — `Glob(".claude/.artifacts/planning/*/")`, match against current branch (`git branch --show-current`). If found, read: `spec.md`, `plan-*.md`, `state.md`, `concerns.md`, `notes.md`, `review-feedback.md`. These prevent re-discovering conventions and contradicting prior decisions. If none found, proceed without.
+1. **Load prior planning context** — `Glob(".geniro/planning/*/")`, match against current branch (`git branch --show-current`). If found, read: `spec.md`, `plan-*.md`, `state.md`, `concerns.md`, `notes.md`, `review-feedback.md`. These prevent re-discovering conventions and contradicting prior decisions. If none found, proceed without.
 
 2. **Read the change request** and identify which files likely need to change
 3. **Codebase scan** (Glob/Grep) to find the exact files and understand current patterns
@@ -57,7 +57,7 @@ Determine what needs to change, how complex it is, and whether this skill can ha
 
 Assess the change by checking for **hard escalation signals first**, then evaluating overall complexity. File count is a supporting signal, not the primary gate.
 
-#### Hard Escalation Signals (any ONE triggers escalation to /implement)
+#### Hard Escalation Signals (any ONE triggers escalation to /geniro:implement)
 
 | Signal | Why it escalates |
 |--------|-----------------|
@@ -76,7 +76,7 @@ Assess the change by checking for **hard escalation signals first**, then evalua
 - **Trivial**: 1–2 files, single module, fix/patch to existing logic, intent is unambiguous. *Examples: fix a validation message, correct a query filter, adjust a CSS class.*
 - **Small**: 3–5 files, 1–2 modules, modifies existing endpoints/pages/fields, clear bounded logic. *Examples: add a filter param to an existing endpoint + DTO + query + hook, rename a response field across DTO and consumer.*
 - **Medium**: 6–8 files, up to 2 modules, may add fields to existing entities (no new tables), non-trivial but clear logic. *Examples: add a column to an entity + migration + DTO + query + UI table + test, change an existing calculation.*
-- **Too large**: 9+ files, OR any hard escalation signal above. Escalate to `/implement`.
+- **Too large**: 9+ files, OR any hard escalation signal above. Escalate to `/geniro:implement`.
 
 **File count is a smell detector, not a complexity detector.** A 2-file change adding a new entity is "Too large." A 7-file change propagating an existing filter is "Medium." When file count is high, ask "why?" — the answer contains the actual complexity signal.
 
@@ -85,7 +85,7 @@ Assess the change by checking for **hard escalation signals first**, then evalua
 **If complexity is "Too large":**
 
 Present escalation signals to user. `AskUserQuestion` with header "Scope":
-- "Escalate to /implement" → output `/implement [change request]` and stop
+- "Escalate to /geniro:implement" → output `/geniro:implement [change request]` and stop
 - "Proceed anyway" → continue, treat as Medium complexity (full validation + review)
 - "Reduce scope" → ask what to cut, re-assess, loop back to Step 2
 
@@ -159,7 +159,7 @@ After agents report done, verify the task was completed — do NOT read source c
 
 After implementation agents complete, your context is loaded with pre-inlined file contents and agent reports. Before continuing to validation/review, checkpoint and suggest compaction:
 
-1. Write state to `.claude/.artifacts/follow-up-state.md`:
+1. Write state to `.geniro/follow-up-state.md`:
    ```
    complexity: [trivial/small/medium]
    change: [one-line description]
@@ -168,9 +168,9 @@ After implementation agents complete, your context is loaded with pre-inlined fi
    branch: [current branch]
    ```
 2. Tell the user:
-   > Implementation complete. I recommend running `/compact` now to free context for validation and review phases. After compacting, type `/follow-up continue` to resume from Phase 3.
+   > Implementation complete. I recommend running `/compact` now to free context for validation and review phases. After compacting, type `/geniro:follow-up continue` to resume from Phase 3.
 
-**After compaction (or if user skips):** Read `.claude/.artifacts/follow-up-state.md` and `git diff --name-only` to restore context. Proceed to Phase 3 (Medium) or Phase 4 (Small).
+**After compaction (or if user skips):** Read `.geniro/follow-up-state.md` and `git diff --name-only` to restore context. Proceed to Phase 3 (Medium) or Phase 4 (Small).
 
 **DO NOT present a summary or ask "anything else?" here. Phases 3-6 have not run yet.**
 
@@ -260,7 +260,7 @@ If the validation agent reports failures:
 2. **Type/build/test failure** → spawn a fixer agent with the exact error output from the validation report. Do NOT read source code to diagnose.
 3. **Missing test files** → spawn an agent: "Create test file next to source. Follow existing patterns."
 4. After each fix round, re-run the validation agent (Step 2)
-5. **Max 2 fix rounds** — then escalate: present the validation report to the user. `AskUserQuestion` with header "Stuck": "Try a different approach" / "Escalate to /implement" / "Show current state". Do NOT retry same approach a 3rd time.
+5. **Max 2 fix rounds** — then escalate: present the validation report to the user. `AskUserQuestion` with header "Stuck": "Try a different approach" / "Escalate to /geniro:implement" / "Show current state". Do NOT retry same approach a 3rd time.
 
 ### Strategic Compact Point (Medium only)
 
@@ -268,11 +268,11 @@ If the validation agent reports failures:
 
 Validation accumulated fix-loop context. Before spawning review agents:
 
-1. Update `.claude/.artifacts/follow-up-state.md`: set `phase: 4-complete`
+1. Update `.geniro/follow-up-state.md`: set `phase: 4-complete`
 2. Tell the user:
-   > Validation passed. For best review quality, I recommend `/compact` now. After compacting, type `/follow-up continue` to resume the review phase.
+   > Validation passed. For best review quality, I recommend `/compact` now. After compacting, type `/geniro:follow-up continue` to resume the review phase.
 
-**After compaction (or if user skips):** Read `.claude/.artifacts/follow-up-state.md` and `git diff --name-only` to restore context.
+**After compaction (or if user skips):** Read `.geniro/follow-up-state.md` and `git diff --name-only` to restore context.
 
 **→ You MUST proceed to Phase 5 (Review) now. DO NOT present results to the user or ask "anything else?" — review has not run yet.**
 
@@ -345,7 +345,7 @@ Add a 3rd reviewer (architecture + tests + guidelines) only if changes touch cro
 
 Aggregate findings from all reviewers. Deduplicate (same file:line from multiple reviewers = single finding, keep highest severity).
 
-- Any reviewer **CHANGES REQUIRED** → fix loop: delegate to fresh agent, re-validate (Step 2 only), re-review with **fresh** reviewer (avoid anchoring). Max 1 fix round for follow-ups. If still CHANGES REQUIRED after 1 round: `AskUserQuestion` header "Review": "Try different approach" / "Accept with known issues" / "Escalate to /implement".
+- Any reviewer **CHANGES REQUIRED** → fix loop: delegate to fresh agent, re-validate (Step 2 only), re-review with **fresh** reviewer (avoid anchoring). Max 1 fix round for follow-ups. If still CHANGES REQUIRED after 1 round: `AskUserQuestion` header "Review": "Try different approach" / "Accept with known issues" / "Escalate to /geniro:implement".
 - All reviewers **APPROVED WITH MINOR** → note improvements in Ship summary. Only fix MEDIUM+ findings — delegate if any, then proceed.
 - All reviewers **APPROVED** → proceed directly.
 
@@ -372,12 +372,12 @@ Show a summary:
 
 **If "Needs tweaks":**
 1. `AskUserQuestion` header "Tweak": "Describe what to change" (free-text via Other)
-2. **Assess the tweak** — if it expands scope significantly (new files, new endpoints), warn via `AskUserQuestion` header "Scope": "Continue here" / "Escalate to /implement".
+2. **Assess the tweak** — if it expands scope significantly (new files, new endpoints), warn via `AskUserQuestion` header "Scope": "Continue here" / "Escalate to /geniro:implement".
 3. Delegate changes to an agent (never apply directly)
 4. Re-run validation (Phase 4 Step 2 only)
 5. If 10+ lines changed, re-run reviewer (Phase 5). Max 1 review round for tweaks.
 6. **Loop back to Step 1** — re-present summary and ask the Review question again. Do NOT skip ahead to Step 2.
-7. Soft limit: after 3 tweak rounds, suggest creating a new `/follow-up` or `/implement` for remaining changes.
+7. Soft limit: after 3 tweak rounds, suggest creating a new `/geniro:follow-up` or `/geniro:implement` for remaining changes.
 
 **If "Done":** Leave changes uncommitted, skip to cleanup.
 
@@ -421,7 +421,7 @@ Kill any orphaned background processes started during validation (startup checks
 | "The change is too small for full review" | Small changes cause production incidents too. Follow the process. |
 | "I already know how to do this" | Skills encode process knowledge beyond individual capability. Follow them. |
 | "The tests are obviously fine" | Run them. "Obviously fine" is the #1 predictor of broken tests. |
-| "This doesn't need a complexity assessment" | The assessment takes 30 seconds. Skipping it risks building something that should be `/implement`. |
+| "This doesn't need a complexity assessment" | The assessment takes 30 seconds. Skipping it risks building something that should be `/geniro:implement`. |
 | "I can do this in one step" | Multi-step exists for a reason. Each step catches different failures. |
 | "The user seems impatient" | Cutting corners costs more time than following the process. |
 | "I'll implement this Medium change in one agent" | If files span 2 modules, decompose into parallel agents. Single-agent Medium misses parallelism. |
@@ -453,10 +453,10 @@ Use `TodoWrite`: create todos (Assess, Implement, Simplify, Validate, Review, Sh
 
 ---
 
-## When to Use This Skill vs. `/implement`
+## When to Use This Skill vs. `/geniro:implement`
 
-**`/follow-up`:** Builds on existing code, scope clear and bounded, no new architecture, complexity ≤ Medium.
-**`/implement`:** New feature/entity/endpoint/auth, ambiguous intent, 3+ modules, needs design review.
+**`/geniro:follow-up`:** Builds on existing code, scope clear and bounded, no new architecture, complexity ≤ Medium.
+**`/geniro:implement`:** New feature/entity/endpoint/auth, ambiguous intent, 3+ modules, needs design review.
 
 ---
 
@@ -465,16 +465,16 @@ Use `TodoWrite`: create todos (Assess, Implement, Simplify, Validate, Review, Sh
 | Problem | Fix |
 |---------|-----|
 | Validation fails after 2 fix rounds | Present structured handoff to user |
-| Change larger than expected | Escalate to `/implement` |
+| Change larger than expected | Escalate to `/geniro:implement` |
 | Agent re-reads files already scanned | Pre-inline file contents from Phase 1 into agent prompt |
-| Reviewer finds architectural issues | Escalate to `/implement` with reviewer findings |
+| Reviewer finds architectural issues | Escalate to `/geniro:implement` with reviewer findings |
 | Codegen not detected | Run codegen manually if API surface changed |
 
 ---
 
 ## Examples
 
-- **Trivial:** `/follow-up Fix typo in src/auth.ts line 42`
-- **Small:** `/follow-up Better error message when API returns 429`
-- **Medium:** `/follow-up Rename userId to ownerId across UserService`
-- **Too Large:** `/follow-up Add Notifications service with websockets` → Escalate to `/implement`
+- **Trivial:** `/geniro:follow-up Fix typo in src/auth.ts line 42`
+- **Small:** `/geniro:follow-up Better error message when API returns 429`
+- **Medium:** `/geniro:follow-up Rename userId to ownerId across UserService`
+- **Too Large:** `/geniro:follow-up Add Notifications service with websockets` → Escalate to `/geniro:implement`

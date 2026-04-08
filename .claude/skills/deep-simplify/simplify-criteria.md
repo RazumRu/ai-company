@@ -1,6 +1,6 @@
 # Simplify Analysis Criteria
 
-Reference file shared between `/deep-simplify` skill and `/implement` Phase 5. Contains the three analysis passes, severity classification, anti-patterns, and ground rules for code simplification.
+Reference file shared between `/geniro:deep-simplify` skill and `/geniro:implement` Phase 5. Contains the three analysis passes, severity classification, anti-patterns, and ground rules for code simplification.
 
 ---
 
@@ -11,6 +11,7 @@ Reference file shared between `/deep-simplify` skill and `/implement` Phase 5. C
 3. **No feature work.** Don't add functionality, improve error handling for new cases, or add validation. Only simplify what exists.
 4. **Preserve test coverage.** Never delete or weaken test assertions. You may simplify test setup/helpers if it improves clarity.
 5. **Small, incremental changes.** Each fix should be independently revertable. Don't chain fixes that depend on each other.
+6. **Verify before removing.** Before classifying code as dead or unused, Grep the full project for the symbol name (as both an identifier and a string literal). Check barrel/index files for re-exports. If any reference exists outside the changed files, do NOT remove — report as P3 instead.
 
 ---
 
@@ -25,6 +26,8 @@ Reference file shared between `/deep-simplify` skill and `/implement` Phase 5. C
 | **Similar switch/if-else branches** | Consolidate using a map/lookup pattern |
 
 **Do NOT extract** if the "duplication" is only 2–3 lines or if extracting would make the code harder to follow (premature abstraction).
+
+**Do NOT remove** an export if it is re-exported from any `index.*` or barrel file — it is part of the module's public API regardless of whether you see internal consumers.
 
 ---
 
@@ -57,7 +60,7 @@ These are common when code was written by AI agents — actively look for them:
 |---------|-----------|
 | **Over-abstraction** — unnecessary wrapper classes, premature generics, factory patterns for single use | Inline the abstraction, remove the wrapper |
 | **Verbose error handling** — catch blocks that just log and rethrow without adding context | Remove the try/catch or add meaningful context |
-| **Unnecessary wrapper functions** that just forward to another function with same signature | Replace call sites with the direct function |
+| **Unnecessary wrapper functions** that just forward to another function with same signature | Grep repo-wide for all callers. Replace call sites with the direct function only if ALL callers are within the changed file set. Otherwise report as P2 (fix if safe) with a note listing external callers |
 | **Over-documented obvious code** — JSDoc/docstring on every method restating the function name | Remove — keep only docs on public API surfaces and non-obvious behavior |
 
 ### Frontend-Specific (if applicable)

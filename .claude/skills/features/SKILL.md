@@ -1,5 +1,5 @@
 ---
-name: features
+name: geniro:features
 description: "Feature backlog management and spec creation. Track features with status, priority, complexity. Create detailed specs with codebase scouting, adaptive questioning, and auto-registration."
 context: main
 model: inherit
@@ -15,17 +15,17 @@ Use this skill to manage a project feature backlog and create detailed specifica
 
 | Command | Usage | Purpose |
 |---------|-------|---------|
-| **list** | `/features list` | Show all features grouped by status; scan for unregistered `*-spec.md` files |
-| **next** | `/features next` | Show highest-priority unstarted feature ready for work |
-| **add** | `/features add [description]` | Add a new planned feature; auto-assigns next ID and priority |
-| **spec** | `/features spec [id or description]` | Full spec pipeline — scout codebase, identify gray areas, ask questions, write spec, register in backlog |
-| **move** | `/features move [id] [status]` | Transition a feature's status (planned→in-progress→done, or blocked) |
-| **complete** | `/features complete [id]` | Mark feature as done; explain what was completed |
-| **status** | `/features status` | Quick summary: total, in-progress, done, blocked count |
+| **list** | `/geniro:features list` | Show all features grouped by status; scan for unregistered `*-spec.md` files |
+| **next** | `/geniro:features next` | Show highest-priority unstarted feature ready for work |
+| **add** | `/geniro:features add [description]` | Add a new planned feature; auto-assigns next ID and priority |
+| **spec** | `/geniro:features spec [id or description]` | Full spec pipeline — scout codebase, identify gray areas, ask questions, write spec, register in backlog |
+| **move** | `/geniro:features move [id] [status]` | Transition a feature's status (planned→in-progress→done, or blocked) |
+| **complete** | `/geniro:features complete [id]` | Mark feature as done; explain what was completed |
+| **status** | `/geniro:features status` | Quick summary: total, in-progress, done, blocked count |
 
 ## Data Format
 
-Features stored in `.claude/.artifacts/planning/FEATURES.md`:
+Features stored in `.geniro/planning/FEATURES.md`:
 
 ```
 | ID | Description | Status | Priority | Complexity | Notes |
@@ -48,27 +48,27 @@ Features stored in `.claude/.artifacts/planning/FEATURES.md`:
 
 ### 1. Add Feature
 ```
-/features add Implement dark mode toggle in settings
+/geniro:features add Implement dark mode toggle in settings
 ```
 → Creates new entry with status=planned, auto-assigns ID and priority
 
 ### 2. Track Progress
 ```
-/features list                    # See all features
-/features next                    # What should I work on?
-/features status                  # Quick metrics
+/geniro:features list                    # See all features
+/geniro:features next                    # What should I work on?
+/geniro:features status                  # Quick metrics
 ```
 
 ### 3. Move Status
 ```
-/features move F2 in-progress       # Start working on F2
-/features move F4 blocked            # Mark F4 as blocked
+/geniro:features move F2 in-progress       # Start working on F2
+/geniro:features move F4 blocked            # Mark F4 as blocked
 ```
 → Updates the feature's status in the table. Valid transitions: `planned` → `in-progress` → `done` (or `blocked` at any stage).
 
 ### 4. Complete & Mark Done
 ```
-/features complete F2             # Mark F2 as done
+/geniro:features complete F2             # Mark F2 as done
 ```
 → Record what was shipped, move to done section
 
@@ -78,12 +78,12 @@ Features stored in `.claude/.artifacts/planning/FEATURES.md`:
 
 Before displaying the features table, scan for orphan specs:
 
-1. Glob `.claude/.artifacts/planning/*-spec.md`
+1. Glob `.geniro/planning/*-spec.md`
 2. For each spec file found, check if it's referenced in FEATURES.md (in the Notes column)
 3. If unregistered specs exist, surface them first:
    ```
    Found N unregistered specs: [names]. Add them to the backlog?
-   (use `/features add` or I can auto-register them)
+   (use `/geniro:features add` or I can auto-register them)
    ```
 4. If user agrees to auto-register, create new FEATURES.md rows with status=planned and Notes linking to the spec file
 5. Then display the full features table grouped by status
@@ -102,10 +102,10 @@ Before displaying the features table, scan for orphan specs:
 
 ### Step 0. Initialize
 
-1. Ensure output directory exists: `mkdir -p .claude/.artifacts/planning/`
-2. Check for existing spec files: `ls .claude/.artifacts/planning/*-spec.md 2>/dev/null`
+1. Ensure output directory exists: `mkdir -p .geniro/planning/`
+2. Check for existing spec files: `ls .geniro/planning/*-spec.md 2>/dev/null`
    - If specs exist, list them and ask: "Found existing specs. Creating a new one or updating existing?"
-3. Check for prior context: glob `.claude/.artifacts/planning/*/` for task directories. If any exist, read their `spec.md` and `state.md` for context that informs this spec
+3. Check for prior context: glob `.geniro/planning/*/` for task directories. If any exist, read their `spec.md` and `state.md` for context that informs this spec
 
 ### Step 1. Read User's Request (1 minute)
 
@@ -208,11 +208,11 @@ If user picks non-default, use `AskUserQuestion` to ask "What's the reasoning?" 
 If the user introduces new capabilities during discussion (beyond clarification of existing scope):
 1. Note them as "Related but separate: [description]"
 2. At spec completion, present captured items: "These came up but are outside current scope. Include in Out of Scope section?"
-3. If user insists on expanding, ask: "This changes feature size. Expand this spec or create a separate `/features spec`?"
+3. If user insists on expanding, ask: "This changes feature size. Expand this spec or create a separate `/geniro:features spec`?"
 
 ### Step 5. Write the Spec File (15–30 minutes)
 
-Create a `<feature-name>-spec.md` file in `.claude/.artifacts/planning/` (e.g., `notification-center-spec.md`). Derive the filename: lowercase, spaces to hyphens, remove special characters, max 40 chars. Include canonical references to user decisions.
+Create a `<feature-name>-spec.md` file in `.geniro/planning/` (e.g., `notification-center-spec.md`). Derive the filename: lowercase, spaces to hyphens, remove special characters, max 40 chars. Include canonical references to user decisions.
 
 **Spec structure:**
 
@@ -264,7 +264,7 @@ Create a `<feature-name>-spec.md` file in `.claude/.artifacts/planning/` (e.g., 
 - [ ] [Decision point] → User chose: [choice]
 
 ## Canonical References
-- **Implementation guide:** See `/implement` skill
+- **Implementation guide:** See `/geniro:implement` skill
 - **Related code:** [Link to similar feature in codebase]
 
 ## Definition of Done
@@ -286,9 +286,9 @@ Create a `<feature-name>-spec.md` file in `.claude/.artifacts/planning/` (e.g., 
 
 After writing the spec file, update the backlog:
 
-1. Read `.claude/.artifacts/planning/FEATURES.md` (create if missing)
-2. **If an existing feature ID was provided** (e.g., `/features spec F3`): update that row's Notes column to link the spec file (e.g., `Spec: notification-center-spec.md`)
-3. **If a description was provided** (e.g., `/features spec Add notifications`): create a new row with:
+1. Read `.geniro/planning/FEATURES.md` (create if missing)
+2. **If an existing feature ID was provided** (e.g., `/geniro:features spec F3`): update that row's Notes column to link the spec file (e.g., `Spec: notification-center-spec.md`)
+3. **If a description was provided** (e.g., `/geniro:features spec Add notifications`): create a new row with:
    - Next auto-incremented ID
    - Description from the spec's Summary
    - Status: `planned`
@@ -304,7 +304,7 @@ Read the spec aloud to user:
 - "Are there requirements missing or anything that feels off?"
 
 If user says "that's it," confirm:
-- "Spec is ready and registered in FEATURES.md. Next step is `/implement [feature name]` to build it."
+- "Spec is ready and registered in FEATURES.md. Next step is `/geniro:implement [feature name]` to build it."
 
 If user revises, update spec and re-confirm (usually 1–2 rounds).
 
@@ -344,27 +344,27 @@ Registered as F5 in FEATURES.md with `Notes: Spec: notification-center-spec.md`.
 
 ### List Features
 ```
-/features list
+/geniro:features list
 ```
 → Scans for unregistered specs, then shows features grouped by status
 
 ### Add Feature
 ```
-/features add API rate limiting with token buckets
+/geniro:features add API rate limiting with token buckets
 ```
 → New entry: F5 | API rate limiting... | planned | P2 | M | Created today
 
 ### Check What's Next
 ```
-/features next
+/geniro:features next
 ```
 → Show highest P-value unstarted feature with complexity estimate
-→ Routing hint: "Ready to spec this? `/features spec [feature name]`"
+→ Routing hint: "Ready to spec this? `/geniro:features spec [feature name]`"
 
 ### Spec a Feature
 ```
-/features spec F3                    # Spec existing feature by ID
-/features spec Add payment system    # Spec new feature by description
+/geniro:features spec F3                    # Spec existing feature by ID
+/geniro:features spec Add payment system    # Spec new feature by description
 ```
 → Runs full pipeline: scout → ask → write → register
 
@@ -372,9 +372,9 @@ Registered as F5 in FEATURES.md with `Notes: Spec: notification-center-spec.md`.
 
 ## When to Use
 
-- **`/features list|add|next|status|move|complete`** — lightweight backlog management for 5–50 features
-- **`/features spec`** — vague requests, multi-faceted features, architectural decisions, cross-module work, ambiguous scope
-- **Don't use spec for:** trivial bugfixes, copy edits, or changes with crystal-clear intent (use `/follow-up` instead)
+- **`/geniro:features list|add|next|status|move|complete`** — lightweight backlog management for 5–50 features
+- **`/geniro:features spec`** — vague requests, multi-faceted features, architectural decisions, cross-module work, ambiguous scope
+- **Don't use spec for:** trivial bugfixes, copy edits, or changes with crystal-clear intent (use `/geniro:follow-up` instead)
 - **Don't use features for:** 100+ feature portfolios (use Jira/Linear)
 
 ---
@@ -383,7 +383,7 @@ Registered as F5 in FEATURES.md with `Notes: Spec: notification-center-spec.md`.
 
 For each skill invocation, confirm:
 
-- [ ] Feature file (`.claude/.artifacts/planning/FEATURES.md`) exists and is readable
+- [ ] Feature file (`.geniro/planning/FEATURES.md`) exists and is readable
 - [ ] All features have ID, description, status, priority, complexity
 - [ ] Requested command executed correctly
 - [ ] Output is clear and actionable

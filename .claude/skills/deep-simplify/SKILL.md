@@ -1,5 +1,5 @@
 ---
-name: deep-simplify
+name: geniro:deep-simplify
 description: "Three-pass parallel code review. Spawns 3 subagents (reuse, quality, efficiency) on changed files, aggregates findings by severity, applies P1/P2 fixes, reverts if CI breaks. Zero behavior change guaranteed."
 context: main
 model: inherit
@@ -76,18 +76,21 @@ Read each of these files: [list file paths from Phase 1]
 Also read each file's immediate neighbors (imports from same module) for reuse context.
 
 ## Instructions
+0. Read project convention files referenced in the project's CLAUDE.md (if any) — understanding intentional project patterns prevents false-positive detection
 1. Analyze each file for Pass A patterns only
-2. For each finding report: file, line number, pattern matched, proposed fix
-3. Classify: P1 (fix) or P2 (fix if safe) per severity below
-4. Do NOT make any edits — report findings only
+2. For any finding that recommends removal (dead code, unused export, unnecessary wrapper): Grep the full project for the symbol name to verify zero cross-file references. If references exist outside changed files, reclassify as P3 (report only)
+3. For each finding report: file, line number, pattern matched, proposed fix
+4. Classify: P1 (fix) or P2 (fix if safe) per severity below
+5. Do NOT make any edits — report findings only
 
 ## Severity
 - P1: Duplication with existing utility, dead code
 - P2: Similar switch branches consolidation, test setup duplication
+- P3 (report only): Symbols flagged for removal that have cross-file references
 
 ## Output Format
 Return a JSON array:
-[{"file": "path", "line": N, "pattern": "name", "severity": "P1|P2", "description": "what", "fix": "how"}]
+[{"file": "path", "line": N, "pattern": "name", "severity": "P1|P2|P3", "description": "what", "fix": "how"}]
 If no findings, return: []
 """, description="Review: reuse & duplication")
 ```
@@ -108,19 +111,22 @@ Read each of these files: [list file paths from Phase 1]
 Also read each file's immediate neighbors (imports from same module) for reuse context.
 
 ## Instructions
+0. Read project convention files referenced in the project's CLAUDE.md (if any) — understanding intentional project patterns prevents false-positive detection
 1. Analyze each file for Pass B patterns only
 2. Actively check for AI-generated code anti-patterns (over-abstraction, verbose error handling, unnecessary wrappers, over-documentation)
-3. For each finding report: file, line number, pattern matched, proposed fix
-4. Classify: P1 or P2 per severity below
-5. Do NOT make any edits — report findings only
+3. For any finding that recommends removal: Grep the full project for the symbol name to verify zero cross-file references. If references exist outside changed files, reclassify as P3 (report only)
+4. For each finding report: file, line number, pattern matched, proposed fix
+5. Classify: P1 or P2 per severity below
+6. Do NOT make any edits — report findings only
 
 ## Severity
 - P1: Deep nesting fixable with guard clauses, AI over-abstraction, redundant try/catch, commented-out code, dead code
 - P2: Naming improvements, comment cleanup, complex boolean extraction, effect splitting
+- P3 (report only): Symbols flagged for removal that have cross-file references
 
 ## Output Format
 Return a JSON array:
-[{"file": "path", "line": N, "pattern": "name", "severity": "P1|P2", "description": "what", "fix": "how"}]
+[{"file": "path", "line": N, "pattern": "name", "severity": "P1|P2|P3", "description": "what", "fix": "how"}]
 If no findings, return: []
 """, description="Review: quality & readability")
 ```
@@ -141,6 +147,7 @@ Read each of these files: [list file paths from Phase 1]
 Also read each file's immediate neighbors (imports from same module) for reuse context.
 
 ## Instructions
+0. Read project convention files referenced in the project's CLAUDE.md (if any) — understanding intentional project patterns prevents false-positive detection
 1. Analyze each file for Pass C patterns only
 2. For each finding report: file, line number, pattern matched, proposed fix
 3. Classify: P1, P2, or P3 per severity below
@@ -270,7 +277,7 @@ If patterns were flagged but couldn't be safely fixed (P3 or skipped P2), sugges
 
 | Pattern type | Suggested action |
 |---|---|
-| Architectural issues (P3 items) | "Consider running `/refactor` on [module]" |
+| Architectural issues (P3 items) | "Consider running `/geniro:refactor` on [module]" |
 | Recurring anti-patterns | "Add a lint rule or criteria entry for [pattern]" |
 | Missing utilities causing duplication | "Extract [utility] to shared module" |
 
@@ -302,7 +309,7 @@ If patterns were flagged but couldn't be safely fixed (P3 or skipped P2), sugges
 ## Examples
 
 ```
-/deep-simplify changed
-/deep-simplify src/auth/login.ts src/auth/session.ts
-/deep-simplify focus on reducing duplication in utils/
+/geniro:deep-simplify changed
+/geniro:deep-simplify src/auth/login.ts src/auth/session.ts
+/geniro:deep-simplify focus on reducing duplication in utils/
 ```

@@ -1,5 +1,5 @@
 ---
-name: onboard
+name: geniro:onboard
 description: "Rapid codebase mapping and orientation. Scans structure, files, patterns, conventions. Produces CODEBASE_MAP.md with architecture, module relationships, critical paths, and entry points. Do NOT use for answering specific code questions, debugging, implementing features, or quick fixes in familiar code."
 context: main
 model: sonnet
@@ -19,7 +19,7 @@ Use this skill to quickly understand a new or unfamiliar codebase. Generates a s
 
 ## Outputs
 
-**Primary artifact:** `.claude/.artifacts/planning/CODEBASE_MAP.md`
+**Primary artifact:** `.geniro/planning/CODEBASE_MAP.md`
 
 Contains:
 1. **Project Overview** – Name, purpose, language/stack, entry points
@@ -189,7 +189,7 @@ Express App (index.ts)
 
 For each onboarding, confirm:
 
-- [ ] CODEBASE_MAP.md created in .claude/.artifacts/planning/ directory
+- [ ] CODEBASE_MAP.md created in .geniro/planning/ directory
 - [ ] Project overview section completed
 - [ ] Directory structure documented with key folders
 - [ ] At least 3 critical paths traced and documented
@@ -203,7 +203,7 @@ For each onboarding, confirm:
 
 ## When to Use This Skill
 
-**Use `/onboard`:**
+**Use `/geniro:onboard`:**
 - Starting work on a new/unfamiliar codebase
 - Returning to a project after months away
 - Onboarding a new team member
@@ -212,8 +212,8 @@ For each onboarding, confirm:
 - Need to explain architecture to someone else
 
 **Don't use:**
-- Quick bug fix in familiar code → use `/follow-up` or `/debug`
-- Need full implementation guidance → use `/implement`
+- Quick bug fix in familiar code → use `/geniro:follow-up` or `/geniro:debug`
+- Need full implementation guidance → use `/geniro:implement`
 - Just need to answer a specific question → ask directly
 
 ---
@@ -222,7 +222,7 @@ For each onboarding, confirm:
 
 ### Example 1: New to a Monorepo
 ```
-/onboard --depth 2 --focus auth,api
+/geniro:onboard --depth 2 --focus auth,api
 ```
 → Scan monorepo structure at depth 2
 → Focus on auth and api services
@@ -231,7 +231,7 @@ For each onboarding, confirm:
 
 ### Example 2: Returning After 6 Months
 ```
-/onboard
+/geniro:onboard
 ```
 → Scan entire codebase structure
 → Generate quick refresh of architecture
@@ -240,7 +240,7 @@ For each onboarding, confirm:
 
 ### Example 3: Planning a Feature
 ```
-/onboard --focus database,models
+/geniro:onboard --focus database,models
 ```
 → Focus on data layer and models
 → Understand current schema and relationships

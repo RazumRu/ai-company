@@ -23,37 +23,37 @@ Search these locations in order of relevance:
 
 ### 1. Core Learnings
 ```
-.claude/.artifacts/knowledge/learnings.jsonl
+.geniro/knowledge/learnings.jsonl
 ```
 Each entry has: `id`, `category`, `learning`, `verified`, `session`, `source`, `counter`, and optional `files` (glob patterns) and `keywords` (topic tags). When a query includes file paths, filter on the `files` field first. Otherwise, Grep for keywords across `learning` and `keywords` fields. Return `learning`, `session`, and `source` fields.
 
 ### 2. Session Summaries
 ```
-.claude/.artifacts/knowledge/sessions/*.md
+.geniro/knowledge/sessions/*.md
 ```
 Markdown files from prior sessions. Glob for all session files, Grep for keywords, return matching sections with filenames as citations.
 
 ### 3. Categorized Knowledge (if present)
 ```
-.claude/.artifacts/knowledge/patterns/*.jsonl
-.claude/.artifacts/knowledge/gotchas/*.jsonl
-.claude/.artifacts/knowledge/decisions/*.jsonl
-.claude/.artifacts/knowledge/anti-patterns/*.jsonl
-.claude/.artifacts/knowledge/recipes/*.jsonl
+.geniro/knowledge/patterns/*.jsonl
+.geniro/knowledge/gotchas/*.jsonl
+.geniro/knowledge/decisions/*.jsonl
+.geniro/knowledge/anti-patterns/*.jsonl
+.geniro/knowledge/recipes/*.jsonl
 ```
 Grep across all JSONL files in subdirectories.
 
 ### 4. Debug History
 ```
-.claude/.artifacts/debug/HYPOTHESES.md
-.claude/.artifacts/debug/*.md
+.geniro/debug/HYPOTHESES.md
+.geniro/debug/*.md
 ```
 
 ### 5. Planning Artifacts
 ```
-.claude/.artifacts/planning/*/spec.md
-.claude/.artifacts/planning/*/plan-*.md
-.claude/.artifacts/planning/*/state.md
+.geniro/planning/*/spec.md
+.geniro/planning/*/plan-*.md
+.geniro/planning/*/state.md
 ```
 
 ## Output Format

@@ -1,5 +1,5 @@
 ---
-name: review
+name: geniro:review
 description: "Parallel multi-agent code review with 5 specialized reviewers (bugs, security, architecture, tests, guidelines). Confidence-scored findings automatically filtered. Use for comprehensive code quality assessment."
 context: main
 model: sonnet
@@ -308,7 +308,7 @@ Overall Assessment: APPROVE WITH CHANGES
 
 ## Phase 4: Learn & Improve
 
-After delivering the review summary, extract knowledge and suggest improvements. **Skip this phase when `/review` is called as a sub-phase within `/implement`** (the parent pipeline handles learnings in Phase 7). Only run when `/review` is invoked standalone.
+After delivering the review summary, extract knowledge and suggest improvements. **Skip this phase when `/geniro:review` is called as a sub-phase within `/geniro:implement`** (the parent pipeline handles learnings in Phase 7). Only run when `/geniro:review` is invoked standalone.
 
 ### Extract Learnings
 

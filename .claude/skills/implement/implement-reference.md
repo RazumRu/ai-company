@@ -8,12 +8,12 @@ This file contains templates, examples, error tables, and detailed procedures re
 
 | What you say | What the skill detects | Behavior |
 |---|---|---|
-| `/implement add OAuth login` | Plain description | Full discovery with interactive questions |
-| `/implement ENG-123` | Linear issue ID (`[A-Z]{2,}-\d+`) | Fetches issue from Linear MCP, uses as context, then asks discovery questions |
-| `/implement https://linear.app/team/issue/ENG-123` | Linear URL | Extracts issue ID, fetches from Linear MCP, then asks discovery questions |
-| `/implement ENG-123 add OAuth login` | Issue ID + description | Fetches issue, supplements with description, then asks discovery questions |
-| `/implement just do it` or `ASAP` or `no questions` | Urgency signals | Auto mode: skip interactive questions, pick recommended defaults |
-| `/implement I think we should add OAuth` | Tentative language ("I think", "maybe", "should we") | Assumptions mode: propose plan, ask user to correct what's wrong |
+| `/geniro:implement add OAuth login` | Plain description | Full discovery with interactive questions |
+| `/geniro:implement ENG-123` | Linear issue ID (`[A-Z]{2,}-\d+`) | Fetches issue from Linear MCP, uses as context, then asks discovery questions |
+| `/geniro:implement https://linear.app/team/issue/ENG-123` | Linear URL | Extracts issue ID, fetches from Linear MCP, then asks discovery questions |
+| `/geniro:implement ENG-123 add OAuth login` | Issue ID + description | Fetches issue, supplements with description, then asks discovery questions |
+| `/geniro:implement just do it` or `ASAP` or `no questions` | Urgency signals | Auto mode: skip interactive questions, pick recommended defaults |
+| `/geniro:implement I think we should add OAuth` | Tentative language ("I think", "maybe", "should we") | Assumptions mode: propose plan, ask user to correct what's wrong |
 
 **Detection rules (checked in order):**
 1. **Linear URL** — regex: `https://linear\.app/.+/issue/([A-Z]+-\d+)` -> extract issue ID
@@ -206,8 +206,8 @@ Check whether the implementation matches the spec requirements.
 4. Write your report to `<task-dir>/compliance.md`
 ```
 
-Read `<task-dir>/compliance.md` after the agent completes. If ANY requirement is unmet -> route back to Phase 4 implementer with specific gaps. Do NOT proceed to Stage C.
-- **Max 2 rounds.** After round 1 failure, re-route to implementer. After round 2 failure: if gaps are in <=3 requirements, present to user with option to ship with documented gaps. If gaps are systemic (>3 requirements), escalate to Phase 2 re-architecture.
+Read `<task-dir>/compliance.md` after the agent completes. If ANY requirement is unmet -> spawn a fixer agent with the specific gaps and affected files pre-inlined. Do NOT read source files, diagnose gaps, or apply fixes yourself — delegate to the agent. Do NOT proceed to Stage C until gaps are resolved.
+- **Max 2 rounds.** After round 1 failure, spawn a fresh fixer agent. After round 2 failure: if gaps are in <=3 requirements, present to user with option to ship with documented gaps. If gaps are systemic (>3 requirements), escalate to Phase 2 re-architecture.
 
 ---
 
@@ -267,8 +267,8 @@ After Stage C produces findings:
 
 5. **After 3 rounds:** Stop iterating. Present a structured handoff:
    - List what was fixed vs. what remains
-   - Classify remaining issues: spec gap (-> needs re-architecture) vs. code quality (-> `/follow-up` later)
-   - Use the `AskUserQuestion` tool (do NOT output options as plain text) to present: A) Ship as-is with known issues documented, B) Re-run Phase 2 (re-architect the approach), C) Create `/follow-up` tasks for remaining items
+   - Classify remaining issues: spec gap (-> needs re-architecture) vs. code quality (-> `/geniro:follow-up` later)
+   - Use the `AskUserQuestion` tool (do NOT output options as plain text) to present: A) Ship as-is with known issues documented, B) Re-run Phase 2 (re-architect the approach), C) Create `/geniro:follow-up` tasks for remaining items
 
 **Scope constraints (anti-rationalization):**
 - Reviews must stay in-scope (code exists, not feature creep)
@@ -285,7 +285,7 @@ After Stage C produces findings:
 | Build/lint/test fails | Delegate fix to implementer, re-run Stage A |
 | Codegen diff | Update generated files, re-run full check |
 | Startup fails | Return to Phase 4 with DI/runtime error details |
-| Spec gap found | Route back to Phase 4 implementer with specific gaps |
+| Spec gap found | Spawn fixer agent with gap details and affected files pre-inlined |
 | Review finds critical bug | Agent fixes, re-run Stage A, re-review |
 | Review too subjective | Focus on: bugs, coverage, architecture alignment |
 | Fix rounds exceed 3 | Surface to user with current state, ask: proceed or iterate? |
@@ -319,7 +319,7 @@ Scan the conversation for events worth remembering:
 | **Architectural deviations** from spec that worked better | What changed + why + outcome |
 | **Cross-module dependency gotchas** hard to discover | The dependency + why it's surprising |
 
-Save findings to `.claude/.artifacts/knowledge/learnings.jsonl` and/or to memory. Write a session summary to `.claude/.artifacts/knowledge/sessions/YYYY-MM-DD-<feature-name>.md` with: summary, key decisions, discoveries, files changed, unresolved items.
+Save findings to `.geniro/knowledge/learnings.jsonl` and/or to memory. Write a session summary to `.geniro/knowledge/sessions/YYYY-MM-DD-<feature-name>.md` with: summary, key decisions, discoveries, files changed, unresolved items.
 
 Before writing, check if an existing memory/learning covers this topic — UPDATE rather than duplicate. Skip if nothing genuinely novel was discovered.
 
@@ -362,7 +362,7 @@ Run cleanup directly (no agent needed):
 
 **Pipeline artifacts** — remove the task directory and all its contents:
 ```bash
-rm -rf <task-dir>  # e.g., .claude/.artifacts/planning/feat-eng-123-add-oauth/
+rm -rf <task-dir>  # e.g., .geniro/planning/feat-eng-123-add-oauth/
 ```
 This deletes `spec.md`, `state.md`, `notes.md`, `notes-resolved.md`, `concerns.md`, `review-feedback.md`, `plan-*.md`, and any other files created during the pipeline. These artifacts served their purpose during the pipeline run — the commit message, PR description, learnings file, and session summary are the durable records.
 
