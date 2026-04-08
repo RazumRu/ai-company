@@ -107,7 +107,6 @@ const SYSTEM_AGENT_INTERNAL_FIELDS = [
 const INSTRUCTION_BLOCK_INTERNAL_FIELDS = [
   'instructionBlockId',
   'instructionBlockContentHash',
-  'content',
 ] as const;
 
 export type AiSuggestionState = {
@@ -1028,6 +1027,18 @@ export const NodeEditSidebar = React.memo(
             ),
         ),
       );
+      // Mark name and content as read-only for predefined instruction blocks
+      if (isInstructionBlock) {
+        for (const key of ['name', 'content'] as const) {
+          if (filteredProps[key] && typeof filteredProps[key] === 'object') {
+            filteredProps[key] = {
+              ...(filteredProps[key] as Record<string, unknown>),
+              'x-ui:readonly': true,
+            };
+          }
+        }
+      }
+
       return { ...templateSchema, properties: filteredProps };
     }, [templateSchema, isSystemAgent, isInstructionBlock]);
 
