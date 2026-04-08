@@ -42,6 +42,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '../../../components/ui/tooltip';
+import { cn } from '../../../components/ui/utils';
 import { extractApiErrorMessage } from '../../../utils/errors';
 import { getStatusBadgeClass } from '../../../utils/statusColors';
 import { toastMessage } from '../../../utils/toastAdapter';
@@ -333,7 +334,9 @@ export const NodeEditSidebar = React.memo(
         ? 'Loading instructions...'
         : instructionsAvailable
           ? 'View current agent instructions'
-          : 'Instructions are not available for this node yet';
+          : compiledNode
+            ? 'Instructions are not available for this node yet'
+            : 'Restart the graph to load instructions';
 
     const toolsAvailable = connectedTools.length > 0;
     const toolsButtonDisabled =
@@ -437,7 +440,7 @@ export const NodeEditSidebar = React.memo(
         ? 'Loading...'
         : rawStatus
           ? `${rawStatus.charAt(0).toUpperCase()}${rawStatus.slice(1)}`
-          : 'Unknown';
+          : 'Not compiled';
 
     const statusBadgeKey = !isGraphRunning
       ? 'stopped'
@@ -460,60 +463,39 @@ export const NodeEditSidebar = React.memo(
     const hasInfoData = Boolean(metadataJsonValue || configJsonValue);
 
     const infoContent = (
-      <div style={{ maxWidth: 360 }}>
+      <div className="max-w-[360px]">
         {compiledNodesLoading && (
           <span
-            className="text-muted-foreground"
-            style={{
-              display: 'block',
-              marginBottom: hasInfoData ? 8 : 0,
-            }}>
+            className={cn(
+              'block text-muted-foreground',
+              hasInfoData && 'mb-2',
+            )}>
             Loading latest node information...
           </span>
         )}
         {metadataJsonValue && (
-          <div style={{ marginBottom: configJsonValue ? 16 : 0 }}>
-            <span
-              className="text-sm font-semibold"
-              style={{ display: 'block', marginBottom: 8 }}>
-              Metadata
-            </span>
-            <div
-              style={{
-                maxHeight: 240,
-                overflow: 'auto',
-                border: '1px solid #f0f0f0',
-                borderRadius: 6,
-                padding: 8,
-                background: '#fafafa',
-              }}>
+          <div className={cn(configJsonValue && 'mb-4')}>
+            <span className="block text-sm font-semibold mb-2">Metadata</span>
+            <div className="max-h-60 overflow-auto border border-border rounded-md p-2 bg-muted/50">
               <JsonViewer value={metadataJsonValue as object} />
             </div>
           </div>
         )}
         {configJsonValue && (
           <div>
-            <span
-              className="text-sm font-semibold"
-              style={{ display: 'block', marginBottom: 8 }}>
+            <span className="block text-sm font-semibold mb-2">
               Configuration
             </span>
-            <div
-              style={{
-                maxHeight: 240,
-                overflow: 'auto',
-                border: '1px solid #f0f0f0',
-                borderRadius: 6,
-                padding: 8,
-                background: '#fafafa',
-              }}>
+            <div className="max-h-60 overflow-auto border border-border rounded-md p-2 bg-muted/50">
               <JsonViewer value={configJsonValue as object} />
             </div>
           </div>
         )}
         {!compiledNodesLoading && !hasInfoData && (
-          <span className="text-muted-foreground">
-            No metadata or configuration available.
+          <span className="text-muted-foreground text-sm">
+            {isGraphRunning && !compiledNode
+              ? 'Restart the graph to load node data.'
+              : 'No metadata or configuration available.'}
           </span>
         )}
       </div>
