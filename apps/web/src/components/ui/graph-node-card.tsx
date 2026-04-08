@@ -533,7 +533,20 @@ export const CustomNode = React.memo(
           connectionPreview.template,
         );
         const outputAllowsTarget = connectionPreview.rule
-          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate)
+          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate) ||
+            // Fallback: check if ANY output from the source template matches.
+            // Collapsed nodes fire from the first handle, but findCompatibleHandles
+            // will reassign to a valid pair on drop.
+            (connectionPreview.template.outputs?.some((output) =>
+              matchesRuleForTemplate(
+                {
+                  type: output.type as 'kind' | 'template',
+                  value: String(output.value),
+                },
+                nodeTemplate,
+              ),
+            ) ??
+              false)
           : true;
         if (!inputAllowsSource || !outputAllowsTarget) {
           return 'blocked';
@@ -547,7 +560,20 @@ export const CustomNode = React.memo(
           connectionPreview.template,
         );
         const inputAllowsSource = connectionPreview.rule
-          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate)
+          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate) ||
+            // Fallback: check if ANY input from the source template matches.
+            // Collapsed nodes fire from the first handle, but findCompatibleHandles
+            // will reassign to a valid pair on drop.
+            (connectionPreview.template.inputs?.some((input) =>
+              matchesRuleForTemplate(
+                {
+                  type: input.type as 'kind' | 'template',
+                  value: String(input.value),
+                },
+                nodeTemplate,
+              ),
+            ) ??
+              false)
           : true;
         if (!outputAllowsTarget || !inputAllowsSource) {
           return 'blocked';

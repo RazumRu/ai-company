@@ -68,6 +68,12 @@ export class RuntimeTemplate extends RuntimeNodeBaseTemplate<
       value: NodeKind.Mcp,
       multiple: true,
     },
+    // Agent nodes (SimpleAgent and SystemAgent share the same kind) can run inside this runtime.
+    {
+      type: 'kind',
+      value: NodeKind.SimpleAgent,
+      multiple: true,
+    },
   ] as const;
 
   constructor(private readonly runtimeProvider: RuntimeProvider) {
