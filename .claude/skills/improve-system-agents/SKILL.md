@@ -47,6 +47,7 @@ The final system prompt sent to the LLM is assembled by concatenating these bloc
 - **DO write cross-tool orchestration guidance.** The injected tool descriptions don't know about each other. If tool sequencing matters (e.g., "always read a file before editing it", "run tests after making changes"), that belongs in the markdown body.
 - **DO write behavioral constraints and quality standards.** Anti-patterns, code quality rules, verification discipline, git workflow — these shape how the agent uses tools, not what the tools do.
 - **Team context comes from the communication tool.** If a communication tool is connected, the agent already knows about other agents in the flow. No need to hardcode team member names.
+- **Agents must be independent.** Never write instructions that assume a specific external workflow or the presence of other agents (e.g., "when you receive an architect spec", "handle reviewer feedback"). Each agent definition must work standalone. If the agent happens to receive input from another agent at runtime, it should handle it generically (e.g., "if you receive a specification, treat it as authoritative") — not reference specific roles or workflow steps.
 - **Repository context is discovered at runtime.** The agent learns about the repo (language, package manager, conventions) by reading the `agentInstructions` field from `gh_clone`. This cannot be templated in advance.
 
 ### Frontmatter fields
@@ -64,6 +65,39 @@ defaultModel: null        # Optional model override
 ```
 
 Tools listed in `tools:` are automatically instantiated and their instructions injected. Users can also manually connect additional tools via the graph editor, which override predefined tools of the same template ID.
+
+### Tool Catalog (all available tool template IDs)
+
+Each tool template injects its own description and usage guidance at runtime. The markdown body should **never** describe what a tool does — but it **should** include cross-tool orchestration patterns relevant to the agent's connected tools.
+
+Below is the complete catalog. When rewriting, check the agent's `tools:` field in frontmatter to determine which orchestration patterns are relevant.
+
+#### Core tools (always available, not listed in frontmatter)
+
+| Template ID | Purpose | Cross-tool orchestration implications |
+|---|---|---|
+| `finish` | Signal work completion or request missing info | Must be called to end every turn. All output goes in the `message` field. Never call alongside other tools — always in its own turn. |
+| `wait_for` | Schedule delayed thread resumption | Use when waiting on async external processes (CI pipelines, deployments, PR reviews). Call instead of polling in a loop. |
+
+#### Connectable tools (listed in frontmatter `tools:` or connected via graph editor)
+
+| Template ID | Purpose | Cross-tool orchestration implications |
+|---|---|---|
+| `files-tool` | File read/search/edit operations | **Read before editing** — never modify a file not read in this session. Use semantic codebase search as the preferred first exploration step. Batch independent reads in parallel. For large files, read specific line ranges rather than the full file. |
+| `shell-tool` | Execute shell commands in sandbox | Run install/build/test/lint commands from the repository's instruction file. Use for verification after code changes. Prefer project scripts over ad-hoc commands. |
+| `gh-tool` | GitHub operations (clone, branch, commit, push, PR) | Sequential dependency chain: clone → branch → implement → commit → push → PR. **Push must complete before PR creation** — never parallelize these two. Read the `agentInstructions` field from clone output for repo conventions. |
+| `knowledge-tools` | Knowledge base search and retrieval | Search the knowledge base **before** starting non-trivial work (code changes, research, design). Follow the pattern: search docs → search chunks → get specific chunks. Skip for simple questions that don't need project context. Don't re-search within the same conversation unless the topic changed significantly. |
+| `subagents-tool` | Spawn autonomous subagents | Delegate research-heavy tasks to save main context window. **Always parallelize independent subagent calls** — never chain them sequentially when they don't depend on each other. Three types: `system:explorer` (read-only, cheap), `system:simple` (full access, small context), `system:smart` (full access, same model). Give subagents maximum context — they start with a blank window. |
+| `agent-communication-tool` | Send messages to connected agents | Trust agent responses — **do not re-explore files** they already analyzed. If the response includes an `exploredFiles` list, skip reading those files. If details are missing, ask the same agent again rather than re-investigating yourself. |
+| `web-search-tool` | Web search for current information | Use to research best practices, verify API documentation, or find solutions for unfamiliar technologies. Search before making assumptions about external APIs or libraries. |
+
+#### How to use the catalog during rewrites
+
+1. Read the agent's `tools:` field from frontmatter to identify connected tools.
+2. For each connected tool, check the "Cross-tool orchestration implications" column above.
+3. Include relevant orchestration guidance in the rewritten body — but phrase it as behavioral guidance (e.g., "always read a file before editing it"), not as tool descriptions (e.g., "use files_read to read files").
+4. The core tools (`finish`, `wait_for`) apply to every agent — include their orchestration patterns when they affect workflow (e.g., "deliver all output through the completion tool, not in intermediate messages").
+5. **Do NOT name specific tool functions** (e.g., `files_read`, `codebase_search`, `gh_clone`) in the agent body — those names are injected by the tools themselves. Use generic references: "read the file", "search the codebase", "clone the repository".
 
 ---
 
@@ -122,6 +156,8 @@ Spawn a rewrite subagent (model=sonnet):
 Agent(prompt="""
 You are a prompt engineer specializing in system prompt design for LLM-powered agents.
 
+CRITICAL: You are a RESEARCH-ONLY agent. Do NOT use Write, Edit, or any file-writing tools. Do NOT create or modify any files. Your ONLY output is the rewritten file content as plain text in your response. If you write to any file, you will overwrite unrelated files and cause damage.
+
 Your task: rewrite the BODY of the following agent definition file to make it clearer, more structured, and more effective. Preserve the frontmatter exactly as-is.
 
 === ORIGINAL FILE ===
@@ -146,6 +182,24 @@ CRITICAL IMPLICATIONS:
 - DO write behavioral constraints, quality standards, and work approach — these shape HOW the agent works, not WHAT tools it has.
 - Repository-specific context (language, package manager, commands) is discovered at runtime via `agentInstructions` from `gh_clone` — never hardcode these.
 - Team context (other agents in the flow) comes from the communication tool if connected — never hardcode agent names.
+- INDEPENDENCE RULE: Never write instructions that assume a specific external workflow or the presence of other agents. No "when you receive an architect spec", no "handle reviewer feedback", no "delegate to subagents". Each agent must work standalone. If it receives structured input from another agent at runtime, handle it generically ("if you receive a specification, treat it as authoritative") without naming specific roles.
+
+=== AGENT'S CONNECTED TOOLS ===
+The agent's frontmatter lists these tool template IDs: {tools_from_frontmatter}
+Core tools (finish, wait_for) are always available regardless of frontmatter.
+
+For each connected tool, include relevant CROSS-TOOL ORCHESTRATION guidance in the rewritten body. Use the catalog below to determine what patterns matter. Phrase guidance as behavioral rules ("read a file before editing it"), NOT as tool descriptions ("use files_read to read files"). Never name specific tool functions — those are injected automatically.
+
+TOOL ORCHESTRATION CATALOG:
+- files-tool: Read before editing (never modify unread files). Prefer semantic search for initial exploration. Batch independent reads. Use line ranges for large files.
+- shell-tool: Run install/build/test/lint from the repository's instruction file. Use for verification after code changes. Prefer project scripts over ad-hoc commands.
+- gh-tool: Clone → branch → implement → commit → push → PR (sequential chain). Push must complete before PR creation. Read agentInstructions from clone output for repo conventions.
+- knowledge-tools: Search knowledge base BEFORE starting non-trivial work. Pattern: search docs → search chunks → get chunks. Skip for simple questions. Don't re-search same topic within a conversation.
+- subagents-tool: Delegate research to save context. ALWAYS parallelize independent subagent calls. Three types: explorer (read-only, cheap), simple (small tasks), smart (complex reasoning). Give subagents maximum context — they start blank.
+- agent-communication-tool: Trust agent responses — don't re-explore files they analyzed. If response includes exploredFiles, skip reading those. Ask the same agent again if details are missing.
+- web-search-tool: Research best practices and verify API docs before making assumptions about external technologies.
+- finish (core): All output goes in the completion message — not in intermediate messages. Call once when done, never alongside other tools.
+- wait_for (core): Use for async waits (CI, deployments, PR reviews) instead of polling loops.
 
 === USER'S IMPROVEMENT REQUEST ===
 {improvement_request or "(none — apply general best practices)"}
@@ -171,6 +225,8 @@ CRITICAL IMPLICATIONS:
 - Verification workflows that span multiple tools
 - Fallback strategies when a tool fails
 - Do NOT describe individual tool capabilities — those are auto-injected
+- Use the TOOL ORCHESTRATION CATALOG above to determine which patterns apply based on the agent's connected tools
+- Phrase orchestration as behavioral guidance ("always read a file before editing it"), never as tool usage instructions ("use files_read before files_apply_changes")
 
 **Constraints & Rules**
 - Prefer affirmative rules ("Always do X") over prohibitive ("Never do Y") — but use both
@@ -192,10 +248,19 @@ CRITICAL IMPLICATIONS:
 - Redundant tool descriptions that duplicate auto-injected tool guidance
 - No examples or demonstrations of correct behavior
 - Laundry-list edge cases instead of general heuristics
+- Workflow-specific assumptions about other agents (see Independence Rule below)
+
+**Independence Rule (CRITICAL)**
+- Every agent and instruction block must work as a standalone unit — never assume a specific external workflow or the presence of other agents.
+- Never write instructions like "when you receive an architect spec", "handle reviewer feedback", "delegate to subagents", or "report to the engineering manager". These couple the agent to a specific graph topology that may not exist.
+- If the agent might receive structured input from another agent, handle it generically: "if you receive a specification or detailed plan, treat it as authoritative" — not "when the architect sends you a spec".
+- Never hardcode agent role names (architect, reviewer, manager, explorer) in the instructions.
+- The agent's behavior should be complete and useful even if it is the only agent in the graph.
 
 **For System Agents Specifically**
 - Instructions become the system prompt for a LangGraph agent in a sandboxed Docker environment
 - Instructions must be GENERIC — not repo-specific — since they run against various user repos
+- Instructions must be INDEPENDENT — must not assume specific workflows or other agents exist
 - Tool descriptions are injected separately at runtime — the markdown body focuses on role, approach, and constraints
 - Reference "the repository's instruction file" or "the agentInstructions field from gh_clone" rather than specific filenames (CLAUDE.md) or commands (pnpm run full-check)
 
@@ -203,11 +268,13 @@ CRITICAL IMPLICATIONS:
 - These are supplementary instruction sets appended to an agent's system prompt
 - Keep them focused on a specific domain/technology
 - They must be complementary (not contradictory) to the base agent instructions
+- They must not introduce workflow-specific assumptions that don't exist in the base agent
 - Make them actionable and concrete — not vague best practices
 
 === YOUR OUTPUT ===
 Return the COMPLETE rewritten file — frontmatter (unchanged) followed by the rewritten body.
-Do NOT include commentary or explanation. Return ONLY the file content.
+Do NOT include commentary or explanation. Return ONLY the file content as plain text in your response.
+Do NOT write to any files. Do NOT use Write, Edit, or Bash tools. Output text only.
 """)
 ```
 
@@ -234,13 +301,14 @@ You are a prompt engineering reviewer. Evaluate the rewritten agent definition b
 2. Structured with markdown headings (not a flat prose wall)
 3. Goal/objective stated explicitly
 4. No redundant tool descriptions (tools self-describe via auto-injection)
-5. Cross-tool orchestration guidance present where sequencing matters
+5. Cross-tool orchestration guidance present for the agent's connected tools (check frontmatter `tools:` field) — sequencing, parallelization, verification patterns
 6. Constraints are prioritized and include brief justifications
 7. No anti-patterns: vague roles, contradictions, hardcoded repo-specific content
 8. Appropriate altitude — strong heuristics, not exhaustive edge cases or empty platitudes
 9. User's specific request addressed: {improvement_request or "(none)"}
 10. For system agents: no repo-specific commands, filenames, or paths
-11. Overall quality strictly better than the original
+11. INDEPENDENCE: no references to specific agent roles (architect, reviewer, manager), no workflow-specific sections (architect spec handling, reviewer feedback, subagent delegation), no assumptions about other agents existing in the graph. The agent must work standalone.
+12. Overall quality strictly better than the original
 
 === YOUR OUTPUT ===
 Verdict: PASS or REVISE
