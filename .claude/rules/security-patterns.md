@@ -1,9 +1,9 @@
 ---
 globs:
   - "apps/api/src/**/*.ts"
-  - "apps/web/src/**/*.{ts,tsx}"
   - "packages/**/*.ts"
-  - "*.{yml,yaml,json,xml,conf,config}"
+  - "apps/web/src/**/*.{ts,tsx}"
+  - "*.{yml,yaml,json}"
   - "docker*"
   - "!**/*.test.*"
   - "!**/*.spec.*"
@@ -14,15 +14,16 @@ globs:
 
 ## Input Validation
 
-**Pattern**: Use Zod DTOs at API boundaries; never trust client-side validation
+**Pattern**: Use Zod schemas for all input validation; never trust client-side validation
 
 ```typescript
-// GOOD — Zod schema validates at controller boundary
-export const CreateGraphSchema = z.object({
-  name: z.string().min(1).max(200),
-  description: z.string().max(5000).nullable().optional(),
+// GOOD — Zod-backed DTO validation
+const CreateGraphSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(1000).optional(),
+  templateId: z.string().uuid(),
 });
-export class CreateGraphDto extends createZodDto(CreateGraphSchema) {}
+class CreateGraphDto extends createZodDto(CreateGraphSchema) {}
 
 // BAD — No validation
 function processUserInput(input: string): void {
@@ -32,116 +33,63 @@ function processUserInput(input: string): void {
 
 ## SQL Injection Prevention
 
-**Pattern**: Always use MikroORM EntityManager or parameterized queries; never concatenate user input
+**Pattern**: Use MikroORM queries with `FilterQuery<T>`; never concatenate user input into SQL
 
 ```typescript
 // GOOD — Using MikroORM
-const user = await em.findOne(UserEntity, { id: userId, status: 'active' });
+const user = await this.em.findOne(UserEntity, { id: userId, status: 'active' });
 
-// GOOD — Parameterized raw query
-const result = await em.execute(
-  'SELECT * FROM users WHERE id = $1 AND status = $2',
-  [userId, 'active']
+// GOOD — Parameterized raw query (when needed)
+const result = await this.em.getConnection().execute(
+  "SELECT * FROM users WHERE id = $1 AND status = $2",
+  [userId, "active"]
 );
 
 // BAD — String concatenation
-const user = await em.execute(`SELECT * FROM users WHERE id = ${userId}`);
+const user = await this.em.getConnection().execute(`SELECT * FROM users WHERE id = ${userId}`);
 ```
 
 ## Authentication & Authorization
 
-**Pattern**: Use Keycloak decorators and `AppContextStorage` for auth; never bypass auth checks
+**Pattern**: Use Keycloak via `AuthContextService`; verify permissions on every sensitive operation
 
 ```typescript
-// GOOD — NestJS decorators enforce auth
-@Controller('graphs')
-@ApiBearerAuth()
-@OnlyForAuthorized()
-export class GraphsController {
-  @Get(':id')
-  async getGraph(
-    @Param() { id }: EntityUUIDDto,
-    @CtxStorage() ctx: AppContextStorage,
-  ): Promise<GraphDto> {
-    return await this.graphsService.getById(ctx, id);
-  }
+// GOOD — Auth guard + context
+@UseGuards(AuthGuard)
+@Get(':id')
+async getGraph(@Param('id') id: string): Promise<GraphEntity> {
+  const userId = this.authContextService.getCurrentUserId();
+  return await this.graphsService.findOneForUser(id, userId);
 }
 
-// BAD — No auth decorator
-@Controller('admin')
-export class AdminController {
-  @Delete(':id')
-  async deleteUser(@Param('id') id: string) {
-    await this.userService.delete(id); // Anyone can delete!
-  }
+// BAD — No auth check
+@Get(':id')
+async getGraph(@Param('id') id: string): Promise<GraphEntity> {
+  return await this.graphsService.findOne(id); // Anyone can access!
 }
 ```
 
 ## Cross-Site Scripting (XSS) Prevention
 
-**Pattern**: React auto-escapes by default; avoid `dangerouslySetInnerHTML`
+**Pattern**: Sanitize user-controlled content; React auto-escapes by default but watch for `dangerouslySetInnerHTML`
 
 ```typescript
 // GOOD — React auto-escapes
 return <div>{userComment}</div>;
 
 // BAD — Direct HTML injection
-return <div dangerouslySetInnerHTML={{ __html: userInput }} />;
-```
-
-## CSRF Prevention
-
-**Pattern**: Use CSRF tokens for state-changing operations; Fastify handles this via SameSite cookies and origin validation
-
-```typescript
-// GOOD — Fastify CSRF protection with @fastify/csrf-protection
-await app.register(fastifyCsrf, {
-  sessionPlugin: '@fastify/cookie',
-});
-
-// GOOD — SameSite cookie attribute prevents cross-origin requests
-reply.setCookie('session', token, {
-  httpOnly: true,
-  sameSite: 'strict',
-  secure: true,
-});
-
-// BAD — No CSRF protection on state-changing endpoint
-@Post('transfer')
-async transfer(@Body() dto: TransferDto) {
-  // Process without CSRF validation
-}
-```
-
-## Authorization Checks
-
-**Pattern**: Always verify user has permission before allowing access; use `AppContextStorage` for ownership checks
-
-```typescript
-// GOOD — Authorization check via context
-async deleteGraph(ctx: AppContextStorage, graphId: string): Promise<void> {
-  const graph = await this.graphDao.getOne({ id: graphId });
-  if (graph.createdBy !== ctx.userId && !ctx.isAdmin) {
-    throw new ForbiddenException('Not authorized to delete this graph');
-  }
-  await this.graphDao.delete(graph);
-}
-
-// BAD — No authorization check
-async deleteGraph(graphId: string): Promise<void> {
-  await this.graphDao.delete({ id: graphId }); // Anyone can delete!
-}
+return <div dangerouslySetInnerHTML={{ __html: userInput }} />; // XSS!
 ```
 
 ## Secrets Management
 
-**Pattern**: Never hardcode secrets; use environment variables
+**Pattern**: Never hardcode secrets; use environment variables loaded via `apps/api/src/environments/`
 
 ```typescript
 // GOOD — Environment variables
 const config = {
   dbUrl: process.env.DATABASE_URL,
-  apiKey: process.env.OPENROUTER_API_KEY,
+  apiKey: process.env.API_KEY,
   jwtSecret: process.env.JWT_SECRET,
 };
 
@@ -150,60 +98,42 @@ const dbPassword = "super_secret_password_123";
 const apiKey = "sk_live_abc123xyz";
 ```
 
-## Cryptography
-
-**Pattern**: Use strong algorithms; never use MD5 or SHA1 for security
-
-```typescript
-// GOOD — Strong hashing
-import { createHash } from 'crypto';
-const hash = createHash('sha256').update(data).digest('hex');
-
-// BAD — Weak hashing
-const hash = createHash('md5').update(data).digest('hex');
-
-// BAD — Math.random for security tokens
-const token = Math.random().toString(36);
-```
-
-## Data Exposure Prevention
-
-**Pattern**: Minimize logging of sensitive data; redact passwords, tokens, and PII
-
-```typescript
-// GOOD — Redacting sensitive data
-logger.info('User login attempt', { userId: user.id });
-
-// BAD — Logging sensitive data
-logger.info('Login', { userId: user.id, password: password });
-
-// BAD — Exposing internals to client
-res.status(500).json({ error: error.toString(), stack: error.stack });
-```
-
-## Rate Limiting
-
-**Pattern**: Use NestJS Throttler for rate limiting on sensitive endpoints
-
-```typescript
-// GOOD — Throttle decorator
-import { Throttle } from '@nestjs/throttler';
-
-@Throttle({ default: { limit: 5, ttl: 60000 } })
-@Post('login')
-async login(@Body() dto: LoginDto) { }
-```
-
 ## Dependency Security
 
 **Pattern**: Regularly audit dependencies
 
 ```bash
-# Check for vulnerabilities
 pnpm audit
+pnpm audit --fix
+```
 
-# Update dependencies
-pnpm up-versions
+## Data Exposure Prevention
+
+**Pattern**: Use Pino structured logging; redact passwords, tokens, and PII
+
+```typescript
+// GOOD — Redacting sensitive data
+logger.info("User login attempt", { userId: user.id, timestamp: new Date() });
+
+// BAD — Logging sensitive data
+logger.info("Login", { userId: user.id, password: password });
+
+// BAD — Exposing internals to client
+res.status(500).json({ error: error.toString() });
+```
+
+## Rate Limiting
+
+**Pattern**: Use `@nestjs/throttler` on authentication and sensitive endpoints
+
+```typescript
+// GOOD — NestJS Throttler
+@UseGuards(ThrottlerGuard)
+@Throttle({ default: { limit: 5, ttl: 900000 } })
+@Post('login')
+async login(@Body() dto: LoginDto): Promise<TokenResponse> {
+  return await this.authService.login(dto);
+}
 ```
 
 ## HTTPS/TLS
@@ -211,16 +141,8 @@ pnpm up-versions
 **Pattern**: Always use HTTPS in production; enforce HSTS headers
 
 ```typescript
-// GOOD — HSTS headers via Fastify hook
-app.addHook('onSend', (request, reply, payload, done) => {
-  reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-  done();
+// GOOD — HSTS via Fastify
+app.register(helmet, {
+  hsts: { maxAge: 31536000, includeSubDomains: true },
 });
 ```
-
-## Domain-Specific Security Rules
-
-- **Agent tool execution**: Tools run inside Docker containers with resource limits — never allow tools to escape the sandbox
-- **LLM proxy**: All model calls route through LiteLLM proxy (port 4000) — never call LLM providers directly from application code
-- **Keycloak realm**: Auth configuration is managed externally — never modify Keycloak realm settings from application code
-- **GitHub tokens**: GitHub PAT tokens and App credentials are sensitive — never log or expose them in API responses

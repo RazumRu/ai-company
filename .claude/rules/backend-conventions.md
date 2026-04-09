@@ -2,9 +2,9 @@
 globs:
   - "apps/api/src/**/*.ts"
   - "packages/**/*.ts"
+  - "!**/*.test.ts"
   - "!**/*.spec.ts"
   - "!**/*.int.ts"
-  - "!**/*.cy.ts"
 ---
 
 # Backend Conventions
@@ -13,7 +13,7 @@ globs:
 
 ### Functions and Methods
 
-**Pattern**: Use camelCase for variables/functions, PascalCase for classes/interfaces/enums/types
+**Pattern**: Use camelCase for functions/variables, PascalCase for classes/interfaces/enums/types
 
 ```typescript
 // GOOD
@@ -51,27 +51,31 @@ const API_VERSION = "v2";
 
 ## Error Handling
 
-**Pattern**: Always handle errors explicitly; use custom exceptions from `@packages/common`
+**Pattern**: Throw custom exceptions from `@packages/common`; never swallow errors silently
 
 ```typescript
-// GOOD
+// GOOD — using project custom exceptions
 import { NotFoundException, BadRequestException } from '@packages/common';
 
-if (!entity) {
-  throw new NotFoundException(`Graph ${id} not found`);
+async function getGraph(id: string): Promise<GraphEntity> {
+  const graph = await this.graphDao.findOne(id);
+  if (!graph) {
+    throw new NotFoundException(`Graph ${id} not found`);
+  }
+  return graph;
 }
 
-// BAD — never swallow errors silently
+// BAD — swallowing error
 try {
-  const user = await getUserById(id);
+  const graph = await this.graphDao.findOne(id);
 } catch (error) {
-  console.log(error);
+  console.log(error); // Never use console.log in production
 }
 ```
 
 ## Async/Await
 
-**Pattern**: Always `return await` async calls — not bare `return somePromise()`
+**Pattern**: Always `return await` async calls (not bare `return somePromise()`) for proper stack traces
 
 ```typescript
 // GOOD
@@ -89,15 +93,12 @@ async function fetchUserData(userId: string): Promise<UserData> {
 
 ## Logging
 
-**Pattern**: Use structured Pino logging from `@packages/common` (`DefaultLogger`)
+**Pattern**: Use structured Pino logging via `@packages/common`; appropriate log levels
 
 ```typescript
 // GOOD
-import { DefaultLogger } from '@packages/common';
-const logger = new DefaultLogger('MyService');
-
-logger.info(`User login successful`, { userId });
-logger.warn(`Retry attempt ${attempt}/${maxRetries}`);
+logger.info(`User login successful`, { userId, timestamp: new Date() });
+logger.warn(`Retry attempt ${attempt}/${maxRetries} for operation ${opId}`);
 logger.error(`Database connection failed`, { code, message: error.message });
 
 // BAD
@@ -107,49 +108,32 @@ console.error(error);
 
 ## Database Access
 
-**Pattern**: Use MikroORM EntityManager via DAOs extending BaseDao; use `FilterQuery<T>` for type-safe filtering
+**Pattern**: Use MikroORM `EntityManager` with `FilterQuery<T>` for type-safe queries; never concatenate user input
 
 ```typescript
-// GOOD — DAO pattern with BaseDao
-@Injectable()
-export class GraphDao extends BaseDao<GraphEntity> {
-  constructor(em: EntityManager) {
-    super(em, GraphEntity);
-  }
+// GOOD — using MikroORM DAO pattern
+async findAll(filter: FilterQuery<GraphEntity>): Promise<GraphEntity[]> {
+  return await this.em.find(GraphEntity, filter);
 }
 
-// GOOD — service uses DAO
-const graph = await this.graphDao.getOne({ id: graphId });
-const graphs = await this.graphDao.getAll({ status: GraphStatus.ACTIVE });
+// GOOD — using FilterQuery for flexible queries
+async findByStatus(status: GraphStatus): Promise<GraphEntity[]> {
+  return await this.em.find(GraphEntity, { status });
+}
 
-// BAD — raw query with string concatenation
-const users = await em.execute(`SELECT * FROM users WHERE id = ${userId}`);
-```
-
-## DTOs & Validation
-
-**Pattern**: Use Zod schemas with `createZodDto()`. Keep all DTOs for a module in a single file.
-
-```typescript
-import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
-
-export const CreateGraphSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().nullable().optional(),
-});
-
-export class CreateGraphDto extends createZodDto(CreateGraphSchema) {}
+// BAD — string concatenation
+const graphs = await this.em.getConnection().execute(`SELECT * FROM graphs WHERE id = ${id}`);
 ```
 
 ## Configuration Management
 
-**Pattern**: Load config from environment variables; never hardcode secrets
+**Pattern**: Load config from environment variables via `apps/api/src/environments/`; never hardcode secrets
 
 ```typescript
 // GOOD
 const config = {
   dbUrl: process.env.DATABASE_URL,
+  apiKey: process.env.API_KEY,
   port: parseInt(process.env.PORT || "5000", 10),
 };
 
@@ -159,44 +143,58 @@ const dbUrl = "postgresql://user:pass@localhost/db";
 
 ## Testing
 
-**Pattern**: Unit tests (*.spec.ts) next to source, integration tests (*.int.ts) in `src/__tests__/integration/`
+**Pattern**: Unit tests (`*.spec.ts`) next to source; integration tests (`*.int.ts`) in `src/__tests__/integration/`
 
 ```typescript
-// Unit test pattern
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-describe('GraphsService', () => {
-  let service: GraphsService;
-  let graphDao: Pick<GraphDao, 'getOne' | 'getAll'>;
-
-  beforeEach(() => {
-    graphDao = { getOne: vi.fn(), getAll: vi.fn() };
-    service = new GraphsService(graphDao as any);
+// GOOD — unit test
+describe("GraphService", () => {
+  it("should return graph when found", async () => {
+    const graph = await graphService.findOne("123");
+    expect(graph.id).toBe("123");
   });
 
-  it('should return graph when found', async () => {
-    vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
-    const result = await service.getById('123');
-    expect(result.id).toBe('123');
+  it("should throw NotFoundException when not found", async () => {
+    await expect(graphService.findOne("nonexistent")).rejects.toThrow(NotFoundException);
   });
 });
 ```
 
 ## Type Safety
 
-**Pattern**: No `any` — use specific types, generics, or `unknown` + type guards
+**Pattern**: Never use `any`; use specific types, generics, or `unknown` + type guards
 
 ```typescript
-// GOOD
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  createdAt: Date;
-}
-
-function processUser(user: User): void { }
+// GOOD — Zod-backed DTO
+const CreateGraphSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+});
+class CreateGraphDto extends createZodDto(CreateGraphSchema) {}
 
 // BAD
-function processUser(user: any): void { }
+function processGraph(graph: any): void { }
+```
+
+## NestJS Module Structure
+
+**Pattern**: Each feature follows Controller → Service → DAO → Entity layering
+
+```typescript
+// Controller — thin, route + validate only
+@Controller('v1/graphs')
+export class GraphsController {
+  constructor(private readonly graphsService: GraphsService) {}
+}
+
+// Service — business logic, orchestrates DAOs
+@Injectable()
+export class GraphsService {
+  constructor(private readonly graphsDao: GraphsDao) {}
+}
+
+// DAO — database queries via EntityManager
+@Injectable()
+export class GraphsDao {
+  constructor(private readonly em: EntityManager) {}
+}
 ```

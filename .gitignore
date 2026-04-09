@@ -76,3 +76,4 @@ apps/web/public/config.js
 .claude/.artifacts/
 .claude/.state/
 .geniro/
+!.geniro/project/
