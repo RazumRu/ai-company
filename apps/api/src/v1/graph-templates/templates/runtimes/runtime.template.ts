@@ -26,6 +26,11 @@ export const RuntimeTemplateSchema = z
       .default(600_000)
       .optional()
       .describe('Timeout in milliseconds for initialization script execution'),
+    secrets: z
+      .array(z.string())
+      .optional()
+      .describe('Secrets to inject as environment variables into the runtime')
+      .meta({ 'x-ui:secret-multi-select': true }),
   })
   .strip();
 

@@ -22,6 +22,7 @@ import { RepositoriesListPage } from './pages/repositories/list';
 import { IntegrationsPage } from './pages/settings/IntegrationsPage';
 import { LiteLlmAdminPage } from './pages/settings/LiteLlmAdminPage';
 import { ModelsPage } from './pages/settings/ModelsPage';
+import { SecretsPage } from './pages/settings/SecretsPage';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { StorybookPage } from './pages/storybook/page';
 
@@ -187,6 +188,7 @@ function App({ authModule }: { authModule: AuthModule }) {
               <Route path="integrations" element={<IntegrationsPage />} />
               <Route path="models" element={<ModelsPage />} />
               <Route path="llm-models" element={<LiteLlmAdminPage />} />
+              <Route path="secrets" element={<SecretsPage />} />
             </Route>
             <Route
               path="/github-app/callback"

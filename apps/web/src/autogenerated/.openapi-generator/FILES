@@ -20,6 +20,7 @@ docs/CreateLiteLlmModelDto.md
 docs/CreateLiteLlmModelDtoLitellmParams.md
 docs/CreateProjectDto.md
 docs/CreateRepositoryDto.md
+docs/CreateSecretDto.md
 docs/ExecuteTriggerDto.md
 docs/ExecuteTriggerDtoMessagesInner.md
 docs/ExecuteTriggerDtoMessagesInnerAnyOf.md
@@ -41,6 +42,8 @@ docs/GraphPreviewDtoTriggerNodesInner.md
 docs/GraphRevisionDto.md
 docs/GraphRevisionsApi.md
 docs/GraphsApi.md
+docs/InstructionBlockResponseDto.md
+docs/InstructionBlocksApi.md
 docs/KnowledgeApi.md
 docs/KnowledgeContentSuggestionRequestDto.md
 docs/KnowledgeContentSuggestionResponseDto.md
@@ -66,6 +69,8 @@ docs/ResumeThreadDto.md
 docs/RuntimeHealthDto.md
 docs/RuntimeInstanceDto.md
 docs/RuntimesApi.md
+docs/SecretResponseDto.md
+docs/SecretsApi.md
 docs/SetThreadMetadataDto.md
 docs/SetupInfoResponseDto.md
 docs/SuggestAgentInstructionsDto.md
@@ -134,6 +139,7 @@ docs/UpdateLiteLlmModelDto.md
 docs/UpdateLiteLlmModelDtoLitellmParams.md
 docs/UpdateProjectDto.md
 docs/UpdateRepositoryDto.md
+docs/UpdateSecretDto.md
 docs/UpdateUserPreferencesDto.md
 docs/UserPreferencesApi.md
 docs/UserPreferencesDto.md

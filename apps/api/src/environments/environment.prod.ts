@@ -124,4 +124,8 @@ export const environment = () =>
     // --- GitHub Webhook ---
     githubWebhookSecret: getEnv('GITHUB_WEBHOOK_SECRET'),
     webhookPollIntervalMs: +getEnv('WEBHOOK_POLL_INTERVAL_MS', '60000'),
+
+    // --- Secrets store (OpenBao) ---
+    openbaoAddr: getEnv('OPENBAO_ADDR'),
+    openbaoToken: getEnv('OPENBAO_TOKEN'),
   }) as const satisfies Record<string, string | number | boolean>;

@@ -8,7 +8,7 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 
-import { graphsApi } from '../../api';
+import { graphsApi, secretsApi } from '../../api';
 import {
   ExecuteTriggerDto,
   ExecuteTriggerDtoMessagesInner,
@@ -79,6 +79,9 @@ export const GraphPage = () => {
   const [saving, setSaving] = useState(false);
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
   const [graph, setGraph] = useState<GraphDto | null>(null);
+  const [availableSecretNames, setAvailableSecretNames] = useState<string[]>(
+    [],
+  );
 
   // Server state for the draft hook (initialized with empty state, updated after load)
   const [serverGraphState, setServerGraphState] = useState<GraphDiffState>({
@@ -113,6 +116,23 @@ export const GraphPage = () => {
   // is {0,0,1}.  We must not let that overwrite the viewport we loaded from
   // localStorage on mount.
   const graphLoadedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    secretsApi
+      .list()
+      .then((res) => {
+        if (!cancelled) {
+          setAvailableSecretNames(res.data.map((s) => s.name));
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch secrets for validation:', err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Callback to sync draft state changes to React Flow
   const handleDraftStateChange = useCallback(
@@ -885,6 +905,7 @@ export const GraphPage = () => {
               onValidationError={handleValidationError}
               compiledNodes={compiledNodesMap}
               compiledNodesLoading={compiledNodesLoading}
+              availableSecretNames={availableSecretNames}
             />
           </div>
         </div>

@@ -238,6 +238,30 @@ services:
       - ./.docker/daytona-runner/entrypoint-wrapper.sh:/opt/entrypoint-wrapper.sh:ro
       - ./.docker/daytona-runner/docker-socket-proxy.bin:/opt/docker-socket-proxy:ro
 
+  openbao:
+    image: openbao/openbao:latest
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    networks:
+      - ai
+    ports:
+      - "8200:8200"
+    volumes:
+      - openbao_data:/openbao/file
+      - openbao_data:/openbao/init
+      - ./.docker/openbao/openbao-config.hcl:/openbao/config/openbao-config.hcl:ro
+      - ./.docker/openbao/entrypoint.sh:/openbao/scripts/entrypoint.sh:ro
+    entrypoint: ["sh", "/openbao/scripts/entrypoint.sh"]
+    environment:
+      - BAO_ADDR=http://127.0.0.1:8200
+    healthcheck:
+      test: ["CMD-SHELL", "bao status > /dev/null 2>&1; [ $? -le 1 ]"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   zitadel:
     image: ghcr.io/zitadel/zitadel:v3.4.7
     profiles: ["zitadel"]
@@ -312,3 +336,4 @@ volumes:
   registry:
   cliproxy-auth:
   zitadel-init-data:
+  openbao_data:

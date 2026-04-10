@@ -1,4 +1,4 @@
-import { Cpu, Database, Plug } from 'lucide-react';
+import { Cpu, Database, KeyRound, Plug } from 'lucide-react';
 import { useMemo } from 'react';
 import { Navigate, NavLink, Outlet, useLocation } from 'react-router';
 
@@ -15,6 +15,7 @@ interface SettingsNavItem {
 const BASE_NAV_ITEMS: SettingsNavItem[] = [
   { path: '/settings/integrations', label: 'Integrations', icon: Plug },
   { path: '/settings/models', label: 'Model Preferences', icon: Cpu },
+  { path: '/settings/secrets', label: 'Secrets', icon: KeyRound },
 ];
 
 export const SettingsLayout = () => {

@@ -1,6 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "emitDecoratorMetadata": false
+    "emitDecoratorMetadata": false,
+    "paths": {
+      "@packages/*": ["../../packages/*/src"]
+    }
   }
 }

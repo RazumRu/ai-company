@@ -16,7 +16,7 @@ import { useMemo } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 
 import { useAuth, useAuthModule } from '../../auth/AuthModuleContext';
-import { STORYBOOK_ENABLED } from '../../config';
+import { STORYBOOK_ENABLED, WEB_VERSION } from '../../config';
 import { useCurrentProject } from '../../hooks/useCurrentProject';
 import { useLocalStorage } from '../../hooks/useLocalStorage';
 import { useSystemSettings } from '../../hooks/useSystemSettings';
@@ -375,10 +375,10 @@ export function Layout({ children }: { children?: React.ReactNode }) {
               </Button>
             )}
           </div>
-          {!navCollapsed && settings.apiVersion && (
+          {!navCollapsed && (settings.apiVersion || WEB_VERSION !== 'dev') && (
             <div className="px-3 pb-2 pt-1">
               <p className="text-xs text-muted-foreground truncate">
-                v{settings.webVersion} / API v{settings.apiVersion}
+                v{WEB_VERSION} / API v{settings.apiVersion}
               </p>
             </div>
           )}

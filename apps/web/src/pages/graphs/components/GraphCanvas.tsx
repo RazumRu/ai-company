@@ -67,6 +67,7 @@ interface GraphCanvasProps {
   onValidationError?: (error: string) => void;
   compiledNodes?: Record<string, GraphNodeWithStatusDto>;
   compiledNodesLoading?: boolean;
+  availableSecretNames?: string[];
 }
 
 const GraphCanvasInner = ({
@@ -86,6 +87,7 @@ const GraphCanvasInner = ({
   onValidationError,
   compiledNodes,
   compiledNodesLoading,
+  availableSecretNames,
 }: GraphCanvasProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -124,10 +126,11 @@ const GraphCanvasInner = ({
           templates={templates}
           graphStatus={graphStatus}
           onTriggerClick={onTriggerClick}
+          availableSecretNames={availableSecretNames}
         />
       ),
     }),
-    [templates, graphStatus, onTriggerClick],
+    [templates, graphStatus, onTriggerClick, availableSecretNames],
   );
 
   // Store stable refs so the context value doesn't change on every render.
@@ -546,7 +549,8 @@ const MemoizedGraphCanvasInner = memo(
       prevProps.onTriggerClick === nextProps.onTriggerClick &&
       prevProps.onValidationError === nextProps.onValidationError &&
       prevProps.compiledNodes === nextProps.compiledNodes &&
-      prevProps.compiledNodesLoading === nextProps.compiledNodesLoading
+      prevProps.compiledNodesLoading === nextProps.compiledNodesLoading &&
+      prevProps.availableSecretNames === nextProps.availableSecretNames
     );
   },
 );

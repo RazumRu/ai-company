@@ -9,6 +9,7 @@ import { GraphTemplatesModule } from '../graph-templates/graph-templates.module'
 import { LitellmModule } from '../litellm/litellm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
+import { SecretsModule } from '../secrets/secrets.module';
 import { ThreadsModule } from '../threads/threads.module';
 import { GraphRevisionsController } from './controllers/graph-revisions.controller';
 import { GraphsController } from './controllers/graphs.controller';
@@ -37,6 +38,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     AgentsModule,
     ThreadsModule,
     ProjectsModule,
+    SecretsModule,
   ],
   controllers: [GraphsController, GraphRevisionsController],
   providers: [

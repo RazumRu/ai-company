@@ -448,11 +448,75 @@ export class GraphValidationService {
   /**
    * Gets validation errors for a specific node
    */
+  static checkSecretReferences(
+    node: GraphNode,
+    templates: TemplateDto[],
+    availableSecretNames?: string[],
+  ): ValidationError[] {
+    if (!availableSecretNames) {
+      return [];
+    }
+
+    const nodeData = getNodeData(node);
+    const errors: ValidationError[] = [];
+    const nodeTemplate = templates.find((t) => t.id === nodeData.template);
+
+    const schemaUnknown: unknown = nodeTemplate?.schema;
+    if (!isRecord(schemaUnknown)) {
+      return errors;
+    }
+
+    const propertiesUnknown = schemaUnknown['properties'];
+    if (!isRecord(propertiesUnknown)) {
+      return errors;
+    }
+
+    const availableSet = new Set(availableSecretNames);
+
+    for (const [key, propUnknown] of Object.entries(propertiesUnknown)) {
+      const prop = isRecord(propUnknown) ? propUnknown : undefined;
+      if (!prop) {
+        continue;
+      }
+
+      // Single secret select
+      if (prop['x-ui:secret-select'] === true) {
+        const value = nodeData.config[key];
+        if (typeof value === 'string' && value && !availableSet.has(value)) {
+          errors.push({
+            nodeId: node.id,
+            message: `Secret '${value}' not found. Create it in Settings > Secrets.`,
+            type: 'config',
+          });
+        }
+      }
+
+      // Multi secret select
+      if (prop['x-ui:secret-multi-select'] === true) {
+        const values = nodeData.config[key];
+        if (Array.isArray(values)) {
+          for (const v of values) {
+            if (typeof v === 'string' && v && !availableSet.has(v)) {
+              errors.push({
+                nodeId: node.id,
+                message: `Secret '${v}' not found. Create it in Settings > Secrets.`,
+                type: 'config',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return errors;
+  }
+
   static getNodeValidationErrors(
     nodeId: string,
     nodes: GraphNode[],
     edges: GraphEdge[],
     templates: TemplateDto[],
+    availableSecretNames?: string[],
   ): ValidationError[] {
     const node = nodes.find((n) => n.id === nodeId);
     if (!node) {
@@ -501,6 +565,14 @@ export class GraphValidationService {
     // Check for missing required configuration properties
     const configErrors = this.checkRequiredConfigProperties(node, templates);
     errors.push(...configErrors);
+
+    // Check for missing secret references
+    const secretErrors = this.checkSecretReferences(
+      node,
+      templates,
+      availableSecretNames,
+    );
+    errors.push(...secretErrors);
 
     return errors;
   }

@@ -20,6 +20,7 @@ const staticConfig =
 interface RuntimeConfig {
   API_URL?: string;
   WEBSITE_URL?: string;
+  WEB_VERSION?: string;
 }
 
 const runtimeConfig = (window as unknown as { __CONFIG__?: RuntimeConfig })
@@ -28,4 +29,5 @@ const runtimeConfig = (window as unknown as { __CONFIG__?: RuntimeConfig })
 export const API_URL = runtimeConfig?.API_URL || staticConfig.API_URL;
 export const WEBSITE_URL =
   runtimeConfig?.WEBSITE_URL || staticConfig.WEBSITE_URL;
+export const WEB_VERSION = runtimeConfig?.WEB_VERSION || 'dev';
 export const { PROJECT_ID, STORYBOOK_ENABLED } = staticConfig;
