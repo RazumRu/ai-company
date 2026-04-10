@@ -127,7 +127,19 @@ export const useChatsThreadList = (deps: UseChatsThreadListDeps) => {
   // Sync URL chatId param → selectedThreadId
   useEffect(() => {
     const incoming = chatIdParam ?? undefined;
-    setSelectedThreadId((prev) => (prev === incoming ? prev : incoming));
+    setSelectedThreadId((prev) => {
+      if (prev === incoming) {
+        return prev;
+      }
+      // When the URL chatId is cleared (e.g. navigating away from a real thread),
+      // preserve the current selection if it is a draft thread. Draft IDs are not
+      // URL-persisted, so the URL becoming empty is expected during draft creation
+      // and must not reset the selection.
+      if (!incoming && prev && isDraftThreadId(prev)) {
+        return prev;
+      }
+      return incoming;
+    });
   }, [chatIdParam]);
 
   // Sync selectedThreadId → URL chatId segment
