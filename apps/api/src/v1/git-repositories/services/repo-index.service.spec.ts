@@ -13,7 +13,11 @@ import { RepoIndexEntity } from '../entity/repo-index.entity';
 import { RepoIndexStatus } from '../git-repositories.types';
 import { RepoIndexService } from './repo-index.service';
 import { RepoIndexQueueService } from './repo-index-queue.service';
-import { RepoExecFn, RepoIndexerService } from './repo-indexer.service';
+import {
+  JobCancelledException,
+  RepoExecFn,
+  RepoIndexerService,
+} from './repo-indexer.service';
 
 vi.mock('../../../environments', () => ({
   environment: {
@@ -89,7 +93,10 @@ const mockQdrantService = {
   getCollections: vi.fn().mockResolvedValue({ collections: [] }),
   deleteCollection: vi.fn().mockResolvedValue(undefined),
 };
-const mockRuntimeProvider = {};
+const mockRuntimeProvider = {
+  provide: vi.fn(),
+  getDefaultRuntimeType: vi.fn().mockReturnValue('docker'),
+};
 const mockRuntimeInstanceDao = {
   getOne: vi.fn(),
   updateById: vi.fn(),
@@ -158,6 +165,7 @@ describe('RepoIndexService', () => {
       'text-embedding-3-small',
     );
     mockGitTokenResolverService.resolveToken.mockResolvedValue(null);
+    mockRuntimeProvider.getDefaultRuntimeType.mockReturnValue('docker');
     service = new RepoIndexService(
       mockRepoIndexDao as unknown as RepoIndexDao,
       mockGitRepositoriesDao as unknown as GitRepositoriesDao,
@@ -703,6 +711,55 @@ describe('RepoIndexService', () => {
       );
       expect(mockRepoIndexerService.runFullIndex).not.toHaveBeenCalled();
       expect(mockRepoIndexDao.updateById).not.toHaveBeenCalled();
+    });
+
+    it('wraps runtimeProvider.provide() errors with a user-friendly message', async () => {
+      mockRepoIndexDao.getOne.mockResolvedValue({
+        id: 'sandbox-fail-id',
+        status: RepoIndexStatus.Pending,
+        indexedTokens: 0,
+        estimatedTokens: 100,
+      } as unknown as RepoIndexEntity);
+      mockRepoIndexDao.updateById.mockResolvedValue(1);
+      mockRuntimeProvider.provide.mockRejectedValue(
+        new Error('docker daemon not running'),
+      );
+
+      await expect(
+        callProcessIndexJob({
+          repoIndexId: 'sandbox-fail-id',
+          repoUrl: 'https://github.com/owner/repo',
+          branch: 'main',
+        }),
+      ).rejects.toThrow('Failed to start sandbox for repository indexing');
+    });
+
+    it('exits cleanly (does not wrap) when runtimeProvider.provide() throws JobCancelledException', async () => {
+      mockRepoIndexDao.getOne.mockResolvedValue({
+        id: 'cancel-provide-id',
+        status: RepoIndexStatus.Pending,
+        indexedTokens: 0,
+        estimatedTokens: 100,
+      } as unknown as RepoIndexEntity);
+      mockRepoIndexDao.updateById.mockResolvedValue(1);
+      mockRuntimeProvider.provide.mockRejectedValue(
+        new JobCancelledException('job was cancelled'),
+      );
+
+      // JobCancelledException must propagate to the outer catch which returns
+      // cleanly — the error must NOT be wrapped into a plain Error.
+      await expect(
+        callProcessIndexJob({
+          repoIndexId: 'cancel-provide-id',
+          repoUrl: 'https://github.com/owner/repo',
+          branch: 'main',
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        'Repo index job cancelled, exiting cleanly',
+        { repoIndexId: 'cancel-provide-id' },
+      );
     });
   });
 

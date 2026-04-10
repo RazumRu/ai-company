@@ -10,6 +10,7 @@ import {
 import { Badge } from './badge';
 import { Button } from './button';
 import { GithubIcon as Github } from './icons';
+import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -201,9 +202,16 @@ export function RepoCard({
             : formatRelativeDate(repo.createdAt)}
         </span>
         {repo.index?.errorMessage && (
-          <div title={repo.index.errorMessage}>
-            <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertCircle className="w-3.5 h-3.5 text-red-500 cursor-default" />
+            </TooltipTrigger>
+            <TooltipContent
+              side="top"
+              className="max-w-xs text-left break-words">
+              {repo.index.errorMessage}
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
 
