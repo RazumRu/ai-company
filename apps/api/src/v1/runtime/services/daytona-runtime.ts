@@ -193,7 +193,7 @@ export class DaytonaRuntime extends BaseRuntime {
             `Invalidating cached snapshot for "${snapshotOrImage}" and retrying…`,
         );
 
-        await this.invalidateStaleSnapshot(snapshotOrImage);
+        await this.invalidateStaleSnapshot(snapshotOrImage, error);
         await this.cleanupSandbox(sandboxName);
 
         try {
@@ -1012,6 +1012,11 @@ export class DaytonaRuntime extends BaseRuntime {
         attempt === 1 ? commonParams.name : `${commonParams.name}-r${attempt}`;
       const params = { ...commonParams, name };
 
+      // For retry attempts, clean up any stale sandbox from a previous run
+      if (attempt > 1) {
+        await this.cleanupSandbox(name);
+      }
+
       try {
         if (snapshotOrImage) {
           return await this.daytona!.create(
@@ -1071,13 +1076,51 @@ export class DaytonaRuntime extends BaseRuntime {
   }
 
   /**
+   * Extracts a Daytona snapshot name from a "pull access denied" error message.
+   * Error format: "pull access denied for <snapshot-name>, repository..."
+   */
+  private extractSnapshotNameFromError(error: unknown): string | null {
+    if (!error) {
+      return null;
+    }
+    const msg = error instanceof Error ? error.message : String(error);
+    const match = msg.match(/pull access denied for (\S+),/);
+    return match?.[1] ?? null;
+  }
+
+  /**
    * Finds and deletes the cached Daytona snapshot built from the given image
    * so that the next sandbox creation triggers a fresh snapshot build.
    */
-  private async invalidateStaleSnapshot(imageName: string): Promise<void> {
+  private async invalidateStaleSnapshot(
+    imageName: string,
+    error?: unknown,
+  ): Promise<void> {
     try {
+      // Strategy 1: Extract snapshot name from error and delete directly
+      const snapshotName = this.extractSnapshotNameFromError(error);
+      if (snapshotName) {
+        try {
+          const directSnapshot = await this.daytona!.snapshot.get(snapshotName);
+          if (directSnapshot) {
+            this.logger?.log(
+              `[DaytonaRuntime] Deleting stale snapshot "${snapshotName}" (direct match from error)`,
+            );
+            await this.daytona!.snapshot.delete(directSnapshot);
+            return;
+          }
+        } catch {
+          // Snapshot not found by name — fall through to list-based search
+        }
+      }
+
+      // Strategy 2: Search by imageName or buildInfo in snapshot list
       const { items } = await this.daytona!.snapshot.list(1, 100);
-      const stale = items.find((s) => s.imageName === imageName);
+      const stale = items.find(
+        (s) =>
+          s.imageName === imageName ||
+          s.buildInfo?.dockerfileContent?.includes(`FROM ${imageName}`),
+      );
       if (stale) {
         this.logger?.log(
           `[DaytonaRuntime] Deleting stale snapshot "${stale.name}" (id=${stale.id})`,

@@ -98,3 +98,9 @@ export abstract class McpNodeBaseTemplate<
 > extends NodeBaseTemplate<TConfig, TResult> {
   readonly kind: NodeKind = NodeKind.Mcp;
 }
+
+export abstract class InstructionNodeBaseTemplate<
+  TConfig extends z.ZodTypeAny,
+> extends NodeBaseTemplate<TConfig, string> {
+  readonly kind: NodeKind = NodeKind.Instruction;
+}

@@ -7,10 +7,12 @@ import {
 } from '@xyflow/react';
 import {
   AlertCircle,
+  AlertTriangle,
   BookOpen,
   ChevronDown,
   ChevronUp,
   Cpu,
+  FileText,
   Play,
   Plug,
   Server,
@@ -30,7 +32,7 @@ import type {
   GraphNodeData,
 } from '../../pages/graphs/types';
 import type { ConnectionRule } from '../../pages/graphs/utils/graphCanvasUtils';
-import { makeHandleId } from '../../pages/graphs/utils/graphCanvasUtils';
+import { makeHandleId, slug } from '../../pages/graphs/utils/graphCanvasUtils';
 import { GraphValidationService } from '../../services/GraphValidationService';
 import { Avatar, AvatarFallback } from './avatar';
 import { Badge } from './badge';
@@ -47,6 +49,7 @@ export const graphNodeKindIconMap: Record<string, React.ReactNode> = {
   trigger: <Zap className="w-3 h-3" />,
   knowledge: <BookOpen className="w-3 h-3" />,
   resource: <Cpu className="w-3 h-3" />,
+  instruction: <FileText className="w-3 h-3" />,
 };
 
 /** Handle style for target (input) handles — matches the main graph canvas. */
@@ -302,12 +305,6 @@ const ensureNodeStatusPulseStyle = (() => {
   };
 })();
 
-const slug = (v: string | number | undefined | null): string =>
-  String(v ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-');
-
 type HandleHighlight = 'allowed' | 'blocked' | 'none';
 
 interface CustomNodeProps extends NodeProps {
@@ -536,7 +533,20 @@ export const CustomNode = React.memo(
           connectionPreview.template,
         );
         const outputAllowsTarget = connectionPreview.rule
-          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate)
+          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate) ||
+            // Fallback: check if ANY output from the source template matches.
+            // Collapsed nodes fire from the first handle, but findCompatibleHandles
+            // will reassign to a valid pair on drop.
+            (connectionPreview.template.outputs?.some((output) =>
+              matchesRuleForTemplate(
+                {
+                  type: output.type as 'kind' | 'template',
+                  value: String(output.value),
+                },
+                nodeTemplate,
+              ),
+            ) ??
+              false)
           : true;
         if (!inputAllowsSource || !outputAllowsTarget) {
           return 'blocked';
@@ -550,7 +560,20 @@ export const CustomNode = React.memo(
           connectionPreview.template,
         );
         const inputAllowsSource = connectionPreview.rule
-          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate)
+          ? matchesRuleForTemplate(connectionPreview.rule, nodeTemplate) ||
+            // Fallback: check if ANY input from the source template matches.
+            // Collapsed nodes fire from the first handle, but findCompatibleHandles
+            // will reassign to a valid pair on drop.
+            (connectionPreview.template.inputs?.some((input) =>
+              matchesRuleForTemplate(
+                {
+                  type: input.type as 'kind' | 'template',
+                  value: String(input.value),
+                },
+                nodeTemplate,
+              ),
+            ) ??
+              false)
           : true;
         if (!outputAllowsTarget || !inputAllowsSource) {
           return 'blocked';
@@ -602,6 +625,13 @@ export const CustomNode = React.memo(
     const templateKind = nodeTemplate?.kind ?? nodeData.templateKind;
     const templateKindLower = (templateKind || '').toLowerCase();
     const isAgentNode = templateKindLower === 'simpleagent';
+    const isSystemAgent = Boolean(
+      (nodeData.config as Record<string, unknown>)?.systemAgentId,
+    );
+    const systemAgentTemplate = isSystemAgent
+      ? templates.find((t) => t.id === nodeData.template)
+      : undefined;
+    const isSystemAgentDeprecated = isSystemAgent && !systemAgentTemplate;
     const showNodeStatus = ['runtime', 'mcp', 'trigger'].includes(
       templateKindLower,
     );
@@ -701,6 +731,16 @@ export const CustomNode = React.memo(
             </TooltipContent>
           </Tooltip>
         )}
+        {isSystemAgentDeprecated && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              This system agent definition has been removed
+            </TooltipContent>
+          </Tooltip>
+        )}
         {ctxOnNodeDelete && (
           <button
             className="nodrag text-muted-foreground/40 hover:text-destructive transition-colors flex-shrink-0"
@@ -755,7 +795,7 @@ export const CustomNode = React.memo(
               <Handle
                 type="target"
                 id={id}
-                isConnectable={isConnectable ?? true}
+                isConnectable={isConnectable}
                 position={Position.Left}
                 style={{
                   width: '12px',
@@ -858,7 +898,7 @@ export const CustomNode = React.memo(
                 key={id}
                 type="target"
                 id={id}
-                isConnectable={isConnectable ?? true}
+                isConnectable={isConnectable}
                 position={Position.Left}
                 style={{
                   width: '12px',
@@ -967,7 +1007,7 @@ export const CustomNode = React.memo(
               <Handle
                 type="source"
                 id={id}
-                isConnectable={isConnectable ?? true}
+                isConnectable={isConnectable}
                 position={Position.Right}
                 style={{
                   background: visuals.background,
@@ -991,23 +1031,28 @@ export const CustomNode = React.memo(
             <span className="text-[10px] text-muted-foreground mr-2 whitespace-nowrap">
               output
             </span>
-            <Handle
-              type="source"
-              id="source-out"
-              isConnectable={isConnectable ?? true}
-              position={Position.Right}
-              style={{
-                background: color('source', false, outMissing).bg,
-                border: color('source', false, outMissing).br,
-                boxShadow: color('source', false, outMissing).sh,
-                width: '12px',
-                height: '12px',
-                position: 'absolute',
-                right: '-18px',
-                top: '50%',
-                transform: 'translateY(-50%)',
-              }}
-            />
+            {(() => {
+              const outColor = color('source', false, outMissing);
+              return (
+                <Handle
+                  type="source"
+                  id="source-out"
+                  isConnectable={isConnectable}
+                  position={Position.Right}
+                  style={{
+                    background: outColor.bg,
+                    border: outColor.br,
+                    boxShadow: outColor.sh,
+                    width: '12px',
+                    height: '12px',
+                    position: 'absolute',
+                    right: '-18px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                  }}
+                />
+              );
+            })()}
           </div>
         )}
       </div>
@@ -1091,7 +1136,7 @@ export const CustomNode = React.memo(
                     key={id}
                     type="source"
                     id={id}
-                    isConnectable={isConnectable ?? true}
+                    isConnectable={isConnectable}
                     position={Position.Right}
                     style={{
                       width: '12px',
@@ -1142,23 +1187,28 @@ export const CustomNode = React.memo(
         <span className="text-[10px] text-muted-foreground mr-2 whitespace-nowrap">
           output
         </span>
-        <Handle
-          type="source"
-          id="source-out"
-          isConnectable={isConnectable ?? true}
-          position={Position.Right}
-          style={{
-            background: color('source', false, outMissing).bg,
-            border: color('source', false, outMissing).br,
-            boxShadow: color('source', false, outMissing).sh,
-            width: '12px',
-            height: '12px',
-            position: 'absolute',
-            right: '-18px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-          }}
-        />
+        {(() => {
+          const outColor = color('source', false, outMissing);
+          return (
+            <Handle
+              type="source"
+              id="source-out"
+              isConnectable={isConnectable}
+              position={Position.Right}
+              style={{
+                background: outColor.bg,
+                border: outColor.br,
+                boxShadow: outColor.sh,
+                width: '12px',
+                height: '12px',
+                position: 'absolute',
+                right: '-18px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }}
+            />
+          );
+        })()}
       </div>
     );
 

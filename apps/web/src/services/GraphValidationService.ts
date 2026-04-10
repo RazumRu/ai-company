@@ -7,6 +7,7 @@ import type {
   GraphNode,
   GraphNodeData,
 } from '../pages/graphs/types';
+import { makeHandleId, slug } from '../pages/graphs/utils/graphCanvasUtils';
 
 export interface ValidationError {
   nodeId: string;
@@ -35,17 +36,6 @@ export interface ConfigValidationResult {
   errors: ValidationError[];
   normalizedConfigsByNodeId: Record<string, Record<string, unknown>>;
 }
-
-const slug = (v: string | number | undefined | null): string =>
-  String(v ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]+/g, '-');
-
-const makeHandleId = (
-  dir: 'source' | 'target',
-  rule: Pick<ConnectionRule, 'type' | 'value'>,
-): string => `${dir}-${rule.type}-${slug(rule.value)}`;
 
 const getNodeData = (node: GraphNode): GraphNodeData =>
   node.data as unknown as GraphNodeData;
@@ -159,8 +149,7 @@ export class GraphValidationService {
         derefSchemasByTemplateId.set(templateId, schema);
       }
 
-      const cacheKey = templateId;
-      const cached = validatorCache.get(cacheKey);
+      const cached = validatorCache.get(templateId);
       let validate: ValidateFunction;
       if (cached && cached.schemaRef === schema) {
         validate = cached.validate;
@@ -168,7 +157,7 @@ export class GraphValidationService {
         // Ajv schema type is `object | boolean`. Our templates always send an object schema,
         // but we keep this cast explicit to satisfy TS without weakening other types.
         validate = ajv.compile(schema as object);
-        validatorCache.set(cacheKey, { schemaRef: schema, validate });
+        validatorCache.set(templateId, { schemaRef: schema, validate });
       }
 
       const config = cloneJson(nodeData.config as Record<string, unknown>);
@@ -422,16 +411,13 @@ export class GraphValidationService {
     );
   }
 
-  /**
-   * Checks if a connection is allowed based on outputs rules
-   */
   private static isConnectionAllowed(
     outputs: ConnectionRule[],
     targetTemplate: TemplateDto,
   ): boolean {
-    return outputs.some((rule) => {
-      return this.isRuleAllowingTemplate(rule, targetTemplate);
-    });
+    return outputs.some((rule) =>
+      this.isRuleAllowingTemplate(rule, targetTemplate),
+    );
   }
 
   private static isTemplateAcceptedByInputs(
@@ -562,9 +548,6 @@ export class GraphValidationService {
     return errors;
   }
 
-  /**
-   * Checks if a node has a specific required connection
-   */
   private static hasRequiredConnection(
     node: GraphNode,
     requiredRule: TemplateDtoInputsInner,

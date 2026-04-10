@@ -13,15 +13,44 @@ export class TemplatesService {
   async getAllTemplates(): Promise<TemplateDto[]> {
     const templates = this.templateRegistry.getAllTemplates();
 
-    const list: TemplateDto[] = templates.map((template) => ({
-      id: template.id,
-      name: template.name,
-      description: template.description,
-      kind: template.kind,
-      schema: this.serializeSchema(template.schema),
-      inputs: template.inputs ? [...template.inputs] : undefined,
-      outputs: template.outputs ? [...template.outputs] : undefined,
-    }));
+    const list: TemplateDto[] = templates.map((template) => {
+      const base: TemplateDto = {
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        kind: template.kind,
+        schema: this.serializeSchema(template.schema),
+        inputs: template.inputs ? [...template.inputs] : undefined,
+        outputs: template.outputs ? [...template.outputs] : undefined,
+      };
+
+      const tmpl = template as typeof template & {
+        systemAgentId?: string;
+        systemAgentContentHash?: string;
+        systemAgentPredefinedTools?: string[];
+        instructionBlockId?: string;
+        instructionBlockContentHash?: string;
+      };
+
+      if (tmpl.systemAgentId) {
+        return {
+          ...base,
+          systemAgentId: tmpl.systemAgentId,
+          systemAgentContentHash: tmpl.systemAgentContentHash,
+          systemAgentPredefinedTools: tmpl.systemAgentPredefinedTools,
+        };
+      }
+
+      if (tmpl.instructionBlockId) {
+        return {
+          ...base,
+          instructionBlockId: tmpl.instructionBlockId,
+          instructionBlockContentHash: tmpl.instructionBlockContentHash,
+        };
+      }
+
+      return base;
+    });
 
     return sortBy(list, 'kind');
   }

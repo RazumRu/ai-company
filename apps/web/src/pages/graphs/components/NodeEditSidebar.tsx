@@ -3,6 +3,7 @@ import { createTwoFilesPatch } from 'diff';
 import { isEqual } from 'lodash';
 import {
   AlertCircle,
+  AlertTriangle,
   Check,
   FileText,
   Info,
@@ -41,6 +42,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '../../../components/ui/tooltip';
+import { cn } from '../../../components/ui/utils';
 import { extractApiErrorMessage } from '../../../utils/errors';
 import { getStatusBadgeClass } from '../../../utils/statusColors';
 import { toastMessage } from '../../../utils/toastAdapter';
@@ -96,6 +98,17 @@ interface NodeEditSidebarProps {
   /** Whether the GitHub App integration is enabled (for conditional form fields). */
   githubAppEnabled?: boolean;
 }
+
+const SYSTEM_AGENT_INTERNAL_FIELDS = [
+  'systemAgentId',
+  'systemAgentContentHash',
+  'instructions',
+] as const;
+
+const INSTRUCTION_BLOCK_INTERNAL_FIELDS = [
+  'instructionBlockId',
+  'instructionBlockContentHash',
+] as const;
 
 export type AiSuggestionState = {
   fieldKey: string;
@@ -180,9 +193,8 @@ export const NodeEditSidebar = React.memo(
     );
 
     // For AI suggestion modal, we need to warn if there are unsaved changes that AI won't see
-    const nodeDirtyWarning = useMemo(() => {
-      return hasLocalUnsavedChanges || Boolean(hasNodeUnsavedChangesFromServer);
-    }, [hasLocalUnsavedChanges, hasNodeUnsavedChangesFromServer]);
+    const nodeDirtyWarning =
+      hasLocalUnsavedChanges || Boolean(hasNodeUnsavedChangesFromServer);
 
     // Track the previous node ID to detect node switches
     const prevNodeIdRef = useRef<string | undefined>(undefined);
@@ -192,7 +204,7 @@ export const NodeEditSidebar = React.memo(
 
     useEffect(() => {
       nodeRef.current = node;
-    }, [node, selectedNodeId]);
+    }, [node]);
 
     // Reset local unsaved changes when the parent signals that the graph was saved
     useEffect(() => {
@@ -258,33 +270,47 @@ export const NodeEditSidebar = React.memo(
     const templateKind = nodeTemplate?.kind ?? nodeData?.templateKind;
     const templateKindLower = (templateKind || '').toLowerCase();
     const isAgentNode = templateKindLower === 'simpleagent';
+    const nodeConfig = (nodeData?.config ?? {}) as Record<string, unknown>;
+    const isSystemAgent = Boolean(nodeConfig.systemAgentId);
+    const isInstructionBlock = Boolean(
+      (nodeTemplate as Record<string, unknown> | undefined)?.instructionBlockId,
+    );
+    const systemAgentId = isSystemAgent
+      ? String(nodeConfig.systemAgentId)
+      : null;
+    const isSystemAgentDeprecated = isSystemAgent && !nodeTemplate;
     const isGraphRunning = graphStatus === GraphDtoStatusEnum.Running;
     const showNodeStatus = ['runtime', 'simpleagent', 'trigger'].includes(
       templateKindLower,
     );
     const [instructionsVisible, setInstructionsVisible] = useState(false);
     const [toolsVisible, setToolsVisible] = useState(false);
+
+    const formatInstructionsValue = useCallback((value: unknown) => {
+      if (value === undefined || value === null) {
+        return '';
+      }
+      if (typeof value === 'string') {
+        return value;
+      }
+      if (Array.isArray(value)) {
+        return value.map((item) => String(item)).join('\n\n');
+      }
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    }, []);
+
     const agentInstructionsText = useMemo(() => {
       const instructions = (
         compiledNode?.additionalNodeMetadata as unknown as {
           instructions?: unknown;
         }
       )?.instructions;
-      if (instructions === undefined || instructions === null) {
-        return '';
-      }
-      if (typeof instructions === 'string') {
-        return instructions;
-      }
-      if (Array.isArray(instructions)) {
-        return instructions.map((item) => String(item)).join('\n\n');
-      }
-      try {
-        return JSON.stringify(instructions, null, 2);
-      } catch {
-        return String(instructions);
-      }
-    }, [compiledNode?.additionalNodeMetadata]);
+      return formatInstructionsValue(instructions);
+    }, [compiledNode?.additionalNodeMetadata, formatInstructionsValue]);
 
     const connectedTools = useMemo(() => {
       return (
@@ -308,7 +334,9 @@ export const NodeEditSidebar = React.memo(
         ? 'Loading instructions...'
         : instructionsAvailable
           ? 'View current agent instructions'
-          : 'Instructions are not available for this node yet';
+          : compiledNode
+            ? 'Instructions are not available for this node yet'
+            : 'Restart the graph to load instructions';
 
     const toolsAvailable = connectedTools.length > 0;
     const toolsButtonDisabled =
@@ -337,23 +365,6 @@ export const NodeEditSidebar = React.memo(
         expandedTextarea.fieldKey;
       return { prop, label };
     }, [expandedTextarea, schemaProperties]);
-
-    const formatInstructionsValue = useCallback((value: unknown) => {
-      if (value === undefined || value === null) {
-        return '';
-      }
-      if (typeof value === 'string') {
-        return value;
-      }
-      if (Array.isArray(value)) {
-        return value.map((item) => String(item)).join('\n\n');
-      }
-      try {
-        return JSON.stringify(value, null, 2);
-      } catch {
-        return String(value);
-      }
-    }, []);
 
     const aiInitialInstructions = aiSuggestionState?.initialInstructions ?? '';
     const aiLastSuggestedInstructions =
@@ -429,7 +440,7 @@ export const NodeEditSidebar = React.memo(
         ? 'Loading...'
         : rawStatus
           ? `${rawStatus.charAt(0).toUpperCase()}${rawStatus.slice(1)}`
-          : 'Unknown';
+          : 'Not compiled';
 
     const statusBadgeKey = !isGraphRunning
       ? 'stopped'
@@ -452,60 +463,39 @@ export const NodeEditSidebar = React.memo(
     const hasInfoData = Boolean(metadataJsonValue || configJsonValue);
 
     const infoContent = (
-      <div style={{ maxWidth: 360 }}>
+      <div className="max-w-[360px]">
         {compiledNodesLoading && (
           <span
-            className="text-muted-foreground"
-            style={{
-              display: 'block',
-              marginBottom: hasInfoData ? 8 : 0,
-            }}>
+            className={cn(
+              'block text-muted-foreground',
+              hasInfoData && 'mb-2',
+            )}>
             Loading latest node information...
           </span>
         )}
         {metadataJsonValue && (
-          <div style={{ marginBottom: configJsonValue ? 16 : 0 }}>
-            <span
-              className="text-sm font-semibold"
-              style={{ display: 'block', marginBottom: 8 }}>
-              Metadata
-            </span>
-            <div
-              style={{
-                maxHeight: 240,
-                overflow: 'auto',
-                border: '1px solid #f0f0f0',
-                borderRadius: 6,
-                padding: 8,
-                background: '#fafafa',
-              }}>
+          <div className={cn(configJsonValue && 'mb-4')}>
+            <span className="block text-sm font-semibold mb-2">Metadata</span>
+            <div className="max-h-60 overflow-auto border border-border rounded-md p-2 bg-muted/50">
               <JsonViewer value={metadataJsonValue as object} />
             </div>
           </div>
         )}
         {configJsonValue && (
           <div>
-            <span
-              className="text-sm font-semibold"
-              style={{ display: 'block', marginBottom: 8 }}>
+            <span className="block text-sm font-semibold mb-2">
               Configuration
             </span>
-            <div
-              style={{
-                maxHeight: 240,
-                overflow: 'auto',
-                border: '1px solid #f0f0f0',
-                borderRadius: 6,
-                padding: 8,
-                background: '#fafafa',
-              }}>
+            <div className="max-h-60 overflow-auto border border-border rounded-md p-2 bg-muted/50">
               <JsonViewer value={configJsonValue as object} />
             </div>
           </div>
         )}
         {!compiledNodesLoading && !hasInfoData && (
-          <span className="text-muted-foreground">
-            No metadata or configuration available.
+          <span className="text-muted-foreground text-sm">
+            {isGraphRunning && !compiledNode
+              ? 'Restart the graph to load node data.'
+              : 'No metadata or configuration available.'}
           </span>
         )}
       </div>
@@ -995,79 +985,112 @@ export const NodeEditSidebar = React.memo(
     const isTriggerNode = templateKindLower === 'trigger';
     const canTrigger = isTriggerNode && isGraphRunning;
 
-    const renderOptionsTabContent = useCallback(() => {
-      return (
+    const visibleTemplateSchema = useMemo(() => {
+      if (!templateSchema || (!isSystemAgent && !isInstructionBlock)) {
+        return templateSchema;
+      }
+      const props = (templateSchema as { properties?: Record<string, unknown> })
+        ?.properties;
+      if (!props) {
+        return templateSchema;
+      }
+      const filteredProps = Object.fromEntries(
+        Object.entries(props).filter(
+          ([key]) =>
+            !(
+              isSystemAgent &&
+              SYSTEM_AGENT_INTERNAL_FIELDS.includes(
+                key as (typeof SYSTEM_AGENT_INTERNAL_FIELDS)[number],
+              )
+            ) &&
+            !(
+              isInstructionBlock &&
+              INSTRUCTION_BLOCK_INTERNAL_FIELDS.includes(
+                key as (typeof INSTRUCTION_BLOCK_INTERNAL_FIELDS)[number],
+              )
+            ),
+        ),
+      );
+      // Mark name and content as read-only for predefined instruction blocks
+      if (isInstructionBlock) {
+        for (const key of ['name', 'content'] as const) {
+          if (filteredProps[key] && typeof filteredProps[key] === 'object') {
+            filteredProps[key] = {
+              ...(filteredProps[key] as Record<string, unknown>),
+              'x-ui:readonly': true,
+            };
+          }
+        }
+      }
+
+      return { ...templateSchema, properties: filteredProps };
+    }, [templateSchema, isSystemAgent, isInstructionBlock]);
+
+    const visibleSchemaPropertyKeys = useMemo(() => {
+      const props = (
+        visibleTemplateSchema as { properties?: Record<string, unknown> } | null
+      )?.properties;
+      return props ? Object.keys(props) : schemaPropertyKeys;
+    }, [visibleTemplateSchema, schemaPropertyKeys]);
+
+    const optionsTabContent = (
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '8px 4px 0 4px',
+          }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}>
+            <span className="text-base font-semibold">Configuration</span>
+          </div>
+        </div>
+
         <div
           style={{
             flex: 1,
             minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
+            overflow: 'auto',
+            padding: '0 4px 8px 4px',
           }}>
-          <div
-            style={{
-              flexShrink: 0,
-              padding: '8px 4px 0 4px',
-            }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 8,
-              }}>
-              <span className="text-base font-semibold">Configuration</span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'auto',
-              padding: '0 4px 8px 4px',
-            }}>
-            {templateSchema && schemaPropertyKeys.length > 0 ? (
-              <TemplateConfigForm
-                schema={templateSchema}
-                formData={configFormData}
-                onChange={handleConfigFormChange}
-                liteLlmModels={liteLlmModels}
-                litellmModelsLoading={litellmModelsLoading}
-                onOpenExpandedTextarea={(fieldKey, value) =>
-                  setExpandedTextarea({ fieldKey, value })
-                }
-                onOpenAiSuggestion={(fieldKey, fieldLabel, value) =>
-                  openAiSuggestionModal(fieldKey, fieldLabel, value)
-                }
-                aiSuggestionEnabled={Boolean(
-                  isGraphRunning && graphId && node?.id,
-                )}
-                githubAppEnabled={githubAppEnabled}
-                templateId={nodeData?.template}
-              />
-            ) : (
-              <span className="text-muted-foreground">
-                No configuration options available for this template.
-              </span>
-            )}
-          </div>
+          {visibleTemplateSchema && visibleSchemaPropertyKeys.length > 0 ? (
+            <TemplateConfigForm
+              schema={visibleTemplateSchema}
+              formData={configFormData}
+              onChange={handleConfigFormChange}
+              liteLlmModels={liteLlmModels}
+              litellmModelsLoading={litellmModelsLoading}
+              onOpenExpandedTextarea={(fieldKey, value) =>
+                setExpandedTextarea({ fieldKey, value })
+              }
+              onOpenAiSuggestion={(fieldKey, fieldLabel, value) =>
+                openAiSuggestionModal(fieldKey, fieldLabel, value)
+              }
+              aiSuggestionEnabled={Boolean(
+                isGraphRunning && graphId && node?.id,
+              )}
+              githubAppEnabled={githubAppEnabled}
+              templateId={nodeData?.template}
+            />
+          ) : (
+            <span className="text-muted-foreground">
+              No configuration options available for this template.
+            </span>
+          )}
         </div>
-      );
-    }, [
-      configFormData,
-      githubAppEnabled,
-      graphId,
-      handleConfigFormChange,
-      isGraphRunning,
-      liteLlmModels,
-      litellmModelsLoading,
-      node?.id,
-      nodeData?.template,
-      openAiSuggestionModal,
-      schemaPropertyKeys.length,
-      templateSchema,
-    ]);
+      </div>
+    );
 
     if (!visible) {
       return null;
@@ -1287,6 +1310,47 @@ export const NodeEditSidebar = React.memo(
             )}
           </div>
 
+          {isSystemAgentDeprecated && (
+            <div className="px-4 py-2 bg-destructive/10 border border-destructive/20 flex-shrink-0 mb-2 rounded-md">
+              <div className="flex items-center gap-1.5">
+                <AlertTriangle className="size-3.5 text-destructive shrink-0" />
+                <span className="text-xs text-destructive">
+                  This system agent definition has been removed. The node
+                  continues to work with its saved configuration.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {nodeTemplate?.systemAgentPredefinedTools &&
+            nodeTemplate.systemAgentPredefinedTools.length > 0 && (
+              <div className="px-1 py-2 flex-shrink-0 mb-2">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Predefined Tools
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {nodeTemplate.systemAgentPredefinedTools.map(
+                    (toolId: string) => {
+                      const toolTemplate = templates.find(
+                        (t) => t.id === toolId,
+                      );
+                      return (
+                        <Badge
+                          key={toolId}
+                          variant="outline"
+                          className="text-xs">
+                          {toolTemplate?.name ?? toolId}
+                        </Badge>
+                      );
+                    },
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Connect a tool manually to override its default configuration.
+                </p>
+              </div>
+            )}
+
           <div
             style={{
               flex: 1,
@@ -1295,7 +1359,7 @@ export const NodeEditSidebar = React.memo(
               display: 'flex',
               flexDirection: 'column',
             }}>
-            {renderOptionsTabContent()}
+            {optionsTabContent}
           </div>
         </div>
 

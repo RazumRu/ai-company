@@ -141,6 +141,20 @@ export const GraphPageHeader: FC<GraphPageHeaderProps> = ({
                       {displayedRevisionMeta.label}
                     </Badge>
                   )}
+                  {lastFailedRevision && (
+                    <>
+                      <span className="text-xs font-mono text-muted-foreground">
+                        v{lastFailedRevision.toVersion}
+                      </span>
+                      <Badge
+                        className="text-[11px] px-1.5 py-0 h-4 font-medium border-0 text-white"
+                        style={{
+                          backgroundColor: REVISION_STATUS_STYLES.failed.color,
+                        }}>
+                        Failed
+                      </Badge>
+                    </>
+                  )}
                 </>
               )}
             </PickerTrigger>

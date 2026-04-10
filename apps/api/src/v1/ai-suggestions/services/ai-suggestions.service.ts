@@ -14,6 +14,7 @@ import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseMcp } from '../../agent-mcp/services/base-mcp';
 import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
+import { wrapBlock } from '../../graph-templates/templates/agents/agent-instructions.utils';
 import { ToolNodeOutput } from '../../graph-templates/templates/base-node.template';
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageDto } from '../../graphs/dto/graphs.dto';
@@ -90,40 +91,67 @@ const INSTRUCTION_BEST_PRACTICES = [
   '<instruction_quality_guidelines>',
   'When rewriting instructions, apply these prompt-engineering best practices:',
   '',
-  'Structure:',
-  '- Use XML tags (e.g. <role>, <tools>, <workflow>, <guardrails>, <examples>) to separate concerns. This prevents the model from conflating instructions with context or examples.',
-  '- Keep role definitions rich and specific — include specialization, experience level, and behavioral traits. Deeper role context yields better performance on complex tasks.',
-  '- Use consistent tag names throughout; refer to tags by name when directing the model.',
-  '- Nest tags for hierarchical content.',
+  '## Structure Principles',
+  '- Use a clear section hierarchy: Identity/Role → Goal/Objective → Approach → Behavioral Constraints → Output Format. This ordering front-loads the most critical context and mirrors how models process instructions.',
+  '- Use XML tags (e.g. <role>, <tools>, <workflow>, <guardrails>, <examples>) to separate concerns — this prevents the model from conflating instructions with context or examples.',
+  '- Front-load the most critical instructions — models pay more attention to content near the start of the prompt.',
+  '- Group related rules under descriptive headings — scattered rules get lost and are harder for the model to apply consistently.',
+  '- Use consistent tag names throughout; refer to tags by name when directing the model (e.g. "Follow the steps in <workflow>").',
+  '- Nest tags for hierarchical content (e.g. <workflow><step>...</step></workflow>).',
   '',
-  'Writing style:',
-  '- Prefer positive instructions over negatives. Instead of "Do NOT re-read files", write "Trust the upstream analysis and proceed directly. Only re-read a file if an edit fails."',
-  '- Provide context/motivation for important rules so the model understands *why* and can generalize.',
+  '## Role & Identity',
+  '- Define a specific, actionable role — not just "be helpful" but a specialized role with experience level and behavioral traits (e.g. "You are a senior backend engineer who values correctness over speed and always validates assumptions before acting").',
+  '- Include a goal statement that explains WHAT the agent should accomplish, not just HOW to behave.',
+  '- Add contextual backstory or motivation that shapes HOW the agent approaches tasks — this helps the model generalize instructions to unlisted scenarios.',
+  '',
+  '## Writing Style',
+  '- Prefer positive instructions over negatives. Instead of "Do NOT re-read files", write "Trust the upstream analysis and proceed directly." Positive framing is clearer and easier to follow.',
+  '- Provide context or motivation for important rules so the model understands *why* and can generalize. Example: "Read the file before editing it — edits applied to stale context silently corrupt content."',
   '- Be explicit about desired behavior — request it directly rather than relying on implication.',
   '- Use calm, normal phrasing. Avoid excessive caps, "CRITICAL", "NEVER", "MUST" — modern models follow instructions more precisely and overtrigger on urgent language.',
   '- Deduplicate: state each rule once in one authoritative section. Repetition dilutes signal and wastes context tokens.',
   '',
-  'Tool & workflow guidance:',
-  '- Describe tools by what they enable, not just what they do (e.g. "Use files_read to verify assumptions or read lines you plan to edit").',
+  '## Tool & Workflow Guidance',
+  '- Describe tools by what they enable, not just what they do. Example: "Use files_read to verify assumptions or inspect lines you plan to edit before making changes."',
   '- Include concrete examples for key behaviors — one example teaches more than a paragraph of abstract rules.',
-  '- Define effort scaling: when to take shortcuts vs. follow the full workflow.',
-  '- Specify output format explicitly (sections, JSON schema, bullet points).',
+  '- Define sequencing guidance when tool order matters. Example: "Always read a file before editing it; always run tests after implementing a change."',
+  '- Specify output format explicitly (sections, JSON schema, bullet points, etc.).',
+  '- Define effort scaling: when to take shortcuts vs. follow the full workflow (e.g. "For trivial one-liner fixes, skip the full analysis pass").',
   '',
-  'Multi-agent coordination (when applicable):',
-  '- Forward context verbatim between agents — summarizing loses critical details.',
-  '- Include exploredFiles in handoffs so downstream agents skip redundant file reads.',
-  '- Instruct downstream agents to trust upstream analysis and proceed directly rather than re-exploring.',
-  '- Define clear task boundaries: objective, expected output format, tools to use, and what is out of scope.',
+  '## Constraints & Rules',
+  '- Prefer affirmative rules ("Always do X") over prohibitive ones ("Never do Y") — but use both when the distinction matters.',
+  '- Prioritize constraints: state which rule wins when two conflict, rather than leaving the model to guess.',
+  '- Add brief justification for each constraint — "why" improves adherence because the model can apply the intent to unlisted situations.',
+  '- Make constraints testable — if you cannot verify compliance, the rule is too vague (e.g. "Respond in under 200 words" is testable; "Be concise" is not).',
+  '- Group constraints by topic, not as a random flat list.',
   '',
-  'Context window management:',
-  '- Add compaction awareness: "Your context window will be compacted automatically. Do not stop tasks early. Save progress before compaction."',
-  '- Encourage incremental progress and structured state tracking for long tasks.',
+  '## The Goldilocks Principle',
+  '- Too specific/brittle: enumerating every edge case overstuffs the context window and breaks on unlisted scenarios.',
+  '- Too vague: "be helpful and accurate" gives no actionable signal.',
+  '- Sweet spot: strong heuristics plus diverse canonical examples, not exhaustive rule lists. The model should be able to extrapolate from your examples to cases you did not anticipate.',
   '',
-  'Anti-patterns to avoid in the output:',
+  '## Multi-Agent Coordination (when applicable)',
+  '- Forward context verbatim between agents — summarizing loses critical details that downstream agents need.',
+  '- Include exploredFiles in handoffs so downstream agents skip redundant file reads and proceed directly to the task.',
+  '- Instruct downstream agents to trust upstream analysis and avoid re-exploring what has already been covered.',
+  '- Define clear task boundaries for each agent: objective, expected output format, tools to use, and what is out of scope.',
+  '',
+  '## Context Window Management',
+  '- Add compaction awareness for long tasks: instruct the agent to save progress incrementally so work is not lost if the context is compacted.',
+  '- Encourage structured state tracking (e.g. a checklist or progress log) so the agent can resume after interruption without starting over.',
+  '',
+  '## Anti-Patterns to Eliminate',
+  '- Vague role definitions ("be helpful", "assist the user") — always use a specific role with behavioral traits.',
+  '- Flat prose walls without structure — use XML tags and headings to separate concerns.',
+  '- Contradictory rules without priority — always state which rule wins when two conflict.',
+  '- Hardcoded repo-specific details (commands, filenames, paths) — instructions should be generic and receive repo-specific context at runtime.',
+  '- Redundant tool descriptions that duplicate auto-injected tool guidance — trust the tool definitions and focus on workflow sequencing.',
+  '- No examples or demonstrations of correct behavior — at least one canonical example per key behavior.',
+  '- Laundry-list edge cases instead of general heuristics — teach the pattern, not every instance.',
   '- Mixing instructions with examples in flat paragraphs without structural separation.',
-  '- Repeating the same rule in multiple sections.',
-  '- Leaving output format ambiguous.',
-  '- Passing absolute filesystem paths between isolated agents (use repo-relative paths).',
+  '- Repeating the same rule in multiple sections — state each rule once in one authoritative place.',
+  '- Leaving output format ambiguous — always specify the expected structure.',
+  '- Passing absolute filesystem paths between isolated agents — use repo-relative paths.',
   '</instruction_quality_guidelines>',
 ].join('\n');
 
@@ -640,24 +668,28 @@ export class AiSuggestionsService {
       ? this.formatMessagesCompact(data.messages)
       : 'No messages available for this thread.';
 
-    const wrapBlock = (id: string, purpose: string, content: string): string =>
+    const wrapSectionBlock = (
+      id: string,
+      purpose: string,
+      content: string,
+    ): string =>
       [
         `<<<BLOCK id=${id} purpose="${purpose}">>>`,
         content,
         `<<<END BLOCK id=${id}>>>`,
       ].join('\n');
 
-    const statusBlock = wrapBlock(
+    const statusBlock = wrapSectionBlock(
       'information',
       'General information',
       [threadStatusLine, ...(userInputSection || [])].join('\n\n'),
     );
-    const agentsBlock = wrapBlock(
+    const agentsBlock = wrapSectionBlock(
       'agents',
       'Providing information about agents',
       ['Agents configuration:', agentSection].join('\n\n'),
     );
-    const messagesBlock = wrapBlock(
+    const messagesBlock = wrapSectionBlock(
       'messages',
       'Thread messages',
       ['Thread messages (oldest first):', messagesSection].join('\n\n'),
@@ -1009,7 +1041,7 @@ export class AiSuggestionsService {
           return undefined;
         }
 
-        return this.wrapBlock(trimmed, 'mcp_instructions');
+        return wrapBlock(trimmed, 'mcp_instructions');
       })
       .filter((block): block is string => Boolean(block));
 
@@ -1193,7 +1225,7 @@ export class AiSuggestionsService {
 
     if (tool.instructions) {
       details.push(
-        `Instructions:\n${this.wrapBlock(tool.instructions, 'tool_description')}`,
+        `Instructions:\n${wrapBlock(tool.instructions, 'tool_description')}`,
       );
     }
 
@@ -1258,10 +1290,7 @@ export class AiSuggestionsService {
         const details = [`Name: ${mcp.name}`];
         if (mcp.instructions) {
           details.push(
-            `Instructions:\n${this.wrapBlock(
-              mcp.instructions,
-              'mcp_instructions',
-            )}`,
+            `Instructions:\n${wrapBlock(mcp.instructions, 'mcp_instructions')}`,
           );
         }
         return details.join('\n');
@@ -1346,10 +1375,6 @@ export class AiSuggestionsService {
       'Remember: reference-only blocks must never be copied into output.',
       'Return JSON only. Only include updates for agents whose instructions must change.',
     ].join('\n\n');
-  }
-
-  private wrapBlock(content: string, tag: string): string {
-    return [`<${tag}>`, content, `</${tag}>`].join('\n');
   }
 
   private validateKnowledgeSuggestionResponse(value: unknown):

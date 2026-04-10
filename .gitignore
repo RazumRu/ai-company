@@ -75,3 +75,8 @@ apps/web/public/config.js
 
 .claude/.artifacts/
 .claude/.state/
+.geniro/
+!.geniro/workflow/
+!.geniro/workflow/**
+!.geniro/instructions/
+!.geniro/instructions/**

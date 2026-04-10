@@ -2293,6 +2293,61 @@ export interface SyncRepositoriesResponseDto {
 /**
  *
  * @export
+ * @interface SystemAgentResponseDto
+ */
+export interface SystemAgentResponseDto {
+  /**
+   *
+   * @type {string}
+   * @memberof SystemAgentResponseDto
+   */
+  'id': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SystemAgentResponseDto
+   */
+  'templateId': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SystemAgentResponseDto
+   */
+  'name': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SystemAgentResponseDto
+   */
+  'description': string;
+  /**
+   *
+   * @type {Array<string>}
+   * @memberof SystemAgentResponseDto
+   */
+  'tools': Array<string>;
+  /**
+   *
+   * @type {string}
+   * @memberof SystemAgentResponseDto
+   */
+  'defaultModel': string | null;
+  /**
+   *
+   * @type {string}
+   * @memberof SystemAgentResponseDto
+   */
+  'instructions': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SystemAgentResponseDto
+   */
+  'contentHash': string;
+}
+/**
+ *
+ * @export
  * @interface SystemSettingsResponseDto
  */
 export interface SystemSettingsResponseDto {
@@ -2381,6 +2436,24 @@ export interface TemplateDto {
    * @memberof TemplateDto
    */
   'outputs'?: Array<TemplateDtoInputsInner>;
+  /**
+   *
+   * @type {string}
+   * @memberof TemplateDto
+   */
+  'systemAgentId'?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof TemplateDto
+   */
+  'systemAgentContentHash'?: string;
+  /**
+   *
+   * @type {Array<string>}
+   * @memberof TemplateDto
+   */
+  'systemAgentPredefinedTools'?: Array<string>;
 }
 
 export const TemplateDtoKindEnum = {
@@ -12238,6 +12311,251 @@ export class SystemApi extends BaseAPI {
   public getSettings(options?: RawAxiosRequestConfig) {
     return SystemApiFp(this.configuration)
       .getSettings(options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+}
+
+/**
+ * SystemAgentsApi - axios parameter creator
+ * @export
+ */
+export const SystemAgentsApiAxiosParamCreator = function (
+  configuration?: Configuration,
+) {
+  return {
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getAll: async (
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      const localVarPath = `/api/v1/system-agents`;
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getById: async (
+      id: string,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'id' is not null or undefined
+      assertParamExists('getById', 'id', id);
+      const localVarPath = `/api/v1/system-agents/{id}`.replace(
+        `{${'id'}}`,
+        encodeURIComponent(String(id)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+  };
+};
+
+/**
+ * SystemAgentsApi - functional programming interface
+ * @export
+ */
+export const SystemAgentsApiFp = function (configuration?: Configuration) {
+  const localVarAxiosParamCreator =
+    SystemAgentsApiAxiosParamCreator(configuration);
+  return {
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async getAll(
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<Array<SystemAgentResponseDto>>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.getAll(options);
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['SystemAgentsApi.getAll']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async getById(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<SystemAgentResponseDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.getById(
+        id,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['SystemAgentsApi.getById']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+  };
+};
+
+/**
+ * SystemAgentsApi - factory interface
+ * @export
+ */
+export const SystemAgentsApiFactory = function (
+  configuration?: Configuration,
+  basePath?: string,
+  axios?: AxiosInstance,
+) {
+  const localVarFp = SystemAgentsApiFp(configuration);
+  return {
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getAll(
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<Array<SystemAgentResponseDto>> {
+      return localVarFp
+        .getAll(options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getById(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<SystemAgentResponseDto> {
+      return localVarFp
+        .getById(id, options)
+        .then((request) => request(axios, basePath));
+    },
+  };
+};
+
+/**
+ * SystemAgentsApi - object-oriented interface
+ * @export
+ * @class SystemAgentsApi
+ * @extends {BaseAPI}
+ */
+export class SystemAgentsApi extends BaseAPI {
+  /**
+   *
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof SystemAgentsApi
+   */
+  public getAll(options?: RawAxiosRequestConfig) {
+    return SystemAgentsApiFp(this.configuration)
+      .getAll(options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {string} id
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof SystemAgentsApi
+   */
+  public getById(id: string, options?: RawAxiosRequestConfig) {
+    return SystemAgentsApiFp(this.configuration)
+      .getById(id, options)
       .then((request) => request(this.axios, this.basePath));
   }
 }

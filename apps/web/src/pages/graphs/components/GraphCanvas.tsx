@@ -394,7 +394,12 @@ const GraphCanvasInner = ({
           template: template.id,
           templateKind: template.kind,
           templateSchema: template.schema,
-          config: {},
+          config: template.systemAgentId
+            ? {
+                systemAgentId: template.systemAgentId,
+                systemAgentContentHash: template.systemAgentContentHash,
+              }
+            : {},
         },
       };
 

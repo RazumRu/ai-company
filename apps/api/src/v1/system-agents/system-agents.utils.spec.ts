@@ -1,0 +1,164 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  computeContentHash,
+  parseSystemAgentFile,
+  SystemAgentFrontmatterSchema,
+} from './system-agents.utils';
+
+const VALID_FILE_CONTENT = `---
+id: engineer
+name: Engineer
+description: A software engineer agent.
+tools:
+  - shell-tool
+  - files-tool
+---
+
+You are a senior software engineer.
+
+## Core Responsibilities
+- Write clean code
+`;
+
+describe('computeContentHash', () => {
+  it('returns a sha256 hex string', () => {
+    const hash = computeContentHash('hello');
+    expect(hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('returns different hashes for different inputs', () => {
+    const hash1 = computeContentHash('hello');
+    const hash2 = computeContentHash('world');
+    expect(hash1).not.toBe(hash2);
+  });
+
+  it('returns the same hash for the same input', () => {
+    const hash1 = computeContentHash('same content');
+    const hash2 = computeContentHash('same content');
+    expect(hash1).toBe(hash2);
+  });
+});
+
+describe('SystemAgentFrontmatterSchema', () => {
+  it('validates a valid frontmatter object', () => {
+    const result = SystemAgentFrontmatterSchema.safeParse({
+      id: 'engineer',
+      name: 'Engineer',
+      description: 'A software engineer agent.',
+      tools: ['shell-tool'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('defaults defaultModel to null when not provided', () => {
+    const result = SystemAgentFrontmatterSchema.safeParse({
+      id: 'engineer',
+      name: 'Engineer',
+      description: 'A software engineer agent.',
+      tools: [],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.defaultModel).toBeNull();
+    }
+  });
+
+  it('rejects missing id', () => {
+    const result = SystemAgentFrontmatterSchema.safeParse({
+      name: 'Engineer',
+      description: 'Desc',
+      tools: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects missing name', () => {
+    const result = SystemAgentFrontmatterSchema.safeParse({
+      id: 'engineer',
+      description: 'Desc',
+      tools: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects missing description', () => {
+    const result = SystemAgentFrontmatterSchema.safeParse({
+      id: 'engineer',
+      name: 'Engineer',
+      tools: [],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects missing tools array', () => {
+    const result = SystemAgentFrontmatterSchema.safeParse({
+      id: 'engineer',
+      name: 'Engineer',
+      description: 'Desc',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts an explicit defaultModel string', () => {
+    const result = SystemAgentFrontmatterSchema.safeParse({
+      id: 'engineer',
+      name: 'Engineer',
+      description: 'Desc',
+      tools: [],
+      defaultModel: 'gpt-4o',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.defaultModel).toBe('gpt-4o');
+    }
+  });
+});
+
+describe('parseSystemAgentFile', () => {
+  it('parses a valid .md file into a SystemAgentDefinition', () => {
+    const definition = parseSystemAgentFile('engineer.md', VALID_FILE_CONTENT);
+
+    expect(definition.id).toBe('engineer');
+    expect(definition.name).toBe('Engineer');
+    expect(definition.description).toBe('A software engineer agent.');
+    expect(definition.tools).toEqual(['shell-tool', 'files-tool']);
+    expect(definition.defaultModel).toBeNull();
+    expect(definition.templateId).toBe('system-agent-engineer');
+    expect(definition.contentHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('extracts body content as instructions (trimmed)', () => {
+    const definition = parseSystemAgentFile('engineer.md', VALID_FILE_CONTENT);
+    expect(definition.instructions).toBe(
+      'You are a senior software engineer.\n\n## Core Responsibilities\n- Write clean code',
+    );
+  });
+
+  it('computes contentHash from the full file content', () => {
+    const definition = parseSystemAgentFile('engineer.md', VALID_FILE_CONTENT);
+    const expectedHash = computeContentHash(VALID_FILE_CONTENT);
+    expect(definition.contentHash).toBe(expectedHash);
+  });
+
+  it('throws when frontmatter is missing required fields', () => {
+    const invalidContent = `---
+name: Engineer
+---
+Body content here.
+`;
+    expect(() => parseSystemAgentFile('bad.md', invalidContent)).toThrow();
+  });
+
+  it('throws when frontmatter is invalid', () => {
+    const invalidContent = `---
+id: ""
+name: Engineer
+description: Desc
+tools: []
+---
+Body.
+`;
+    expect(() => parseSystemAgentFile('bad.md', invalidContent)).toThrow();
+  });
+});

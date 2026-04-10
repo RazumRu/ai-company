@@ -28,6 +28,11 @@ const mockDaytonaInstance = {
   get: vi.fn(),
   delete: vi.fn().mockResolvedValue(undefined),
   start: vi.fn().mockResolvedValue(undefined),
+  snapshot: {
+    list: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+    get: vi.fn(),
+    delete: vi.fn().mockResolvedValue(undefined),
+  },
 };
 
 vi.mock('@daytonaio/sdk', async (importOriginal) => {
@@ -664,6 +669,47 @@ describe('DaytonaRuntime', () => {
       expect(mockDaytonaInstance.get).toHaveBeenCalledWith('recreate-sandbox');
       expect(mockDaytonaInstance.delete).toHaveBeenCalledWith(existingSandbox);
       expect(mockDaytonaInstance.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries sandbox creation after invalidating stale snapshot on pull access denied error', async () => {
+      const staleError = new Error(
+        'Sandbox abc failed to start with status: error, error reason: Error response from daemon: pull access denied for daytona-abc123hash, repository does not exist',
+      );
+
+      // First 3 calls fail (createSandbox retries), 4th succeeds after snapshot invalidation
+      mockDaytonaInstance.create
+        .mockRejectedValueOnce(staleError)
+        .mockRejectedValueOnce(staleError)
+        .mockRejectedValueOnce(staleError)
+        .mockResolvedValueOnce(mockSandbox);
+
+      // Mock snapshot.get to return a snapshot for direct deletion
+      const mockSnapshot = { id: 'snap-1', name: 'daytona-abc123hash' };
+      mockDaytonaInstance.snapshot.get.mockResolvedValue(mockSnapshot);
+      mockDaytonaInstance.snapshot.delete.mockResolvedValue(undefined);
+
+      mockSandbox.process.createSession.mockResolvedValue(undefined);
+      mockSandbox.process.executeSessionCommand.mockResolvedValue({
+        exitCode: 1,
+        stdout: '',
+        stderr: '',
+      });
+      mockSandbox.process.deleteSession.mockResolvedValue(undefined);
+
+      await freshRuntime.start({
+        containerName: 'stale-test',
+        image: 'node:20',
+      });
+
+      // Verify snapshot was looked up and deleted directly from error
+      expect(mockDaytonaInstance.snapshot.get).toHaveBeenCalledWith(
+        'daytona-abc123hash',
+      );
+      expect(mockDaytonaInstance.snapshot.delete).toHaveBeenCalledWith(
+        mockSnapshot,
+      );
+      // Verify create was called 4 times: 3 retries in first createSandbox + 1 success after invalidation
+      expect(mockDaytonaInstance.create).toHaveBeenCalledTimes(4);
     });
   });
 

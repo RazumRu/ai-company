@@ -10,6 +10,7 @@ export enum NodeKind {
   Trigger = 'trigger',
   Resource = 'resource',
   Mcp = 'mcp',
+  Instruction = 'instruction',
 }
 
 export enum MessageRole {

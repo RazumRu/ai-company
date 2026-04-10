@@ -134,6 +134,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
     [],
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const sendingRef = useRef(false);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [stoppingThread, setStoppingThread] = useState(false);
   const [threadStatusOverride, setThreadStatusOverride] = useState<
@@ -472,6 +473,11 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
       return;
     }
 
+    if (sendingRef.current) {
+      return;
+    }
+    sendingRef.current = true;
+
     // Prepend repo context to the first message when a repo is selected
     const selectedRepo = selectedRepoId
       ? repos.find((r) => r.id === selectedRepoId)
@@ -625,6 +631,7 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
       setMessageInput(messageText);
     } finally {
       setSendingMessage(false);
+      sendingRef.current = false;
     }
   }, [
     selectedTriggerId,

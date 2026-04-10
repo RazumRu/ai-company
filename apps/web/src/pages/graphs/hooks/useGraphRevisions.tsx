@@ -208,7 +208,8 @@ export const useGraphRevisions = ({
       const matchingApplied = revisions.find(
         (revision) =>
           revision.toVersion === graph.version &&
-          revision.status === GraphRevisionDtoStatusEnum.Applied,
+          revision.status === GraphRevisionDtoStatusEnum.Applied &&
+          !revision.error,
       );
       if (matchingApplied) {
         return matchingApplied;
@@ -216,7 +217,9 @@ export const useGraphRevisions = ({
     }
 
     const appliedRevision = revisions.find(
-      (revision) => revision.status === GraphRevisionDtoStatusEnum.Applied,
+      (revision) =>
+        revision.status === GraphRevisionDtoStatusEnum.Applied &&
+        !revision.error,
     );
     if (appliedRevision) {
       return appliedRevision;
@@ -230,7 +233,7 @@ export const useGraphRevisions = ({
       return null;
     }
     const latest = revisions[0];
-    if (latest.status !== GraphRevisionDtoStatusEnum.Failed) {
+    if (latest.status !== GraphRevisionDtoStatusEnum.Failed && !latest.error) {
       return null;
     }
     if (activeRevision && activeRevision.id === latest.id) {
@@ -310,6 +313,10 @@ export const useGraphRevisions = ({
         REVISION_STATUS_STYLES[
           activeRevision.status as GraphRevisionDtoStatusEnum
         ] ?? null;
+
+      if (activeRevision.error) {
+        return REVISION_STATUS_STYLES[GraphRevisionDtoStatusEnum.Failed];
+      }
 
       if (
         activeRevision.status === GraphRevisionDtoStatusEnum.Applying &&
@@ -447,12 +454,15 @@ export const useGraphRevisions = ({
     return (
       <div className="w-64 max-h-80 overflow-y-auto">
         {revisions.map((revision) => {
-          const meta = REVISION_STATUS_STYLES[
+          const statusMeta = REVISION_STATUS_STYLES[
             revision.status as GraphRevisionDtoStatusEnum
           ] ?? {
             label: revision.status,
             color: '#d9d9d9',
           };
+          const meta = revision.error
+            ? REVISION_STATUS_STYLES[GraphRevisionDtoStatusEnum.Failed]
+            : statusMeta;
           const timestamp = formatDistanceToNow(
             new Date(revision.updatedAt || revision.createdAt),
             { addSuffix: true },

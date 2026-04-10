@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GraphNode } from '../../../graphs/graphs.types';
+import { NodeKind } from '../../../graphs/graphs.types';
 import { RuntimeType } from '../../../runtime/runtime.types';
 import { RuntimeProvider } from '../../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
@@ -46,6 +47,25 @@ describe('RuntimeTemplate', () => {
 
     template = module.get<RuntimeTemplate>(RuntimeTemplate);
     runtimeProvider = module.get<RuntimeProvider>(RuntimeProvider);
+  });
+
+  describe('inputs', () => {
+    it('should include NodeKind.SimpleAgent as a kind-based input', () => {
+      const simpleAgentInput = template.inputs.find(
+        (input) =>
+          input.type === 'kind' && input.value === NodeKind.SimpleAgent,
+      );
+      expect(simpleAgentInput).toBeDefined();
+      expect(simpleAgentInput?.multiple).toBe(true);
+    });
+
+    it('should include NodeKind.Mcp as a kind-based input', () => {
+      const mcpInput = template.inputs.find(
+        (input) => input.type === 'kind' && input.value === NodeKind.Mcp,
+      );
+      expect(mcpInput).toBeDefined();
+      expect(mcpInput?.multiple).toBe(true);
+    });
   });
 
   describe('schema validation', () => {
