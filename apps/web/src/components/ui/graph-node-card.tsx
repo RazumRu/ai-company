@@ -311,6 +311,7 @@ interface CustomNodeProps extends NodeProps {
   templates?: TemplateDto[];
   graphStatus?: GraphDtoStatusEnum;
   onTriggerClick?: (nodeId: string) => void;
+  availableSecretNames?: string[];
 }
 
 export const CustomNode = React.memo(
@@ -322,6 +323,7 @@ export const CustomNode = React.memo(
     isConnectable = true,
     graphStatus,
     onTriggerClick,
+    availableSecretNames,
   }: CustomNodeProps) => {
     // Read frequently-changing data from context instead of props so that
     // nodeTypes in GraphCanvas stays stable and doesn't remount all nodes.
@@ -415,10 +417,11 @@ export const CustomNode = React.memo(
               allNodes,
               connectedEdges,
               templates,
+              availableSecretNames,
             )
           : [],
       // eslint-disable-next-line react-hooks/preserve-manual-memoization
-      [connectedEdges, allNodes, nodeId, templates],
+      [connectedEdges, allNodes, nodeId, templates, availableSecretNames],
     );
     const inputRules = useMemo(
       () =>

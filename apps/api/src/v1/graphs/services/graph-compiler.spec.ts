@@ -592,6 +592,214 @@ describe('GraphCompiler', () => {
 
       await expect(compiler.compile(graph)).rejects.toThrow(NotFoundException);
     });
+
+    it('should resolve secrets from array field (x-ui:secret-multi-select)', async () => {
+      const mockAddEnvVariables = vi.fn();
+      const mockRuntimeInstance = Object.create(
+        RuntimeThreadProvider.prototype,
+      ) as RuntimeThreadProvider;
+      mockRuntimeInstance.addEnvVariables = mockAddEnvVariables;
+
+      const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
+      const toolTemplate = Object.assign(createMockTemplate(NodeKind.Tool), {
+        schema: z.object({
+          secrets: z
+            .array(z.string())
+            .meta({ 'x-ui:secret-multi-select': true }),
+        }),
+      });
+
+      const runtimeHandle = createMockHandle(mockRuntimeInstance);
+      const toolHandle = createMockHandle({ id: 'tool' });
+
+      vi.mocked(runtimeTemplate.create).mockResolvedValue(runtimeHandle as any);
+      vi.mocked(toolTemplate.create).mockResolvedValue(toolHandle as any);
+
+      vi.mocked(templateRegistry.getTemplate).mockImplementation((id) => {
+        if (id === 'runtime') {
+          return runtimeTemplate;
+        }
+        if (id === 'tool') {
+          return toolTemplate;
+        }
+        return undefined;
+      });
+
+      const schema: GraphSchemaType = {
+        nodes: [
+          { id: 'runtime-1', template: 'runtime', config: {} },
+          {
+            id: 'tool-1',
+            template: 'tool',
+            config: { secrets: ['SECRET_A', 'SECRET_B'] },
+          },
+        ],
+        edges: [{ from: 'tool-1', to: 'runtime-1' }],
+      };
+
+      secretsService.batchResolveSecretValues.mockResolvedValue(
+        new Map([
+          ['SECRET_A', 'val-a'],
+          ['SECRET_B', 'val-b'],
+        ]),
+      );
+
+      const graph = createMockGraphEntity(schema);
+      await compiler.compile(graph);
+
+      expect(mockAddEnvVariables).toHaveBeenCalledWith({
+        SECRET_A: 'val-a',
+        SECRET_B: 'val-b',
+      });
+    });
+
+    it('should inject secrets directly when the node itself is a runtime', async () => {
+      const mockAddEnvVariables = vi.fn();
+      const mockRuntimeInstance = Object.create(
+        RuntimeThreadProvider.prototype,
+      ) as RuntimeThreadProvider;
+      mockRuntimeInstance.addEnvVariables = mockAddEnvVariables;
+
+      const runtimeTemplate = Object.assign(
+        createMockTemplate(NodeKind.Runtime),
+        {
+          schema: z.object({
+            secrets: z
+              .array(z.string())
+              .meta({ 'x-ui:secret-multi-select': true }),
+          }),
+        },
+      );
+
+      const runtimeHandle = createMockHandle(mockRuntimeInstance);
+      vi.mocked(runtimeTemplate.create).mockResolvedValue(runtimeHandle as any);
+      vi.mocked(templateRegistry.getTemplate).mockReturnValue(runtimeTemplate);
+
+      const schema: GraphSchemaType = {
+        nodes: [
+          {
+            id: 'runtime-1',
+            template: 'runtime',
+            config: { secrets: ['MY_SECRET'] },
+          },
+        ],
+        edges: [],
+      };
+
+      secretsService.batchResolveSecretValues.mockResolvedValue(
+        new Map([['MY_SECRET', 'resolved-value']]),
+      );
+
+      const graph = createMockGraphEntity(schema);
+      await compiler.compile(graph);
+
+      expect(mockAddEnvVariables).toHaveBeenCalledWith({
+        MY_SECRET: 'resolved-value',
+      });
+    });
+
+    it('should handle mixed single and multi-select secrets', async () => {
+      const mockAddEnvVariables = vi.fn();
+      const mockRuntimeInstance = Object.create(
+        RuntimeThreadProvider.prototype,
+      ) as RuntimeThreadProvider;
+      mockRuntimeInstance.addEnvVariables = mockAddEnvVariables;
+
+      const runtimeTemplate = createMockTemplate(NodeKind.Runtime);
+      const toolATemplate = Object.assign(createMockTemplate(NodeKind.Tool), {
+        schema: z.object({
+          apiKey: z.string().meta({ 'x-ui:secret-select': true }),
+        }),
+      });
+      const toolBTemplate = Object.assign(createMockTemplate(NodeKind.Tool), {
+        schema: z.object({
+          secrets: z
+            .array(z.string())
+            .meta({ 'x-ui:secret-multi-select': true }),
+        }),
+      });
+
+      const runtimeHandle = createMockHandle(mockRuntimeInstance);
+      const toolAHandle = createMockHandle({ id: 'tool-a' });
+      const toolBHandle = createMockHandle({ id: 'tool-b' });
+
+      vi.mocked(runtimeTemplate.create).mockResolvedValue(runtimeHandle as any);
+      vi.mocked(toolATemplate.create).mockResolvedValue(toolAHandle as any);
+      vi.mocked(toolBTemplate.create).mockResolvedValue(toolBHandle as any);
+
+      vi.mocked(templateRegistry.getTemplate).mockImplementation((id) => {
+        if (id === 'runtime') {
+          return runtimeTemplate;
+        }
+        if (id === 'tool-a') {
+          return toolATemplate;
+        }
+        if (id === 'tool-b') {
+          return toolBTemplate;
+        }
+        return undefined;
+      });
+
+      const schema: GraphSchemaType = {
+        nodes: [
+          { id: 'runtime-1', template: 'runtime', config: {} },
+          { id: 'tool-a-1', template: 'tool-a', config: { apiKey: 'KEY_A' } },
+          {
+            id: 'tool-b-1',
+            template: 'tool-b',
+            config: { secrets: ['KEY_B', 'KEY_C'] },
+          },
+        ],
+        edges: [
+          { from: 'tool-a-1', to: 'runtime-1' },
+          { from: 'tool-b-1', to: 'runtime-1' },
+        ],
+      };
+
+      secretsService.batchResolveSecretValues.mockResolvedValue(
+        new Map([
+          ['KEY_A', 'val-a'],
+          ['KEY_B', 'val-b'],
+          ['KEY_C', 'val-c'],
+        ]),
+      );
+
+      const graph = createMockGraphEntity(schema);
+      await compiler.compile(graph);
+
+      expect(secretsService.batchResolveSecretValues).toHaveBeenCalledWith(
+        'project-123',
+        expect.arrayContaining(['KEY_A', 'KEY_B', 'KEY_C']),
+      );
+      expect(mockAddEnvVariables).toHaveBeenCalledWith({ KEY_A: 'val-a' });
+      expect(mockAddEnvVariables).toHaveBeenCalledWith({
+        KEY_B: 'val-b',
+        KEY_C: 'val-c',
+      });
+    });
+
+    it('should skip empty arrays in multi-select secrets', async () => {
+      const toolTemplate = Object.assign(createMockTemplate(NodeKind.Tool), {
+        schema: z.object({
+          secrets: z
+            .array(z.string())
+            .meta({ 'x-ui:secret-multi-select': true }),
+        }),
+      });
+      const toolHandle = createMockHandle({ id: 'tool' });
+      vi.mocked(toolTemplate.create).mockResolvedValue(toolHandle as any);
+      vi.mocked(templateRegistry.getTemplate).mockReturnValue(toolTemplate);
+
+      const schema: GraphSchemaType = {
+        nodes: [{ id: 'tool-1', template: 'tool', config: { secrets: [] } }],
+        edges: [],
+      };
+
+      const graph = createMockGraphEntity(schema);
+      await compiler.compile(graph);
+
+      expect(secretsService.batchResolveSecretValues).not.toHaveBeenCalled();
+    });
   });
 
   describe('validation', () => {

@@ -316,6 +316,17 @@ export class GraphCompiler {
             continue;
           }
 
+          // If the node itself is a runtime, inject directly without looking at edges.
+          const compiledNode = compiledNodes.get(node.id);
+          if (
+            compiledNode?.type === NodeKind.Runtime &&
+            compiledNode.instance instanceof RuntimeThreadProvider
+          ) {
+            compiledNode.instance.addEnvVariables(secretEnv);
+            continue;
+          }
+
+          // Otherwise, find the connected runtime via outgoing edges.
           const runtimeNodeId = this.findConnectedRuntimeNode(
             node.id,
             edges,
@@ -359,6 +370,16 @@ export class GraphCompiler {
           const secretName = node.config?.[key as keyof typeof node.config];
           if (secretName && typeof secretName === 'string') {
             names.push(secretName);
+          }
+        }
+        if (meta && meta['x-ui:secret-multi-select'] === true) {
+          const secretNames = node.config?.[key as keyof typeof node.config];
+          if (Array.isArray(secretNames)) {
+            for (const name of secretNames) {
+              if (name && typeof name === 'string') {
+                names.push(name);
+              }
+            }
           }
         }
       }

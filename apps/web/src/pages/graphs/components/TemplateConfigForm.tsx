@@ -163,7 +163,7 @@ const buildUiSchema = (schema: RJSFSchema): UiSchemaShape => {
 
     const typeName = getSchemaTypeName(prop);
 
-    if (typeName === 'array') {
+    if (typeName === 'array' && prop['x-ui:secret-multi-select'] !== true) {
       fieldUi['ui:field'] = 'arrayAsTextarea';
     }
 
@@ -179,6 +179,10 @@ const buildUiSchema = (schema: RJSFSchema): UiSchemaShape => {
 
     if (prop['x-ui:secret-select'] === true) {
       fieldUi['ui:field'] = 'secretSelect';
+    }
+
+    if (prop['x-ui:secret-multi-select'] === true) {
+      fieldUi['ui:field'] = 'secretMultiSelect';
     }
 
     if (prop['x-ui:readonly'] === true) {
@@ -927,6 +931,139 @@ const RjsfSecretSelectField = (
   );
 };
 
+const RjsfSecretMultiSelectField = (
+  props: FieldProps<FormData, RJSFSchema, FormContext>,
+) => {
+  const [secrets, setSecrets] = useState<SecretResponseDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchSecrets = async () => {
+      try {
+        const response = await secretsApi.list();
+        if (!cancelled) {
+          setSecrets(response.data);
+        }
+      } catch (error) {
+        console.warn('Failed to fetch secrets:', error);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+    fetchSecrets();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selected = useMemo(
+    () =>
+      Array.isArray(props.formData)
+        ? (props.formData as unknown as string[])
+        : [],
+    [props.formData],
+  );
+
+  const options = useMemo(
+    () => secrets.map((secret) => ({ label: secret.name, value: secret.name })),
+    [secrets],
+  );
+
+  const handleToggle = useCallback(
+    (secretName: string) => {
+      const next = selected.includes(secretName)
+        ? selected.filter((name) => name !== secretName)
+        : [...selected, secretName];
+      props.onChange(next as unknown as FormData, props.fieldPathId.path);
+    },
+    [selected, props],
+  );
+
+  return (
+    <div>
+      <span className="text-sm font-semibold">
+        {props.schema.title ?? props.name}
+      </span>
+      {props.schema.description && (
+        <span
+          className="text-muted-foreground"
+          style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+          {props.schema.description}
+        </span>
+      )}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            disabled={props.disabled || props.readonly}
+            className="w-full justify-between font-normal"
+            style={{ minHeight: 36 }}>
+            <span
+              className={selected.length > 0 ? '' : 'text-muted-foreground'}
+              style={{
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+              {selected.length > 0
+                ? `${String(selected.length)} secret${selected.length > 1 ? 's' : ''} selected`
+                : 'Select secrets...'}
+            </span>
+            <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="p-0"
+          style={{ width: 'var(--radix-popover-trigger-width)' }}>
+          <Command>
+            <CommandInput placeholder="Search secrets..." />
+            <CommandList>
+              <CommandEmpty>
+                {loading ? 'Loading secrets...' : 'No secrets configured'}
+              </CommandEmpty>
+              <CommandGroup>
+                {options.map((opt) => (
+                  <CommandItem
+                    key={opt.value}
+                    value={opt.label}
+                    onSelect={() => handleToggle(opt.value)}>
+                    <Check
+                      className={`mr-2 size-4 ${selected.includes(opt.value) ? 'opacity-100' : 'opacity-0'}`}
+                    />
+                    {opt.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+      {selected.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {selected.map((name) => (
+            <Badge key={name} variant="secondary">
+              {name}
+            </Badge>
+          ))}
+        </div>
+      )}
+      <a
+        href="/settings/secrets"
+        className="mt-1 inline-block text-xs text-muted-foreground underline-offset-2 hover:underline"
+        target="_blank"
+        rel="noopener noreferrer">
+        Manage secrets
+      </a>
+    </div>
+  );
+};
+
 // --- Stable RJSF config objects (module-level, never re-created) ---
 
 // RJSF @rjsf/core Form requires all config objects to match its inferred T
@@ -960,6 +1097,7 @@ const RJSF_FIELDS: RjsfFields = {
   keyValueObject: RjsfKeyValueObjectField,
   githubRepoSelect: RjsfGitHubRepoSelectField,
   secretSelect: RjsfSecretSelectField,
+  secretMultiSelect: RjsfSecretMultiSelectField,
 } as unknown as RjsfFields;
 
 // --- Component ---

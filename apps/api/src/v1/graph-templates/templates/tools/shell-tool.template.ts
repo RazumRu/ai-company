@@ -18,7 +18,13 @@ import { RegisterTemplate } from '../../decorators/register-template.decorator';
 import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const ShellToolTemplateSchema = z
-  .object({})
+  .object({
+    secrets: z
+      .array(z.string())
+      .optional()
+      .describe('Secrets to inject as environment variables for shell commands')
+      .meta({ 'x-ui:secret-multi-select': true }),
+  })
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();
 
