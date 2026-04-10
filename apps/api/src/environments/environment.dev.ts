@@ -61,5 +61,5 @@ export const environment = () =>
 
     // --- Secrets store (OpenBao) ---
     openbaoAddr: getEnv('OPENBAO_ADDR', 'http://localhost:8200'),
-    openbaoToken: getEnv('OPENBAO_TOKEN', ''),
+    openbaoToken: getEnv('OPENBAO_TOKEN', 'dev-openbao-token'),
   }) as const satisfies Record<string, string | number | boolean>;

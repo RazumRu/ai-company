@@ -10,7 +10,7 @@ import { ToolNodeBaseTemplate } from '../base-node.template';
 
 export const WebSearchToolTemplateSchema = z
   .object({
-    apiKey: z.string().min(1).describe('Tavily API key to authorize searches'),
+    apiKey: z.string().min(1).describe('Tavily API key to authorize searches').meta({ 'x-ui:secret-select': true }),
   })
   // Strip legacy/unknown fields so older configs remain valid.
   .strip();
