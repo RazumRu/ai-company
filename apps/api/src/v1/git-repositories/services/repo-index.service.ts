@@ -794,13 +794,26 @@ export class RepoIndexService implements OnModuleInit {
       });
 
       // Spin up ephemeral container (no graphId — repo indexing is a system operation)
-      runtimeInstance = await this.runtimeProvider.provide({
-        runtimeNodeId,
-        threadId,
-        type: this.runtimeProvider.getDefaultRuntimeType(),
-        temporary: true,
-        runtimeStartParams: {},
-      });
+      try {
+        runtimeInstance = await this.runtimeProvider.provide({
+          runtimeNodeId,
+          threadId,
+          type: this.runtimeProvider.getDefaultRuntimeType(),
+          temporary: true,
+          runtimeStartParams: {},
+        });
+      } catch (err) {
+        if (err instanceof JobCancelledException) {
+          throw err;
+        }
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Failed to start sandbox for repository indexing. ` +
+            `This may be a transient infrastructure issue — try re-indexing. ` +
+            `Detail: ${detail}`,
+          { cause: err },
+        );
+      }
 
       this.logger.debug('Container started, beginning clone', {
         repoIndexId,
