@@ -10,6 +10,7 @@ import {
   LitellmApi,
   ProjectsApi,
   RuntimesApi,
+  SecretsApi,
   SystemAgentsApi,
   SystemApi,
   TemplatesApi,
@@ -48,3 +49,4 @@ export const projectsApi = new ProjectsApi(configuration);
 export const systemApi = new SystemApi(configuration);
 export const systemAgentsApi = new SystemAgentsApi(configuration);
 export const userPreferencesApi = new UserPreferencesApi(configuration);
+export const secretsApi = new SecretsApi(configuration);

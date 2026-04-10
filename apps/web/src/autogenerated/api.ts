@@ -562,6 +562,31 @@ export type CreateRepositoryDtoProviderEnum =
 /**
  *
  * @export
+ * @interface CreateSecretDto
+ */
+export interface CreateSecretDto {
+  /**
+   *
+   * @type {string}
+   * @memberof CreateSecretDto
+   */
+  'name': string;
+  /**
+   *
+   * @type {string}
+   * @memberof CreateSecretDto
+   */
+  'value': string;
+  /**
+   *
+   * @type {string}
+   * @memberof CreateSecretDto
+   */
+  'description'?: string | null;
+}
+/**
+ *
+ * @export
  * @interface ExecuteTriggerDto
  */
 export interface ExecuteTriggerDto {
@@ -998,6 +1023,7 @@ export const GraphNodeWithStatusDtoTypeEnum = {
   Trigger: 'trigger',
   Resource: 'resource',
   Mcp: 'mcp',
+  Instruction: 'instruction',
 } as const;
 
 export type GraphNodeWithStatusDtoTypeEnum =
@@ -1298,6 +1324,49 @@ export const GraphRevisionDtoStatusEnum = {
 export type GraphRevisionDtoStatusEnum =
   (typeof GraphRevisionDtoStatusEnum)[keyof typeof GraphRevisionDtoStatusEnum];
 
+/**
+ *
+ * @export
+ * @interface InstructionBlockResponseDto
+ */
+export interface InstructionBlockResponseDto {
+  /**
+   *
+   * @type {string}
+   * @memberof InstructionBlockResponseDto
+   */
+  'id': string;
+  /**
+   *
+   * @type {string}
+   * @memberof InstructionBlockResponseDto
+   */
+  'templateId': string;
+  /**
+   *
+   * @type {string}
+   * @memberof InstructionBlockResponseDto
+   */
+  'name': string;
+  /**
+   *
+   * @type {string}
+   * @memberof InstructionBlockResponseDto
+   */
+  'description': string;
+  /**
+   *
+   * @type {string}
+   * @memberof InstructionBlockResponseDto
+   */
+  'instructions': string;
+  /**
+   *
+   * @type {string}
+   * @memberof InstructionBlockResponseDto
+   */
+  'contentHash': string;
+}
 /**
  *
  * @export
@@ -2117,6 +2186,55 @@ export type RuntimeInstanceDtoStatusEnum =
 /**
  *
  * @export
+ * @interface SecretResponseDto
+ */
+export interface SecretResponseDto {
+  /**
+   *
+   * @type {string}
+   * @memberof SecretResponseDto
+   */
+  'id': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SecretResponseDto
+   */
+  'name': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SecretResponseDto
+   */
+  'description'?: string | null;
+  /**
+   *
+   * @type {string}
+   * @memberof SecretResponseDto
+   */
+  'projectId': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SecretResponseDto
+   */
+  'createdBy': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SecretResponseDto
+   */
+  'createdAt': string;
+  /**
+   *
+   * @type {string}
+   * @memberof SecretResponseDto
+   */
+  'updatedAt': string;
+}
+/**
+ *
+ * @export
  * @interface SetThreadMetadataDto
  */
 export interface SetThreadMetadataDto {
@@ -2454,6 +2572,18 @@ export interface TemplateDto {
    * @memberof TemplateDto
    */
   'systemAgentPredefinedTools'?: Array<string>;
+  /**
+   *
+   * @type {string}
+   * @memberof TemplateDto
+   */
+  'instructionBlockId'?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof TemplateDto
+   */
+  'instructionBlockContentHash'?: string;
 }
 
 export const TemplateDtoKindEnum = {
@@ -2463,6 +2593,7 @@ export const TemplateDtoKindEnum = {
   Trigger: 'trigger',
   Resource: 'resource',
   Mcp: 'mcp',
+  Instruction: 'instruction',
 } as const;
 
 export type TemplateDtoKindEnum =
@@ -2521,6 +2652,7 @@ export const TemplateDtoInputsInnerOneOfValueEnum = {
   Trigger: 'trigger',
   Resource: 'resource',
   Mcp: 'mcp',
+  Instruction: 'instruction',
 } as const;
 
 export type TemplateDtoInputsInnerOneOfValueEnum =
@@ -4414,6 +4546,25 @@ export interface UpdateRepositoryDto {
    * @memberof UpdateRepositoryDto
    */
   'defaultBranch'?: string;
+}
+/**
+ *
+ * @export
+ * @interface UpdateSecretDto
+ */
+export interface UpdateSecretDto {
+  /**
+   *
+   * @type {string}
+   * @memberof UpdateSecretDto
+   */
+  'value'?: string;
+  /**
+   *
+   * @type {string}
+   * @memberof UpdateSecretDto
+   */
+  'description'?: string | null;
 }
 /**
  *
@@ -8681,6 +8832,251 @@ export class GraphsApi extends BaseAPI {
 }
 
 /**
+ * InstructionBlocksApi - axios parameter creator
+ * @export
+ */
+export const InstructionBlocksApiAxiosParamCreator = function (
+  configuration?: Configuration,
+) {
+  return {
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getAll: async (
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      const localVarPath = `/api/v1/instruction-blocks`;
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getById: async (
+      id: string,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'id' is not null or undefined
+      assertParamExists('getById', 'id', id);
+      const localVarPath = `/api/v1/instruction-blocks/{id}`.replace(
+        `{${'id'}}`,
+        encodeURIComponent(String(id)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+  };
+};
+
+/**
+ * InstructionBlocksApi - functional programming interface
+ * @export
+ */
+export const InstructionBlocksApiFp = function (configuration?: Configuration) {
+  const localVarAxiosParamCreator =
+    InstructionBlocksApiAxiosParamCreator(configuration);
+  return {
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async getAll(
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<Array<InstructionBlockResponseDto>>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.getAll(options);
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['InstructionBlocksApi.getAll']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async getById(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<InstructionBlockResponseDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.getById(
+        id,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['InstructionBlocksApi.getById']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+  };
+};
+
+/**
+ * InstructionBlocksApi - factory interface
+ * @export
+ */
+export const InstructionBlocksApiFactory = function (
+  configuration?: Configuration,
+  basePath?: string,
+  axios?: AxiosInstance,
+) {
+  const localVarFp = InstructionBlocksApiFp(configuration);
+  return {
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getAll(
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<Array<InstructionBlockResponseDto>> {
+      return localVarFp
+        .getAll(options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getById(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<InstructionBlockResponseDto> {
+      return localVarFp
+        .getById(id, options)
+        .then((request) => request(axios, basePath));
+    },
+  };
+};
+
+/**
+ * InstructionBlocksApi - object-oriented interface
+ * @export
+ * @class InstructionBlocksApi
+ * @extends {BaseAPI}
+ */
+export class InstructionBlocksApi extends BaseAPI {
+  /**
+   *
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof InstructionBlocksApi
+   */
+  public getAll(options?: RawAxiosRequestConfig) {
+    return InstructionBlocksApiFp(this.configuration)
+      .getAll(options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {string} id
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof InstructionBlocksApi
+   */
+  public getById(id: string, options?: RawAxiosRequestConfig) {
+    return InstructionBlocksApiFp(this.configuration)
+      .getById(id, options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+}
+
+/**
  * KnowledgeApi - axios parameter creator
  * @export
  */
@@ -12083,6 +12479,589 @@ export const GetRuntimesStatusEnum = {
 } as const;
 export type GetRuntimesStatusEnum =
   (typeof GetRuntimesStatusEnum)[keyof typeof GetRuntimesStatusEnum];
+
+/**
+ * SecretsApi - axios parameter creator
+ * @export
+ */
+export const SecretsApiAxiosParamCreator = function (
+  configuration?: Configuration,
+) {
+  return {
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    _delete: async (
+      id: string,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'id' is not null or undefined
+      assertParamExists('_delete', 'id', id);
+      const localVarPath = `/api/v1/secrets/{id}`.replace(
+        `{${'id'}}`,
+        encodeURIComponent(String(id)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'DELETE',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {CreateSecretDto} createSecretDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    create: async (
+      createSecretDto: CreateSecretDto,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'createSecretDto' is not null or undefined
+      assertParamExists('create', 'createSecretDto', createSecretDto);
+      const localVarPath = `/api/v1/secrets`;
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'POST',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      localVarHeaderParameter['Content-Type'] = 'application/json';
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+      localVarRequestOptions.data = serializeDataIfNeeded(
+        createSecretDto,
+        localVarRequestOptions,
+        configuration,
+      );
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getById: async (
+      id: string,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'id' is not null or undefined
+      assertParamExists('getById', 'id', id);
+      const localVarPath = `/api/v1/secrets/{id}`.replace(
+        `{${'id'}}`,
+        encodeURIComponent(String(id)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    list: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+      const localVarPath = `/api/v1/secrets`;
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {UpdateSecretDto} updateSecretDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    update: async (
+      id: string,
+      updateSecretDto: UpdateSecretDto,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'id' is not null or undefined
+      assertParamExists('update', 'id', id);
+      // verify required parameter 'updateSecretDto' is not null or undefined
+      assertParamExists('update', 'updateSecretDto', updateSecretDto);
+      const localVarPath = `/api/v1/secrets/{id}`.replace(
+        `{${'id'}}`,
+        encodeURIComponent(String(id)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'PATCH',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      localVarHeaderParameter['Content-Type'] = 'application/json';
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+      localVarRequestOptions.data = serializeDataIfNeeded(
+        updateSecretDto,
+        localVarRequestOptions,
+        configuration,
+      );
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+  };
+};
+
+/**
+ * SecretsApi - functional programming interface
+ * @export
+ */
+export const SecretsApiFp = function (configuration?: Configuration) {
+  const localVarAxiosParamCreator = SecretsApiAxiosParamCreator(configuration);
+  return {
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async _delete(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (axios?: AxiosInstance, basePath?: string) => AxiosPromise<void>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator._delete(
+        id,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['SecretsApi._delete']?.[localVarOperationServerIndex]
+          ?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {CreateSecretDto} createSecretDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async create(
+      createSecretDto: CreateSecretDto,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<SecretResponseDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.create(
+        createSecretDto,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['SecretsApi.create']?.[localVarOperationServerIndex]
+          ?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async getById(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<SecretResponseDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.getById(
+        id,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['SecretsApi.getById']?.[localVarOperationServerIndex]
+          ?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async list(
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<Array<SecretResponseDto>>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.list(options);
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['SecretsApi.list']?.[localVarOperationServerIndex]
+          ?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {UpdateSecretDto} updateSecretDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async update(
+      id: string,
+      updateSecretDto: UpdateSecretDto,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<SecretResponseDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.update(
+        id,
+        updateSecretDto,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['SecretsApi.update']?.[localVarOperationServerIndex]
+          ?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+  };
+};
+
+/**
+ * SecretsApi - factory interface
+ * @export
+ */
+export const SecretsApiFactory = function (
+  configuration?: Configuration,
+  basePath?: string,
+  axios?: AxiosInstance,
+) {
+  const localVarFp = SecretsApiFp(configuration);
+  return {
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    _delete(id: string, options?: RawAxiosRequestConfig): AxiosPromise<void> {
+      return localVarFp
+        ._delete(id, options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {CreateSecretDto} createSecretDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    create(
+      createSecretDto: CreateSecretDto,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<SecretResponseDto> {
+      return localVarFp
+        .create(createSecretDto, options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getById(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<SecretResponseDto> {
+      return localVarFp
+        .getById(id, options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    list(
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<Array<SecretResponseDto>> {
+      return localVarFp
+        .list(options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
+     * @param {string} id
+     * @param {UpdateSecretDto} updateSecretDto
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    update(
+      id: string,
+      updateSecretDto: UpdateSecretDto,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<SecretResponseDto> {
+      return localVarFp
+        .update(id, updateSecretDto, options)
+        .then((request) => request(axios, basePath));
+    },
+  };
+};
+
+/**
+ * SecretsApi - object-oriented interface
+ * @export
+ * @class SecretsApi
+ * @extends {BaseAPI}
+ */
+export class SecretsApi extends BaseAPI {
+  /**
+   *
+   * @param {string} id
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof SecretsApi
+   */
+  public _delete(id: string, options?: RawAxiosRequestConfig) {
+    return SecretsApiFp(this.configuration)
+      ._delete(id, options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {CreateSecretDto} createSecretDto
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof SecretsApi
+   */
+  public create(
+    createSecretDto: CreateSecretDto,
+    options?: RawAxiosRequestConfig,
+  ) {
+    return SecretsApiFp(this.configuration)
+      .create(createSecretDto, options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {string} id
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof SecretsApi
+   */
+  public getById(id: string, options?: RawAxiosRequestConfig) {
+    return SecretsApiFp(this.configuration)
+      .getById(id, options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof SecretsApi
+   */
+  public list(options?: RawAxiosRequestConfig) {
+    return SecretsApiFp(this.configuration)
+      .list(options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {string} id
+   * @param {UpdateSecretDto} updateSecretDto
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof SecretsApi
+   */
+  public update(
+    id: string,
+    updateSecretDto: UpdateSecretDto,
+    options?: RawAxiosRequestConfig,
+  ) {
+    return SecretsApiFp(this.configuration)
+      .update(id, updateSecretDto, options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+}
 
 /**
  * SystemApi - axios parameter creator

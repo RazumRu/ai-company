@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { BadRequestException, DefaultLogger } from '@packages/common';
+import { z } from 'zod';
 
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NodeConnection } from '../../graph-templates/templates/base-node.template';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { ProjectsDao } from '../../projects/dao/projects.dao';
+import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
+import { SecretsService } from '../../secrets/services/secrets.service';
 import { GraphEntity } from '../entity/graph.entity';
 import {
   CompiledGraph,
@@ -30,6 +33,7 @@ export class GraphCompiler {
     private readonly graphRegistry: GraphRegistry,
     private readonly llmModelsService: LlmModelsService,
     private readonly projectsDao: ProjectsDao,
+    private readonly secretsService: SecretsService,
   ) {}
 
   validateSchema(schema: GraphSchemaType): void {
@@ -269,6 +273,62 @@ export class GraphCompiler {
           stateManager.attachGraphNode(node.id, compiledNode);
         }
 
+        // Resolve secrets and inject into runtime env vars as a post-compile step.
+        // This runs after all nodes are compiled so tool configure() calls have already
+        // registered their jobs on RuntimeThreadProvider instances.
+        // Collect all secret names across all nodes in a single pre-pass, then
+        // batch-fetch from DB + vault to avoid N+1 sequential HTTP calls.
+        const secretNamesByNode = new Map<string, string[]>();
+        const allSecretNames = new Set<string>();
+        for (const node of buildOrder) {
+          const names = this.collectSecretNames(node);
+          if (names.length > 0) {
+            secretNamesByNode.set(node.id, names);
+            for (const name of names) {
+              allSecretNames.add(name);
+            }
+          }
+        }
+
+        const resolvedSecrets =
+          allSecretNames.size > 0
+            ? await this.secretsService.batchResolveSecretValues(
+                metadata.graph_project_id,
+                Array.from(allSecretNames),
+              )
+            : new Map<string, string>();
+
+        for (const node of buildOrder) {
+          const names = secretNamesByNode.get(node.id);
+          if (!names || names.length === 0) {
+            continue;
+          }
+
+          const secretEnv: Record<string, string> = {};
+          for (const name of names) {
+            const value = resolvedSecrets.get(name);
+            if (value !== undefined) {
+              secretEnv[name] = value;
+            }
+          }
+
+          if (Object.keys(secretEnv).length === 0) {
+            continue;
+          }
+
+          const runtimeNodeId = this.findConnectedRuntimeNode(
+            node.id,
+            edges,
+            compiledNodes,
+          );
+          if (runtimeNodeId) {
+            const runtimeNode = compiledNodes.get(runtimeNodeId);
+            if (runtimeNode?.instance instanceof RuntimeThreadProvider) {
+              runtimeNode.instance.addEnvVariables(secretEnv);
+            }
+          }
+        }
+
         this.graphRegistry.setStatus(graphId, GraphStatus.Running);
 
         return compiledGraph;
@@ -277,6 +337,50 @@ export class GraphCompiler {
         throw error;
       }
     });
+  }
+
+  /** Collect all secret names referenced by a node's config fields. */
+  private collectSecretNames(node: GraphNodeSchemaType): string[] {
+    const template = this.templateRegistry.getTemplate(node.template);
+    if (!template?.schema) {
+      return [];
+    }
+
+    const names: string[] = [];
+    const schema = template.schema;
+
+    if (schema instanceof z.ZodObject) {
+      const shape = schema.shape as Record<string, z.ZodTypeAny>;
+      for (const [key, fieldSchema] of Object.entries(shape)) {
+        const meta = fieldSchema.meta?.() as
+          | Record<string, unknown>
+          | undefined;
+        if (meta && meta['x-ui:secret-select'] === true) {
+          const secretName = node.config?.[key as keyof typeof node.config];
+          if (secretName && typeof secretName === 'string') {
+            names.push(secretName);
+          }
+        }
+      }
+    }
+
+    return names;
+  }
+
+  private findConnectedRuntimeNode(
+    nodeId: string,
+    edges: GraphEdgeSchemaType[],
+    compiledNodes: Map<string, CompiledGraphNode>,
+  ): string | undefined {
+    for (const edge of edges) {
+      if (edge.from === nodeId) {
+        const target = compiledNodes.get(edge.to);
+        if (target?.type === NodeKind.Runtime) {
+          return edge.to;
+        }
+      }
+    }
+    return undefined;
   }
 
   async destroyNode(node: CompiledGraphNode): Promise<void> {

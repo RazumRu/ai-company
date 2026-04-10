@@ -42,6 +42,7 @@ type UiSchemaExtensions = {
   'x-ui:ai-suggestions'?: boolean;
   'x-ui:litellm-models-list-select'?: boolean;
   'x-ui:github-repos-select'?: boolean;
+  'x-ui:secret-select'?: boolean;
   'x-ui:readonly'?: boolean;
 };
 
