@@ -4,6 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+## Project Overview
+
+Geniro is an open-source platform for building, running, and managing AI agent workflows. Users design agents as visual graphs, connect them to tools (web search, shell, file ops, GitHub, knowledge base, MCP), and execute them in sandboxed Docker environments — all through a REST API with real-time WebSocket updates.
+
+**Tech stack**: TypeScript 6.x, Node.js 24+, NestJS 11 (Fastify), MikroORM (PostgreSQL), React 19 (Vite), pnpm + Turbo monorepo
+
+**Key domain entities**: Graphs, Agents, Threads, Messages, Checkpoints, Graph Templates, Knowledge Bases, Git Repositories, Revisions, Runtimes, Triggers
+
+**External dependencies**: PostgreSQL, Redis (BullMQ), Qdrant (vector search), Keycloak (auth), LiteLLM (LLM proxy), Docker/Podman (sandboxed execution), optional Daytona (remote runtimes)
+
+---
+
 ## Authoritative docs
 
 The `/docs` directory is the single source of truth for architecture, style, and process rules. Read the relevant files there before writing or changing code. This file is a condensed version for quick reference.
