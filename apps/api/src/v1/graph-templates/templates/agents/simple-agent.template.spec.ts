@@ -60,6 +60,7 @@ describe('SimpleAgentTemplate', () => {
       ensureGraphBuilt: vi.fn(),
       updateToolsSnapshot: vi.fn(),
       getTools: vi.fn(() => addedTools),
+      getDeferredTools: vi.fn(() => new Map()),
       getConfig: vi.fn(),
       buildLLM: vi.fn(),
       stop: vi.fn(),

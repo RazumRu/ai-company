@@ -53,6 +53,10 @@ export class ToolExecutorNode extends BaseNode<
       maxOutputChars?: number;
     },
     private readonly logger?: DefaultLogger,
+    private readonly deferredToolResolver?: (name: string) => {
+      tool: DynamicStructuredTool;
+      instructions?: string;
+    } | null,
   ) {
     super();
     this.maxOutputChars = opts?.maxOutputChars ?? 500_000;
@@ -96,7 +100,8 @@ export class ToolExecutorNode extends BaseNode<
         // checkpoints that were persisted before the upstream fix).
         tc.name = stripProxyPrefix(tc.name, toolNameSet);
 
-        const tool = toolsMap[tc.name];
+        let tool = toolsMap[tc.name];
+
         const makeMsg = (
           content: string,
           messageMetadata?: ToolInvokeResult<unknown>['messageMetadata'],
@@ -118,6 +123,15 @@ export class ToolExecutorNode extends BaseNode<
             content: JSON.stringify({ error: content }),
             ...(messageMetadata ? { additional_kwargs: messageMetadata } : {}),
           });
+
+        // Deferred tool auto-load fallback
+        if (!tool && this.deferredToolResolver) {
+          const resolved = this.deferredToolResolver(tc.name);
+          if (resolved) {
+            tool = resolved.tool;
+            toolsMap[tc.name] = resolved.tool;
+          }
+        }
 
         if (!tool) {
           return {
@@ -263,8 +277,7 @@ export class ToolExecutorNode extends BaseNode<
     // Build interleaved message list: each tool message followed by its additionalMessages
     const interleavedMessages: BaseMessage[] = [];
 
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
+    for (const result of results) {
       const toolMsg = result?.toolMessage;
 
       if (!toolMsg) {
