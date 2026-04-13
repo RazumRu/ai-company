@@ -101,7 +101,6 @@ export class ToolExecutorNode extends BaseNode<
         tc.name = stripProxyPrefix(tc.name, toolNameSet);
 
         let tool = toolsMap[tc.name];
-        let autoLoadNotification: BaseMessage | undefined;
 
         const makeMsg = (
           content: string,
@@ -131,15 +130,6 @@ export class ToolExecutorNode extends BaseNode<
           if (resolved) {
             tool = resolved.tool;
             toolsMap[tc.name] = resolved.tool;
-            const notif = new SystemMessage({
-              content: `Auto-loaded tool: ${tc.name}`,
-            });
-            notif.additional_kwargs = {
-              ...notif.additional_kwargs,
-              __hideForLlm: true,
-              __hideForSummary: true,
-            };
-            autoLoadNotification = notif;
           }
         }
 
@@ -230,7 +220,6 @@ export class ToolExecutorNode extends BaseNode<
 
           // Merge streamed messages with any additional messages from the final result
           const additionalMessages = [
-            ...(autoLoadNotification ? [autoLoadNotification] : []),
             ...streamedMessages,
             ...(toolAdditionalMessages ?? []),
           ];

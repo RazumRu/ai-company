@@ -1401,18 +1401,12 @@ describe('ToolExecutorNode', () => {
       expect(resolver).toHaveBeenCalledWith('deferred-tool');
       expect(deferredTool.invoke).toHaveBeenCalled();
 
-      // Should have the tool result followed by the auto-load notification SystemMessage
+      // Should have only the tool result — instructions are no longer injected as SystemMessages
       const items = result.messages?.items ?? [];
-      expect(items).toHaveLength(2);
+      expect(items).toHaveLength(1);
 
       expect(items[0]).toBeInstanceOf(ToolMessage);
       expect(items[0]?.content).toBe('Deferred result');
-
-      expect(items[1]).toBeInstanceOf(SystemMessage);
-      expect(items[1]?.content).toBe('Auto-loaded tool: deferred-tool');
-      expect((items[1] as SystemMessage).additional_kwargs.__hideForLlm).toBe(
-        true,
-      );
     });
 
     it('should return standard "Tool not found" error when resolver returns null', async () => {
@@ -1472,7 +1466,7 @@ describe('ToolExecutorNode', () => {
       expect(items[0]?.content).toContain("Tool 'missing-tool' not found");
     });
 
-    it('should inject auto-load notification SystemMessage when resolved tool has instructions', async () => {
+    it('should not inject SystemMessage when resolved tool has instructions (instructions are no longer injected)', async () => {
       const deferredTool = {
         name: 'tool-with-instructions',
         description: 'Tool with detailed instructions',
@@ -1506,21 +1500,15 @@ describe('ToolExecutorNode', () => {
 
       const items = result.messages?.items ?? [];
       const sysMessages = items.filter((m) => m instanceof SystemMessage);
-      expect(sysMessages).toHaveLength(1);
-      expect(sysMessages[0]?.content).toBe(
-        'Auto-loaded tool: tool-with-instructions',
-      );
-      expect(
-        (sysMessages[0] as SystemMessage).additional_kwargs.__hideForLlm,
-      ).toBe(true);
+      expect(sysMessages).toHaveLength(0);
 
-      // Should have the tool result + the notification
-      expect(items).toHaveLength(2);
+      // Should only have the tool result
+      expect(items).toHaveLength(1);
       expect(items[0]).toBeInstanceOf(ToolMessage);
       expect(items[0]?.content).toBe('OK');
     });
 
-    it('should inject auto-load notification SystemMessage when resolved tool has no instructions', async () => {
+    it('should not inject SystemMessage when resolved tool has no instructions', async () => {
       const deferredTool = {
         name: 'tool-no-instructions',
         description: 'Tool without instructions',
@@ -1554,16 +1542,10 @@ describe('ToolExecutorNode', () => {
 
       const items = result.messages?.items ?? [];
       const sysMessages = items.filter((m) => m instanceof SystemMessage);
-      expect(sysMessages).toHaveLength(1);
-      expect(sysMessages[0]?.content).toBe(
-        'Auto-loaded tool: tool-no-instructions',
-      );
-      expect(
-        (sysMessages[0] as SystemMessage).additional_kwargs.__hideForLlm,
-      ).toBe(true);
+      expect(sysMessages).toHaveLength(0);
 
-      // Should have the tool result + the notification
-      expect(items).toHaveLength(2);
+      // Should only have the tool result
+      expect(items).toHaveLength(1);
       expect(items[0]).toBeInstanceOf(ToolMessage);
       expect(items[0]?.content).toBe('Done');
     });
@@ -1613,14 +1595,11 @@ describe('ToolExecutorNode', () => {
       expect(deferredTool.invoke).toHaveBeenCalledTimes(2);
 
       const items = result.messages?.items ?? [];
-      // Two tool results — each call gets its own auto-load notification (1 or 2, depending on parallel scheduling)
+      // Two tool results — no instruction messages (no instructions provided)
       const toolMessages = items.filter((m) => m instanceof ToolMessage);
       expect(toolMessages).toHaveLength(2);
       expect(toolMessages[0]?.content).toBe('Batch result');
       expect(toolMessages[1]?.content).toBe('Batch result');
-
-      const sysMessages = items.filter((m) => m instanceof SystemMessage);
-      expect(sysMessages.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
