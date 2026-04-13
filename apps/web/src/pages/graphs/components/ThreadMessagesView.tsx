@@ -534,6 +534,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
       requestTokenUsageIn?: ThreadMessageDtoRequestTokenUsage | null;
       requestTokenUsageOut?: ThreadMessageDtoRequestTokenUsage | null;
       durationMs?: number;
+      loadedTools?: string[];
     }) => {
       const toolErrorText =
         opts.status === 'executed'
@@ -561,6 +562,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
           }
           durationMs={opts.durationMs}
           errorText={toolErrorText}
+          loadedTools={opts.loadedTools}
         />
       );
     };
@@ -925,6 +927,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               requestTokenUsageIn: it.requestTokenUsageIn,
               requestTokenUsageOut: it.requestTokenUsageOut,
               durationMs: it.durationMs,
+              loadedTools: it.loadedTools,
             })}
           </div>
         );
@@ -1473,6 +1476,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               requestTokenUsageIn: item.requestTokenUsageIn,
               requestTokenUsageOut: item.requestTokenUsageOut,
               durationMs: item.durationMs,
+              loadedTools: item.loadedTools,
             }),
           );
           i++;

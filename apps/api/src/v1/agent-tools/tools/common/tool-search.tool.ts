@@ -140,14 +140,18 @@ export class ToolSearchTool extends BaseTool<
     }
 
     const loadedInstructions: string[] = [];
+    const loadedToolNames: string[] = [];
 
     const results = topMatches.map(({ name, entry }) => {
       const loaded = config.loadTool(name);
 
-      if (loaded?.instructions) {
-        loadedInstructions.push(
-          `## ${name} Instructions\n${loaded.instructions}`,
-        );
+      if (loaded) {
+        loadedToolNames.push(name);
+        if (loaded.instructions) {
+          loadedInstructions.push(
+            `## ${name} Instructions\n${loaded.instructions}`,
+          );
+        }
       }
 
       const ajvSchema = entry.tool.__ajvSchema;
@@ -172,6 +176,10 @@ export class ToolSearchTool extends BaseTool<
 
     return {
       output: { results, message },
+      messageMetadata:
+        loadedToolNames.length > 0
+          ? { __loadedTools: loadedToolNames }
+          : undefined,
     };
   }
 

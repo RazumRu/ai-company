@@ -124,12 +124,15 @@ export class ToolExecutorNode extends BaseNode<
             ...(messageMetadata ? { additional_kwargs: messageMetadata } : {}),
           });
 
+        let autoLoadedToolName: string | undefined;
+
         // Deferred tool auto-load fallback
         if (!tool && this.deferredToolResolver) {
           const resolved = this.deferredToolResolver(tc.name);
           if (resolved) {
             tool = resolved.tool;
             toolsMap[tc.name] = resolved.tool;
+            autoLoadedToolName = tc.name;
           }
         }
 
@@ -224,6 +227,13 @@ export class ToolExecutorNode extends BaseNode<
             ...(toolAdditionalMessages ?? []),
           ];
 
+          const finalMetadata = autoLoadedToolName
+            ? {
+                ...(messageMetadata ?? {}),
+                __loadedTools: [autoLoadedToolName],
+              }
+            : messageMetadata;
+
           const content = this.formatToolOutputForLlm(output);
 
           if (content.length > this.maxOutputChars) {
@@ -232,7 +242,7 @@ export class ToolExecutorNode extends BaseNode<
 
             return {
               toolName: tc.name,
-              toolMessage: makeMsg(`${trimmed}${suffix}`, messageMetadata),
+              toolMessage: makeMsg(`${trimmed}${suffix}`, finalMetadata),
               stateChange,
               stateChangeKey,
               toolRequestUsage,
@@ -243,7 +253,7 @@ export class ToolExecutorNode extends BaseNode<
 
           return {
             toolName: tc.name,
-            toolMessage: makeMsg(content, messageMetadata),
+            toolMessage: makeMsg(content, finalMetadata),
             stateChange,
             stateChangeKey,
             toolRequestUsage,

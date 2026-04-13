@@ -72,6 +72,9 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
    * Used by the UI to group subagent intermediate messages under the tool call.
    */
   __toolCallId?: string;
+
+  /** Names of tools that were auto-loaded (deferred tool loading) when processing this tool call. */
+  __loadedTools?: string[];
 };
 
 /**

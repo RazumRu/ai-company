@@ -24,6 +24,9 @@ export type MessageAdditionalKwargs = Record<string, unknown> & {
 
   // Subagent inner messages link back to parent tool call
   __toolCallId?: string;
+
+  // Names of tools that were auto-loaded (deferred tool loading) when processing this tool call
+  __loadedTools?: string[];
 };
 
 export interface PendingMessage {

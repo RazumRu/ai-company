@@ -332,6 +332,88 @@ describe('ToolSearchTool', () => {
     });
   });
 
+  describe('messageMetadata.__loadedTools', () => {
+    it('should include __loadedTools with names of successfully loaded tools', () => {
+      const loadTool = vi.fn().mockImplementation((name: string) => ({
+        tool: makeMockTool(name),
+      }));
+      const config: ToolSearchToolConfig = {
+        deferredTools: new Map([
+          ['shell', makeEntry('Execute shell commands')],
+          ['shell-safe', makeEntry('Safe shell execution mode')],
+        ]),
+        loadTool,
+      };
+
+      const result = toolInstance.invoke(
+        { query: 'shell' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.messageMetadata).toBeDefined();
+      expect(result.messageMetadata!.__loadedTools).toEqual(
+        expect.arrayContaining(['shell', 'shell-safe']),
+      );
+    });
+
+    it('should not include __loadedTools when loadTool returns null for all tools', () => {
+      const loadTool = vi.fn().mockReturnValue(null);
+      const config: ToolSearchToolConfig = {
+        deferredTools: new Map([
+          ['shell', makeEntry('Execute shell commands')],
+        ]),
+        loadTool,
+      };
+
+      const result = toolInstance.invoke(
+        { query: 'shell' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.messageMetadata).toBeUndefined();
+    });
+
+    it('should only include __loadedTools for tools where loadTool returned a value', () => {
+      const loadTool = vi.fn().mockImplementation((name: string) => {
+        if (name === 'shell') {
+          return { tool: makeMockTool('shell') };
+        }
+        return null;
+      });
+      const config: ToolSearchToolConfig = {
+        deferredTools: new Map([
+          ['shell', makeEntry('Execute shell commands')],
+          ['shell-safe', makeEntry('Safe shell execution mode')],
+        ]),
+        loadTool,
+      };
+
+      const result = toolInstance.invoke(
+        { query: 'shell' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.messageMetadata!.__loadedTools).toEqual(['shell']);
+    });
+
+    it('should not set messageMetadata when there are no matches', () => {
+      const config = makeConfig({
+        shell: makeEntry('Execute shell commands'),
+      });
+
+      const result = toolInstance.invoke(
+        { query: 'zzz-nonexistent' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.messageMetadata).toBeUndefined();
+    });
+  });
+
   describe('getDetailedInstructions', () => {
     it('should return a non-empty instruction string', () => {
       const config = makeConfig({});

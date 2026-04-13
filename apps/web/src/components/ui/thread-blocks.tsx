@@ -10,6 +10,7 @@ import {
   ChevronUp,
   Copy,
   Loader2,
+  Puzzle,
   Terminal,
   Timer,
   XCircle,
@@ -627,6 +628,8 @@ export interface ToolBlockProps {
   align?: 'left' | 'center';
   /** Error text extraction function (consumer provides). */
   errorText?: string;
+  /** Names of tools that were auto-loaded when this tool call was processed. */
+  loadedTools?: string[];
 }
 
 export function ToolBlock(props: ToolBlockProps) {
@@ -645,6 +648,7 @@ export function ToolBlock(props: ToolBlockProps) {
     durationMs,
     align,
     errorText,
+    loadedTools,
   } = props;
 
   const isConsumerMode = rawStatus !== undefined;
@@ -736,13 +740,28 @@ export function ToolBlock(props: ToolBlockProps) {
     </div>
   );
 
-  if (!hasPopoverContent) {
+  // When loadedTools is present, replace the entire trigger with a compact
+  // "Loaded: x, y" indicator — clicking it still opens the full popover.
+  const hasLoadedTools = loadedTools && loadedTools.length > 0;
+  const effectiveTrigger = hasLoadedTools ? (
+    <div
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg border transition-colors cursor-pointer bg-muted/40 border-border/50 hover:bg-muted/70 ${align === 'left' ? 'justify-start' : ''}`}>
+      <Puzzle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+      <span className="text-xs font-mono text-muted-foreground truncate">
+        Loaded: {loadedTools.join(', ')}
+      </span>
+    </div>
+  ) : (
+    trigger
+  );
+
+  if (!hasPopoverContent && !hasLoadedTools) {
     return trigger;
   }
 
   return (
     <Popover>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverTrigger asChild>{effectiveTrigger}</PopoverTrigger>
       <PopoverContent className="w-[420px] p-0 overflow-hidden" align="start">
         <ToolPopoverPanel
           toolLabel={toolName}

@@ -1409,6 +1409,83 @@ describe('ToolExecutorNode', () => {
       expect(items[0]?.content).toBe('Deferred result');
     });
 
+    it('should set __loadedTools in ToolMessage additional_kwargs when tool is auto-loaded via deferredToolResolver', async () => {
+      const deferredTool = {
+        name: 'auto-tool',
+        description: 'An auto-loaded tool',
+        invoke: vi.fn().mockResolvedValue({ output: 'Auto result' }),
+      } as unknown as DynamicStructuredTool;
+
+      const resolver = vi.fn().mockReturnValue({
+        tool: deferredTool,
+      });
+
+      const deferredNode = new ToolExecutorNode(
+        [],
+        mockLitellmService,
+        undefined,
+        undefined,
+        resolver,
+      );
+
+      const toolCall = {
+        id: 'call-auto-1',
+        name: 'auto-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Using auto tool',
+          tool_calls: [toolCall],
+        }),
+      ];
+
+      const result = await deferredNode.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+
+      const toolMsg = items[0] as ToolMessage;
+      expect(toolMsg.additional_kwargs.__loadedTools).toEqual(['auto-tool']);
+    });
+
+    it('should NOT set __loadedTools when tool was already loaded (not via deferred resolver)', async () => {
+      const preloadedTool = {
+        name: 'preloaded-tool',
+        description: 'A pre-loaded tool',
+        invoke: vi.fn().mockResolvedValue({ output: 'Preloaded result' }),
+      } as unknown as DynamicStructuredTool;
+
+      const nodeWithPreloaded = new ToolExecutorNode(
+        [preloadedTool],
+        mockLitellmService,
+      );
+
+      const toolCall = {
+        id: 'call-pre-1',
+        name: 'preloaded-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Using preloaded tool',
+          tool_calls: [toolCall],
+        }),
+      ];
+
+      const result = await nodeWithPreloaded.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+
+      const toolMsg = items[0] as ToolMessage;
+      expect(toolMsg.additional_kwargs.__loadedTools).toBeUndefined();
+    });
+
     it('should return standard "Tool not found" error when resolver returns null', async () => {
       const resolver = vi.fn().mockReturnValue(null);
 
