@@ -954,6 +954,11 @@ export const prepareReadyMessages = (
           createdAt: matched?.createdAt ?? m.createdAt,
           roleLabel: effectiveTitle || name || 'tool',
           title: effectiveTitle,
+          loadedTools: (() => {
+            const raw =
+              getAdditionalKwargs(matched?.message)?.['__loadedTools'];
+            return Array.isArray(raw) ? (raw as string[]) : undefined;
+          })(),
           inCommunicationExec: isInterAgent,
           inSubagentExec: isSubagent,
           sourceAgentNodeId,
@@ -1020,6 +1025,10 @@ export const prepareReadyMessages = (
         createdAt: m.createdAt,
         roleLabel: title || name || 'tool',
         title,
+        loadedTools: (() => {
+          const raw = getAdditionalKwargs(m.message)?.['__loadedTools'];
+          return Array.isArray(raw) ? (raw as string[]) : undefined;
+        })(),
         inCommunicationExec: isInterAgent,
         inSubagentExec: isSubagent,
         sourceAgentNodeId,

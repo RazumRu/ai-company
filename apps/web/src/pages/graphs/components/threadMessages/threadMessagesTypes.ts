@@ -103,6 +103,7 @@ export type PreparedMessage =
       createdAt?: string;
       roleLabel?: string;
       title?: string;
+      loadedTools?: string[];
       inCommunicationExec?: boolean;
       inSubagentExec?: boolean;
       sourceAgentNodeId?: string;

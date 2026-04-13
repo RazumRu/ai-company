@@ -18,7 +18,7 @@ import { buildReasoningMessage } from '../../agents.utils';
 import { GraphThreadState, IGraphThreadStateData } from '../graph-thread-state';
 import { PgCheckpointSaver } from '../pg-checkpoint-saver';
 import { AgentEventType } from './base-agent';
-import { SimpleAgent } from './simple-agent';
+import { SimpleAgent, SimpleAgentSchemaType } from './simple-agent';
 
 // Mock dependencies
 vi.mock('@langchain/core/messages', () => ({
@@ -1023,6 +1023,184 @@ describe('SimpleAgent', () => {
       const metadataEntry = reasoningMetadata?.['reasoning:chunk-deepseek'];
       expect(metadataEntry).toBeDefined();
       expect(metadataEntry?.content).toBe('DeepSeek reasoning chunk');
+    });
+  });
+
+  describe('deferred tool loading', () => {
+    const baseConfig: SimpleAgentSchemaType = {
+      name: 'Test Agent',
+      description: 'Test agent description',
+      instructions: 'Test instructions',
+      invokeModelName: 'gpt-5-mini',
+      invokeModelReasoningEffort: ReasoningEffort.None,
+      summarizeMaxTokens: 1000,
+      summarizeKeepTokens: 500,
+    };
+
+    const makeMockTool = (name: string) =>
+      ({
+        name,
+        description: `Mock tool ${name}`,
+        invoke: vi.fn(),
+      }) as unknown as DynamicStructuredTool;
+
+    it('initTools() creates deferred registry with non-core tools', async () => {
+      const mockTool = makeMockTool('mock-tool');
+      agent.addTool(mockTool);
+
+      await agent.initTools(baseConfig);
+
+      // Non-core tool should be in deferred registry
+      expect(agent.getDeferredTools().has('mock-tool')).toBe(true);
+      // Non-core tool should NOT be in active tools
+      const activeNames = agent.getTools().map((t) => t.name);
+      expect(activeNames).not.toContain('mock-tool');
+    });
+
+    it('getTools() returns only active tools initially', async () => {
+      const mockTool = makeMockTool('graph-tool');
+      agent.addTool(mockTool);
+
+      await agent.initTools(baseConfig);
+
+      const activeNames = agent.getTools().map((t) => t.name);
+      expect(activeNames).toContain('finish');
+      expect(activeNames).toContain('wait_for');
+      expect(activeNames).toContain('tool_search');
+      expect(activeNames).not.toContain('graph-tool');
+    });
+
+    it('loadTool() moves tool from deferred to active', async () => {
+      const mockTool = makeMockTool('lazy-tool');
+      agent.addTool(mockTool);
+
+      await agent.initTools(baseConfig);
+
+      expect(agent.getDeferredTools().has('lazy-tool')).toBe(true);
+      expect(agent.getTools().map((t) => t.name)).not.toContain('lazy-tool');
+
+      const result = agent.loadTool('lazy-tool');
+
+      expect(result).not.toBeNull();
+      expect(agent.getDeferredTools().has('lazy-tool')).toBe(false);
+      expect(agent.getTools().map((t) => t.name)).toContain('lazy-tool');
+    });
+
+    it('loadTool() returns null for already-loaded tool (dedup)', async () => {
+      const mockTool = makeMockTool('already-loaded');
+      agent.addTool(mockTool);
+
+      await agent.initTools(baseConfig);
+      agent.loadTool('already-loaded');
+
+      // Second call should return null
+      const result = agent.loadTool('already-loaded');
+      expect(result).toBeNull();
+    });
+
+    it('loadTool() returns null for unknown tool', async () => {
+      await agent.initTools(baseConfig);
+
+      const result = agent.loadTool('nonexistent-tool');
+      expect(result).toBeNull();
+    });
+
+    it('loadTool() pushes to the shared activeTools array', async () => {
+      const mockTool = makeMockTool('shared-ref-tool');
+      agent.addTool(mockTool);
+
+      await agent.initTools(baseConfig);
+
+      // Capture the array reference before loading
+      const toolsArrayBefore = agent.getTools();
+
+      agent.loadTool('shared-ref-tool');
+
+      // The same array reference should now contain the newly loaded tool
+      expect(toolsArrayBefore).toBe(agent.getTools());
+      expect(toolsArrayBefore.map((t) => t.name)).toContain('shared-ref-tool');
+    });
+
+    it('getDeferredTools() returns the deferred map', async () => {
+      const mockTool1 = makeMockTool('deferred-a');
+      const mockTool2 = makeMockTool('deferred-b');
+      agent.addTool(mockTool1);
+      agent.addTool(mockTool2);
+
+      await agent.initTools(baseConfig);
+
+      const deferred = agent.getDeferredTools();
+      expect(deferred).toBeInstanceOf(Map);
+      expect(deferred.has('deferred-a')).toBe(true);
+      expect(deferred.has('deferred-b')).toBe(true);
+    });
+
+    it('resetTools() clears both active and deferred', async () => {
+      const mockTool = makeMockTool('to-be-reset');
+      agent.addTool(mockTool);
+
+      await agent.initTools(baseConfig);
+
+      // Pre-condition: there are tools
+      expect(agent.getTools().length).toBeGreaterThan(0);
+      expect(agent.getDeferredTools().size).toBeGreaterThan(0);
+
+      agent.resetTools();
+
+      expect(agent.getTools()).toHaveLength(0);
+      expect(agent.getDeferredTools().size).toBe(0);
+      expect(agent['graph']).toBeUndefined();
+    });
+
+    it('initTools() continues when an MCP service fails', async () => {
+      const failingMcp = {
+        discoverTools: vi
+          .fn()
+          .mockRejectedValue(new Error('MCP connection failed')),
+      };
+      const workingMcp = {
+        discoverTools: vi.fn().mockResolvedValue([
+          {
+            name: 'mcp-tool',
+            description: 'From working MCP',
+            invoke: vi.fn(),
+          },
+        ]),
+      };
+      agent['mcpServices'] = [failingMcp, workingMcp] as any;
+
+      await agent.initTools(baseConfig);
+
+      // Working MCP's tool should be in deferred
+      expect(agent.getDeferredTools().has('mcp-tool')).toBe(true);
+      // Core tools should still be active
+      const activeNames = agent.getTools().map((t) => t.name);
+      expect(activeNames).toContain('finish');
+      expect(activeNames).toContain('wait_for');
+      expect(activeNames).toContain('tool_search');
+    });
+
+    it('MCP tools are moved to deferred registry', async () => {
+      const mcpService = {
+        discoverTools: vi.fn().mockResolvedValue([
+          { name: 'mcp-shell', description: 'MCP shell tool', invoke: vi.fn() },
+          {
+            name: 'mcp-search',
+            description: 'MCP search tool',
+            invoke: vi.fn(),
+          },
+        ]),
+      };
+      agent['mcpServices'] = [mcpService] as any;
+
+      await agent.initTools(baseConfig);
+
+      // MCP tools should be in deferred, not active
+      expect(agent.getDeferredTools().has('mcp-shell')).toBe(true);
+      expect(agent.getDeferredTools().has('mcp-search')).toBe(true);
+      const activeNames = agent.getTools().map((t) => t.name);
+      expect(activeNames).not.toContain('mcp-shell');
+      expect(activeNames).not.toContain('mcp-search');
     });
   });
 

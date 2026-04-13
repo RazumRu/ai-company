@@ -36,6 +36,7 @@ import { ShellTool } from './tools/common/shell.tool';
 import { SubagentsListTool } from './tools/common/subagents/subagents-list.tool';
 import { SubagentsRunTaskTool } from './tools/common/subagents/subagents-run-task.tool';
 import { SubagentsToolGroup } from './tools/common/subagents/subagents-tool-group';
+import { ToolSearchTool } from './tools/common/tool-search.tool';
 import { WebSearchTool } from './tools/common/web-search.tool';
 import { FinishTool } from './tools/core/finish.tool';
 import { WaitForTool } from './tools/core/wait-for.tool';
@@ -55,6 +56,7 @@ import { WaitForTool } from './tools/core/wait-for.tool';
     WebSearchTool,
     FinishTool,
     WaitForTool,
+    ToolSearchTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,
@@ -90,6 +92,7 @@ import { WaitForTool } from './tools/core/wait-for.tool';
     WebSearchTool,
     FinishTool,
     WaitForTool,
+    ToolSearchTool,
     CommunicationExecTool,
     CommunicationToolGroup,
     GhCloneTool,

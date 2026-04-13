@@ -22,6 +22,10 @@ import { ZodSchema } from 'zod';
 import { BaseMcp } from '../../../agent-mcp/services/base-mcp';
 import { zodToAjvSchema } from '../../../agent-tools/agent-tools.utils';
 import type { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
+import {
+  DeferredToolEntry,
+  ToolSearchTool,
+} from '../../../agent-tools/tools/common/tool-search.tool';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { WaitForTool } from '../../../agent-tools/tools/core/wait-for.tool';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
@@ -79,6 +83,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private currentConfig?: SimpleAgentSchemaType;
   private activeRuns = new Map<string, ActiveRunEntry>();
   private mcpServices: BaseMcp[] = [];
+  private deferredTools: Map<string, DeferredToolEntry> = new Map();
+  private activeTools: DynamicStructuredTool[] = [];
 
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
@@ -99,10 +105,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   }
 
   public async initTools(_config: SimpleAgentSchemaType) {
-    // ----- finish tool -----
+    // ----- core tools (always loaded) -----
     this.addTool(new FinishTool().build({}));
-
-    // ----- wait_for tool -----
     this.addTool(new WaitForTool().build({}));
 
     // ----- mcp -----
@@ -120,6 +124,32 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         );
       }
     }
+
+    // ----- move non-core tools to deferred registry -----
+    const coreToolNames = new Set<string>([
+      FinishTool.TOOL_NAME,
+      WaitForTool.TOOL_NAME,
+    ]);
+    for (const [name, tool] of this.tools.entries()) {
+      if (!coreToolNames.has(name)) {
+        this.deferredTools.set(name, {
+          tool: tool as BuiltAgentTool,
+          description: tool.description,
+          instructions: (tool as BuiltAgentTool).__instructions,
+        });
+        this.tools.delete(name);
+      }
+    }
+
+    // ----- tool_search (always loaded) -----
+    const toolSearchTool = new ToolSearchTool().build({
+      deferredTools: this.deferredTools,
+      loadTool: this.loadTool.bind(this),
+    });
+    this.addTool(toolSearchTool);
+
+    // ----- build shared mutable activeTools array -----
+    this.activeTools = Array.from(this.tools.values());
   }
 
   protected async buildGraph(config: SimpleAgentSchemaType) {
@@ -129,7 +159,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       this.graphThreadStateUnsubscribe = graphThreadState.subscribe(
         this.handleThreadStateChange,
       );
-      await this.initTools(config);
 
       // ---- summarize ----
       const summarizeNode = new SummarizeNode(
@@ -190,6 +219,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         this.litellmService,
         undefined,
         this.logger,
+        (name: string) => this.loadTool(name),
       );
 
       // ---- message injection ----
@@ -685,7 +715,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       ? { instructions: instructions.trim() }
       : undefined;
 
-    const allTools = this.getTools();
+    const allTools = [
+      ...this.getTools(),
+      ...Array.from(this.deferredTools.values()).map((e) => e.tool),
+    ];
 
     const connectivityMeta = {
       connectedTools: allTools.map((t) => ({
@@ -1298,9 +1331,45 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   }
 
   /**
-   * Get all tools (including MCP tools after they're discovered)
+   * Get all currently active tools (core + loaded deferred tools).
    */
   public getTools(): DynamicStructuredTool[] {
-    return Array.from(this.tools.values());
+    return this.activeTools;
+  }
+
+  /**
+   * Move a tool from the deferred registry to the active tools list.
+   * Returns the tool and its instructions if the tool was deferred, or null if already active or not found.
+   */
+  public loadTool(
+    name: string,
+  ): { tool: BuiltAgentTool; instructions?: string } | null {
+    // Dedup: already loaded
+    if (this.tools.has(name)) {
+      return null;
+    }
+    const entry = this.deferredTools.get(name);
+    if (!entry) {
+      return null;
+    }
+    this.deferredTools.delete(name);
+    this.addTool(entry.tool);
+    this.activeTools.push(entry.tool);
+    return { tool: entry.tool, instructions: entry.instructions };
+  }
+
+  public getDeferredTool(name: string): DeferredToolEntry | undefined {
+    return this.deferredTools.get(name);
+  }
+
+  public getDeferredTools(): Map<string, DeferredToolEntry> {
+    return this.deferredTools;
+  }
+
+  public override resetTools(): void {
+    super.resetTools();
+    this.deferredTools.clear();
+    this.activeTools = [];
+    this.graph = undefined; // Force graph rebuild so nodes get fresh activeTools reference
   }
 }

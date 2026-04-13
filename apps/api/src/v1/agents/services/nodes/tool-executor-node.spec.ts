@@ -1335,4 +1335,348 @@ describe('ToolExecutorNode', () => {
       expect(systemMessages![0]!.content).toContain('4 times consecutively');
     });
   });
+
+  describe('deferred tool resolution', () => {
+    let mockState: BaseAgentState;
+    let mockConfig: Record<string, unknown>;
+
+    beforeEach(() => {
+      mockState = {
+        messages: [],
+        summary: '',
+        toolUsageGuardActivated: false,
+        toolsMetadata: {},
+        toolUsageGuardActivatedCount: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+        totalPrice: 0,
+        currentContext: 0,
+      };
+
+      mockConfig = {
+        configurable: {
+          thread_id: 'test-thread',
+        },
+      };
+    });
+
+    it('should resolve an unloaded tool via deferredToolResolver and execute it successfully', async () => {
+      const deferredTool = {
+        name: 'deferred-tool',
+        description: 'A tool loaded on demand',
+        invoke: vi.fn().mockResolvedValue({ output: 'Deferred result' }),
+      } as unknown as DynamicStructuredTool;
+
+      const resolver = vi.fn().mockReturnValue({
+        tool: deferredTool,
+        instructions: 'Use this tool carefully.',
+      });
+
+      const deferredNode = new ToolExecutorNode(
+        [],
+        mockLitellmService,
+        undefined,
+        undefined,
+        resolver,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'deferred-tool',
+        args: { input: 'test' },
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Using deferred tool',
+          tool_calls: [toolCall],
+        }),
+      ];
+
+      const result = await deferredNode.invoke(mockState, mockConfig);
+
+      expect(resolver).toHaveBeenCalledWith('deferred-tool');
+      expect(deferredTool.invoke).toHaveBeenCalled();
+
+      // Should have only the tool result — instructions are no longer injected as SystemMessages
+      const items = result.messages?.items ?? [];
+      expect(items).toHaveLength(1);
+
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+      expect(items[0]?.content).toBe('Deferred result');
+    });
+
+    it('should set __loadedTools in ToolMessage additional_kwargs when tool is auto-loaded via deferredToolResolver', async () => {
+      const deferredTool = {
+        name: 'auto-tool',
+        description: 'An auto-loaded tool',
+        invoke: vi.fn().mockResolvedValue({ output: 'Auto result' }),
+      } as unknown as DynamicStructuredTool;
+
+      const resolver = vi.fn().mockReturnValue({
+        tool: deferredTool,
+      });
+
+      const deferredNode = new ToolExecutorNode(
+        [],
+        mockLitellmService,
+        undefined,
+        undefined,
+        resolver,
+      );
+
+      const toolCall = {
+        id: 'call-auto-1',
+        name: 'auto-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Using auto tool',
+          tool_calls: [toolCall],
+        }),
+      ];
+
+      const result = await deferredNode.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+
+      const toolMsg = items[0] as ToolMessage;
+      expect(toolMsg.additional_kwargs.__loadedTools).toEqual(['auto-tool']);
+    });
+
+    it('should NOT set __loadedTools when tool was already loaded (not via deferred resolver)', async () => {
+      const preloadedTool = {
+        name: 'preloaded-tool',
+        description: 'A pre-loaded tool',
+        invoke: vi.fn().mockResolvedValue({ output: 'Preloaded result' }),
+      } as unknown as DynamicStructuredTool;
+
+      const nodeWithPreloaded = new ToolExecutorNode(
+        [preloadedTool],
+        mockLitellmService,
+      );
+
+      const toolCall = {
+        id: 'call-pre-1',
+        name: 'preloaded-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Using preloaded tool',
+          tool_calls: [toolCall],
+        }),
+      ];
+
+      const result = await nodeWithPreloaded.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+
+      const toolMsg = items[0] as ToolMessage;
+      expect(toolMsg.additional_kwargs.__loadedTools).toBeUndefined();
+    });
+
+    it('should return standard "Tool not found" error when resolver returns null', async () => {
+      const resolver = vi.fn().mockReturnValue(null);
+
+      const deferredNode = new ToolExecutorNode(
+        [],
+        mockLitellmService,
+        undefined,
+        undefined,
+        resolver,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'unknown-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Using unknown tool',
+          tool_calls: [toolCall],
+        }),
+      ];
+
+      const result = await deferredNode.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+      expect(items[0]?.content).toContain("Tool 'unknown-tool' not found");
+    });
+
+    it('should behave as before (tool not found) when no resolver is provided', async () => {
+      // Node with no resolver and no registered tools
+      const noResolverNode = new ToolExecutorNode([], mockLitellmService);
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'missing-tool',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Using missing tool',
+          tool_calls: [toolCall],
+        }),
+      ];
+
+      const result = await noResolverNode.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+      expect(items[0]?.content).toContain("Tool 'missing-tool' not found");
+    });
+
+    it('should not inject SystemMessage when resolved tool has instructions (instructions are no longer injected)', async () => {
+      const deferredTool = {
+        name: 'tool-with-instructions',
+        description: 'Tool with detailed instructions',
+        invoke: vi.fn().mockResolvedValue({ output: 'OK' }),
+      } as unknown as DynamicStructuredTool;
+
+      const resolver = vi.fn().mockReturnValue({
+        tool: deferredTool,
+        instructions: 'Step 1: do X. Step 2: do Y.',
+      });
+
+      const deferredNode = new ToolExecutorNode(
+        [],
+        mockLitellmService,
+        undefined,
+        undefined,
+        resolver,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'tool-with-instructions',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({ content: 'Using tool', tool_calls: [toolCall] }),
+      ];
+
+      const result = await deferredNode.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      const sysMessages = items.filter((m) => m instanceof SystemMessage);
+      expect(sysMessages).toHaveLength(0);
+
+      // Should only have the tool result
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+      expect(items[0]?.content).toBe('OK');
+    });
+
+    it('should not inject SystemMessage when resolved tool has no instructions', async () => {
+      const deferredTool = {
+        name: 'tool-no-instructions',
+        description: 'Tool without instructions',
+        invoke: vi.fn().mockResolvedValue({ output: 'Done' }),
+      } as unknown as DynamicStructuredTool;
+
+      const resolver = vi.fn().mockReturnValue({
+        tool: deferredTool,
+        // No instructions field
+      });
+
+      const deferredNode = new ToolExecutorNode(
+        [],
+        mockLitellmService,
+        undefined,
+        undefined,
+        resolver,
+      );
+
+      const toolCall = {
+        id: 'call-1',
+        name: 'tool-no-instructions',
+        args: {},
+      };
+
+      mockState.messages = [
+        new AIMessage({ content: 'Using tool', tool_calls: [toolCall] }),
+      ];
+
+      const result = await deferredNode.invoke(mockState, mockConfig);
+
+      const items = result.messages?.items ?? [];
+      const sysMessages = items.filter((m) => m instanceof SystemMessage);
+      expect(sysMessages).toHaveLength(0);
+
+      // Should only have the tool result
+      expect(items).toHaveLength(1);
+      expect(items[0]).toBeInstanceOf(ToolMessage);
+      expect(items[0]?.content).toBe('Done');
+    });
+
+    it('should use cached toolsMap entry when same deferred tool is called twice in a batch', async () => {
+      const deferredTool = {
+        name: 'shared-deferred-tool',
+        description: 'Tool called twice in same batch',
+        invoke: vi.fn().mockResolvedValue({ output: 'Batch result' }),
+      } as unknown as DynamicStructuredTool;
+
+      const resolver = vi.fn().mockReturnValue({
+        tool: deferredTool,
+      });
+
+      const deferredNode = new ToolExecutorNode(
+        [],
+        mockLitellmService,
+        undefined,
+        undefined,
+        resolver,
+      );
+
+      const toolCall1 = {
+        id: 'call-1',
+        name: 'shared-deferred-tool',
+        args: { input: 'first' },
+      };
+
+      const toolCall2 = {
+        id: 'call-2',
+        name: 'shared-deferred-tool',
+        args: { input: 'second' },
+      };
+
+      mockState.messages = [
+        new AIMessage({
+          content: 'Calling same tool twice',
+          tool_calls: [toolCall1, toolCall2],
+        }),
+      ];
+
+      const result = await deferredNode.invoke(mockState, mockConfig);
+
+      // Resolver may be called once or twice (parallel execution), but both calls succeed
+      expect(resolver).toHaveBeenCalledWith('shared-deferred-tool');
+      expect(deferredTool.invoke).toHaveBeenCalledTimes(2);
+
+      const items = result.messages?.items ?? [];
+      // Two tool results — no instruction messages (no instructions provided)
+      const toolMessages = items.filter((m) => m instanceof ToolMessage);
+      expect(toolMessages).toHaveLength(2);
+      expect(toolMessages[0]?.content).toBe('Batch result');
+      expect(toolMessages[1]?.content).toBe('Batch result');
+    });
+  });
 });

@@ -63,3 +63,23 @@ export function collectInstructionBlockContent(
   );
   return ['## Additional Instructions', ...wrapped].join('\n\n');
 }
+
+export function collectDeferredToolsList(
+  deferredTools: Map<string, { description: string }>,
+): string | undefined {
+  if (deferredTools.size === 0) {
+    return undefined;
+  }
+
+  const lines = Array.from(deferredTools.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, { description }]) => `- ${name}: ${description}`);
+
+  return wrapBlock(
+    [
+      'The following tools are available but not yet loaded. Use tool_search to find and load the tools you need:',
+      ...lines,
+    ].join('\n'),
+    'available-tools',
+  );
+}
