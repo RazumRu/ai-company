@@ -5,7 +5,6 @@ vi.mock('../../../environments', () => ({
   environment: {
     dockerRuntimeImage: 'razumru/geniro-runtime:latest',
     k8sRuntimeNamespace: 'geniro-runtimes',
-    k8sRuntimeImage: 'geniro/runtime:latest',
     k8sRuntimeClass: 'gvisor',
     k8sRuntimeServiceAccount: 'geniro-runtime',
     k8sRuntimeCpuRequest: '100m',

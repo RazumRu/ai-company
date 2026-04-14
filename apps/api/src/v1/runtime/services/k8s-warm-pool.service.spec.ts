@@ -49,7 +49,7 @@ vi.mock('../../../environments', () => {
       env: 'test',
       redisUrl: 'redis://localhost:6379',
       k8sRuntimeNamespace: 'geniro-runtimes-test',
-      k8sRuntimeImage: 'test-image',
+      dockerRuntimeImage: 'test-image',
       k8sRuntimeClass: '',
       k8sRuntimeServiceAccount: 'test-sa',
       k8sRuntimeCpuRequest: '100m',

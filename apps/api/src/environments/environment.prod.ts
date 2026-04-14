@@ -98,10 +98,6 @@ export const environment = () =>
 
     // --- K8s runtime ---
     k8sRuntimeNamespace: getEnv('K8S_RUNTIME_NAMESPACE', 'geniro-runtimes'),
-    k8sRuntimeImage: getEnv(
-      'K8S_RUNTIME_IMAGE',
-      'razumru/geniro-runtime:latest',
-    ),
     k8sRuntimeClass: getEnv('K8S_RUNTIME_CLASS', 'gvisor'),
     k8sRuntimeServiceAccount: getEnv(
       'K8S_RUNTIME_SERVICE_ACCOUNT',

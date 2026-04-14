@@ -8,7 +8,7 @@ vi.mock('../../../environments', () => ({
     daytonaApiUrl: 'http://daytona.local',
     daytonaTarget: 'local',
     k8sRuntimeNamespace: 'geniro-runtimes',
-    k8sRuntimeImage: 'geniro/runtime:latest',
+    dockerRuntimeImage: 'geniro/runtime:latest',
     k8sRuntimeClass: 'gvisor',
     k8sRuntimeServiceAccount: 'geniro-runtime',
     k8sRuntimeCpuRequest: '100m',

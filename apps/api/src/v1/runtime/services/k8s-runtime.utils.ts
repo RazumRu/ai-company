@@ -126,7 +126,7 @@ export function resolveK8sConfigFromEnv(
 ): K8sRuntimeConfig {
   return {
     namespace: env.k8sRuntimeNamespace as string,
-    image: env.k8sRuntimeImage as string,
+    image: env.dockerRuntimeImage as string,
     runtimeClass: env.k8sRuntimeClass as string,
     serviceAccount: env.k8sRuntimeServiceAccount as string,
     cpuRequest: env.k8sRuntimeCpuRequest as string,

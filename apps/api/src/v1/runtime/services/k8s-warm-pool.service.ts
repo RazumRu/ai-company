@@ -298,7 +298,7 @@ export class K8sWarmPoolService
       const podName = `geniro-sb-wp-${randomBytes(4).toString('hex')}`;
       const spec = buildPodSpec(
         this.resolveConfig(),
-        { image: environment.k8sRuntimeImage },
+        { image: environment.dockerRuntimeImage },
         podName,
         {
           [GENIRO_WARMPOOL_LABEL]: 'true',
