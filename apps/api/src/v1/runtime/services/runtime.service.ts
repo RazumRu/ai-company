@@ -13,6 +13,8 @@ import {
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
 import { RuntimeType } from '../runtime.types';
 import { DaytonaRuntime, DaytonaRuntimeConfig } from './daytona-runtime';
+import { K8sRuntime } from './k8s-runtime';
+import { resolveK8sConfigFromEnv } from './k8s-runtime.utils';
 
 @Injectable()
 export class RuntimeService {
@@ -52,6 +54,13 @@ export class RuntimeService {
         target: environment.daytonaTarget as string,
       };
       const result = await DaytonaRuntime.checkHealth(config);
+      return { ...result, type };
+    }
+
+    if (type === RuntimeType.K8s) {
+      const result = await K8sRuntime.checkHealth(
+        resolveK8sConfigFromEnv(environment),
+      );
       return { ...result, type };
     }
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import isEqual from 'lodash/isEqual';
 import {
@@ -23,6 +23,10 @@ import {
 import { BaseRuntime } from './base-runtime';
 import { DaytonaRuntime, DaytonaRuntimeConfig } from './daytona-runtime';
 import { DockerRuntime } from './docker-runtime';
+import { K8sRuntime } from './k8s-runtime';
+import { K8sRuntimeConfig } from './k8s-runtime.types';
+import { resolveK8sConfigFromEnv } from './k8s-runtime.utils';
+import { K8sWarmPoolService } from './k8s-warm-pool.service';
 
 export type ProvideRuntimeResult<T extends BaseRuntime> = {
   runtime: T;
@@ -37,6 +41,8 @@ export class RuntimeProvider {
     private readonly runtimeInstanceDao: RuntimeInstanceDao,
     private readonly logger: DefaultLogger,
     private readonly notificationsService: NotificationsService,
+    @Optional()
+    private readonly k8sWarmPoolService: K8sWarmPoolService | null = null,
   ) {}
 
   private emitRuntimeStatus(
@@ -82,6 +88,8 @@ export class RuntimeProvider {
           apiUrl: environment.daytonaApiUrl,
           target: environment.daytonaTarget,
         };
+      case RuntimeType.K8s:
+        return undefined;
     }
   }
 
@@ -93,6 +101,10 @@ export class RuntimeProvider {
     };
   }
 
+  private resolveK8sConfig(): K8sRuntimeConfig {
+    return resolveK8sConfigFromEnv(environment);
+  }
+
   protected resolveRuntimeByType(type: RuntimeType): BaseRuntime | undefined {
     switch (type) {
       case RuntimeType.Docker:
@@ -102,6 +114,11 @@ export class RuntimeProvider {
       case RuntimeType.Daytona:
         return new DaytonaRuntime(this.resolveDaytonaConfig(), {
           logger: this.logger,
+        });
+      case RuntimeType.K8s:
+        return new K8sRuntime(this.resolveK8sConfig(), {
+          logger: this.logger,
+          warmPool: this.k8sWarmPoolService ?? null,
         });
     }
   }
@@ -280,6 +297,12 @@ export class RuntimeProvider {
           await DaytonaRuntime.stopByName(
             instance.containerName,
             this.resolveDaytonaConfig(),
+          ).catch(() => undefined);
+          break;
+        case RuntimeType.K8s:
+          await K8sRuntime.stopByName(
+            instance.containerName,
+            this.resolveK8sConfig(),
           ).catch(() => undefined);
           break;
       }

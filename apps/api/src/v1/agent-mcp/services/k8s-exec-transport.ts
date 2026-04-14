@@ -1,0 +1,172 @@
+import { Duplex, PassThrough } from 'node:stream';
+
+import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+import { DefaultLogger } from '@packages/common';
+
+import { K8sRuntime } from '../../runtime/services/k8s-runtime';
+
+/**
+ * Custom MCP transport using K8sRuntime.execStream
+ * Communicates with MCP servers running inside Kubernetes pods via SPDY Exec.
+ * The SPDY channel cleanly separates stdin/stdout/stderr — no echo filter needed.
+ */
+export class K8sExecTransport implements Transport {
+  private stdin?: Duplex;
+  private stdout?: PassThrough;
+  private stderr?: PassThrough;
+  private closeStream?: () => void;
+  private buffer = '';
+  private stderrTail = '';
+  private sawAnyMessage = false;
+  private isConnected = false;
+  onclose?: () => void;
+  onerror?: (error: Error) => void;
+  onmessage?: (message: JSONRPCMessage) => void;
+
+  private appendStderrTail(chunk: Buffer, maxBytes = 64 * 1024): void {
+    const next = chunk.toString('utf8');
+    if (!next) {
+      return;
+    }
+    if (!this.stderrTail) {
+      this.stderrTail =
+        next.length <= maxBytes ? next : next.slice(next.length - maxBytes);
+      return;
+    }
+    const combined = this.stderrTail + next;
+    this.stderrTail =
+      combined.length <= maxBytes
+        ? combined
+        : combined.slice(combined.length - maxBytes);
+  }
+
+  private buildEarlyCloseError(): Error {
+    const cmd = [this.command, ...this.args].join(' ');
+    const stderr = this.stderrTail.trim();
+    const suffix = stderr ? `\n\nstderr (tail):\n${stderr}` : '';
+    return new Error(
+      `MCP transport closed before handshake. Command: ${cmd}${suffix}`,
+    );
+  }
+
+  constructor(
+    private readonly runtime: K8sRuntime,
+    private readonly command: string,
+    private readonly args: string[],
+    private readonly env: Record<string, string>,
+    private readonly logger: DefaultLogger,
+  ) {}
+
+  public async start(): Promise<void> {
+    if (this.isConnected) {
+      return;
+    }
+
+    const streams = await this.runtime.execStream(
+      [this.command, ...this.args],
+      {
+        env: this.env,
+      },
+    );
+
+    this.stdin = streams.stdin;
+    this.stdout = streams.stdout;
+    this.stderr = streams.stderr;
+    this.closeStream = streams.close;
+
+    this.stderr!.on('data', (data: Buffer) => {
+      this.appendStderrTail(data);
+    });
+
+    // stdout is already demuxed via SPDY — parse JSON-RPC line by line
+    this.stdout!.on('data', (data: Buffer) => {
+      this.buffer += data.toString();
+      const lines = this.buffer.split('\n');
+      this.buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.trim()) {
+          try {
+            const message = JSON.parse(line) as JSONRPCMessage;
+            this.sawAnyMessage = true;
+            if (this.onmessage) {
+              this.onmessage(message);
+            }
+          } catch (error) {
+            this.logger.error(
+              error instanceof Error ? error : new Error(String(error)),
+              `Failed to parse MCP message: ${line}`,
+            );
+          }
+        }
+      }
+    });
+
+    this.stdin!.on('error', (error: Error) => {
+      this.logger.error(error, 'K8sExecTransport error');
+      if (this.onerror) {
+        this.onerror(error);
+      }
+      this.close();
+    });
+
+    this.stdin!.on('close', () => {
+      // If the underlying process exits before producing any MCP messages,
+      // surface stderr to avoid generic "connection closed" errors.
+      if (!this.sawAnyMessage && this.stderrTail.trim()) {
+        const err = this.buildEarlyCloseError();
+        this.logger.error(err, 'MCP transport closed early');
+        this.onerror?.(err);
+      }
+      if (this.onclose) {
+        this.onclose();
+      }
+      this.close();
+    });
+
+    this.isConnected = true;
+  }
+
+  public send(message: JSONRPCMessage): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.isConnected || !this.stdin) {
+        reject(new Error('Transport not connected'));
+        return;
+      }
+
+      const success = this.stdin.write(JSON.stringify(message) + '\n');
+      if (success) {
+        resolve();
+      } else {
+        const onDrain = () => {
+          cleanup();
+          resolve();
+        };
+        const onError = (err: Error) => {
+          cleanup();
+          reject(err);
+        };
+        const onClose = () => {
+          cleanup();
+          reject(new Error('Transport stream closed while waiting for drain'));
+        };
+        const cleanup = () => {
+          this.stdin?.removeListener('drain', onDrain);
+          this.stdin?.removeListener('error', onError);
+          this.stdin?.removeListener('close', onClose);
+        };
+        this.stdin.once('drain', onDrain);
+        this.stdin.once('error', onError);
+        this.stdin.once('close', onClose);
+      }
+    });
+  }
+
+  public async close(): Promise<void> {
+    if (this.isConnected) {
+      this.closeStream?.();
+      this.isConnected = false;
+    }
+  }
+}

@@ -11,12 +11,14 @@ import type { BaseAgentConfigurable } from '../../agents/agents.types';
 import { RuntimeStartParams } from '../../runtime/runtime.types';
 import { BaseRuntime } from '../../runtime/services/base-runtime';
 import { DaytonaRuntime } from '../../runtime/services/daytona-runtime';
+import { K8sRuntime } from '../../runtime/services/k8s-runtime';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
 import { IMcpServerConfig, McpStatus } from '../agent-mcp.types';
 import { BaseMcpTool } from './base-mcp-tool';
 import { DaytonaExecTransport } from './daytona-exec-transport';
 import { DockerExecTransport } from './docker-exec-transport';
+import { K8sExecTransport } from './k8s-exec-transport';
 
 export type McpInitializeEvent = {
   config: unknown;
@@ -159,6 +161,14 @@ export abstract class BaseMcp<TConfig = unknown> {
       }
       transport = new DaytonaExecTransport(
         sandbox,
+        mcpConfig.command,
+        mcpConfig.args,
+        mcpConfig.env || {},
+        this.logger,
+      );
+    } else if (runtime instanceof K8sRuntime) {
+      transport = new K8sExecTransport(
+        runtime,
         mcpConfig.command,
         mcpConfig.args,
         mcpConfig.env || {},
