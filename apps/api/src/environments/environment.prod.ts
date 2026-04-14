@@ -89,7 +89,7 @@ export const environment = () =>
     dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
 
     // --- Runtime provider ---
-    defaultRuntimeType: getEnv('DEFAULT_RUNTIME_TYPE', 'Daytona'),
+    defaultRuntimeType: getEnv('DEFAULT_RUNTIME_TYPE', 'Docker'),
 
     // --- Daytona runtime ---
     daytonaApiKey: getEnv('DAYTONA_API_KEY'),
@@ -107,7 +107,7 @@ export const environment = () =>
     k8sRuntimeCpuLimit: getEnv('K8S_RUNTIME_CPU_LIMIT', '1000m'),
     k8sRuntimeMemoryRequest: getEnv('K8S_RUNTIME_MEMORY_REQUEST', '256Mi'),
     k8sRuntimeMemoryLimit: getEnv('K8S_RUNTIME_MEMORY_LIMIT', '2Gi'),
-    k8sRuntimeReadyTimeoutMs: +getEnv('K8S_RUNTIME_READY_TIMEOUT_MS', '60000'),
+    k8sRuntimeReadyTimeoutMs: +getEnv('K8S_RUNTIME_READY_TIMEOUT_MS', '180000'),
     k8sWarmPoolSize: +getEnv('K8S_WARM_POOL_SIZE', '0'),
     k8sWarmPoolTtlMs: +getEnv('K8S_WARM_POOL_TTL_MS', '1800000'),
     k8sInCluster: getEnv('K8S_IN_CLUSTER', true),

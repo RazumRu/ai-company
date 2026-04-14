@@ -61,6 +61,7 @@ export function buildPodSpec(
         {
           name: 'runtime',
           image: params.image ?? config.image,
+          imagePullPolicy: 'IfNotPresent',
           command: ['/bin/sh', '-c', 'sleep infinity'],
           resources: {
             requests: {

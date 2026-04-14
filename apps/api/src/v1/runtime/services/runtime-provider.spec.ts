@@ -40,6 +40,7 @@ import { NotificationsService } from '../../notifications/services/notifications
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
 import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
+import { BaseRuntime } from './base-runtime';
 import { K8sRuntime } from './k8s-runtime';
 import { K8sWarmPoolService } from './k8s-warm-pool.service';
 import { RuntimeProvider } from './runtime-provider';
@@ -106,6 +107,82 @@ describe('RuntimeProvider', () => {
         expect.anything(),
         expect.objectContaining({ warmPool: null }),
       );
+    });
+  });
+
+  describe('ensureRuntimeForRecord label building', () => {
+    function buildProviderWithStubRuntime(startSpy: ReturnType<typeof vi.fn>) {
+      const provider = buildProvider(null);
+      const fakeRuntime = { start: startSpy } as unknown as BaseRuntime;
+      vi.spyOn(
+        provider as unknown as {
+          resolveRuntimeByType: (type: RuntimeType) => BaseRuntime;
+        },
+        'resolveRuntimeByType',
+      ).mockReturnValue(fakeRuntime);
+      return provider;
+    }
+
+    function buildRecord(threadId: string): RuntimeInstanceEntity {
+      return {
+        id: 'inst-1',
+        type: RuntimeType.K8s,
+        containerName: 'pod-name',
+        graphId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        threadId,
+        nodeId: 'node-1',
+        status: RuntimeInstanceStatus.Running,
+        temporary: false,
+        config: {},
+      } as unknown as RuntimeInstanceEntity;
+    }
+
+    it('extracts the sub-id portion of an externalThreadId (after the colon) into geniro/thread_id', async () => {
+      const startSpy = vi.fn().mockResolvedValue(undefined);
+      const provider = buildProviderWithStubRuntime(startSpy);
+
+      const record = buildRecord(
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      );
+
+      await (
+        provider as unknown as {
+          ensureRuntimeForRecord: (
+            r: RuntimeInstanceEntity,
+          ) => Promise<unknown>;
+        }
+      ).ensureRuntimeForRecord(record);
+
+      expect(startSpy).toHaveBeenCalledTimes(1);
+      const startArg = startSpy.mock.calls[0][0] as {
+        labels: Record<string, string>;
+      };
+      expect(startArg.labels['geniro/thread_id']).toBe(
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      );
+      expect(startArg.labels['geniro/graph_id']).toBe(
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      );
+    });
+
+    it('passes the threadId through unchanged when it does not contain a colon', async () => {
+      const startSpy = vi.fn().mockResolvedValue(undefined);
+      const provider = buildProviderWithStubRuntime(startSpy);
+
+      const record = buildRecord('simple-id');
+
+      await (
+        provider as unknown as {
+          ensureRuntimeForRecord: (
+            r: RuntimeInstanceEntity,
+          ) => Promise<unknown>;
+        }
+      ).ensureRuntimeForRecord(record);
+
+      const startArg = startSpy.mock.calls[0][0] as {
+        labels: Record<string, string>;
+      };
+      expect(startArg.labels['geniro/thread_id']).toBe('simple-id');
     });
   });
 

@@ -139,6 +139,11 @@ describe('buildPodSpec', () => {
     expect(pod.spec?.securityContext?.runAsNonRoot).toBe(true);
     expect(pod.spec?.securityContext?.runAsUser).toBe(1000);
   });
+
+  it('sets imagePullPolicy to IfNotPresent to reuse node cache', () => {
+    const pod = buildPodSpec(baseConfig, {}, 'test-pod', {}, false);
+    expect(pod.spec?.containers[0]?.imagePullPolicy).toBe('IfNotPresent');
+  });
 });
 
 describe('isNotFound', () => {

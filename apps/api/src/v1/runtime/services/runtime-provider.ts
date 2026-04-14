@@ -435,7 +435,9 @@ export class RuntimeProvider {
       ...baseLabels,
       ...(record.graphId ? { 'geniro/graph_id': record.graphId } : {}),
       'geniro/node_id': record.nodeId,
-      'geniro/thread_id': record.threadId,
+      'geniro/thread_id': record.threadId.includes(':')
+        ? record.threadId.split(':').slice(1).join(':')
+        : record.threadId,
       'geniro/instance_id': record.id,
       'geniro/type': 'runtime',
     };
