@@ -164,7 +164,7 @@ export class RuntimeProvider {
           await this.runtimeInstanceDao.updateById(existing.id, {
             lastUsedAt: new Date(),
             config: runtimeConfig,
-            temporary: params.temporary,
+            temporary: params.temporary ?? false,
           });
 
           try {
