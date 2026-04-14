@@ -375,11 +375,11 @@ export class GraphCompiler {
         if (meta && meta['x-ui:secret-multi-select'] === true) {
           const secretNames = node.config?.[key as keyof typeof node.config];
           if (Array.isArray(secretNames)) {
-            for (const name of secretNames) {
-              if (name && typeof name === 'string') {
-                names.push(name);
-              }
-            }
+            names.push(
+              ...secretNames.filter(
+                (n): n is string => typeof n === 'string' && n.length > 0,
+              ),
+            );
           }
         }
       }
