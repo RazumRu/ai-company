@@ -154,7 +154,7 @@ describe('RuntimeProvider', () => {
       ).ensureRuntimeForRecord(record);
 
       expect(startSpy).toHaveBeenCalledTimes(1);
-      const startArg = startSpy.mock.calls[0][0] as {
+      const startArg = startSpy.mock.calls[0]?.[0] as {
         labels: Record<string, string>;
       };
       expect(startArg.labels['geniro/thread_id']).toBe(
@@ -179,7 +179,8 @@ describe('RuntimeProvider', () => {
         }
       ).ensureRuntimeForRecord(record);
 
-      const startArg = startSpy.mock.calls[0][0] as {
+      expect(startSpy).toHaveBeenCalledTimes(1);
+      const startArg = startSpy.mock.calls[0]?.[0] as {
         labels: Record<string, string>;
       };
       expect(startArg.labels['geniro/thread_id']).toBe('simple-id');
