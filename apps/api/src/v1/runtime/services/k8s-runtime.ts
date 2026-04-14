@@ -544,19 +544,30 @@ export class K8sRuntime extends BaseRuntime {
       let settled = false;
       let wsHandle: { close(): void } | null = null;
       let timeoutTimer: NodeJS.Timeout | null = null;
+      let tailTimer: NodeJS.Timeout | null = null;
+      let hasReceivedOutput = false;
       let abortCleanup: (() => void) | null = null;
+
+      const cleanupTimers = () => {
+        if (timeoutTimer !== null) {
+          clearTimeout(timeoutTimer);
+        }
+        if (tailTimer !== null) {
+          clearTimeout(tailTimer);
+        }
+        stdoutStream.removeListener('data', onData);
+        stderrStream.removeListener('data', onData);
+        if (abortCleanup !== null) {
+          abortCleanup();
+        }
+      };
 
       const settle = (code: number) => {
         if (settled) {
           return;
         }
         settled = true;
-        if (timeoutTimer !== null) {
-          clearTimeout(timeoutTimer);
-        }
-        if (abortCleanup !== null) {
-          abortCleanup();
-        }
+        cleanupTimers();
         resolve(code);
       };
 
@@ -565,12 +576,7 @@ export class K8sRuntime extends BaseRuntime {
           return;
         }
         settled = true;
-        if (timeoutTimer !== null) {
-          clearTimeout(timeoutTimer);
-        }
-        if (abortCleanup !== null) {
-          abortCleanup();
-        }
+        cleanupTimers();
         reject(err);
       };
 
@@ -602,12 +608,39 @@ export class K8sRuntime extends BaseRuntime {
         };
       }
 
-      // Wire up timeout
+      // Wire up overall timeout
       if (params.timeoutMs && params.timeoutMs > 0) {
         timeoutTimer = setTimeout(() => {
           forceClose(124);
         }, params.timeoutMs).unref();
       }
+
+      // Wire up tail timeout: abort when output goes silent for tailTimeoutMs.
+      // Only arm after the first byte so legitimate silent stdin-reading periods
+      // (e.g. Python heredocs) don't trip the timer before the command produces
+      // anything. Matches DockerRuntime behaviour.
+      const resetTailTimer = () => {
+        if (tailTimer !== null) {
+          clearTimeout(tailTimer);
+          tailTimer = null;
+        }
+        if (
+          hasReceivedOutput &&
+          params.tailTimeoutMs &&
+          params.tailTimeoutMs > 0
+        ) {
+          tailTimer = setTimeout(() => {
+            forceClose(124);
+          }, params.tailTimeoutMs).unref();
+        }
+      };
+
+      function onData(): void {
+        hasReceivedOutput = true;
+        resetTailTimer();
+      }
+      stdoutStream.on('data', onData);
+      stderrStream.on('data', onData);
 
       const execInstance = new Exec(this.kubeConfig!);
       const statusCallback = (status: unknown) => {

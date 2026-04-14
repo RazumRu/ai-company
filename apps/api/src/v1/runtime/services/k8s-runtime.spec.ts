@@ -520,6 +520,89 @@ describe('K8sRuntime', () => {
       vi.useRealTimers();
     });
 
+    it('returns exitCode 124 when tailTimeoutMs elapses after initial output goes silent', async () => {
+      vi.useFakeTimers();
+
+      // exec mock writes one chunk to arm the tail timer, then stays silent.
+      mockExec.exec.mockImplementation(
+        async (
+          _ns: string,
+          _pod: string,
+          _container: string,
+          _cmd: string[],
+          stdoutStream: PassThrough,
+          _stderrStream: PassThrough,
+          _stdin: unknown,
+          _tty: boolean,
+          _statusCb: (s: unknown) => void,
+        ) => {
+          stdoutStream.write(Buffer.from('start\n'));
+          return { close: vi.fn() };
+        },
+      );
+
+      const execPromise = runtime.exec({
+        cmd: 'echo start; sleep 100',
+        tailTimeoutMs: 50,
+        timeoutMs: 10_000,
+      });
+
+      // Let the stream write flush
+      await vi.advanceTimersByTimeAsync(1);
+      // Advance past tailTimeoutMs — no new data, tail should fire
+      await vi.advanceTimersByTimeAsync(100);
+
+      const result = await execPromise;
+      expect(result.exitCode).toBe(124);
+      expect(result.stdout).toContain('start');
+
+      vi.useRealTimers();
+    });
+
+    it('does not fire tailTimeoutMs when output keeps flowing', async () => {
+      vi.useFakeTimers();
+
+      let intervalId: NodeJS.Timeout | null = null;
+
+      mockExec.exec.mockImplementation(
+        async (
+          _ns: string,
+          _pod: string,
+          _container: string,
+          _cmd: string[],
+          stdoutStream: PassThrough,
+          _stderrStream: PassThrough,
+          _stdin: unknown,
+          _tty: boolean,
+          statusCb: (s: unknown) => void,
+        ) => {
+          // Emit a chunk every 20ms so the tail timer resets continuously
+          intervalId = setInterval(() => stdoutStream.write('tick\n'), 20);
+          // Resolve successfully after 200ms
+          setTimeout(() => {
+            if (intervalId !== null) {
+              clearInterval(intervalId);
+            }
+            statusCb({ status: 'Success' });
+          }, 200);
+          return { close: vi.fn() };
+        },
+      );
+
+      const execPromise = runtime.exec({
+        cmd: 'yes',
+        tailTimeoutMs: 50,
+        timeoutMs: 10_000,
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+
+      const result = await execPromise;
+      expect(result.exitCode).toBe(0);
+
+      vi.useRealTimers();
+    });
+
     // K-18: 4 MiB output cap
     it('caps stdout at 4 MiB and retains tail content (K-18)', async () => {
       const FOUR_MIB = 4 * 1024 * 1024;
