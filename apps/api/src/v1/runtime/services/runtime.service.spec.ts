@@ -4,6 +4,15 @@ import { mock } from 'vitest-mock-extended';
 vi.mock('../../../environments', () => ({
   environment: {
     dockerRuntimeImage: 'razumru/geniro-runtime:latest',
+    k8sRuntimeNamespace: 'geniro-runtimes',
+    k8sRuntimeClass: 'gvisor',
+    k8sRuntimeServiceAccount: 'geniro-runtime',
+    k8sRuntimeCpuRequest: '100m',
+    k8sRuntimeCpuLimit: '1000m',
+    k8sRuntimeMemoryRequest: '256Mi',
+    k8sRuntimeMemoryLimit: '2Gi',
+    k8sRuntimeReadyTimeoutMs: 60000,
+    k8sInCluster: false,
   },
 }));
 
@@ -17,6 +26,7 @@ import {
   RuntimeStartParams,
   RuntimeType,
 } from '../runtime.types';
+import { K8sRuntime } from './k8s-runtime';
 import { RuntimeService } from './runtime.service';
 
 describe('RuntimeService', () => {
@@ -208,6 +218,40 @@ describe('RuntimeService', () => {
 
       expect(result).toHaveLength(1);
       expect(result[0]!.graphId).toBeNull();
+    });
+  });
+
+  describe('checkHealth', () => {
+    it('returns healthy: true for K8s runtime when cluster is reachable', async () => {
+      vi.spyOn(K8sRuntime, 'checkHealth').mockResolvedValue({ healthy: true });
+
+      const result = await service.checkHealth(RuntimeType.K8s);
+
+      expect(result).toEqual({ healthy: true, type: RuntimeType.K8s });
+      expect(K8sRuntime.checkHealth).toHaveBeenCalledWith(
+        expect.objectContaining({ namespace: 'geniro-runtimes' }),
+      );
+    });
+
+    it('returns healthy: false with error for K8s runtime when cluster is unreachable', async () => {
+      vi.spyOn(K8sRuntime, 'checkHealth').mockResolvedValue({
+        healthy: false,
+        error: 'connection refused',
+      });
+
+      const result = await service.checkHealth(RuntimeType.K8s);
+
+      expect(result).toEqual({
+        healthy: false,
+        error: 'connection refused',
+        type: RuntimeType.K8s,
+      });
+    });
+
+    it('returns healthy: true for Docker runtime without calling any external service', async () => {
+      const result = await service.checkHealth(RuntimeType.Docker);
+
+      expect(result).toEqual({ healthy: true, type: RuntimeType.Docker });
     });
   });
 });

@@ -2796,7 +2796,8 @@
           "comment": null,
           "enumItems": [
             "Docker",
-            "Daytona"
+            "Daytona",
+            "K8s"
           ],
           "mappedType": "enum"
         },
@@ -2971,8 +2972,8 @@
         {
           "name": "runtime_instances_type_check",
           "columnName": "type",
-          "definition": "check (\"type\" in ('Docker', 'Daytona'))",
-          "expression": "\"type\" in ('Docker', 'Daytona')"
+          "definition": "check (\"type\" in ('Docker', 'Daytona', 'K8s'))",
+          "expression": "\"type\" in ('Docker', 'Daytona', 'K8s')"
         }
       ],
       "foreignKeys": {},

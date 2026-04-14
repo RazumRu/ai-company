@@ -89,12 +89,28 @@ export const environment = () =>
     dockerInsecureRegistry: getEnv('DOCKER_INSECURE_REGISTRY'),
 
     // --- Runtime provider ---
-    defaultRuntimeType: getEnv('DEFAULT_RUNTIME_TYPE', 'Daytona'),
+    defaultRuntimeType: getEnv('DEFAULT_RUNTIME_TYPE', 'Docker'),
 
     // --- Daytona runtime ---
     daytonaApiKey: getEnv('DAYTONA_API_KEY'),
     daytonaApiUrl: getEnv('DAYTONA_API_URL'),
     daytonaTarget: getEnv('DAYTONA_TARGET'),
+
+    // --- K8s runtime ---
+    k8sRuntimeNamespace: getEnv('K8S_RUNTIME_NAMESPACE', 'geniro-runtimes'),
+    k8sRuntimeClass: getEnv('K8S_RUNTIME_CLASS', 'gvisor'),
+    k8sRuntimeServiceAccount: getEnv(
+      'K8S_RUNTIME_SERVICE_ACCOUNT',
+      'geniro-runtime',
+    ),
+    k8sRuntimeCpuRequest: getEnv('K8S_RUNTIME_CPU_REQUEST', '100m'),
+    k8sRuntimeCpuLimit: getEnv('K8S_RUNTIME_CPU_LIMIT', '1000m'),
+    k8sRuntimeMemoryRequest: getEnv('K8S_RUNTIME_MEMORY_REQUEST', '256Mi'),
+    k8sRuntimeMemoryLimit: getEnv('K8S_RUNTIME_MEMORY_LIMIT', '2Gi'),
+    k8sRuntimeReadyTimeoutMs: +getEnv('K8S_RUNTIME_READY_TIMEOUT_MS', '180000'),
+    k8sWarmPoolSize: +getEnv('K8S_WARM_POOL_SIZE', '0'),
+    k8sWarmPoolTtlMs: +getEnv('K8S_WARM_POOL_TTL_MS', '1800000'),
+    k8sInCluster: getEnv('K8S_IN_CLUSTER', true),
 
     runtimeCleanupIntervalMs: +getEnv('RUNTIME_CLEANUP_INTERVAL_MS', '300000'),
     runtimeIdleThresholdMs: +getEnv('RUNTIME_IDLE_THRESHOLD_MS', '1800000'),

@@ -56,6 +56,10 @@ export const environment = () =>
     daytonaApiUrl: getEnv('DAYTONA_API_URL', 'http://localhost:3986/api'),
     daytonaApiKey: getEnv('DAYTONA_API_KEY', 'geniro-dev-admin-key'),
 
+    // K8s runtime (local kubeconfig, no gVisor)
+    k8sInCluster: getEnv('K8S_IN_CLUSTER', false),
+    k8sRuntimeClass: getEnv('K8S_RUNTIME_CLASS', ''),
+
     // --- GitHub Webhook ---
     githubWebhookSecret: getEnv('GITHUB_WEBHOOK_SECRET'),
 

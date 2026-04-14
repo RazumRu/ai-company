@@ -7,6 +7,7 @@ import { ThreadEntity } from '../threads/entity/thread.entity';
 import { RuntimeController } from './controllers/runtime.controller';
 import { RuntimeInstanceDao } from './dao/runtime-instance.dao';
 import { RuntimeInstanceEntity } from './entity/runtime-instance.entity';
+import { K8sWarmPoolService } from './services/k8s-warm-pool.service';
 import { RuntimeService } from './services/runtime.service';
 import { RuntimeCleanupService } from './services/runtime-cleanup.service';
 import { RuntimeProvider } from './services/runtime-provider';
@@ -20,6 +21,7 @@ import { RuntimeProvider } from './services/runtime-provider';
   providers: [
     RuntimeProvider,
     RuntimeCleanupService,
+    K8sWarmPoolService,
     RuntimeInstanceDao,
     RuntimeService,
     ThreadsDao,

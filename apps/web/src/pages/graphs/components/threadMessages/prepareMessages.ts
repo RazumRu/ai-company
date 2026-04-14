@@ -955,8 +955,9 @@ export const prepareReadyMessages = (
           roleLabel: effectiveTitle || name || 'tool',
           title: effectiveTitle,
           loadedTools: (() => {
-            const raw =
-              getAdditionalKwargs(matched?.message)?.['__loadedTools'];
+            const raw = getAdditionalKwargs(matched?.message)?.[
+              '__loadedTools'
+            ];
             return Array.isArray(raw) ? (raw as string[]) : undefined;
           })(),
           inCommunicationExec: isInterAgent,

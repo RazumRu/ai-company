@@ -59,6 +59,7 @@ export interface RuntimeExecResult {
 export enum RuntimeType {
   Docker = 'Docker',
   Daytona = 'Daytona',
+  K8s = 'K8s',
 }
 
 export enum RuntimeInstanceStatus {

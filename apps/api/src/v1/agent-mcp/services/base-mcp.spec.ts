@@ -4,9 +4,11 @@ import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BaseRuntime } from '../../runtime/services/base-runtime';
+import { K8sRuntime } from '../../runtime/services/k8s-runtime';
 import { RuntimeThreadProvider } from '../../runtime/services/runtime-thread-provider';
 import { IMcpServerConfig, McpStatus } from '../agent-mcp.types';
 import { BaseMcp, McpEventType, McpToolMetadata } from './base-mcp';
+import { K8sExecTransport } from './k8s-exec-transport';
 
 // Create a concrete test implementation of BaseMcp
 class TestMcp extends BaseMcp<Record<string, never>> {
@@ -335,6 +337,30 @@ describe('BaseMcp', () => {
       await expect(testMcp.setup(config, mockRuntime)).rejects.toThrow(
         'Connection failed',
       );
+    });
+
+    it('should instantiate K8sExecTransport when runtime is a K8sRuntime instance', async () => {
+      // Arrange: build a minimal K8sRuntime stand-in via Object.create so
+      // `instanceof K8sRuntime` returns true without triggering the real
+      // constructor (which requires a live kubeconfig).
+      const mockK8sRuntime = Object.create(K8sRuntime.prototype) as K8sRuntime;
+
+      let capturedTransport: unknown;
+      vi.spyOn(Client.prototype, 'connect').mockImplementation(async function (
+        this: unknown,
+        transport: unknown,
+      ) {
+        capturedTransport = transport;
+      });
+      vi.spyOn(Client.prototype, 'close').mockResolvedValue();
+
+      // K8sExecTransport.prototype.start is called by Client.connect internally
+      // via the transport; mock it to avoid real SPDY calls.
+      vi.spyOn(K8sExecTransport.prototype, 'start').mockResolvedValue();
+
+      await testMcp.setup({}, mockK8sRuntime);
+
+      expect(capturedTransport).toBeInstanceOf(K8sExecTransport);
     });
   });
 

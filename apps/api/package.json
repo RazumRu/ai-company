@@ -32,6 +32,7 @@
     "@daytonaio/sdk": "0.160.0",
     "@fastify/static": "^9.0.0",
     "@hey-api/openapi-ts": "^0.94.5",
+    "@kubernetes/client-node": "^1.4.0",
     "@langchain/core": "^1.1.36",
     "@langchain/langgraph": "^1.2.5",
     "@langchain/langgraph-checkpoint": "^1.0.1",
