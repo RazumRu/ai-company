@@ -30,7 +30,10 @@ export class RuntimeInstanceEntity extends TimestampsEntity {
   @Index()
   threadId!: string;
 
-  @Enum({ items: () => RuntimeType })
+  @Enum({
+    items: () => RuntimeType,
+    nativeEnumName: 'runtime_instances_type_enum',
+  })
   type!: RuntimeType;
 
   @Property({ type: 'varchar', length: 255 })
@@ -39,6 +42,7 @@ export class RuntimeInstanceEntity extends TimestampsEntity {
   @Enum({
     items: () => RuntimeInstanceStatus,
     default: RuntimeInstanceStatus.Starting,
+    nativeEnumName: 'runtime_instances_status_enum',
   })
   @Index()
   status!: RuntimeInstanceStatus;
