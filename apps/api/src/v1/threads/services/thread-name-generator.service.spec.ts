@@ -224,7 +224,7 @@ describe('ThreadNameGeneratorService', () => {
       );
     });
 
-    it('should request minimal reasoning effort for reasoning-capable models', async () => {
+    it('should request low reasoning effort for reasoning-capable models', async () => {
       litellmService.supportsReasoning.mockResolvedValue(true);
       openaiService.jsonRequest.mockResolvedValue({
         content: { title: 'Title' },
@@ -233,7 +233,7 @@ describe('ThreadNameGeneratorService', () => {
       await service.generateFromFirstUserMessage('test message');
 
       expect(openaiService.jsonRequest).toHaveBeenCalledWith(
-        expect.objectContaining({ reasoning: { effort: 'minimal' } }),
+        expect.objectContaining({ reasoning: { effort: 'low' } }),
       );
     });
 

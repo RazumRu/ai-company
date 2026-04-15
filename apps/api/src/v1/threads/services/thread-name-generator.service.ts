@@ -59,7 +59,7 @@ export class ThreadNameGeneratorService {
           jsonSchema: ThreadTitleSchema,
           maxOutputTokens: 1024,
           ...(supportsReasoning
-            ? { reasoning: { effort: 'minimal' as const } }
+            ? { reasoning: { effort: 'low' as const } }
             : {}),
         })
         .then((r) => {
