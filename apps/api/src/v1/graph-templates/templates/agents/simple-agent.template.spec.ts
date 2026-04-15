@@ -3,6 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { ReasoningEffort } from '../../../agents/agents.types';
 import { SimpleAgent } from '../../../agents/services/agents/simple-agent';
 import {
@@ -307,6 +308,53 @@ describe('SimpleAgentTemplate', () => {
       await handle.configure(init, instance);
 
       expect(mockSimpleAgent.initTools).toHaveBeenCalled();
+    });
+
+    it('places <available-tools> block before tool/MCP blocks when deferred tools exist', async () => {
+      mockSimpleAgent.addTool({
+        name: 'mock-tool',
+        __instructions: 'mock instructions',
+      } as unknown as BuiltAgentTool);
+
+      vi.mocked(mockSimpleAgent.getDeferredTools).mockReturnValue(
+        new Map([
+          [
+            'ghost',
+            {
+              description: 'placeholder tool',
+              tool: {} as unknown as BuiltAgentTool,
+            },
+          ],
+        ]),
+      );
+
+      const markerConfig = SimpleAgentTemplateSchema.parse({
+        ...baseConfig,
+        instructions: '__USER_INSTR_MARKER__',
+      });
+
+      const handle = await template.create();
+      const init: GraphNode<typeof markerConfig> = {
+        config: markerConfig,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      const finalConfig = vi
+        .mocked(mockSimpleAgent.setConfig)
+        .mock.calls.at(1)![0];
+      const output = finalConfig.instructions as string;
+      const userInstructionsIdx = output.indexOf('__USER_INSTR_MARKER__');
+      const availableIdx = output.indexOf('<available-tools>');
+      const toolInstrIdx = output.indexOf('## Tool Instructions');
+      expect(userInstructionsIdx).toBeGreaterThan(-1);
+      expect(availableIdx).toBeGreaterThan(-1);
+      expect(toolInstrIdx).toBeGreaterThan(-1);
+      expect(userInstructionsIdx).toBeLessThan(availableIdx);
+      expect(availableIdx).toBeLessThan(toolInstrIdx);
     });
 
     it('should configure reasoning effort if provided', async () => {

@@ -110,10 +110,8 @@ describe('ToolSearchTool', () => {
 
     it('should rank name keyword match higher than description-only match', () => {
       const config = makeConfig({
-        'shell-exec': makeEntry('Execute commands in a container'),
-        'file-ops': makeEntry(
-          'shell-like file operations for reading and writing',
-        ),
+        'shell-exec': makeEntry('Execute commands'),
+        'file-ops': makeEntry('shell-like file operations'),
       });
 
       const result = toolInstance.invoke(
@@ -122,10 +120,11 @@ describe('ToolSearchTool', () => {
         defaultRunnableConfig,
       );
 
+      expect(result.output.results).toHaveLength(1);
       expect(result.output.results.at(0)?.name).toBe('shell-exec');
     });
 
-    it('should return at most 5 results when more than 5 tools match', () => {
+    it('should return at most 3 results when more than 3 tools match', () => {
       const entries: Record<string, DeferredToolEntry> = {};
       for (let i = 0; i < 10; i++) {
         entries[`file-tool-${i}`] = makeEntry(
@@ -140,7 +139,7 @@ describe('ToolSearchTool', () => {
         defaultRunnableConfig,
       );
 
-      expect(result.output.results.length).toBeLessThanOrEqual(5);
+      expect(result.output.results.length).toBeLessThanOrEqual(3);
     });
 
     it('should match case-insensitively', () => {
@@ -159,14 +158,14 @@ describe('ToolSearchTool', () => {
     });
 
     it('should score schema property name matches', () => {
-      const withProp = makeEntry('Generic task tool', ['command'], undefined);
-      withProp.tool = makeMockTool('task-runner', ['command']);
+      const withProp = makeEntry('Generic task tool', ['command']);
+      withProp.tool = makeMockTool('command-runner', ['command']);
 
       const withoutProp = makeEntry('Another generic tool', []);
       withoutProp.tool = makeMockTool('generic-tool', []);
 
       const config = makeConfig({
-        'task-runner': withProp,
+        'command-runner': withProp,
         'generic-tool': withoutProp,
       });
 
@@ -176,11 +175,108 @@ describe('ToolSearchTool', () => {
         defaultRunnableConfig,
       );
 
-      expect(result.output.results.at(0)?.name).toBe('task-runner');
+      expect(result.output.results.at(0)?.name).toBe('command-runner');
+    });
+
+    it('returns only name-matching tool when description-only competitors exist (query "shell")', () => {
+      const config = makeConfig({
+        shell: makeEntry('Execute shell commands'),
+        gh_commit: makeEntry('Create a commit — invokes shell under the hood'),
+        subagents_run_task: makeEntry(
+          'Spawns a shell-based subagent task runner',
+        ),
+      });
+
+      const result = toolInstance.invoke(
+        { query: 'shell' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.output.results.length).toBe(1);
+      expect(result.output.results.at(0)?.name).toBe('shell');
+    });
+
+    it('returns only the shell tool when query has multiple description-matching terms (query "shell command execution")', () => {
+      const config = makeConfig({
+        shell: makeEntry('Execute shell commands with full execution control'),
+        gh_commit: makeEntry(
+          'Create a commit — invokes shell under the hood for command execution',
+        ),
+        subagents_run_task: makeEntry(
+          'Spawns a shell-based subagent for command execution tasks',
+        ),
+      });
+
+      const result = toolInstance.invoke(
+        { query: 'shell command execution' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.output.results).toHaveLength(1);
+      expect(result.output.results.at(0)?.name).toBe('shell');
+      expect(result.output.results.map((r) => r.name)).not.toContain(
+        'gh_commit',
+      );
+      expect(result.output.results.map((r) => r.name)).not.toContain(
+        'subagents_run_task',
+      );
+    });
+  });
+
+  describe('threshold filtering', () => {
+    it('filters matches below 50% of top score', () => {
+      // 'find-files' scores: name hit 'find' = 80, name hit 'files' = 80 → total 160
+      // 'search-docs' scores: desc hit 'find' = 10, desc hit 'files' = 10 → total 20
+      // topScore=160, minScore=80 → 'search-docs' at 20 is dropped
+      const config = makeConfig({
+        'find-files': makeEntry('Locate and list directory contents'),
+        'search-docs': makeEntry('find files in a documentation repository'),
+      });
+
+      const result = toolInstance.invoke(
+        { query: 'find files' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.output.results.length).toBe(1);
+      expect(result.output.results.at(0)?.name).toBe('find-files');
+    });
+
+    it('filters matches below absolute floor of 30 when no strong match exists', () => {
+      // 'only-tool' scores: desc hit 'token' = 10 → total 10 < floor 30 → filtered
+      const config = makeConfig({
+        'only-tool': makeEntry('This tool handles token validation'),
+      });
+
+      const result = toolInstance.invoke(
+        { query: 'token' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.output.results.length).toBe(0);
+      expect(result.output.message).toContain('No tools found');
     });
   });
 
   describe('no matches', () => {
+    it('returns no-match message when deferredTools map is empty', async () => {
+      const config: ToolSearchToolConfig = {
+        deferredTools: new Map(),
+        loadTool: vi.fn().mockReturnValue(null),
+      };
+      const result = toolInstance.invoke(
+        { query: 'shell' },
+        config,
+        defaultRunnableConfig,
+      );
+      expect(result.output.results).toHaveLength(0);
+      expect(result.output.message).toContain('No tools found');
+    });
+
     it('should return a helpful message when no tools match', () => {
       const config = makeConfig({
         shell: makeEntry('Execute shell commands'),
@@ -320,8 +416,10 @@ describe('ToolSearchTool', () => {
         loadTool,
       };
 
+      // query 'shell safe': shell scores 80 (name:shell), shell-safe scores 160 (name:shell+name:safe)
+      // topScore=160, minScore=80 — both meet the threshold
       const result = toolInstance.invoke(
-        { query: 'shell' },
+        { query: 'shell safe' },
         config,
         defaultRunnableConfig,
       );
@@ -345,8 +443,10 @@ describe('ToolSearchTool', () => {
         loadTool,
       };
 
+      // query 'shell safe': shell scores 80 (name:shell), shell-safe scores 160 (name:shell+name:safe)
+      // topScore=160, minScore=80 — both meet the threshold
       const result = toolInstance.invoke(
-        { query: 'shell' },
+        { query: 'shell safe' },
         config,
         defaultRunnableConfig,
       );

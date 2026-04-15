@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import {
@@ -74,6 +75,7 @@ describe('SystemAgentTemplateFactory', () => {
       initTools: vi.fn().mockResolvedValue(undefined),
       setMcpServices: vi.fn(),
       getTools: vi.fn(() => addedTools),
+      getDeferredTools: vi.fn(() => new Map()),
       stop: vi.fn(),
     } as unknown as SimpleAgent;
 
@@ -923,6 +925,113 @@ describe('SystemAgentTemplateFactory', () => {
 
       expect(shellMock.handle.destroy).toHaveBeenCalledWith(shellMock.instance);
       expect(mockSimpleAgent.stop).toHaveBeenCalled();
+    });
+
+    it('includes <available-tools> block when deferred tools exist', async () => {
+      vi.mocked(mockSimpleAgent.getDeferredTools).mockReturnValue(
+        new Map([
+          [
+            'ghost',
+            {
+              description: 'placeholder tool',
+              tool: {} as unknown as BuiltAgentTool,
+            },
+          ],
+        ]),
+      );
+
+      const template = factory.createTemplate(ENGINEER_DEFINITION);
+      const handle = await template.create();
+      const params: GraphNode<typeof baseConfig> = {
+        config: baseConfig,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(params);
+      await handle.configure(params, instance);
+
+      const finalConfig = vi
+        .mocked(mockSimpleAgent.setConfig)
+        .mock.calls.at(-1)![0] as { instructions: string };
+      expect(
+        (finalConfig.instructions as string).includes('<available-tools>'),
+      ).toBe(true);
+      expect((finalConfig.instructions as string).includes('ghost')).toBe(true);
+    });
+
+    it('omits <available-tools> block when no deferred tools exist', async () => {
+      // getDeferredTools already returns empty Map by default
+      const template = factory.createTemplate(ENGINEER_DEFINITION);
+      const handle = await template.create();
+      const params: GraphNode<typeof baseConfig> = {
+        config: baseConfig,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(params);
+      await handle.configure(params, instance);
+
+      const finalConfig = vi
+        .mocked(mockSimpleAgent.setConfig)
+        .mock.calls.at(-1)![0] as { instructions: string };
+      expect(
+        (finalConfig.instructions as string).includes('<available-tools>'),
+      ).toBe(false);
+    });
+
+    it('places <available-tools> block before tool-group instructions', async () => {
+      const markerDef = {
+        ...ENGINEER_DEFINITION,
+        instructions: '__USER_INSTR_MARKER__',
+      };
+      mockSystemAgentsService.getById.mockReturnValue(markerDef);
+
+      vi.mocked(mockSimpleAgent.getDeferredTools).mockReturnValue(
+        new Map([
+          [
+            'ghost',
+            {
+              description: 'placeholder tool',
+              tool: {} as unknown as BuiltAgentTool,
+            },
+          ],
+        ]),
+      );
+
+      // Provide a tool with __instructions so collectToolInstructions yields non-undefined output
+      const toolWithInstructions = {
+        name: 'mock-tool',
+        __instructions: 'mock instructions',
+      };
+      vi.mocked(mockSimpleAgent.getTools).mockReturnValue([
+        toolWithInstructions,
+      ] as unknown as ReturnType<typeof mockSimpleAgent.getTools>);
+
+      const template = factory.createTemplate(ENGINEER_DEFINITION);
+      const handle = await template.create();
+      const params: GraphNode<typeof baseConfig> = {
+        config: baseConfig,
+        inputNodeIds: new Set(),
+        outputNodeIds: new Set(),
+        metadata,
+      };
+      const instance = await handle.provide(params);
+      await handle.configure(params, instance);
+
+      const finalConfig = vi
+        .mocked(mockSimpleAgent.setConfig)
+        .mock.calls.at(-1)![0] as { instructions: string };
+      const output = finalConfig.instructions as string;
+      const userInstructionsIdx = output.indexOf('__USER_INSTR_MARKER__');
+      const availableIdx = output.indexOf('<available-tools>');
+      const toolInstrIdx = output.indexOf('## Tool Instructions');
+      expect(userInstructionsIdx).toBeGreaterThan(-1);
+      expect(availableIdx).toBeGreaterThan(-1);
+      expect(toolInstrIdx).toBeGreaterThan(-1);
+      expect(userInstructionsIdx).toBeLessThan(availableIdx);
+      expect(availableIdx).toBeLessThan(toolInstrIdx);
     });
 
     it('does not include MCP template IDs in manual override set', async () => {

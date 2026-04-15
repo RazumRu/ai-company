@@ -41,6 +41,7 @@ export const ToolSearchSchema = z.object({
   query: z
     .string()
     .min(1)
+    .max(500)
     .describe(
       "Search query to find and load tools by name, category, or capability. Use keywords describing what you need — e.g. 'file operations', 'github', 'shell'.",
     ),
@@ -63,7 +64,7 @@ export class ToolSearchTool extends BaseTool<
 
   public name = TOOL_SEARCH_TOOL_NAME;
   public description =
-    'Searches for and loads available tools by name, category, or capability keyword. Use this tool to discover what tools are available before attempting to call them. It scores candidates using an exact-name match, keyword matches in tool names, descriptions, and parameter names, then returns the top 5 results. Once a tool is found via this search, it becomes available for use in subsequent turns.';
+    'Searches for and loads available tools by keyword. The <available-tools> block in the system prompt lists all unloaded tools — consult it before searching. Exact and partial name matches are prioritized over description matches. Returns up to the top 3 highly-relevant results; zero results is a normal outcome, try a different keyword. Once a tool is loaded, it remains available for the rest of the conversation.';
 
   public getDetailedInstructions(
     _config: ToolSearchToolConfig,
@@ -81,17 +82,18 @@ export class ToolSearchTool extends BaseTool<
       ### How It Works
       1. The \`<available-tools>\` block in the system prompt lists all available tools by name
       2. Call \`tool_search\` with a query — either an exact tool name or descriptive keywords
-      3. The tool returns up to 5 matching tools with their descriptions and parameters
+      3. The tool returns up to 3 highly-relevant matching tools with their descriptions and parameters
       4. After searching, the matched tools are loaded and available for use in subsequent turns
 
       ### Query Tips
       - **Exact match**: use the tool name directly (e.g. \`"shell"\`, \`"files_read"\`)
       - **Keyword search**: use descriptive terms (e.g. \`"file operations"\`, \`"git repository"\`, \`"web search"\`)
       - **Category search**: use category keywords (e.g. \`"github"\`, \`"knowledge base"\`, \`"communication"\`)
+      - **Name matches rank higher than description matches** — if you know the tool name, use it directly
 
       ### Important
       - Tools must be loaded (via \`tool_search\`) before they can be called
-      - If no results are returned, try different or broader keywords
+      - Zero results is a normal outcome — try a different keyword. The \`<available-tools>\` block in the system prompt lists all tools that are currently unloaded
       - You can call \`tool_search\` multiple times with different queries
 
       ### Example
@@ -117,7 +119,7 @@ export class ToolSearchTool extends BaseTool<
     _runnableConfig: ToolRunnableConfig<BaseAgentConfigurable>,
     _toolMetadata?: unknown,
   ): ToolInvokeResult<ToolSearchOutput> {
-    const queryTerms = this.tokenize(args.query);
+    const queryTerms = this.tokenize(args.query).slice(0, 50);
     const scored: ScoredEntry[] = [];
 
     for (const [name, entry] of config.deferredTools.entries()) {
@@ -128,7 +130,10 @@ export class ToolSearchTool extends BaseTool<
     }
 
     scored.sort((a, b) => b.score - a.score);
-    const topMatches = scored.slice(0, 5);
+    const topScore = scored.at(0)?.score ?? 0;
+    const minScore = Math.max(Math.floor(topScore * 0.5), 30);
+    const filtered = scored.filter((s) => s.score >= minScore);
+    const topMatches = filtered.slice(0, 3);
 
     if (topMatches.length === 0) {
       return {
@@ -217,10 +222,10 @@ export class ToolSearchTool extends BaseTool<
 
     for (const term of queryTerms) {
       if (nameLower.includes(term)) {
-        score += 50;
+        score += 80;
       }
       if (descLower.includes(term)) {
-        score += 25;
+        score += 10;
       }
       for (const propName of propNames) {
         if (propName.toLowerCase().includes(term)) {

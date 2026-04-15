@@ -64,6 +64,30 @@ export function collectInstructionBlockContent(
   return ['## Additional Instructions', ...wrapped].join('\n\n');
 }
 
+export type AgentInstructionParts = {
+  instructionBlockContent: string | undefined;
+  deferredToolsList: string | undefined;
+  toolGroupInstructionsText: string | undefined;
+  toolInstructions: string | undefined;
+  mcpInstructions: string | undefined;
+};
+
+export const buildAgentInstructions = (
+  baseInstructions: string,
+  parts: AgentInstructionParts,
+): string => {
+  return [
+    baseInstructions,
+    parts.instructionBlockContent,
+    parts.deferredToolsList,
+    parts.toolGroupInstructionsText,
+    parts.toolInstructions,
+    parts.mcpInstructions,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+};
+
 export function collectDeferredToolsList(
   deferredTools: Map<string, { description: string }>,
 ): string | undefined {
@@ -77,7 +101,7 @@ export function collectDeferredToolsList(
 
   return wrapBlock(
     [
-      'The following tools are available but not yet loaded. Use tool_search to find and load the tools you need:',
+      '**IMPORTANT:** The following tools are NOT yet loaded. Before responding that a capability is unavailable, call `tool_search` with relevant keywords to load them. Available tools:',
       ...lines,
     ].join('\n'),
     'available-tools',
