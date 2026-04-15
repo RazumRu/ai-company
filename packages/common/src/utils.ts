@@ -30,3 +30,62 @@ export function getEnv(
   }
   return v as string;
 }
+
+/**
+ * Extracts a human-readable message from an arbitrary thrown value.
+ *
+ * Avoids the `[object Object]` trap from `String(err)` when a library
+ * rejects/throws a plain object (e.g. `@kubernetes/client-node`'s WebSocket
+ * Exec). Probes common shapes (`message`, `body.message`, `response.body.message`,
+ * `reason`, `code`) and falls back to `JSON.stringify`, then `String(err)`.
+ */
+export function extractErrorMessage(err: unknown): string {
+  if (err === null || err === undefined) {
+    return String(err);
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  if (err instanceof Error) {
+    return err.message || err.name || 'Error';
+  }
+  if (typeof err === 'object') {
+    const record = err as Record<string | symbol, unknown>;
+    const candidates: unknown[] = [
+      record['message'],
+      (record['body'] as Record<string, unknown> | undefined)?.['message'],
+      (
+        (record['response'] as Record<string, unknown> | undefined)?.[
+          'body'
+        ] as Record<string, unknown> | undefined
+      )?.['message'],
+      record['reason'],
+      record['code'],
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    // WebSocket ErrorEvent (ws library) hides the underlying Error on
+    // Symbol-keyed properties (Symbol(kError), Symbol(kMessage)).
+    for (const sym of Object.getOwnPropertySymbols(err)) {
+      const value = record[sym];
+      if (value instanceof Error && value.message) {
+        return value.message;
+      }
+      if (typeof value === 'string' && value.length > 0) {
+        return value;
+      }
+    }
+    try {
+      const serialized = JSON.stringify(err);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch {
+      // Circular or non-serializable — fall through.
+    }
+  }
+  return String(err);
+}

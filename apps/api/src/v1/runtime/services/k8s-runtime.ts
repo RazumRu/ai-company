@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Duplex, PassThrough } from 'node:stream';
 
 import { CoreV1Api, Exec, KubeConfig } from '@kubernetes/client-node';
-import { InternalException } from '@packages/common';
+import { extractErrorMessage, InternalException } from '@packages/common';
 
 import {
   RuntimeExecParams,
@@ -671,7 +671,14 @@ export class K8sRuntime extends BaseRuntime {
           }
         })
         .catch((err: unknown) => {
-          fail(err instanceof Error ? err : new Error(String(err)));
+          const wrapped =
+            err instanceof Error ? err : new Error(extractErrorMessage(err));
+          this.logger.error(
+            wrapped,
+            `[K8sRuntime] exec failed on pod "${this.podName}"`,
+            { raw: err },
+          );
+          fail(wrapped);
         });
     });
   }
