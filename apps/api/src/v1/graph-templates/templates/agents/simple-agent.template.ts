@@ -16,6 +16,7 @@ import {
   ToolNodeOutput,
 } from '../base-node.template';
 import {
+  buildAgentInstructions,
   collectDeferredToolsList,
   collectInstructionBlockContent,
   collectMcpInstructions,
@@ -227,16 +228,13 @@ export class SimpleAgentTemplate extends SimpleAgentNodeBaseTemplate<
 
         const finalConfig = {
           ...config,
-          instructions: [
-            config.instructions,
+          instructions: buildAgentInstructions(config.instructions, {
             instructionBlockContent,
+            deferredToolsList,
             toolGroupInstructionsText,
             toolInstructions,
             mcpInstructions,
-            deferredToolsList,
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
+          }),
         };
 
         instance.setConfig(finalConfig);

@@ -9,6 +9,8 @@ import { BuiltAgentTool } from '../../agent-tools/tools/base-tool';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import {
+  buildAgentInstructions,
+  collectDeferredToolsList,
   collectInstructionBlockContent,
   collectMcpInstructions,
   collectToolGroupInstructions,
@@ -315,17 +317,19 @@ export class SystemAgentTemplateFactory {
             const instructionBlockContent =
               collectInstructionBlockContent(instructionContents);
 
+            const deferredToolsList = collectDeferredToolsList(
+              instance.getDeferredTools(),
+            );
+
             const finalConfig = {
               ...config,
-              instructions: [
-                liveInstructions,
+              instructions: buildAgentInstructions(liveInstructions, {
                 instructionBlockContent,
+                deferredToolsList,
                 toolGroupInstructionsText,
                 toolInstructions,
                 mcpInstructions,
-              ]
-                .filter(Boolean)
-                .join('\n\n'),
+              }),
             };
 
             instance.setConfig(finalConfig);
