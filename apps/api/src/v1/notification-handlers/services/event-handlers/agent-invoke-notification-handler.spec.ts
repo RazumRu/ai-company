@@ -639,6 +639,97 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(notificationsService.emit).not.toHaveBeenCalled();
       expect(result).toEqual([]);
     });
+
+    it('should extract text from multimodal content array and pass it to generateFromFirstUserMessage', async () => {
+      const mockGraph = createMockGraphEntity();
+      const upsertedThread = createMockThreadEntity({
+        externalThreadId: mockThreadId,
+      });
+      const notification = createMockNotification({
+        threadId: mockThreadId,
+        parentThreadId: mockThreadId,
+        data: {
+          messages: [
+            new HumanMessage({
+              content: [{ type: 'text', text: 'Hello world' }],
+            }),
+          ],
+        },
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        upsertedThread,
+      );
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      threadNameGenerator.generateFromFirstUserMessage.mockResolvedValue(
+        'Hello world',
+      );
+
+      await handler.handle(notification);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(
+        threadNameGenerator.generateFromFirstUserMessage,
+      ).toHaveBeenCalledWith('Hello world', undefined);
+    });
+
+    it('should pass plain string content unchanged to generateFromFirstUserMessage', async () => {
+      const mockGraph = createMockGraphEntity();
+      const upsertedThread = createMockThreadEntity({
+        externalThreadId: mockThreadId,
+      });
+      const notification = createMockNotification({
+        threadId: mockThreadId,
+        parentThreadId: mockThreadId,
+        data: {
+          messages: [new HumanMessage('Hello world')],
+        },
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        upsertedThread,
+      );
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      threadNameGenerator.generateFromFirstUserMessage.mockResolvedValue(
+        'Hello world',
+      );
+
+      await handler.handle(notification);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(
+        threadNameGenerator.generateFromFirstUserMessage,
+      ).toHaveBeenCalledWith('Hello world', undefined);
+    });
+
+    it('should not call generateFromFirstUserMessage when structured content array is empty', async () => {
+      const mockGraph = createMockGraphEntity();
+      const upsertedThread = createMockThreadEntity({
+        externalThreadId: mockThreadId,
+      });
+      const notification = createMockNotification({
+        threadId: mockThreadId,
+        parentThreadId: mockThreadId,
+        data: {
+          messages: [new HumanMessage({ content: [] })],
+        },
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        upsertedThread,
+      );
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+
+      await handler.handle(notification);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(
+        threadNameGenerator.generateFromFirstUserMessage,
+      ).not.toHaveBeenCalled();
+    });
   });
 
   describe('pattern', () => {

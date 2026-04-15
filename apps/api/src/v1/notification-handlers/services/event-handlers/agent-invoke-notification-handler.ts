@@ -2,6 +2,7 @@ import { HumanMessage } from '@langchain/core/messages';
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
+import { extractTextFromResponseContent } from '../../../agents/agents.utils';
 import { GraphDao } from '../../../graphs/dao/graph.dao';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
@@ -143,9 +144,11 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     }
 
     const rawContent = firstHuman.content;
+    const userInput = extractTextFromResponseContent(rawContent) ?? '';
 
-    const userInput =
-      typeof rawContent === 'string' ? rawContent : JSON.stringify(rawContent);
+    if (!userInput) {
+      return;
+    }
 
     // Try compiled graph first (zero DB calls)
     const compiledGraph = this.graphRegistry.get(event.graphId);
