@@ -431,18 +431,19 @@ export class RuntimeProvider {
       ? [environment.dockerInsecureRegistry as string]
       : undefined;
     const baseLabels = record.config.labels ?? {};
+    const threadIdLabel = record.threadId.includes(':')
+      ? record.threadId.split(':').slice(1).join(':')
+      : record.threadId;
     const labels: Record<string, string> = {
       ...baseLabels,
-      ...(record.graphId ? { 'geniro/graph_id': record.graphId } : {}),
-      'geniro/node_id': record.nodeId,
-      'geniro/thread_id': record.threadId.includes(':')
-        ? record.threadId.split(':').slice(1).join(':')
-        : record.threadId,
-      'geniro/instance_id': record.id,
-      'geniro/type': 'runtime',
+      ...(record.graphId ? { 'geniro.io/graph-id': record.graphId } : {}),
+      'geniro.io/node-id': record.nodeId,
+      'geniro.io/thread-id': threadIdLabel,
+      'geniro.io/instance-id': record.id,
+      'geniro.io/type': 'runtime',
     };
     if (record.temporary) {
-      labels['geniro/temporary'] = 'true';
+      labels['geniro.io/temporary'] = 'true';
     }
 
     await runtime.start({

@@ -44,7 +44,10 @@ describe('OpenaiService — reasoning propagation', () => {
       });
 
       expect(spy).toHaveBeenCalledOnce();
-      const callArg = spy.mock.calls[0][0] as Record<string, unknown>;
+      const callArg = spy.mock.calls[0]?.[0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(callArg['reasoning_effort']).toBe('medium');
     });
 
@@ -63,7 +66,10 @@ describe('OpenaiService — reasoning propagation', () => {
       });
 
       expect(spy).toHaveBeenCalledOnce();
-      const callArg = spy.mock.calls[0][0] as Record<string, unknown>;
+      const callArg = spy.mock.calls[0]?.[0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(
         Object.prototype.hasOwnProperty.call(callArg, 'reasoning_effort'),
       ).toBe(false);
@@ -87,7 +93,10 @@ describe('OpenaiService — reasoning propagation', () => {
       });
 
       expect(spy).toHaveBeenCalledOnce();
-      const callArg = spy.mock.calls[0][0] as Record<string, unknown>;
+      const callArg = spy.mock.calls[0]?.[0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(callArg['reasoning']).toEqual({ effort: 'high' });
     });
 
@@ -106,7 +115,10 @@ describe('OpenaiService — reasoning propagation', () => {
       });
 
       expect(spy).toHaveBeenCalledOnce();
-      const callArg = spy.mock.calls[0][0] as Record<string, unknown>;
+      const callArg = spy.mock.calls[0]?.[0] as unknown as Record<
+        string,
+        unknown
+      >;
       expect(Object.prototype.hasOwnProperty.call(callArg, 'reasoning')).toBe(
         false,
       );

@@ -13,7 +13,6 @@ import { buildPodName } from './k8s-runtime.utils';
 const mockCoreApi = {
   createNamespacedPod: vi.fn(),
   readNamespacedPod: vi.fn(),
-  readNamespacedPodStatus: vi.fn(),
   deleteNamespacedPod: vi.fn(),
   listNamespacedPod: vi.fn(),
   patchNamespacedPod: vi.fn(),
@@ -171,7 +170,7 @@ describe('K8sRuntime', () => {
   describe('start()', () => {
     it('creates a pod and waits for Ready status', async () => {
       mockCoreApi.createNamespacedPod.mockResolvedValue({});
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
 
@@ -184,7 +183,7 @@ describe('K8sRuntime', () => {
       });
 
       expect(mockCoreApi.createNamespacedPod).toHaveBeenCalledOnce();
-      expect(mockCoreApi.readNamespacedPodStatus).toHaveBeenCalled();
+      expect(mockCoreApi.readNamespacedPod).toHaveBeenCalled();
       expect(runtime.getPodName()).not.toBeNull();
     });
 
@@ -197,7 +196,7 @@ describe('K8sRuntime', () => {
 
       mockCoreApi.createNamespacedPod.mockResolvedValue({});
       // Pod never becomes Ready
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Pending', false),
       );
       mockCoreApi.deleteNamespacedPod.mockResolvedValue({});
@@ -226,8 +225,8 @@ describe('K8sRuntime', () => {
       mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
-      // readNamespacedPodStatus for ready-wait
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      // readNamespacedPod for ready-wait
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
 
@@ -253,7 +252,7 @@ describe('K8sRuntime', () => {
       const rtWithPool = new K8sRuntime(TEST_CONFIG, { warmPool });
 
       // Warm pod is immediately ready
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
 
@@ -279,7 +278,7 @@ describe('K8sRuntime', () => {
       const rtWithPool = new K8sRuntime(TEST_CONFIG, { warmPool });
 
       mockCoreApi.createNamespacedPod.mockResolvedValue({});
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
 
@@ -299,7 +298,7 @@ describe('K8sRuntime', () => {
     it('rejects and deletes pod when pod enters Failed phase (K-19)', async () => {
       mockCoreApi.createNamespacedPod.mockResolvedValue({});
       // Pod immediately goes to Failed phase
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Failed', false),
       );
       mockCoreApi.deleteNamespacedPod.mockResolvedValue({});
@@ -320,7 +319,7 @@ describe('K8sRuntime', () => {
     // K-17: initScript path
     it('runs initScript when provided and resolves on exit 0 (K-17a)', async () => {
       mockCoreApi.createNamespacedPod.mockResolvedValue({});
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
       stubExecSuccess(0);
@@ -341,7 +340,7 @@ describe('K8sRuntime', () => {
 
     it('rejects with InternalException when initScript exits non-zero (K-17b)', async () => {
       mockCoreApi.createNamespacedPod.mockResolvedValue({});
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
       stubExecSuccess(1);
@@ -365,8 +364,10 @@ describe('K8sRuntime', () => {
         .mockRejectedValueOnce(conflict409)
         .mockResolvedValueOnce({});
 
-      // readNamespacedPod returns pod with DIFFERENT labels
-      mockCoreApi.readNamespacedPod.mockResolvedValue({
+      // First readNamespacedPod returns pod with DIFFERENT labels (label
+      // check on 409 conflict). Subsequent calls return the ready pod
+      // (waitForPodReady polling after retry succeeds).
+      mockCoreApi.readNamespacedPod.mockResolvedValueOnce({
         metadata: {
           labels: {
             'geniro.io/thread-id': 'other-thread',
@@ -376,7 +377,7 @@ describe('K8sRuntime', () => {
         },
       });
       mockCoreApi.deleteNamespacedPod.mockResolvedValue({});
-      mockCoreApi.readNamespacedPodStatus.mockResolvedValue(
+      mockCoreApi.readNamespacedPod.mockResolvedValue(
         makePodStatus('Running', true),
       );
 
