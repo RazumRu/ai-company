@@ -1,6 +1,8 @@
+import { raw } from '@mikro-orm/core';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 
+import { ThreadEntity } from '../threads/entity/thread.entity';
 import type { ByGraphRawRow, TokenAggregateRawRow } from './dto/analytics.dto';
 
 type DateRangeParams = {
@@ -75,7 +77,6 @@ export class AnalyticsDao {
 
     return await this.em.getConnection().execute<ByGraphRawRow[]>(
       `SELECT g.id AS "graphId", g.name AS "graphName",
-              count(DISTINCT t.id)::text AS "totalThreads",
               ${this.tokenSumSelects()}
        FROM messages m
        INNER JOIN threads t ON t.id = m.thread_id
@@ -85,6 +86,49 @@ export class AnalyticsDao {
        ORDER BY "totalTokens" DESC`,
       ctx.params,
     );
+  }
+
+  async countThreadsByGraph(
+    params: DateRangeParams,
+    graphIds: string[],
+  ): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (graphIds.length === 0) {
+      return result;
+    }
+
+    const where: Record<string, unknown> = {
+      deletedAt: null,
+      createdBy: params.createdBy,
+      projectId: params.projectId,
+      graphId: { $in: graphIds },
+    };
+
+    if (params.dateFrom) {
+      where['createdAt'] = {
+        ...(where['createdAt'] as object),
+        $gte: new Date(params.dateFrom),
+      };
+    }
+    if (params.dateTo) {
+      where['createdAt'] = {
+        ...(where['createdAt'] as object),
+        $lt: new Date(params.dateTo),
+      };
+    }
+
+    const rows = await this.em
+      .createQueryBuilder(ThreadEntity, 't')
+      .select(['t.graphId', raw('count(*) as cnt')])
+      .where(where)
+      .groupBy(['t.graphId'])
+      .execute<{ graphId: string; cnt: string }[]>();
+
+    for (const row of rows) {
+      result.set(row.graphId, parseInt(row.cnt, 10));
+    }
+
+    return result;
   }
 
   private buildBaseContext(params: DateRangeParams) {

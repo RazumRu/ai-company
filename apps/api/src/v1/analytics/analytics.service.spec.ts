@@ -137,7 +137,6 @@ describe('AnalyticsService', () => {
         {
           graphId: 'graph-1',
           graphName: 'Agent A',
-          totalThreads: '20',
           inputTokens: '400000',
           cachedInputTokens: '20000',
           outputTokens: '180000',
@@ -148,7 +147,6 @@ describe('AnalyticsService', () => {
         {
           graphId: 'graph-2',
           graphName: 'Agent B',
-          totalThreads: '5',
           inputTokens: '100000',
           cachedInputTokens: '0',
           outputTokens: '50000',
@@ -159,6 +157,12 @@ describe('AnalyticsService', () => {
       ];
 
       dao.getByGraph.mockResolvedValue(rows);
+      dao.countThreadsByGraph.mockResolvedValue(
+        new Map([
+          ['graph-1', 20],
+          ['graph-2', 5],
+        ]),
+      );
 
       const result = await service.getByGraph(mockCtx, {});
 
@@ -171,6 +175,15 @@ describe('AnalyticsService', () => {
         dateTo: undefined,
         graphId: undefined,
       });
+      expect(dao.countThreadsByGraph).toHaveBeenCalledWith(
+        {
+          createdBy: userId,
+          projectId,
+          dateFrom: undefined,
+          dateTo: undefined,
+        },
+        ['graph-1', 'graph-2'],
+      );
 
       expect(result.graphs).toHaveLength(2);
       expect(result.graphs[0]).toEqual({
@@ -184,10 +197,22 @@ describe('AnalyticsService', () => {
         totalTokens: 600000,
         totalPrice: 6.5,
       });
+      expect(result.graphs[1]).toEqual({
+        graphId: 'graph-2',
+        graphName: 'Agent B',
+        totalThreads: 5,
+        inputTokens: 100000,
+        cachedInputTokens: 0,
+        outputTokens: 50000,
+        reasoningTokens: 500,
+        totalTokens: 150500,
+        totalPrice: 1.2,
+      });
     });
 
     it('should pass graphId filter to DAO', async () => {
       dao.getByGraph.mockResolvedValue([]);
+      dao.countThreadsByGraph.mockResolvedValue(new Map());
 
       const graphId = 'graph-abc';
       await service.getByGraph(mockCtx, { graphId });
@@ -203,6 +228,7 @@ describe('AnalyticsService', () => {
 
     it('should call checkProjectId and forward projectId to DAO', async () => {
       dao.getByGraph.mockResolvedValue([]);
+      dao.countThreadsByGraph.mockResolvedValue(new Map());
 
       await service.getByGraph(mockCtx, {});
 
@@ -210,14 +236,42 @@ describe('AnalyticsService', () => {
       expect(dao.getByGraph).toHaveBeenCalledWith(
         expect.objectContaining({ projectId }),
       );
+      expect(dao.countThreadsByGraph).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId }),
+        [],
+      );
     });
 
     it('should return empty array when no graphs have data', async () => {
       dao.getByGraph.mockResolvedValue([]);
+      dao.countThreadsByGraph.mockResolvedValue(new Map());
 
       const result = await service.getByGraph(mockCtx, {});
 
       expect(result.graphs).toEqual([]);
+    });
+
+    it('should default totalThreads to 0 for graphs missing from thread count map', async () => {
+      const rows: ByGraphRawRow[] = [
+        {
+          graphId: 'graph-orphan',
+          graphName: 'Orphan Graph',
+          inputTokens: '50',
+          cachedInputTokens: '0',
+          outputTokens: '25',
+          reasoningTokens: '0',
+          totalTokens: '75',
+          totalPrice: '0.01',
+        },
+      ];
+
+      dao.getByGraph.mockResolvedValue(rows);
+      // countThreadsByGraph returns an empty map (no threads counted)
+      dao.countThreadsByGraph.mockResolvedValue(new Map());
+
+      const result = await service.getByGraph(mockCtx, {});
+
+      expect(result.graphs[0]!.totalThreads).toBe(0);
     });
   });
 });

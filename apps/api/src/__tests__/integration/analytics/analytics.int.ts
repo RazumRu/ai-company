@@ -296,6 +296,41 @@ describe('Analytics (integration)', () => {
       const entry = result.graphs.find((g) => g.graphId === graph.id);
       expect(entry).toBeUndefined();
     });
+
+    it('counts all non-deleted threads regardless of usage', async () => {
+      const graph = await createGraph('analytics-total-threads-test');
+
+      // Thread 1: has a message with usage
+      const thread1 = await createThread(graph.id);
+      await createMessageWithUsage(thread1.id, thread1.externalThreadId, {
+        inputTokens: 200,
+        outputTokens: 100,
+        totalTokens: 300,
+        totalPrice: 0.03,
+      });
+
+      // Thread 2: no messages — should still count toward totalThreads
+      const thread2 = await createThread(graph.id);
+
+      // Thread 3: soft-deleted — should NOT count toward totalThreads
+      const thread3 = await createThread(graph.id);
+      await threadsDao.deleteById(thread3.id);
+
+      const result = await analyticsService.getByGraph(projectCtx, {});
+
+      const entry = result.graphs.find((g) => g.graphId === graph.id);
+      expect(entry).toBeDefined();
+      // Only thread1 and thread2 are non-deleted; thread3 is soft-deleted
+      expect(entry!.totalThreads).toBe(2);
+      // Token sums reflect only thread1 (the only one with usage)
+      expect(entry!.inputTokens).toBe(200);
+      expect(entry!.outputTokens).toBe(100);
+      expect(entry!.totalTokens).toBe(300);
+      expect(entry!.totalPrice).toBe(0.03);
+
+      // Clean up thread2 explicitly (thread3 was soft-deleted, deleteById cleans it)
+      void thread2;
+    });
   });
 
   describe('project isolation', () => {
@@ -411,6 +446,46 @@ describe('Analytics (integration)', () => {
       const leaked = result.graphs.find((g) => g.graphId === graphA.id);
       expect(leaked).toBeUndefined();
       expect(result.graphs).toHaveLength(0);
+    });
+
+    it('totalThreads in getByGraph does not count threads from other projects', async () => {
+      // Create a graph in project A with 2 threads (no messages needed)
+      const graphA = await createGraphInProject(
+        'isolation-totalthreads-A',
+        testProjectId,
+      );
+      await createThreadInProject(graphA.id, testProjectId);
+      await createThreadInProject(graphA.id, testProjectId);
+
+      // Create the same graph name in the other project with 1 thread and usage
+      const graphB = await createGraphInProject(
+        'isolation-totalthreads-B',
+        otherProjectId,
+      );
+      const threadB = await createThreadInProject(graphB.id, otherProjectId);
+      await createMessageWithUsage(threadB.id, threadB.externalThreadId, {
+        inputTokens: 999,
+        outputTokens: 999,
+        totalTokens: 1998,
+        totalPrice: 0.99,
+      });
+
+      // From project A's perspective, graphA should show 2 threads and no tokens
+      // (graphB belongs to otherProject, threads from project B must not bleed in)
+      const resultA = await analyticsService.getByGraph(projectCtx, {
+        graphId: graphA.id,
+      });
+      expect(resultA.graphs).toHaveLength(0); // graphA has no messages with usage
+
+      // From project B's perspective, graphB should show exactly 1 thread
+      const resultB = await analyticsService.getByGraph(otherProjectCtx, {
+        graphId: graphB.id,
+      });
+      expect(resultB.graphs).toHaveLength(1);
+      const entryB = resultB.graphs[0]!;
+      expect(entryB.totalThreads).toBe(1);
+      // Confirm project A's threads are not counted inside project B's entry
+      expect(entryB.totalTokens).toBe(1998);
     });
   });
 });

@@ -71,5 +71,4 @@ export type TokenAggregateRawRow = TokenSumsRawRow;
 export type ByGraphRawRow = TokenSumsRawRow & {
   graphId: string;
   graphName: string;
-  totalThreads: string;
 };

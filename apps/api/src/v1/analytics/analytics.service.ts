@@ -46,19 +46,29 @@ export class AnalyticsService {
     const userId = ctx.checkSub();
     const projectId = ctx.checkProjectId();
 
-    const rows = await this.analyticsDao.getByGraph({
+    const params = {
       createdBy: userId,
       projectId,
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
+    };
+
+    const rows = await this.analyticsDao.getByGraph({
+      ...params,
       graphId: query.graphId,
     });
+
+    const graphIds = rows.map((row) => row.graphId);
+    const threadCounts = await this.analyticsDao.countThreadsByGraph(
+      params,
+      graphIds,
+    );
 
     return {
       graphs: rows.map((row) => ({
         graphId: row.graphId,
         graphName: row.graphName,
-        totalThreads: parseInt(row.totalThreads, 10),
+        totalThreads: threadCounts.get(row.graphId) ?? 0,
         ...this.parseTokenRow(row),
       })),
     };
