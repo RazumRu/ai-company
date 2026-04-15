@@ -137,7 +137,7 @@ describe('RuntimeProvider', () => {
       } as unknown as RuntimeInstanceEntity;
     }
 
-    it('extracts the sub-id portion of an externalThreadId (after the colon) into geniro/thread_id', async () => {
+    it('extracts the sub-id portion of an externalThreadId (after the colon) into geniro.io/thread-id', async () => {
       const startSpy = vi.fn().mockResolvedValue(undefined);
       const provider = buildProviderWithStubRuntime(startSpy);
 
@@ -157,10 +157,10 @@ describe('RuntimeProvider', () => {
       const startArg = startSpy.mock.calls[0]?.[0] as {
         labels: Record<string, string>;
       };
-      expect(startArg.labels['geniro/thread_id']).toBe(
+      expect(startArg.labels['geniro.io/thread-id']).toBe(
         'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
       );
-      expect(startArg.labels['geniro/graph_id']).toBe(
+      expect(startArg.labels['geniro.io/graph-id']).toBe(
         'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
       );
     });
@@ -183,7 +183,7 @@ describe('RuntimeProvider', () => {
       const startArg = startSpy.mock.calls[0]?.[0] as {
         labels: Record<string, string>;
       };
-      expect(startArg.labels['geniro/thread_id']).toBe('simple-id');
+      expect(startArg.labels['geniro.io/thread-id']).toBe('simple-id');
     });
   });
 

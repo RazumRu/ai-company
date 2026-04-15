@@ -434,6 +434,28 @@ describe('LitellmService', () => {
     });
   });
 
+  describe('supportsReasoning', () => {
+    it('returns false when no model info is found', async () => {
+      const svc = createSvc(null);
+      await expect(svc.supportsReasoning('unknown-model')).resolves.toBe(false);
+    });
+
+    it('returns false when supports_reasoning is false', async () => {
+      const svc = createSvc(buildModelInfo({ supports_reasoning: false }));
+      await expect(svc.supportsReasoning('gpt-4')).resolves.toBe(false);
+    });
+
+    it('returns true when supports_reasoning is true', async () => {
+      const svc = createSvc(buildModelInfo({ supports_reasoning: true }));
+      await expect(svc.supportsReasoning('gpt-4')).resolves.toBe(true);
+    });
+
+    it('returns false when supports_reasoning is absent', async () => {
+      const svc = createSvc(buildModelInfo());
+      await expect(svc.supportsReasoning('gpt-4')).resolves.toBe(false);
+    });
+  });
+
   describe('sumTokenUsages', () => {
     it('sums multiple token usages', () => {
       const svc = createSvc();

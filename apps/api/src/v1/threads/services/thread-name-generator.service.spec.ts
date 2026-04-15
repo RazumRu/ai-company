@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { LitellmService } from '../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../litellm/services/llm-models.service';
 import { OpenaiService } from '../../openai/openai.service';
 import { ThreadNameGeneratorService } from './thread-name-generator.service';
@@ -10,6 +11,7 @@ describe('ThreadNameGeneratorService', () => {
   let service: ThreadNameGeneratorService;
   let openaiService: { jsonRequest: ReturnType<typeof vi.fn> };
   let llmModelsService: { getThreadNameModel: ReturnType<typeof vi.fn> };
+  let litellmService: { supportsReasoning: ReturnType<typeof vi.fn> };
   let logger: { error: ReturnType<typeof vi.fn> };
 
   const mockModel = 'gpt-5-mini';
@@ -23,6 +25,10 @@ describe('ThreadNameGeneratorService', () => {
       getThreadNameModel: vi.fn().mockReturnValue(mockModel),
     };
 
+    litellmService = {
+      supportsReasoning: vi.fn().mockResolvedValue(true),
+    };
+
     logger = {
       error: vi.fn(),
     };
@@ -32,6 +38,7 @@ describe('ThreadNameGeneratorService', () => {
         ThreadNameGeneratorService,
         { provide: OpenaiService, useValue: openaiService },
         { provide: LlmModelsService, useValue: llmModelsService },
+        { provide: LitellmService, useValue: litellmService },
         { provide: DefaultLogger, useValue: logger },
       ],
     }).compile();
@@ -214,6 +221,50 @@ describe('ThreadNameGeneratorService', () => {
 
       expect(openaiService.jsonRequest).toHaveBeenCalledWith(
         expect.objectContaining({ model: 'custom-model' }),
+      );
+    });
+
+    it('should request minimal reasoning effort for reasoning-capable models', async () => {
+      litellmService.supportsReasoning.mockResolvedValue(true);
+      openaiService.jsonRequest.mockResolvedValue({
+        content: { title: 'Title' },
+      });
+
+      await service.generateFromFirstUserMessage('test message');
+
+      expect(openaiService.jsonRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ reasoning: { effort: 'minimal' } }),
+      );
+    });
+
+    it('should NOT pass reasoning for non-reasoning models', async () => {
+      litellmService.supportsReasoning.mockResolvedValue(false);
+      openaiService.jsonRequest.mockResolvedValue({
+        content: { title: 'Title' },
+      });
+
+      await service.generateFromFirstUserMessage('test message');
+
+      expect(openaiService.jsonRequest).toHaveBeenCalledWith(
+        expect.not.objectContaining({ reasoning: expect.anything() }),
+      );
+    });
+
+    it('should omit reasoning and log when capability check throws', async () => {
+      litellmService.supportsReasoning.mockRejectedValue(
+        new Error('litellm down'),
+      );
+      openaiService.jsonRequest.mockResolvedValue({
+        content: { title: 'Title' },
+      });
+
+      await service.generateFromFirstUserMessage('test message');
+
+      expect(openaiService.jsonRequest).toHaveBeenCalledWith(
+        expect.not.objectContaining({ reasoning: expect.anything() }),
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('reasoning-capability check failed'),
       );
     });
 

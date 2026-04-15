@@ -173,7 +173,7 @@ export class K8sRuntime extends BaseRuntime {
   private async waitForPodReady(deadline: number): Promise<boolean> {
     while (Date.now() < deadline) {
       try {
-        const pod = await this.coreApi!.readNamespacedPodStatus({
+        const pod = await this.coreApi!.readNamespacedPod({
           name: this.podName!,
           namespace: this.config.namespace,
         });

@@ -247,7 +247,7 @@ export class LitellmService {
   async supportsReasoning(model: string): Promise<boolean> {
     const entry = await this.getLiteLLMModelInfo(model);
     if (!entry) {
-      return true;
+      return false;
     }
 
     return !!entry.model_info?.supports_reasoning;

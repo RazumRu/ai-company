@@ -26,13 +26,13 @@ export type EmbeddingsResult = {
   usage?: RequestTokenUsage;
 };
 
-type SortReasoning = { effort: 'minimal' | 'low' | 'medium' | 'high' };
+type ReasoningConfig = { effort: 'minimal' | 'low' | 'medium' | 'high' };
 
 type BaseData = {
   model: string;
   message: string;
   systemMessage?: string;
-  reasoning?: SortReasoning;
+  reasoning?: ReasoningConfig;
 };
 
 type JsonEnabled = {
@@ -95,6 +95,7 @@ export class OpenaiService {
       ...(params ?? {}),
       model: data.model,
       messages,
+      ...(data.reasoning ? { reasoning_effort: data.reasoning.effort } : {}),
       ...(generatedSchema
         ? {
             response_format: generatedSchema,
