@@ -5,6 +5,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '../../../components/ui/popover';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '../../../components/ui/tooltip';
 import type { ThreadTokenUsageSnapshot } from '../types';
 import {
   clampPercent,
@@ -13,8 +18,13 @@ import {
 } from '../utils/chatsPageUtils';
 import { ContextUsageGauge } from './ContextUsageGauge';
 
+type ThreadTokenUsageLineUsage = ThreadTokenUsageSnapshot & {
+  effectiveCostLimitUsd?: number | null;
+  stopReason?: string | null;
+};
+
 export const ThreadTokenUsageLine: React.FC<{
-  usage?: ThreadTokenUsageSnapshot | null;
+  usage?: ThreadTokenUsageLineUsage | null;
   withPopover?: boolean;
   contextMaxTokens?: number;
   contextPercent?: number;
@@ -22,6 +32,8 @@ export const ThreadTokenUsageLine: React.FC<{
   const totalTokens = usage?.totalTokens;
   const totalPrice = usage?.totalPrice;
   const currentContext = usage?.currentContext;
+  const effectiveCostLimitUsd = usage?.effectiveCostLimitUsd;
+  const stopReason = usage?.stopReason;
   if (typeof totalTokens !== 'number') {
     return null;
   }
@@ -36,12 +48,39 @@ export const ThreadTokenUsageLine: React.FC<{
         ? (currentContext / contextMaxTokens) * 100
         : undefined;
 
+  const hasLimit =
+    typeof effectiveCostLimitUsd === 'number' &&
+    Number.isFinite(effectiveCostLimitUsd);
+  const costLimitReached = stopReason === 'cost_limit';
+
+  const costText = hasLimit
+    ? `${formatUsd(totalPrice)} / ${formatUsd(effectiveCostLimitUsd)}`
+    : formatUsd(totalPrice);
+
+  const labelText = `Token usage: ${formatCompactNumber(totalTokens)} (${costText})`;
+
+  const labelSpan = costLimitReached ? (
+    <span className="text-xs text-destructive">
+      {labelText} — Cost limit reached
+    </span>
+  ) : (
+    <span className="text-xs text-muted-foreground">{labelText}</span>
+  );
+
+  const labelNode = costLimitReached ? (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-block cursor-help">{labelSpan}</span>
+      </TooltipTrigger>
+      <TooltipContent>Raise the limit to resume.</TooltipContent>
+    </Tooltip>
+  ) : (
+    labelSpan
+  );
+
   const line = (
     <span className="inline-flex items-center gap-2">
-      <span className="text-xs text-muted-foreground">
-        Token usage: {formatCompactNumber(totalTokens)} ({formatUsd(totalPrice)}
-        )
-      </span>
+      {labelNode}
       {typeof percent === 'number' && <ContextUsageGauge percent={percent} />}
     </span>
   );
@@ -106,6 +145,14 @@ export const ThreadTokenUsageLine: React.FC<{
           {formatUsd(usage?.totalPrice)}
         </span>
       </div>
+      {hasLimit && (
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>Cost limit</span>
+          <span className="font-semibold text-foreground">
+            {formatUsd(effectiveCostLimitUsd)}
+          </span>
+        </div>
+      )}
       {typeof percent === 'number' && (
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>Context usage</span>

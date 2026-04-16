@@ -10,9 +10,12 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
+import { isCostLimitExceeded } from '../../../../utils/cost-limits/cost-limit.utils';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
+import type { CostLimitResolverService } from '../../../cost-limits/services/cost-limit-resolver.service';
 import { UsageMetadata } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
+import { CostLimitExceededError } from '../../agents.errors';
 import {
   BaseAgentConfigurable,
   BaseAgentState,
@@ -47,6 +50,7 @@ export class InvokeLlmNode extends BaseNode<
     private tools: ToolWithTitle[],
     private opts?: InvokeLlmNodeOpts,
     private readonly logger?: DefaultLogger,
+    private readonly costLimitResolver?: CostLimitResolverService,
   ) {
     super();
   }
@@ -167,6 +171,28 @@ export class InvokeLlmNode extends BaseNode<
     );
     if (threadUsage) {
       threadUsage.durationMs = durationMs;
+    }
+
+    // When costLimitResolver is undefined (subagent path), skip enforcement —
+    // subagent costs fold up via tool-executor-node's usage merge and are checked on the next parent LLM call.
+    // Slight overshoot is acceptable: subagent costs count toward the parent thread's limit eventually.
+    if (this.costLimitResolver) {
+      const userId = cfg.configurable?.thread_created_by;
+      const graphId = cfg.configurable?.graph_id;
+      if (userId && graphId) {
+        const effectiveLimit = await this.costLimitResolver.resolveForThread(
+          userId,
+          graphId,
+        );
+        const projectedTotal =
+          (state.totalPrice ?? 0) + (threadUsage?.totalPrice ?? 0);
+        if (isCostLimitExceeded(projectedTotal, effectiveLimit)) {
+          throw new CostLimitExceededError(
+            effectiveLimit as number,
+            projectedTotal,
+          );
+        }
+      }
     }
 
     // Attach model metadata and request usage

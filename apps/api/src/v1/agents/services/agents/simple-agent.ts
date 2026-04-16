@@ -28,10 +28,12 @@ import {
 } from '../../../agent-tools/tools/common/tool-search.tool';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { WaitForTool } from '../../../agent-tools/tools/core/wait-for.tool';
+import { CostLimitResolverService } from '../../../cost-limits/services/cost-limit-resolver.service';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
+import { CostLimitExceededError } from '../../agents.errors';
 import {
   BaseAgentConfigurable,
   BaseAgentState,
@@ -91,6 +93,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     private readonly litellmService: LitellmService,
     private readonly logger: DefaultLogger,
     private readonly llmModelsService: LlmModelsService,
+    private readonly costLimitResolver: CostLimitResolverService,
   ) {
     super();
   }
@@ -211,6 +214,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           parallelToolCalls: useParallelToolCall,
         },
         this.logger,
+        this.costLimitResolver,
       );
 
       // ---- tool executor ----
@@ -460,8 +464,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       return;
     }
 
+    type StateChangePayload = Partial<BaseAgentState> & {
+      effectiveCostLimitUsd?: number | null;
+    };
+
     // Build state change object with only changed fields
-    const stateChange: Partial<BaseAgentState> = {};
+    const stateChange: StateChangePayload = {};
 
     if (prevState.toolsMetadata !== nextState.toolsMetadata) {
       stateChange.toolsMetadata = nextState.toolsMetadata;
@@ -525,6 +533,28 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     stateChange.totalTokens = nextState.totalTokens;
     stateChange.totalPrice = nextState.totalPrice;
     stateChange.currentContext = nextState.currentContext;
+
+    // Emit null on any resolver failure rather than blocking the state update.
+    const userId = runnableConfig.configurable?.thread_created_by;
+    const graphId = runnableConfig.configurable?.graph_id;
+    let effectiveCostLimitUsd: number | null = null;
+    if (userId && graphId) {
+      try {
+        effectiveCostLimitUsd = await this.costLimitResolver.resolveForThread(
+          userId,
+          graphId,
+        );
+      } catch (err) {
+        this.logger.debug(
+          'Failed to resolve effective cost limit for state update',
+          {
+            threadId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        );
+      }
+    }
+    stateChange.effectiveCostLimitUsd = effectiveCostLimitUsd;
 
     this.emit({
       type: 'stateUpdate',
@@ -1042,45 +1072,80 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         }
       }
     } catch (err) {
-      const name = (err as { name?: string })?.name;
-      const msg = (err as { message?: string })?.message || '';
-      const aborted = abortController.signal.aborted;
-      if (
-        !aborted ||
-        (name !== 'AbortError' && !msg.toLowerCase().includes('abort'))
-      ) {
-        const error = err as Error;
+      if (err instanceof CostLimitExceededError) {
+        runEntry.stopped = true;
+        runEntry.stopReason = 'cost_limit';
 
-        // Emit a user-visible error message into the thread history
-        const errorText = error.message || 'Unknown error';
-        const errorMsg = markMessageHideForLlm(
-          new AIMessage(`Execution failed: ${errorText}`),
+        // Emit a user-visible SystemMessage describing the cost-limit stop.
+        const limitText = err.effectiveLimitUsd.toFixed(2);
+        const stopMsg = markMessageHideForLlm(
+          new SystemMessage(`Cost limit reached ($${limitText})`),
         );
-        errorMsg.additional_kwargs = {
-          ...(errorMsg.additional_kwargs ?? {}),
-          __isErrorMessage: true,
-        };
-        const errorMsgs = updateMessagesListWithMetadata(
-          [errorMsg],
+        const stopMsgs = updateMessagesListWithMetadata(
+          [stopMsg],
           mergedConfig,
         );
         this.emit({
           type: 'message',
           data: {
             threadId,
-            messages: errorMsgs,
+            messages: stopMsgs,
             config: mergedConfig,
           },
         });
 
-        this.activeRuns.delete(runId);
-
+        // Emit the stop event so GraphStateManager can deterministically transition
+        // the thread to Stopped with stopReason='cost_limit'.
         this.emit({
-          type: 'run',
-          data: { threadId, messages, config: mergedConfig, error },
+          type: 'stop',
+          data: {
+            config: mergedConfig,
+            threadId,
+            stopReason: 'cost_limit',
+            stopCostUsd: err.totalPriceUsd,
+          },
         });
+      } else {
+        const name = (err as { name?: string })?.name;
+        const msg = (err as { message?: string })?.message || '';
+        const aborted = abortController.signal.aborted;
+        if (
+          !aborted ||
+          (name !== 'AbortError' && !msg.toLowerCase().includes('abort'))
+        ) {
+          const error = err as Error;
 
-        throw error;
+          // Emit a user-visible error message into the thread history
+          const errorText = error.message || 'Unknown error';
+          const errorMsg = markMessageHideForLlm(
+            new AIMessage(`Execution failed: ${errorText}`),
+          );
+          errorMsg.additional_kwargs = {
+            ...(errorMsg.additional_kwargs ?? {}),
+            __isErrorMessage: true,
+          };
+          const errorMsgs = updateMessagesListWithMetadata(
+            [errorMsg],
+            mergedConfig,
+          );
+          this.emit({
+            type: 'message',
+            data: {
+              threadId,
+              messages: errorMsgs,
+              config: mergedConfig,
+            },
+          });
+
+          this.activeRuns.delete(runId);
+
+          this.emit({
+            type: 'run',
+            data: { threadId, messages, config: mergedConfig, error },
+          });
+
+          throw error;
+        }
       }
     } finally {
       this.activeRuns.delete(runId);
@@ -1174,7 +1239,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
         this.emit({
           type: 'stop',
-          data: { config: run.runnableConfig, threadId: run.threadId },
+          data: {
+            config: run.runnableConfig,
+            threadId: run.threadId,
+            stopReason: null,
+            stopCostUsd: null,
+          },
         });
       }
 
@@ -1237,11 +1307,18 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           },
         });
 
-        // Emit stop event so GraphStateManager can deterministically emit ThreadUpdate(Sto pped)
+        // Emit stop event so GraphStateManager can deterministically emit ThreadUpdate(Stopped)
         // even if the underlying LangGraph run is aborted before it reaches the final `run` event.
+        // stopReason: null explicitly clears any previously-set cost_limit marker so a manual
+        // stop after an auto-stop doesn't leave a stale stopReason in the thread metadata.
         this.emit({
           type: 'stop',
-          data: { config: run.runnableConfig, threadId: run.threadId },
+          data: {
+            config: run.runnableConfig,
+            threadId: run.threadId,
+            stopReason: null,
+            stopCostUsd: null,
+          },
         });
 
         // Best-effort: if the agent already decided to call the shell tool but the run is being

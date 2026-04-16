@@ -189,6 +189,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         streaming: supportsStreaming,
       });
 
+      // Subagent skips cost-limit enforcement by design — parent thread enforces on the next invocation after subagent returns.
       const invokeLlmNode = new InvokeLlmNode(
         this.litellmService,
         llm,
@@ -199,6 +200,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           parallelToolCalls: useParallelToolCall,
         },
         this.logger,
+        undefined,
       );
 
       const toolExecutorNode = new ToolExecutorNode(

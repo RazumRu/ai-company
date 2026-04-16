@@ -902,4 +902,31 @@ describe('SubAgent', () => {
       expect((toolMessages[0] as ToolMessage).tool_call_id).toBe('call_abc123');
     });
   });
+
+  describe('cost limit resolver', () => {
+    it('constructs InvokeLlmNode without a CostLimitResolverService', async () => {
+      // Subagent skips cost-limit enforcement by design — parent thread enforces
+      // on the next invocation after subagent returns. Confirm by loading the
+      // InvokeLlmNode module and spying on its constructor.
+      const mod = await import('../nodes/invoke-llm-node.js');
+      const ctorSpy = vi.spyOn(mod, 'InvokeLlmNode');
+
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'ok',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      await subAgent.runSubagent([new HumanMessage('hi')], defaultCfg);
+
+      expect(ctorSpy).toHaveBeenCalled();
+      const lastCallArgs = ctorSpy.mock.calls[ctorSpy.mock.calls.length - 1]!;
+      // Constructor signature: (litellmService, llm, tools, opts, logger, costLimitResolver?)
+      // The 6th positional argument (index 5) must be undefined.
+      expect(lastCallArgs[5]).toBeUndefined();
+
+      ctorSpy.mockRestore();
+    });
+  });
 });

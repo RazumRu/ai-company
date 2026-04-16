@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -28,28 +30,32 @@ export const ModelsPage = () => {
   const [models, setModels] = useState<LiteLlmModelDto[]>([]);
   const [defaults, setDefaults] = useState<ModelDefaultsDto | null>(null);
   const [selectedModels, setSelectedModels] = useState<ModelOverrides>({});
+  const [costLimitUsd, setCostLimitUsd] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [modelsResponse, defaultsResponse, userModels] = await Promise.all([
+      const [modelsResponse, defaultsResponse, prefs] = await Promise.all([
         litellmApi.listModels(),
         litellmApi.getModelDefaults(),
         userPreferencesApi
           .getPreferences()
-          .then((res) => (res.data.preferences.models ?? {}) as ModelOverrides)
+          .then((res) => res.data)
           .catch((err: unknown) => {
             if (isAxiosError(err) && err.response?.status === 404) {
-              return {} as ModelOverrides;
+              return undefined;
             }
             throw err;
           }),
       ]);
       setModels(modelsResponse.data);
       setDefaults(defaultsResponse.data);
-      setSelectedModels(userModels);
+      const loadedUserModels = (prefs?.preferences.models ??
+        {}) as ModelOverrides;
+      setSelectedModels(loadedUserModels);
+      setCostLimitUsd(prefs?.costLimitUsd ?? null);
     } catch (err) {
       toast.error(
         extractApiErrorMessage(err, 'Failed to load model preferences'),
@@ -101,7 +107,10 @@ export const ModelsPage = () => {
         }
       }
 
-      await userPreferencesApi.updatePreferences({ models: cleanModels });
+      await userPreferencesApi.updatePreferences({
+        models: cleanModels,
+        costLimitUsd: costLimitUsd || null,
+      });
       toast.success('Model preferences saved');
     } catch (err) {
       toast.error(
@@ -128,6 +137,34 @@ export const ModelsPage = () => {
           Override the default LLM models for your account. Project-level
           settings take priority over these.
         </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="user-cost-limit-input" className="text-sm font-medium">
+          Cost Limit (USD)
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          Default cost limit applied to new threads when no project or graph
+          limit is set. Leave empty or 0 for unlimited.
+        </p>
+        <Input
+          id="user-cost-limit-input"
+          type="number"
+          min={0}
+          step="0.01"
+          className="w-80"
+          value={costLimitUsd === null ? '' : costLimitUsd}
+          placeholder="Empty or 0 = unlimited"
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '') {
+              setCostLimitUsd(null);
+              return;
+            }
+            const parsed = Number(raw);
+            setCostLimitUsd(Number.isFinite(parsed) ? parsed : null);
+          }}
+        />
       </div>
 
       {MODEL_SLOTS.map((slot) => {

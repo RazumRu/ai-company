@@ -5,6 +5,7 @@ import { registerEntities } from '@packages/mikroorm';
 
 import { environment } from '../../environments';
 import { AgentsModule } from '../agents/agents.module';
+import { CostLimitsModule } from '../cost-limits/cost-limits.module';
 import { GraphTemplatesModule } from '../graph-templates/graph-templates.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -39,6 +40,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     ThreadsModule,
     ProjectsModule,
     SecretsModule,
+    CostLimitsModule,
   ],
   controllers: [GraphsController, GraphRevisionsController],
   providers: [

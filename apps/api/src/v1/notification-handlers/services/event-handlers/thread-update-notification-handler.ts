@@ -79,6 +79,44 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       updates.metadata = clearWaitMetadata(thread.metadata);
     }
 
+    // Three-way semantics for stopReason (applied AFTER wait-metadata clearing so
+    // a cost-limit stop on a previously-waiting thread clears wait keys AND sets
+    // stopReason in one write):
+    //   undefined   -> key is absent on data: leave metadata.stopReason untouched
+    //   null        -> explicit clear: drop metadata.stopReason
+    //   string      -> persist metadata.stopReason
+    if ('stopReason' in data) {
+      const baseMeta =
+        updates.metadata ??
+        (thread.metadata as Record<string, unknown> | null | undefined) ??
+        {};
+      const nextMeta = { ...baseMeta };
+      if (data.stopReason === null) {
+        delete nextMeta.stopReason;
+      } else if (typeof data.stopReason === 'string') {
+        nextMeta.stopReason = data.stopReason;
+      }
+      updates.metadata = nextMeta;
+    }
+
+    // Three-way semantics for stopCostUsd mirror stopReason:
+    //   undefined -> key is absent on data: leave metadata.stopCostUsd untouched
+    //   null      -> explicit clear: drop metadata.stopCostUsd
+    //   number    -> persist metadata.stopCostUsd
+    if ('stopCostUsd' in data) {
+      const baseMeta =
+        updates.metadata ??
+        (thread.metadata as Record<string, unknown> | null | undefined) ??
+        {};
+      const nextMeta = { ...baseMeta };
+      if (data.stopCostUsd === null) {
+        delete nextMeta.stopCostUsd;
+      } else if (typeof data.stopCostUsd === 'number') {
+        nextMeta.stopCostUsd = data.stopCostUsd;
+      }
+      updates.metadata = nextMeta;
+    }
+
     if (Object.keys(updates).length > 0) {
       await this.threadsDao.updateById(thread.id, updates);
     }

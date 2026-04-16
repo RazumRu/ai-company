@@ -2,6 +2,7 @@ import { zodQueryArray } from '@packages/http-server';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
+import { CostLimitSettingsSchema } from '../../../utils/cost-limits/cost-limit-settings.schema';
 import {
   GraphNodeStatus,
   GraphSchema as RealGraphSchema,
@@ -71,6 +72,13 @@ export const GraphSchema = z.object({
     .nullable()
     .optional()
     .describe('Project this graph belongs to'),
+  settings: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe('Arbitrary per-graph settings stored as JSONB'),
+  costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd.describe(
+    'Optional cost limit in USD projected from settings.costLimitUsd',
+  ),
 });
 
 export const TriggerNodeInfoSchema = z.object({
@@ -123,6 +131,9 @@ export const GraphPreviewSchema = z.object({
   updatedAt: z.iso.datetime(),
   temporary: z.boolean().default(false).optional().nullable(),
   projectId: z.uuid().nullable().optional(),
+  costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd.describe(
+    'Optional cost limit in USD projected from settings.costLimitUsd',
+  ),
 });
 
 export const GetGraphsPreviewQuerySchema = z.object({

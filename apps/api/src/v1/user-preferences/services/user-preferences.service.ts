@@ -23,10 +23,15 @@ export class UserPreferencesService {
     createdAt: Date;
     updatedAt: Date;
   }): UserPreferencesDto {
+    const costLimitUsd = entity.preferences?.costLimitUsd ?? null;
     return {
       id: entity.id,
       userId: entity.userId,
-      preferences: entity.preferences,
+      preferences: {
+        ...entity.preferences,
+        costLimitUsd,
+      },
+      costLimitUsd,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
     };
@@ -47,18 +52,27 @@ export class UserPreferencesService {
   ): Promise<UserPreferencesDto> {
     const userId = ctx.checkSub();
 
-    const cleanModels: ModelPreferences = {};
-    if (dto.models) {
+    const existing = await this.userPreferencesDao.getOne({ userId });
+    const merged: UserPreferencesPayload = { ...(existing?.preferences ?? {}) };
+
+    if (dto.models !== undefined) {
+      const cleanModels: ModelPreferences = {};
       for (const [key, value] of Object.entries(dto.models)) {
         if (value != null) {
           cleanModels[key as keyof ModelPreferences] = value;
         }
       }
+      merged.models = cleanModels;
     }
 
-    const updated = await this.userPreferencesDao.upsertByUserId(userId, {
-      models: cleanModels,
-    });
+    if (dto.costLimitUsd !== undefined) {
+      merged.costLimitUsd = dto.costLimitUsd;
+    }
+
+    const updated = await this.userPreferencesDao.upsertByUserId(
+      userId,
+      merged,
+    );
 
     return this.prepareResponse(updated);
   }
@@ -68,5 +82,10 @@ export class UserPreferencesService {
   ): Promise<ModelPreferences | null> {
     const row = await this.userPreferencesDao.getOne({ userId });
     return row?.preferences?.models ?? null;
+  }
+
+  async getCostLimitForUser(userId: string): Promise<number | null> {
+    const row = await this.userPreferencesDao.getOne({ userId });
+    return row?.preferences?.costLimitUsd ?? null;
   }
 }

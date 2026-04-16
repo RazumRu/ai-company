@@ -12,6 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -30,7 +32,7 @@ import type {
 import { extractApiErrorMessage } from '../../utils/errors';
 import { MODEL_SLOTS, type ModelSlotKey } from '../settings/modelSlots';
 
-interface ProjectModelSettingsModalProps {
+interface ProjectSettingsModalProps {
   open: boolean;
   onClose: () => void;
   project: ProjectDto;
@@ -39,18 +41,19 @@ interface ProjectModelSettingsModalProps {
 
 type ModelOverrides = Partial<Record<ModelSlotKey, string | null>>;
 
-export const ProjectModelSettingsModal = ({
+export const ProjectSettingsModal = ({
   open,
   onClose,
   project,
   onSaved,
-}: ProjectModelSettingsModalProps) => {
+}: ProjectSettingsModalProps) => {
   const [models, setModels] = useState<LiteLlmModelDto[]>([]);
   const [defaults, setDefaults] = useState<ModelDefaultsDto | null>(null);
   const [userModels, setUserModels] = useState<
     UserPreferencesDtoPreferencesModels | undefined
   >(undefined);
   const [selectedModels, setSelectedModels] = useState<ModelOverrides>({});
+  const [costLimitUsd, setCostLimitUsd] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -79,12 +82,13 @@ export const ProjectModelSettingsModal = ({
       const projectModels =
         (project.settings?.models as ModelOverrides | undefined) ?? {};
       setSelectedModels(projectModels);
+      setCostLimitUsd(project.costLimitUsd ?? null);
     } catch (err) {
       toast.error(extractApiErrorMessage(err, 'Failed to load model data'));
     } finally {
       setLoadingData(false);
     }
-  }, [project.settings]);
+  }, [project.settings, project.costLimitUsd]);
 
   useEffect(() => {
     if (open) {
@@ -138,12 +142,15 @@ export const ProjectModelSettingsModal = ({
           ...project.settings,
           models: cleanModels,
         },
+        costLimitUsd: costLimitUsd || null,
       });
-      toast.success('Model settings saved');
+      toast.success('Project settings saved');
       onSaved();
       onClose();
     } catch (err) {
-      toast.error(extractApiErrorMessage(err, 'Failed to save model settings'));
+      toast.error(
+        extractApiErrorMessage(err, 'Failed to save project settings'),
+      );
     } finally {
       setSaving(false);
     }
@@ -153,7 +160,7 @@ export const ProjectModelSettingsModal = ({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Model Settings — {project.name}</DialogTitle>
+          <DialogTitle>Project Settings — {project.name}</DialogTitle>
         </DialogHeader>
 
         {loadingData ? (
@@ -162,6 +169,33 @@ export const ProjectModelSettingsModal = ({
           </div>
         ) : (
           <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-medium">Default Cost Limit</h3>
+              <p className="text-xs text-muted-foreground">
+                Applies to threads in this project when no graph-level limit is
+                set. Leave empty or 0 for unlimited.
+              </p>
+              <Label className="sr-only" htmlFor="project-cost-limit-input">
+                Cost Limit (USD)
+              </Label>
+              <Input
+                id="project-cost-limit-input"
+                type="number"
+                min={0}
+                step="0.01"
+                value={costLimitUsd === null ? '' : costLimitUsd}
+                placeholder="Empty or 0 = unlimited"
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setCostLimitUsd(null);
+                    return;
+                  }
+                  const parsed = Number(raw);
+                  setCostLimitUsd(Number.isFinite(parsed) ? parsed : null);
+                }}
+              />
+            </div>
             <p className="text-sm text-muted-foreground">
               Override the default LLM models for this project. These settings
               take priority over user-level preferences.

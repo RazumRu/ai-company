@@ -12,7 +12,7 @@ export type RuntimeHealthDto = {
   /**
    * Runtime type checked
    */
-  type: 'Docker' | 'Daytona';
+  type: 'Docker' | 'Daytona' | 'K8s';
   /**
    * Error message if the runtime is unhealthy
    */
@@ -39,7 +39,7 @@ export type RuntimeInstanceDto = {
   /**
    * Runtime type
    */
-  type: 'Docker' | 'Daytona';
+  type: 'Docker' | 'Daytona' | 'K8s';
   /**
    * Runtime instance status
    */
@@ -494,7 +494,9 @@ export type UserPreferencesDto = {
       llmMiniModel?: string | null;
       llmEmbeddingModel?: string | null;
     };
+    costLimitUsd?: number | null;
   };
+  costLimitUsd?: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -508,6 +510,7 @@ export type UpdateUserPreferencesDto = {
     llmMiniModel?: string | null;
     llmEmbeddingModel?: string | null;
   };
+  costLimitUsd?: number | null;
 };
 
 export type CreateProjectDto = {
@@ -518,6 +521,7 @@ export type CreateProjectDto = {
   settings?: {
     [key: string]: unknown;
   };
+  costLimitUsd?: number | null;
 };
 
 export type ProjectDto = {
@@ -529,6 +533,7 @@ export type ProjectDto = {
   settings: {
     [key: string]: unknown;
   };
+  costLimitUsd?: number | null;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -544,6 +549,7 @@ export type UpdateProjectDto = {
   settings?: {
     [key: string]: unknown;
   };
+  costLimitUsd?: number | null;
 };
 
 export type SetupInfoResponseDto = {
@@ -884,6 +890,16 @@ export type CreateGraphDto = {
    * If true, graph will be deleted instead of restored after server restart
    */
   temporary?: boolean | null;
+  /**
+   * Arbitrary per-graph settings stored as JSONB
+   */
+  settings?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Optional cost limit in USD projected from settings.costLimitUsd
+   */
+  costLimitUsd?: number | null;
 };
 
 export type GraphDto = {
@@ -980,6 +996,16 @@ export type GraphDto = {
    * Project this graph belongs to
    */
   projectId?: string | null;
+  /**
+   * Arbitrary per-graph settings stored as JSONB
+   */
+  settings?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Optional cost limit in USD projected from settings.costLimitUsd
+   */
+  costLimitUsd?: number | null;
 };
 
 export type GraphPreviewDto = {
@@ -1038,6 +1064,10 @@ export type GraphPreviewDto = {
   updatedAt: string;
   temporary?: boolean | null;
   projectId?: string | null;
+  /**
+   * Optional cost limit in USD projected from settings.costLimitUsd
+   */
+  costLimitUsd?: number | null;
 };
 
 export type GraphNodeWithStatusDto = {
@@ -1056,7 +1086,14 @@ export type GraphNodeWithStatusDto = {
   /**
    * Node kind
    */
-  type: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource' | 'mcp';
+  type:
+    | 'runtime'
+    | 'tool'
+    | 'simpleAgent'
+    | 'trigger'
+    | 'resource'
+    | 'mcp'
+    | 'instruction';
   /**
    * Current node status
    */
@@ -1154,6 +1191,16 @@ export type UpdateGraphDto = {
    * If true, graph will be deleted instead of restored after server restart
    */
   temporary?: boolean | null;
+  /**
+   * Arbitrary per-graph settings stored as JSONB
+   */
+  settings?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Optional cost limit in USD projected from settings.costLimitUsd
+   */
+  costLimitUsd?: number | null;
   /**
    * Current version of the graph (for optimistic locking and 3-way merge base)
    */
@@ -1258,6 +1305,16 @@ export type UpdateGraphResponseDto = {
      * Project this graph belongs to
      */
     projectId?: string | null;
+    /**
+     * Arbitrary per-graph settings stored as JSONB
+     */
+    settings?: {
+      [key: string]: unknown;
+    };
+    /**
+     * Optional cost limit in USD projected from settings.costLimitUsd
+     */
+    costLimitUsd?: number | null;
   };
   /**
    * Created revision if update required applying non-metadata changes
@@ -1396,9 +1453,38 @@ export type UpdateGraphResponseDto = {
 
 export type ExecuteTriggerDto = {
   /**
-   * Array of messages to send to the trigger
+   * Array of messages — plain strings or structured objects with content blocks
    */
-  messages: Array<string>;
+  messages: Array<
+    | string
+    | {
+        /**
+         * Content blocks for multimodal messages
+         */
+        content: Array<
+          | {
+              type: 'text';
+              /**
+               * Text content
+               */
+              text: string;
+            }
+          | {
+              type: 'image_url';
+              image_url: {
+                /**
+                 * Base64 data URL (data:image/...;base64,...)
+                 */
+                url: string;
+                /**
+                 * Vision detail level
+                 */
+                detail?: 'auto' | 'low' | 'high';
+              };
+            }
+        >;
+      }
+  >;
   /**
    * Optional thread sub-ID that will be used to create the full thread ID.
    */
@@ -1561,7 +1647,14 @@ export type TemplateDto = {
   id: string;
   name: string;
   description: string;
-  kind: 'runtime' | 'tool' | 'simpleAgent' | 'trigger' | 'resource' | 'mcp';
+  kind:
+    | 'runtime'
+    | 'tool'
+    | 'simpleAgent'
+    | 'trigger'
+    | 'resource'
+    | 'mcp'
+    | 'instruction';
   schema: {
     [key: string]: unknown;
   };
@@ -1574,7 +1667,8 @@ export type TemplateDto = {
           | 'simpleAgent'
           | 'trigger'
           | 'resource'
-          | 'mcp';
+          | 'mcp'
+          | 'instruction';
         required?: boolean;
         multiple: boolean;
       }
@@ -1594,7 +1688,8 @@ export type TemplateDto = {
           | 'simpleAgent'
           | 'trigger'
           | 'resource'
-          | 'mcp';
+          | 'mcp'
+          | 'instruction';
         required?: boolean;
         multiple: boolean;
       }
@@ -1605,6 +1700,11 @@ export type TemplateDto = {
         multiple: boolean;
       }
   >;
+  systemAgentId?: string;
+  systemAgentContentHash?: string;
+  systemAgentPredefinedTools?: Array<string>;
+  instructionBlockId?: string;
+  instructionBlockContentHash?: string;
 };
 
 export type ThreadDto = {
@@ -1643,7 +1743,7 @@ export type ThreadDto = {
   /**
    * Thread execution status
    */
-  status: 'running' | 'done' | 'need_more_info' | 'stopped';
+  status: 'running' | 'done' | 'need_more_info' | 'stopped' | 'waiting';
   /**
    * Agents in the graph this thread belongs to
    */
@@ -1661,6 +1761,14 @@ export type ThreadDto = {
      */
     description?: string;
   }> | null;
+  /**
+   * Reason a stopped thread was terminated — e.g. "cost_limit"
+   */
+  stopReason?: string | null;
+  /**
+   * Server-resolved effective USD cost limit for this thread
+   */
+  effectiveCostLimitUsd?: number | null;
 };
 
 export type ThreadMessageDto = {
@@ -1677,9 +1785,32 @@ export type ThreadMessageDto = {
          */
         role: 'human';
         /**
-         * Message content
+         * Message content — plain string or array of content blocks
          */
-        content: string;
+        content:
+          | string
+          | Array<
+              | {
+                  type: 'text';
+                  /**
+                   * Text content
+                   */
+                  text: string;
+                }
+              | {
+                  type: 'image_url';
+                  image_url: {
+                    /**
+                     * Base64 data URL (data:image/...;base64,...)
+                     */
+                    url: string;
+                    /**
+                     * Vision detail level
+                     */
+                    detail?: 'auto' | 'low' | 'high';
+                  };
+                }
+            >;
         /**
          * Run ID associated with this message
          */
@@ -2052,6 +2183,34 @@ export type SetThreadMetadataDto = {
   };
 };
 
+export type ResumeThreadDto = {
+  /**
+   * Optional message to inject instead of the stored checkPrompt
+   */
+  message?: string;
+};
+
+export type CreateSecretDto = {
+  name: string;
+  value: string;
+  description?: string | null;
+};
+
+export type SecretResponseDto = {
+  id: string;
+  name: string;
+  description?: string | null;
+  projectId: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpdateSecretDto = {
+  value?: string;
+  description?: string | null;
+};
+
 export type AnalyticsOverviewDto = {
   /**
    * Total number of threads
@@ -2124,6 +2283,26 @@ export type AnalyticsByGraphResponseDto = {
   }>;
 };
 
+export type SystemAgentResponseDto = {
+  id: string;
+  templateId: string;
+  name: string;
+  description: string;
+  tools: Array<string>;
+  defaultModel: string | null;
+  instructions: string;
+  contentHash: string;
+};
+
+export type InstructionBlockResponseDto = {
+  id: string;
+  templateId: string;
+  name: string;
+  description: string;
+  instructions: string;
+  contentHash: string;
+};
+
 export type SystemSettingsResponseDto = {
   /**
    * Whether the GitHub App integration is configured and available
@@ -2141,6 +2320,14 @@ export type SystemSettingsResponseDto = {
    * Whether the GitHub webhook receiver is configured and available
    */
   githubWebhookEnabled: boolean;
+  /**
+   * Current API server version
+   */
+  apiVersion: string;
+  /**
+   * Current web client version
+   */
+  webVersion: string;
 };
 
 export type AuthConfigResponseDto = {
@@ -3084,7 +3271,9 @@ export type GetThreadsData = {
     /**
      * Filter by thread statuses
      */
-    statuses?: Array<'running' | 'done' | 'need_more_info' | 'stopped'>;
+    statuses?: Array<
+      'running' | 'done' | 'need_more_info' | 'stopped' | 'waiting'
+    >;
     /**
      * Maximum number of threads to return
      */
@@ -3269,6 +3458,108 @@ export type StopThreadByExternalIdResponses = {
 export type StopThreadByExternalIdResponse =
   StopThreadByExternalIdResponses[keyof StopThreadByExternalIdResponses];
 
+export type ResumeThreadData = {
+  body: ResumeThreadDto;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}/resume';
+};
+
+export type ResumeThreadResponses = {
+  201: ThreadDto;
+};
+
+export type ResumeThreadResponse =
+  ResumeThreadResponses[keyof ResumeThreadResponses];
+
+export type CancelWaitData = {
+  body?: never;
+  path: {
+    threadId: string;
+  };
+  query?: never;
+  url: '/api/v1/threads/{threadId}/cancel-wait';
+};
+
+export type CancelWaitResponses = {
+  201: ThreadDto;
+};
+
+export type CancelWaitResponse = CancelWaitResponses[keyof CancelWaitResponses];
+
+export type ListData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/secrets';
+};
+
+export type ListResponses = {
+  200: Array<SecretResponseDto>;
+};
+
+export type ListResponse = ListResponses[keyof ListResponses];
+
+export type CreateData = {
+  body: CreateSecretDto;
+  path?: never;
+  query?: never;
+  url: '/api/v1/secrets';
+};
+
+export type CreateResponses = {
+  201: SecretResponseDto;
+};
+
+export type CreateResponse = CreateResponses[keyof CreateResponses];
+
+export type DeleteData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/secrets/{id}';
+};
+
+export type DeleteResponses = {
+  204: void;
+};
+
+export type DeleteResponse = DeleteResponses[keyof DeleteResponses];
+
+export type GetByIdData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/secrets/{id}';
+};
+
+export type GetByIdResponses = {
+  200: SecretResponseDto;
+};
+
+export type GetByIdResponse = GetByIdResponses[keyof GetByIdResponses];
+
+export type UpdateData = {
+  body: UpdateSecretDto;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/secrets/{id}';
+};
+
+export type UpdateResponses = {
+  200: SecretResponseDto;
+};
+
+export type UpdateResponse = UpdateResponses[keyof UpdateResponses];
+
 export type GetOverviewData = {
   body?: never;
   path?: never;
@@ -3317,6 +3608,62 @@ export type GetByGraphResponses = {
 };
 
 export type GetByGraphResponse = GetByGraphResponses[keyof GetByGraphResponses];
+
+export type GetAllData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/system-agents';
+};
+
+export type GetAllResponses = {
+  200: Array<SystemAgentResponseDto>;
+};
+
+export type GetAllResponse = GetAllResponses[keyof GetAllResponses];
+
+export type GetById2Data = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/system-agents/{id}';
+};
+
+export type GetById2Responses = {
+  200: SystemAgentResponseDto;
+};
+
+export type GetById2Response = GetById2Responses[keyof GetById2Responses];
+
+export type GetAll2Data = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/api/v1/instruction-blocks';
+};
+
+export type GetAll2Responses = {
+  200: Array<InstructionBlockResponseDto>;
+};
+
+export type GetAll2Response = GetAll2Responses[keyof GetAll2Responses];
+
+export type GetById3Data = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/instruction-blocks/{id}';
+};
+
+export type GetById3Responses = {
+  200: InstructionBlockResponseDto;
+};
+
+export type GetById3Response = GetById3Responses[keyof GetById3Responses];
 
 export type GetSettingsData = {
   body?: never;

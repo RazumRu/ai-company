@@ -107,6 +107,7 @@ export interface AgentStateUpdateNotification extends BaseNotification {
     totalTokens?: number;
     totalPrice?: number;
     currentContext?: number;
+    effectiveCostLimitUsd?: number | null;
   };
 }
 
@@ -127,7 +128,7 @@ export interface ThreadUpdateNotification extends BaseNotification {
   threadId: string;
   internalThreadId: string;
   runId?: string;
-  data: ThreadDto;
+  data: ThreadDto & { stopReason?: string | null };
 }
 
 // Thread delete notification

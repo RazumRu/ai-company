@@ -49,6 +49,9 @@ export class GraphEntity extends AuditEntity {
   @Property({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown> | null;
 
+  @Property({ type: 'jsonb', default: '{}' })
+  settings!: Record<string, unknown>;
+
   @Property({ type: 'jsonb', nullable: true })
   agents?: GraphAgentInfo[] | null;
 

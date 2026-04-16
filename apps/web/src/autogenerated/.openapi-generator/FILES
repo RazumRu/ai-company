@@ -116,6 +116,7 @@ docs/TriggerReindexResponseDto.md
 docs/TriggerReindexResponseDtoRepoIndex.md
 docs/UnlinkInstallationResponseDto.md
 docs/UpdateGraphDto.md
+docs/UpdateGraphDtoCostLimitUsd.md
 docs/UpdateGraphDtoDescription.md
 docs/UpdateGraphDtoMetadata.md
 docs/UpdateGraphDtoMetadataAnyOf.md

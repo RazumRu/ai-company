@@ -123,6 +123,29 @@ describe('ProjectsService', () => {
 
       await expect(service.create(mockCtx, dto)).rejects.toThrow('DB error');
     });
+
+    it('should merge top-level costLimitUsd into persisted settings', async () => {
+      const dto: CreateProjectDto = {
+        name: 'With Limit',
+        settings: {},
+        costLimitUsd: 4.25,
+      };
+      const entity = createMockProjectEntity({
+        name: 'With Limit',
+        settings: { costLimitUsd: 4.25 },
+      });
+      vi.mocked(projectsDao.create).mockResolvedValue(entity);
+
+      const result = await service.create(mockCtx, dto);
+
+      expect(projectsDao.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          settings: { costLimitUsd: 4.25 },
+        }),
+        expect.anything(),
+      );
+      expect(result.costLimitUsd).toBe(4.25);
+    });
   });
 
   describe('findById', () => {
@@ -233,6 +256,28 @@ describe('ProjectsService', () => {
     });
   });
 
+  describe('prepareResponse (via findById)', () => {
+    it('should project costLimitUsd as null when absent from settings', async () => {
+      const entity = createMockProjectEntity({ settings: {} });
+      vi.mocked(projectsDao.getOne).mockResolvedValue(entity);
+
+      const result = await service.findById(mockCtx, mockProjectId);
+
+      expect(result.costLimitUsd).toBeNull();
+    });
+
+    it('should project costLimitUsd from settings when present', async () => {
+      const entity = createMockProjectEntity({
+        settings: { costLimitUsd: 12.5 },
+      });
+      vi.mocked(projectsDao.getOne).mockResolvedValue(entity);
+
+      const result = await service.findById(mockCtx, mockProjectId);
+
+      expect(result.costLimitUsd).toBe(12.5);
+    });
+  });
+
   describe('update', () => {
     it('should update a project name', async () => {
       const dto: UpdateProjectDto = { name: 'Updated Name' };
@@ -255,6 +300,123 @@ describe('ProjectsService', () => {
       await expect(
         service.update(mockCtx, mockProjectId, { name: 'X' }),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should persist costLimitUsd into settings.costLimitUsd', async () => {
+      const existingEntity = createMockProjectEntity({ settings: {} });
+      const updatedEntity = createMockProjectEntity({
+        settings: { costLimitUsd: 9.99 },
+      });
+
+      vi.mocked(projectsDao.getOne)
+        .mockResolvedValueOnce(existingEntity)
+        .mockResolvedValueOnce(updatedEntity);
+      vi.mocked(projectsDao.updateById).mockResolvedValue(1);
+
+      const result = await service.update(mockCtx, mockProjectId, {
+        costLimitUsd: 9.99,
+      });
+
+      expect(projectsDao.updateById).toHaveBeenCalledWith(
+        mockProjectId,
+        expect.objectContaining({
+          settings: { costLimitUsd: 9.99 },
+        }),
+        expect.anything(),
+      );
+      expect(result.costLimitUsd).toBe(9.99);
+    });
+
+    it('should preserve settings.models when only costLimitUsd changes', async () => {
+      const existingEntity = createMockProjectEntity({
+        settings: { models: { llmLargeModel: 'big-model' } },
+      });
+      const updatedEntity = createMockProjectEntity({
+        settings: {
+          models: { llmLargeModel: 'big-model' },
+          costLimitUsd: 3,
+        },
+      });
+
+      vi.mocked(projectsDao.getOne)
+        .mockResolvedValueOnce(existingEntity)
+        .mockResolvedValueOnce(updatedEntity);
+      vi.mocked(projectsDao.updateById).mockResolvedValue(1);
+
+      await service.update(mockCtx, mockProjectId, { costLimitUsd: 3 });
+
+      expect(projectsDao.updateById).toHaveBeenCalledWith(
+        mockProjectId,
+        expect.objectContaining({
+          settings: {
+            models: { llmLargeModel: 'big-model' },
+            costLimitUsd: 3,
+          },
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('should preserve settings.costLimitUsd when only settings.models changes', async () => {
+      const existingEntity = createMockProjectEntity({
+        settings: { costLimitUsd: 7 },
+      });
+      const updatedEntity = createMockProjectEntity({
+        settings: {
+          costLimitUsd: 7,
+          models: { llmLargeModel: 'new-model' },
+        },
+      });
+
+      vi.mocked(projectsDao.getOne)
+        .mockResolvedValueOnce(existingEntity)
+        .mockResolvedValueOnce(updatedEntity);
+      vi.mocked(projectsDao.updateById).mockResolvedValue(1);
+
+      await service.update(mockCtx, mockProjectId, {
+        settings: { models: { llmLargeModel: 'new-model' } },
+      });
+
+      expect(projectsDao.updateById).toHaveBeenCalledWith(
+        mockProjectId,
+        expect.objectContaining({
+          settings: {
+            costLimitUsd: 7,
+            models: { llmLargeModel: 'new-model' },
+          },
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('should clear costLimitUsd when explicitly set to null', async () => {
+      const existingEntity = createMockProjectEntity({
+        settings: { costLimitUsd: 5, models: { llmLargeModel: 'm' } },
+      });
+      const updatedEntity = createMockProjectEntity({
+        settings: { costLimitUsd: null, models: { llmLargeModel: 'm' } },
+      });
+
+      vi.mocked(projectsDao.getOne)
+        .mockResolvedValueOnce(existingEntity)
+        .mockResolvedValueOnce(updatedEntity);
+      vi.mocked(projectsDao.updateById).mockResolvedValue(1);
+
+      const result = await service.update(mockCtx, mockProjectId, {
+        costLimitUsd: null,
+      });
+
+      expect(projectsDao.updateById).toHaveBeenCalledWith(
+        mockProjectId,
+        expect.objectContaining({
+          settings: {
+            costLimitUsd: null,
+            models: { llmLargeModel: 'm' },
+          },
+        }),
+        expect.anything(),
+      );
+      expect(result.costLimitUsd).toBeNull();
     });
   });
 

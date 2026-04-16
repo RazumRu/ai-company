@@ -496,7 +496,12 @@ export class GraphStateManager {
       ),
     );
 
-    // Emit stopped status for all active threads
+    // Emit stopped status for all active threads.
+    // stopReason pass-through semantics:
+    //   undefined -> key absent (handler leaves metadata.stopReason untouched)
+    //   null      -> handler clears metadata.stopReason
+    //   string    -> handler persists metadata.stopReason
+    // stopCostUsd follows the same three-way semantics.
     for (const threadId of activeThreads) {
       await this.notificationsService.emit({
         type: NotificationEvent.ThreadUpdate,
@@ -504,7 +509,11 @@ export class GraphStateManager {
         nodeId: state.nodeId,
         threadId,
         ...(parentThreadId ? { parentThreadId } : {}),
-        data: { status: ThreadStatus.Stopped },
+        data: {
+          status: ThreadStatus.Stopped,
+          ...('stopReason' in data ? { stopReason: data.stopReason } : {}),
+          ...('stopCostUsd' in data ? { stopCostUsd: data.stopCostUsd } : {}),
+        },
       });
     }
 

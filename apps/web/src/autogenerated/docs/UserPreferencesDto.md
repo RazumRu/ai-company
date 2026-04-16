@@ -2,13 +2,14 @@
 
 ## Properties
 
-| Name            | Type                                                                  | Description | Notes                  |
-| --------------- | --------------------------------------------------------------------- | ----------- | ---------------------- |
-| **id**          | **string**                                                            |             | [default to undefined] |
-| **userId**      | **string**                                                            |             | [default to undefined] |
-| **preferences** | [**UserPreferencesDtoPreferences**](UserPreferencesDtoPreferences.md) |             | [default to undefined] |
-| **createdAt**   | **string**                                                            |             | [default to undefined] |
-| **updatedAt**   | **string**                                                            |             | [default to undefined] |
+| Name             | Type                                                                  | Description | Notes                             |
+| ---------------- | --------------------------------------------------------------------- | ----------- | --------------------------------- |
+| **id**           | **string**                                                            |             | [default to undefined]            |
+| **userId**       | **string**                                                            |             | [default to undefined]            |
+| **preferences**  | [**UserPreferencesDtoPreferences**](UserPreferencesDtoPreferences.md) |             | [default to undefined]            |
+| **costLimitUsd** | **number**                                                            |             | [optional] [default to undefined] |
+| **createdAt**    | **string**                                                            |             | [default to undefined]            |
+| **updatedAt**    | **string**                                                            |             | [default to undefined]            |
 
 ## Example
 
@@ -19,6 +20,7 @@ const instance: UserPreferencesDto = {
   id,
   userId,
   preferences,
+  costLimitUsd,
   createdAt,
   updatedAt,
 };

@@ -21,6 +21,8 @@ Updated graph
 | **updatedAt**      | **string**                                              |                                                       | [default to undefined]            |
 | **temporary**      | **boolean**                                             |                                                       | [optional] [default to false]     |
 | **projectId**      | **string**                                              |                                                       | [optional] [default to undefined] |
+| **settings**       | **{ [key: string]: any; }**                             | Arbitrary per-graph settings stored as JSONB          | [optional] [default to undefined] |
+| **costLimitUsd**   | **number**                                              |                                                       | [optional] [default to undefined] |
 
 ## Example
 
@@ -43,6 +45,8 @@ const instance: UpdateGraphResponseDtoGraph = {
   updatedAt,
   temporary,
   projectId,
+  settings,
+  costLimitUsd,
 };
 ```
 

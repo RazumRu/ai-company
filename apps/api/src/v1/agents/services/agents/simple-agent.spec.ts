@@ -6,9 +6,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CostLimitResolverService } from '../../../cost-limits/services/cost-limit-resolver.service';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
+import { CostLimitExceededError } from '../../agents.errors';
 import {
   BaseAgentConfigurable,
   NewMessageMode,
@@ -135,6 +137,12 @@ describe('SimpleAgent', () => {
         {
           provide: PgCheckpointSaver,
           useValue: mockCheckpointSaver,
+        },
+        {
+          provide: CostLimitResolverService,
+          useValue: {
+            resolveForThread: vi.fn().mockResolvedValue(null),
+          } as unknown as CostLimitResolverService,
         },
       ],
     }).compile();
@@ -1239,6 +1247,117 @@ describe('SimpleAgent', () => {
           },
         }),
       );
+    });
+  });
+
+  describe('cost-limit stop handling', () => {
+    const config = {
+      summarizeMaxTokens: 1000,
+      summarizeKeepTokens: 500,
+      instructions: 'Test instructions',
+      name: 'Test Agent',
+      description: 'Test agent description',
+      invokeModelName: 'gpt-5-mini',
+      invokeModelReasoningEffort: ReasoningEffort.None,
+      maxIterations: 50,
+    };
+
+    it('emits stop event with stopReason="cost_limit" when CostLimitExceededError is thrown', async () => {
+      const costError = new CostLimitExceededError(5.0, 7.25);
+
+      async function* mockStream() {
+        yield [
+          'updates',
+          { 'agent-1': { messages: { mode: 'append', items: [] } } },
+        ] as const;
+        throw costError;
+      }
+
+      const mockGraph = {
+        stream: vi.fn().mockReturnValue(mockStream()),
+      };
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+
+      // Must NOT throw — cost-limit branch handles the error internally.
+      await agent.run(
+        'thread-cost-limit',
+        [new HumanMessage('Hello')],
+        config,
+        {
+          configurable: {
+            run_id: 'run-cl',
+            graph_id: 'graph-1',
+            thread_created_by: 'user-1',
+          },
+        } as unknown as RunnableConfig<BaseAgentConfigurable>,
+      );
+
+      const stopEvents = emitSpy.mock.calls
+        .map((c) => c[0] as AgentEventType)
+        .filter(
+          (e): e is Extract<AgentEventType, { type: 'stop' }> =>
+            e?.type === 'stop',
+        );
+
+      expect(stopEvents.length).toBeGreaterThanOrEqual(1);
+      const costStop = stopEvents.find(
+        (e) => e.data.stopReason === 'cost_limit',
+      );
+      expect(costStop).toBeDefined();
+      expect(costStop?.data.threadId).toBe('thread-cost-limit');
+      // stopCostUsd should reflect the over-budget total from the error so the
+      // resume guard can persist and consult it.
+      expect(costStop?.data.stopCostUsd).toBe(7.25);
+    });
+
+    it('stopThread() emits stop event with stopReason=null (explicit clear)', async () => {
+      // Register an active run for 'thread-1'
+      const runnableConfig = {
+        configurable: {
+          run_id: 'run-stop',
+          graph_id: 'graph-1',
+          thread_id: 'thread-1',
+        },
+      };
+      agent['activeRuns'].set('run-stop', {
+        abortController: new AbortController(),
+        runnableConfig:
+          runnableConfig as unknown as RunnableConfig<BaseAgentConfigurable>,
+        threadId: 'thread-1',
+        lastState: {
+          messages: [],
+          summary: '',
+          toolsMetadata: {},
+          toolUsageGuardActivated: false,
+          toolUsageGuardActivatedCount: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+          totalPrice: 0,
+          currentContext: 0,
+        },
+      });
+
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+
+      await agent.stopThread('thread-1', 'manual stop');
+
+      const stopEvents = emitSpy.mock.calls
+        .map((c) => c[0] as AgentEventType)
+        .filter(
+          (e): e is Extract<AgentEventType, { type: 'stop' }> =>
+            e?.type === 'stop',
+        );
+
+      expect(stopEvents.length).toBeGreaterThanOrEqual(1);
+      const manualStop = stopEvents[0]!;
+      expect(manualStop.data.stopReason).toBeNull();
+      // Manual stop should also explicitly clear stopCostUsd, mirroring stopReason.
+      expect(manualStop.data.stopCostUsd).toBeNull();
     });
   });
 });
