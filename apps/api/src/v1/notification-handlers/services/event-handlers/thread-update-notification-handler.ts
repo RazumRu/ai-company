@@ -85,7 +85,11 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
     //   undefined   -> key is absent on data: leave metadata.stopReason untouched
     //   null        -> explicit clear: drop metadata.stopReason
     //   string      -> persist metadata.stopReason
-    if ('stopReason' in data) {
+    // M4: when stopReason === 'cost_limit', also set costLimitHit = true so
+    // the resume guard can detect cost-limit stops even after stopReason is
+    // cleared by a subsequent manual-stop event (costLimitHit is only cleared
+    // when the user successfully raises the limit and resumes).
+    if (data.stopReason !== undefined) {
       const baseMeta =
         updates.metadata ??
         (thread.metadata as Record<string, unknown> | null | undefined) ??
@@ -95,6 +99,9 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
         delete nextMeta.stopReason;
       } else if (typeof data.stopReason === 'string') {
         nextMeta.stopReason = data.stopReason;
+        if (data.stopReason === 'cost_limit') {
+          nextMeta.costLimitHit = true;
+        }
       }
       updates.metadata = nextMeta;
     }
@@ -103,7 +110,10 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
     //   undefined -> key is absent on data: leave metadata.stopCostUsd untouched
     //   null      -> explicit clear: drop metadata.stopCostUsd
     //   number    -> persist metadata.stopCostUsd
-    if ('stopCostUsd' in data) {
+    // M7: stopCostUsd only exists on IThreadUpdateData (not ThreadDto), so we
+    // keep 'in' for TS narrowing but add an explicit undefined check at runtime
+    // to guard against prototype keys making 'in' return true unexpectedly.
+    if ('stopCostUsd' in data && data.stopCostUsd !== undefined) {
       const baseMeta =
         updates.metadata ??
         (thread.metadata as Record<string, unknown> | null | undefined) ??

@@ -758,12 +758,23 @@ export class GraphsService {
     );
 
     if (dto.threadSubId) {
-      const existingThread = await this.threadsDao.getOne({
-        externalThreadId: `${graphId}:${dto.threadSubId}`,
-        graphId: graphId,
-      });
+      // H1: wrap the entire "existing thread" branch in a pessimistic-write
+      // transaction to prevent TOCTOU races where two concurrent requests
+      // read Stopped status simultaneously and both bypass the resume guard.
+      await this.em.transactional(async (em: EntityManager) => {
+        const existingThread = await this.threadsDao.getOne(
+          {
+            externalThreadId: `${graphId}:${dto.threadSubId}`,
+            graphId: graphId,
+          },
+          { lockMode: LockMode.PESSIMISTIC_WRITE },
+          em,
+        );
 
-      if (existingThread) {
+        if (!existingThread) {
+          return;
+        }
+
         let nextMetadata = { ...(existingThread.metadata ?? {}) } as Record<
           string,
           unknown
@@ -783,8 +794,10 @@ export class GraphsService {
           }
         } else if (
           existingThread.status === ThreadStatus.Stopped &&
-          (existingThread.metadata as { stopReason?: string } | undefined)
-            ?.stopReason === 'cost_limit'
+          ((existingThread.metadata as { stopReason?: string } | undefined)
+            ?.stopReason === 'cost_limit' ||
+            (existingThread.metadata as { costLimitHit?: boolean } | undefined)
+              ?.costLimitHit === true)
         ) {
           // Prefer the persisted stopCostUsd (captured at the moment the limit
           // was exceeded) over the checkpoint total. When CostLimitExceededError
@@ -795,28 +808,30 @@ export class GraphsService {
           const metadataStopCost = (
             existingThread.metadata as { stopCostUsd?: number } | undefined
           )?.stopCostUsd;
-          let currentCost: number;
-          if (typeof metadataStopCost === 'number') {
-            currentCost = metadataStopCost;
-          } else {
-            const usage = await this.checkpointStateService.getThreadTokenUsage(
-              existingThread.externalThreadId,
-            );
-            currentCost = usage?.totalPrice ?? 0;
+
+          // H2: if effectiveCostLimitUsd is null the user removed all limits —
+          // allow resume unconditionally. Otherwise require a valid stopCostUsd
+          // (drop the checkpoint fallback which could underestimate the cost).
+          if (effectiveCostLimitUsd !== null) {
+            if (typeof metadataStopCost !== 'number') {
+              throw new BadRequestException(
+                'THREAD_COST_LIMIT_REACHED',
+                'Raise the configured cost limit to resume this thread.',
+              );
+            }
+            if (metadataStopCost >= effectiveCostLimitUsd) {
+              throw new BadRequestException(
+                'THREAD_COST_LIMIT_REACHED',
+                `Raise the limit above $${metadataStopCost.toFixed(2)} to resume.`,
+              );
+            }
           }
-          if (
-            effectiveCostLimitUsd !== null &&
-            currentCost >= effectiveCostLimitUsd
-          ) {
-            throw new BadRequestException(
-              'THREAD_COST_LIMIT_REACHED',
-              `Raise the limit above $${currentCost.toFixed(2)} to resume.`,
-            );
-          }
-          // Clear the stopReason marker but do NOT pre-set status: Running.
-          // The agent-run event flow sets status.
+
+          // Limit has been raised (or removed) — clear all cost-limit markers.
+          // Do NOT pre-set status: Running; the agent-run event flow sets status.
           delete (nextMetadata as { stopReason?: string }).stopReason;
           delete (nextMetadata as { stopCostUsd?: number }).stopCostUsd;
+          delete (nextMetadata as { costLimitHit?: boolean }).costLimitHit;
         }
 
         // Always refresh the persisted effective limit for the new user message
@@ -825,11 +840,15 @@ export class GraphsService {
           nextMetadata as { effectiveCostLimitUsd?: number | null }
         ).effectiveCostLimitUsd = effectiveCostLimitUsd;
 
-        await this.threadsDao.updateById(existingThread.id, {
-          metadata: nextMetadata,
-          ...(nextStatus ? { status: nextStatus } : {}),
-        });
-      }
+        await this.threadsDao.updateById(
+          existingThread.id,
+          {
+            metadata: nextMetadata,
+            ...(nextStatus ? { status: nextStatus } : {}),
+          },
+          em,
+        );
+      });
     }
 
     const res = await trigger.invokeAgent(messages, {
@@ -854,8 +873,17 @@ export class GraphsService {
       forkedEm,
     );
     if (!existingThread) {
+      // M3: strip reserved server-managed keys from client-supplied metadata so
+      // clients cannot poison cost-limit state by sending these in dto.metadata.
+      const {
+        effectiveCostLimitUsd: _e,
+        stopReason: _s,
+        stopCostUsd: _c,
+        costLimitHit: _h,
+        ...clientMetadata
+      } = dto.metadata ?? {};
       const initialMetadata: Record<string, unknown> = {
-        ...(dto.metadata ?? {}),
+        ...clientMetadata,
         effectiveCostLimitUsd,
       };
       try {

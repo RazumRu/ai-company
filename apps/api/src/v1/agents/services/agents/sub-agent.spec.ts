@@ -904,32 +904,35 @@ describe('SubAgent', () => {
   });
 
   describe('cost limit enforcement', () => {
-    it('constructs InvokeLlmNode with enforceCostLimit=false', async () => {
-      // Subagent skips cost-limit enforcement by design — parent thread enforces
-      // on the next invocation after subagent returns. Confirm by loading the
-      // InvokeLlmNode module and spying on its constructor.
-      const mod = await import('../nodes/invoke-llm-node.js');
-      const ctorSpy = vi.spyOn(mod, 'InvokeLlmNode');
-
+    it('does not throw CostLimitExceededError even when accumulated cost is above the effective limit', async () => {
+      // M11: subagents skip cost-limit enforcement by design — the parent
+      // thread's InvokeLlmNode (with enforceCostLimit=true) handles it on the
+      // next parent LLM call. Verify behaviorally: run the subagent with a very
+      // high state.totalPrice and a very low effective_cost_limit_usd; it must
+      // complete without throwing a CostLimitExceededError.
       mockLlmInvokeRef.mockResolvedValueOnce(
         new AIMessage({
-          content: 'ok',
+          content: 'done despite over-budget',
           response_metadata: { usage: {} },
         }),
       );
 
-      await subAgent.runSubagent([new HumanMessage('hi')], defaultCfg);
+      const cfgWithLimit: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'thread-123',
+          // Effective limit is $0.01 but accumulated cost is $100 — enforcement
+          // must NOT fire inside the subagent.
+          effective_cost_limit_usd: 0.01,
+        },
+      };
 
-      expect(ctorSpy).toHaveBeenCalled();
-      const lastCallArgs = ctorSpy.mock.calls[ctorSpy.mock.calls.length - 1]!;
-      // Constructor signature: (litellmService, llm, tools, opts, logger)
-      // opts.enforceCostLimit must be explicitly false.
-      const opts = lastCallArgs[3] as
-        | { enforceCostLimit?: boolean }
-        | undefined;
-      expect(opts?.enforceCostLimit).toBe(false);
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('hi')],
+        cfgWithLimit,
+      );
 
-      ctorSpy.mockRestore();
+      expect(result.error).toBeUndefined();
+      expect(result.result).toBe('done despite over-budget');
     });
   });
 });

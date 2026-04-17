@@ -424,7 +424,12 @@ describe('ThreadUpdateNotificationHandler', () => {
 
         expect(updateSpy).toHaveBeenCalledWith(thread.id, {
           status: ThreadStatus.Stopped,
-          metadata: { existingField: 'keep', stopReason: 'cost_limit' },
+          // M4: costLimitHit must be set to true whenever stopReason='cost_limit'
+          metadata: {
+            existingField: 'keep',
+            stopReason: 'cost_limit',
+            costLimitHit: true,
+          },
         });
       });
 
@@ -535,6 +540,9 @@ describe('ThreadUpdateNotificationHandler', () => {
           metadata: {
             keepMe: 'preserved',
             stopReason: 'cost_limit',
+            // M4: costLimitHit must also be set so resume guard survives a
+            // subsequent manual-stop that clears stopReason.
+            costLimitHit: true,
           },
         });
       });

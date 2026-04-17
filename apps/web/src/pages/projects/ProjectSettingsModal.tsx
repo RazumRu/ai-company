@@ -142,7 +142,7 @@ export const ProjectSettingsModal = ({
           ...project.settings,
           models: cleanModels,
         },
-        costLimitUsd: costLimitUsd || null,
+        costLimitUsd: costLimitUsd ?? null,
       });
       toast.success('Project settings saved');
       onSaved();

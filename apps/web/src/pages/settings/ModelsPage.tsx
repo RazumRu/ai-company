@@ -109,7 +109,7 @@ export const ModelsPage = () => {
 
       await userPreferencesApi.updatePreferences({
         models: cleanModels,
-        costLimitUsd: costLimitUsd || null,
+        costLimitUsd: costLimitUsd ?? null,
       });
       toast.success('Model preferences saved');
     } catch (err) {

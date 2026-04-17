@@ -16,12 +16,19 @@ export class CostLimitResolverService {
     userId: string,
     graphId: string,
   ): Promise<number | null> {
-    const graph = await this.graphDao.getById(graphId);
+    // H3: filter by createdBy so users can only read their own graph/project settings.
+    const graph = await this.graphDao.getOne({
+      id: graphId,
+      createdBy: userId,
+    });
     const graphLimit = this.toLimit(graph?.settings?.['costLimitUsd']);
 
     let projectLimit: number | null = null;
     if (graph?.projectId) {
-      const project = await this.projectsDao.getById(graph.projectId);
+      const project = await this.projectsDao.getOne({
+        id: graph.projectId,
+        createdBy: userId,
+      });
       projectLimit = this.toLimit(project?.settings?.['costLimitUsd']);
     }
 

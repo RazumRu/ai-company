@@ -1,3 +1,4 @@
+import { AlertTriangle } from 'lucide-react';
 import React from 'react';
 
 import {
@@ -59,8 +60,13 @@ export const ThreadTokenUsageLine: React.FC<{
 
   const labelText = `Token usage: ${formatCompactNumber(totalTokens)} (${costText})`;
 
+  // H4: 14px bold qualifies as large text (WCAG AA threshold 3:1, met by
+  // text-destructive). AlertTriangle ensures color is not the sole signal.
   const labelSpan = costLimitReached ? (
-    <span className="text-xs text-destructive">
+    <span
+      className="text-sm font-semibold text-destructive inline-flex items-center gap-1"
+      role="status">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       {labelText} — Cost limit reached
     </span>
   ) : (

@@ -926,5 +926,86 @@ describe('InvokeLlmNode', () => {
         5,
       );
     });
+
+    it('throws CostLimitExceededError when threadUsage is null and state.totalPrice alone meets the limit', async () => {
+      // M9: threadUsage=null — projected = state.totalPrice + 0 = state.totalPrice.
+      // If state.totalPrice >= effectiveLimit, enforcement must fire.
+      const usage: RequestTokenUsage = {
+        inputTokens: 5,
+        outputTokens: 1,
+        totalTokens: 6,
+        totalPrice: 0,
+      };
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
+        usage,
+      );
+
+      const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
+      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
+
+      const enforcingNode = new InvokeLlmNode(
+        mockLitellm as unknown as LitellmService,
+        mockLlm,
+        [],
+        { systemPrompt: 'Test', enforceCostLimit: true },
+      );
+
+      // state.totalPrice (3.0) >= effectiveLimit (3.0) — boundary case, >= fires
+      const error = await enforcingNode
+        .invoke(createState({ totalPrice: 3.0 }), {
+          configurable: {
+            run_id: 'run-1',
+            thread_id: 'thread-1',
+            effective_cost_limit_usd: 3.0,
+          },
+        } as any)
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(CostLimitExceededError);
+      expect((error as CostLimitExceededError).effectiveLimitUsd).toBe(3.0);
+    });
+
+    it('throws CostLimitExceededError when projectedTotal exactly equals the limit (>= boundary)', async () => {
+      // M9: exact-boundary — projectedTotal === effectiveLimit must throw because
+      // the check uses >=.
+      const callCost = 2.0;
+      const usage: RequestTokenUsage = {
+        inputTokens: 10,
+        outputTokens: 1,
+        totalTokens: 11,
+        totalPrice: callCost,
+      };
+      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
+        usage,
+      );
+
+      const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
+      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
+
+      const enforcingNode = new InvokeLlmNode(
+        mockLitellm as unknown as LitellmService,
+        mockLlm,
+        [],
+        { systemPrompt: 'Test', enforceCostLimit: true },
+      );
+
+      // state.totalPrice=3 + callCost=2 = 5 === effectiveLimit=5
+      const error = await enforcingNode
+        .invoke(createState({ totalPrice: 3.0 }), {
+          configurable: {
+            run_id: 'run-1',
+            thread_id: 'thread-1',
+            effective_cost_limit_usd: 5.0,
+          },
+        } as any)
+        .catch((e) => e);
+
+      expect(error).toBeInstanceOf(CostLimitExceededError);
+      expect((error as CostLimitExceededError).effectiveLimitUsd).toBe(5.0);
+      expect((error as CostLimitExceededError).totalPriceUsd).toBeCloseTo(
+        5.0,
+        5,
+      );
+    });
   });
 });

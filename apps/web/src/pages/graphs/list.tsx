@@ -186,7 +186,7 @@ export const GraphsListPage = () => {
       await graphsApi.updateGraph(editingGraph.id, {
         name: editFormValues.name,
         description: editFormValues.description,
-        costLimitUsd: (editFormValues.costLimitUsd ||
+        costLimitUsd: (editFormValues.costLimitUsd ??
           null) as unknown as UpdateGraphDto['costLimitUsd'],
         currentVersion: editingGraph.version || '',
       });
@@ -673,7 +673,7 @@ export const GraphsListPage = () => {
                     ? ''
                     : editFormValues.costLimitUsd
                 }
-                placeholder="Empty or 0 = unlimited"
+                placeholder="e.g. 5.00"
                 onChange={(e) => {
                   const raw = e.target.value;
                   if (raw === '') {

@@ -367,6 +367,16 @@ describe('Thread Cost Limits Integration Tests', () => {
       expect((stopped.metadata as { stopReason?: string }).stopReason).toBe(
         'cost_limit',
       );
+      // M10: stopCostUsd must be recorded as a number when the thread is stopped
+      // by a cost limit (used by the resume guard to block re-entry without a raise).
+      expect(
+        typeof (stopped.metadata as { stopCostUsd?: unknown }).stopCostUsd,
+      ).toBe('number');
+      // M10/M4: costLimitHit must be set so the resume guard survives a
+      // subsequent manual-stop that clears stopReason.
+      expect(
+        (stopped.metadata as { costLimitHit?: boolean }).costLimitHit,
+      ).toBe(true);
     },
   );
 
@@ -524,6 +534,12 @@ describe('Thread Cost Limits Integration Tests', () => {
       expect(terminalAfterResume.stopReason ?? null).toBeNull();
       // New effective limit should be the updated value.
       expect(terminalAfterResume.effectiveCostLimitUsd).toBe(10.0);
+      // M10/M4: costLimitHit must be cleared once the user successfully raises
+      // the limit and resumes so the thread is not permanently blocked.
+      expect(
+        (terminalAfterResume.metadata as { costLimitHit?: boolean })
+          .costLimitHit ?? null,
+      ).toBeNull();
     },
   );
 

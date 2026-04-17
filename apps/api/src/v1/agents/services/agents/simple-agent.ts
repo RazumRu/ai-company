@@ -1121,8 +1121,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             },
           });
 
-          this.activeRuns.delete(runId);
-
+          // M2: do NOT call this.activeRuns.delete(runId) here — the finally
+          // block always runs and handles cleanup to avoid a double-delete.
           this.emit({
             type: 'run',
             data: { threadId, messages, config: mergedConfig, error },
@@ -1177,6 +1177,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     const stopError = wasStopped
       ? new Error(runEntry.stopReason ?? this.formatStoppedReason())
       : undefined;
+
+    // M1: the cost_limit stop path already emitted a dedicated 'stop' event
+    // (with stopReason/stopCostUsd) above; emitting a second 'run' event here
+    // would overwrite the thread's Stopped status. Skip for cost_limit stops.
+    if (runEntry.stopReason === 'cost_limit') {
+      return result;
+    }
 
     // Emit run event with result or stop error so thread status can be updated
     const runEvent: AgentRunEvent = {
