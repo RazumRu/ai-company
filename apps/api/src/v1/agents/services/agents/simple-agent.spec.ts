@@ -1305,6 +1305,68 @@ describe('SimpleAgent', () => {
       expect(costStop?.data.stopCostUsd).toBe(7.25);
     });
 
+    it('emits stop event and no run event when CostLimitExceededError propagates from within the tools phase', async () => {
+      // This covers the sub-agent cost-limit propagation path: the sub-agent
+      // catches its own CostLimitExceededError, returns stopReason='cost_limit'
+      // in SubagentRunResult, the tool wraps it in ToolInvokeResult, and
+      // ToolExecutorNode re-throws CostLimitExceededError.  The parent's stream
+      // loop catches it (same path as a direct invoke_llm cost-limit) and must
+      // emit 'stop' without a 'run' event (no thread flip to Done).
+
+      const costError = new CostLimitExceededError(3.0, 4.5);
+
+      // Simulate the error coming from the tools node (not invoke_llm)
+      async function* mockStream() {
+        yield [
+          'updates',
+          { 'tools': { messages: { mode: 'append', items: [] } } },
+        ] as const;
+        throw costError;
+      }
+
+      const mockGraph = {
+        stream: vi.fn().mockReturnValue(mockStream()),
+      };
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+
+      // Must NOT throw.
+      await agent.run(
+        'thread-tool-cost-limit',
+        [new HumanMessage('Hello')],
+        config,
+        {
+          configurable: {
+            run_id: 'run-tcl',
+            graph_id: 'graph-1',
+          },
+        } as unknown as RunnableConfig<BaseAgentConfigurable>,
+      );
+
+      const allEvents = emitSpy.mock.calls.map((c) => c[0] as AgentEventType);
+
+      const stopEvents = allEvents.filter(
+        (e): e is Extract<AgentEventType, { type: 'stop' }> =>
+          e?.type === 'stop',
+      );
+      const runEvents = allEvents.filter(
+        (e): e is Extract<AgentEventType, { type: 'run' }> => e?.type === 'run',
+      );
+
+      // Must emit a cost_limit stop event.
+      expect(stopEvents.length).toBeGreaterThanOrEqual(1);
+      const costStop = stopEvents.find(
+        (e) => e.data.stopReason === 'cost_limit',
+      );
+      expect(costStop).toBeDefined();
+      expect(costStop?.data.threadId).toBe('thread-tool-cost-limit');
+      expect(costStop?.data.stopCostUsd).toBe(4.5);
+
+      // Must NOT emit a 'run' event (which would flip thread to Done).
+      expect(runEvents).toHaveLength(0);
+    });
+
     it('stopThread() emits stop event with stopReason=null (explicit clear)', async () => {
       // Register an active run for 'thread-1'
       const runnableConfig = {

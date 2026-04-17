@@ -18,6 +18,7 @@ import { DefaultLogger } from '@packages/common';
 
 import { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
+import { CostLimitExceededError } from '../../agents.errors';
 import {
   BaseAgentConfigurable,
   BaseAgentState,
@@ -53,6 +54,17 @@ export interface SubagentRunResult {
   /** Deduplicated list of file paths the subagent read or searched during execution. */
   exploredFiles: string[];
   error?: string;
+  /**
+   * Set to 'cost_limit' when the sub-agent stopped because the thread cost limit
+   * was exceeded during its own execution. The parent agent should propagate this
+   * to its own stop path.
+   */
+  stopReason?: 'cost_limit';
+  /**
+   * Total spend (USD) when the cost limit was hit. Only present when
+   * stopReason === 'cost_limit'.
+   */
+  stopCostUsd?: number;
 }
 
 export type SubAgentSchemaType = {
@@ -189,7 +201,12 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         streaming: supportsStreaming,
       });
 
-      // Subagent skips cost-limit enforcement by design — parent thread enforces on the next invocation after subagent returns.
+      // Subagent enforces the cost limit so the parent is notified mid-execution
+      // rather than only on the parent's next LLM call.  When the limit fires,
+      // CostLimitExceededError propagates up through the graph stream and is
+      // caught below, which converts it to a graceful SubagentRunResult with
+      // stopReason='cost_limit'.  The tool wrapper then surfaces that field so
+      // the parent SimpleAgent can re-throw and trigger its own stop path.
       const invokeLlmNode = new InvokeLlmNode(
         this.litellmService,
         llm,
@@ -198,7 +215,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           systemPrompt: config.instructions,
           toolChoice: toolsArray.length > 0 ? 'auto' : undefined,
           parallelToolCalls: useParallelToolCall,
-          enforceCostLimit: false,
+          enforceCostLimit: true,
         },
         this.logger,
       );
@@ -410,6 +427,17 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       if (this.isAbortError(err)) {
         return this.abortedResult();
       }
+      if (err instanceof CostLimitExceededError) {
+        this.logger.warn(
+          `SubAgent hit cost limit: $${err.totalPriceUsd.toFixed(4)} (limit: $${err.effectiveLimitUsd.toFixed(4)})`,
+        );
+        return this.costLimitResult(
+          err,
+          finalState,
+          totalIterations,
+          toolCallsMade,
+        );
+      }
       if (this.isRecursionLimitError(err)) {
         this.logger.warn(
           `SubAgent hit max iterations (${config.maxIterations})`,
@@ -463,6 +491,26 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       statistics: { totalIterations: 0, toolCallsMade: 0, usage: null },
       exploredFiles: [],
       error: 'Aborted',
+    };
+  }
+
+  private costLimitResult(
+    err: CostLimitExceededError,
+    state: BaseAgentState,
+    totalIterations: number,
+    toolCallsMade: number,
+  ): SubagentRunResult {
+    return {
+      result: `Subagent stopped: cost limit $${err.effectiveLimitUsd.toFixed(2)} reached (total: $${err.totalPriceUsd.toFixed(4)}).`,
+      statistics: {
+        totalIterations,
+        toolCallsMade,
+        usage: this.extractUsageFromState(state),
+      },
+      exploredFiles: extractExploredFilesFromMessages(state.messages),
+      error: 'Cost limit reached',
+      stopReason: 'cost_limit',
+      stopCostUsd: err.totalPriceUsd,
     };
   }
 

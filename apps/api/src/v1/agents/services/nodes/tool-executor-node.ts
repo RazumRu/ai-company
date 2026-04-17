@@ -19,6 +19,7 @@ import {
 } from '../../../agent-tools/tools/base-tool';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
+import { CostLimitExceededError } from '../../agents.errors';
 import {
   BaseAgentConfigurable,
   BaseAgentState,
@@ -141,6 +142,11 @@ export class ToolExecutorNode extends BaseNode<
             toolName: tc.name,
             toolMessage: makeErrorMsg(`Tool '${tc.name}' not found.`),
             stateChange: undefined as unknown,
+            stateChangeKey: undefined,
+            toolRequestUsage: undefined,
+            additionalMessages: undefined,
+            stopReason: undefined,
+            stopCostUsd: undefined,
           };
         }
 
@@ -219,6 +225,8 @@ export class ToolExecutorNode extends BaseNode<
             stateChangeKey,
             toolRequestUsage,
             additionalMessages: toolAdditionalMessages,
+            stopReason: toolStopReason,
+            stopCostUsd: toolStopCostUsd,
           } = toolInvokeResult;
 
           // Merge streamed messages with any additional messages from the final result
@@ -248,6 +256,8 @@ export class ToolExecutorNode extends BaseNode<
               toolRequestUsage,
               additionalMessages:
                 additionalMessages.length > 0 ? additionalMessages : undefined,
+              stopReason: toolStopReason,
+              stopCostUsd: toolStopCostUsd,
             };
           }
 
@@ -259,6 +269,8 @@ export class ToolExecutorNode extends BaseNode<
             toolRequestUsage,
             additionalMessages:
               additionalMessages.length > 0 ? additionalMessages : undefined,
+            stopReason: toolStopReason,
+            stopCostUsd: toolStopCostUsd,
           };
         } catch (e) {
           const err = e as Error;
@@ -276,9 +288,13 @@ export class ToolExecutorNode extends BaseNode<
               `Error executing tool '${tc.name}': ${err?.message || String(err)}`,
             ),
             stateChange: undefined as unknown,
+            stateChangeKey: undefined,
+            toolRequestUsage: undefined,
             // Preserve messages already emitted in real-time before the error
             additionalMessages:
               streamedMessages.length > 0 ? streamedMessages : undefined,
+            stopReason: undefined,
+            stopCostUsd: undefined,
           };
         }
       }),
@@ -334,6 +350,18 @@ export class ToolExecutorNode extends BaseNode<
         __hideForSummary: true,
       };
       interleavedMessages.push(stopMessage);
+    }
+
+    // --- Cost-limit propagation: if any tool carried a cost-limit stop signal,
+    // re-throw CostLimitExceededError so the parent agent's stream catch path
+    // fires exactly as it would for a direct invoke_llm cost-limit throw.
+    // The effective limit comes from the runnable config (resolved once upstream
+    // by GraphsService.executeTrigger and stored in configurable).
+    const costLimitResult = results.find((r) => r.stopReason === 'cost_limit');
+    if (costLimitResult) {
+      const effectiveLimit = cfg.configurable?.effective_cost_limit_usd ?? 0;
+      const totalSpend = costLimitResult.stopCostUsd ?? 0;
+      throw new CostLimitExceededError(effectiveLimit, totalSpend);
     }
 
     const toolsMetadataUpdate = results.reduce(

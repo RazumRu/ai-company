@@ -418,6 +418,12 @@ export class SubagentsRunTaskTool extends BaseTool<
       },
       messageMetadata: { __title: title },
       toolRequestUsage: loopResult.statistics.usage ?? undefined,
+      ...(loopResult.stopReason === 'cost_limit'
+        ? {
+            stopReason: 'cost_limit' as const,
+            stopCostUsd: loopResult.stopCostUsd,
+          }
+        : {}),
     };
   }
 

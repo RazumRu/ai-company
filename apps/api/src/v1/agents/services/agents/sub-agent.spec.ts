@@ -15,6 +15,7 @@ import { z } from 'zod';
 
 import { ToolInvokeResult } from '../../../agent-tools/tools/base-tool';
 import { LitellmService } from '../../../litellm/services/litellm.service';
+import { CostLimitExceededError } from '../../agents.errors';
 import { BaseAgentConfigurable } from '../../agents.types';
 import { filterMessagesForLlm } from '../../agents.utils';
 import { SubAgent, SubAgentSchemaType } from './sub-agent';
@@ -904,25 +905,17 @@ describe('SubAgent', () => {
   });
 
   describe('cost limit enforcement', () => {
-    it('does not throw CostLimitExceededError even when accumulated cost is above the effective limit', async () => {
-      // M11: subagents skip cost-limit enforcement by design — the parent
-      // thread's InvokeLlmNode (with enforceCostLimit=true) handles it on the
-      // next parent LLM call. Verify behaviorally: run the subagent with a very
-      // high state.totalPrice and a very low effective_cost_limit_usd; it must
-      // complete without throwing a CostLimitExceededError.
-      mockLlmInvokeRef.mockResolvedValueOnce(
-        new AIMessage({
-          content: 'done despite over-budget',
-          response_metadata: { usage: {} },
-        }),
-      );
+    it('returns stopReason="cost_limit" when CostLimitExceededError is thrown during the sub-agent run', async () => {
+      // Sub-agents now enforce cost limits themselves and surface the stop
+      // reason so the parent agent can propagate it rather than only catching
+      // it on the next parent LLM call.
+      const costError = new CostLimitExceededError(1.0, 2.5);
+      mockLlmInvokeRef.mockRejectedValueOnce(costError);
 
       const cfgWithLimit: ToolRunnableConfig<BaseAgentConfigurable> = {
         configurable: {
           thread_id: 'thread-123',
-          // Effective limit is $0.01 but accumulated cost is $100 — enforcement
-          // must NOT fire inside the subagent.
-          effective_cost_limit_usd: 0.01,
+          effective_cost_limit_usd: 1.0,
         },
       };
 
@@ -931,8 +924,37 @@ describe('SubAgent', () => {
         cfgWithLimit,
       );
 
+      // Must NOT re-throw — the sub-agent catches the error gracefully.
+      expect(result.stopReason).toBe('cost_limit');
+      expect(result.stopCostUsd).toBe(2.5);
+      expect(result.error).toBe('Cost limit reached');
+      expect(result.result).toContain('cost limit');
+      expect(result.statistics.totalIterations).toBe(0);
+    });
+
+    it('does not set stopReason when run completes normally within budget', async () => {
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'done within budget',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const cfgWithLimit: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'thread-123',
+          effective_cost_limit_usd: 100.0,
+        },
+      };
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('hi')],
+        cfgWithLimit,
+      );
+
+      expect(result.stopReason).toBeUndefined();
       expect(result.error).toBeUndefined();
-      expect(result.result).toBe('done despite over-budget');
+      expect(result.result).toBe('done within budget');
     });
   });
 });
