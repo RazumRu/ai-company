@@ -165,4 +165,64 @@ describe('CostLimitResolverService', () => {
 
     expect(result).toBe(7);
   });
+
+  it('treats NaN as no limit and picks the remaining value', async () => {
+    mockDao.getGraphCostLimitRow.mockResolvedValue({
+      projectId: TEST_PROJECT_ID,
+      settings: { costLimitUsd: Number.NaN },
+    });
+    mockDao.getProjectCostLimitRow.mockResolvedValue({
+      settings: { costLimitUsd: 2 },
+    });
+    mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
+
+    const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
+
+    expect(result).toBe(2);
+  });
+
+  it('treats Infinity as no limit and picks the remaining value', async () => {
+    mockDao.getGraphCostLimitRow.mockResolvedValue({
+      projectId: TEST_PROJECT_ID,
+      settings: { costLimitUsd: Number.POSITIVE_INFINITY },
+    });
+    mockDao.getProjectCostLimitRow.mockResolvedValue({
+      settings: { costLimitUsd: 2 },
+    });
+    mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
+
+    const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
+
+    expect(result).toBe(2);
+  });
+
+  it('treats negative numbers as no limit (defensive)', async () => {
+    mockDao.getGraphCostLimitRow.mockResolvedValue({
+      projectId: TEST_PROJECT_ID,
+      settings: { costLimitUsd: -1 },
+    });
+    mockDao.getProjectCostLimitRow.mockResolvedValue({
+      settings: { costLimitUsd: 4 },
+    });
+    mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
+
+    const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
+
+    expect(result).toBe(4);
+  });
+
+  it('treats non-numeric settings values as no limit', async () => {
+    mockDao.getGraphCostLimitRow.mockResolvedValue({
+      projectId: TEST_PROJECT_ID,
+      settings: { costLimitUsd: 'not-a-number' },
+    });
+    mockDao.getProjectCostLimitRow.mockResolvedValue({
+      settings: { costLimitUsd: 3 },
+    });
+    mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
+
+    const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
+
+    expect(result).toBe(3);
+  });
 });

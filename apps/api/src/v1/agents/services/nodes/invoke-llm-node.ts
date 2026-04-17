@@ -26,7 +26,6 @@ import {
   stripProxyPrefix,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
-import { isCostLimitExceeded } from '../../cost-limits/cost-limit.utils';
 import { BaseNode } from './base-node';
 
 type ToolWithTitle = DynamicStructuredTool & {
@@ -190,11 +189,8 @@ export class InvokeLlmNode extends BaseNode<
           : null;
       const projectedTotal =
         (state.totalPrice ?? 0) + (threadUsage?.totalPrice ?? 0);
-      if (isCostLimitExceeded(projectedTotal, effectiveLimit)) {
-        throw new CostLimitExceededError(
-          effectiveLimit as number,
-          projectedTotal,
-        );
+      if (effectiveLimit !== null && projectedTotal >= effectiveLimit) {
+        throw new CostLimitExceededError(effectiveLimit, projectedTotal);
       }
     }
 
