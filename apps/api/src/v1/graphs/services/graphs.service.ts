@@ -758,7 +758,7 @@ export class GraphsService {
     );
 
     if (dto.threadSubId) {
-      // H1: wrap the entire "existing thread" branch in a pessimistic-write
+      // wrap the entire "existing thread" branch in a pessimistic-write
       // transaction to prevent TOCTOU races where two concurrent requests
       // read Stopped status simultaneously and both bypass the resume guard.
       await this.em.transactional(async (em: EntityManager) => {
@@ -809,7 +809,7 @@ export class GraphsService {
             existingThread.metadata as { stopCostUsd?: number } | undefined
           )?.stopCostUsd;
 
-          // H2: if effectiveCostLimitUsd is null the user removed all limits —
+          // if effectiveCostLimitUsd is null the user removed all limits —
           // allow resume unconditionally. Otherwise require a valid stopCostUsd
           // (drop the checkpoint fallback which could underestimate the cost).
           if (effectiveCostLimitUsd !== null) {
@@ -873,7 +873,7 @@ export class GraphsService {
       forkedEm,
     );
     if (!existingThread) {
-      // M3: strip reserved server-managed keys from client-supplied metadata so
+      // strip reserved server-managed keys from client-supplied metadata so
       // clients cannot poison cost-limit state by sending these in dto.metadata.
       const {
         effectiveCostLimitUsd: _e,

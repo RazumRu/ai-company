@@ -502,7 +502,7 @@ export class GraphStateManager {
     //   null      -> handler clears metadata.stopReason
     //   string    -> handler persists metadata.stopReason
     // stopCostUsd follows the same three-way semantics.
-    // M7: use !== undefined checks instead of 'in' operator so that inherited
+    // use !== undefined checks instead of 'in' operator so that inherited
     // prototype keys cannot accidentally trigger the spread.
     for (const threadId of activeThreads) {
       await this.notificationsService.emit({

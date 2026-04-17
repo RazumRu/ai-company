@@ -1242,11 +1242,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       run.stopped = true;
       run.stopReason ??= this.formatStoppedReason(run.stopReason);
 
-      try {
-        run.abortController.abort();
-      } catch {
-        // noop
-      }
+      run.abortController.abort();
 
       this.activeRuns.delete(runId);
     }
@@ -1356,11 +1352,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       run.stopped = true;
       run.stopReason ??= this.formatStoppedReason(reason);
 
-      try {
-        run.abortController.abort();
-      } catch {
-        // noop
-      }
+      run.abortController.abort();
     }
 
     return stopped;

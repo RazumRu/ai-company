@@ -160,7 +160,7 @@ export const GraphEditableSchema = GraphSchema.omit({
   version: true,
   targetVersion: true,
   projectId: true,
-  // M5: settings is server-managed JSONB; clients must not supply it directly.
+  // settings is server-managed JSONB; clients must not supply it directly.
   // Individual projected fields (e.g. costLimitUsd) are the intended API surface.
   settings: true,
 });

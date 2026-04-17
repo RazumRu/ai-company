@@ -79,22 +79,23 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
       updates.metadata = clearWaitMetadata(thread.metadata);
     }
 
+    // Base metadata snapshot — read once before the two three-way blocks so
+    // the second block sees any write made by the first (via updates.metadata).
+    const baseMeta =
+      (thread.metadata as Record<string, unknown> | null | undefined) ?? {};
+
     // Three-way semantics for stopReason (applied AFTER wait-metadata clearing so
     // a cost-limit stop on a previously-waiting thread clears wait keys AND sets
     // stopReason in one write):
     //   undefined   -> key is absent on data: leave metadata.stopReason untouched
     //   null        -> explicit clear: drop metadata.stopReason
     //   string      -> persist metadata.stopReason
-    // M4: when stopReason === 'cost_limit', also set costLimitHit = true so
+    // When stopReason === 'cost_limit', also set costLimitHit = true so
     // the resume guard can detect cost-limit stops even after stopReason is
     // cleared by a subsequent manual-stop event (costLimitHit is only cleared
     // when the user successfully raises the limit and resumes).
     if (data.stopReason !== undefined) {
-      const baseMeta =
-        updates.metadata ??
-        (thread.metadata as Record<string, unknown> | null | undefined) ??
-        {};
-      const nextMeta = { ...baseMeta };
+      const nextMeta = { ...(updates.metadata ?? baseMeta) };
       if (data.stopReason === null) {
         delete nextMeta.stopReason;
       } else if (typeof data.stopReason === 'string') {
@@ -110,15 +111,11 @@ export class ThreadUpdateNotificationHandler extends BaseNotificationHandler<ITh
     //   undefined -> key is absent on data: leave metadata.stopCostUsd untouched
     //   null      -> explicit clear: drop metadata.stopCostUsd
     //   number    -> persist metadata.stopCostUsd
-    // M7: stopCostUsd only exists on IThreadUpdateData (not ThreadDto), so we
+    // stopCostUsd only exists on IThreadUpdateData (not ThreadDto), so we
     // keep 'in' for TS narrowing but add an explicit undefined check at runtime
     // to guard against prototype keys making 'in' return true unexpectedly.
     if ('stopCostUsd' in data && data.stopCostUsd !== undefined) {
-      const baseMeta =
-        updates.metadata ??
-        (thread.metadata as Record<string, unknown> | null | undefined) ??
-        {};
-      const nextMeta = { ...baseMeta };
+      const nextMeta = { ...(updates.metadata ?? baseMeta) };
       if (data.stopCostUsd === null) {
         delete nextMeta.stopCostUsd;
       } else if (typeof data.stopCostUsd === 'number') {

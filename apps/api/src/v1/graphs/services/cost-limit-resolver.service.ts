@@ -16,12 +16,12 @@ export class CostLimitResolverService {
     userId: string,
     graphId: string,
   ): Promise<number | null> {
-    // H3: filter by createdBy so users can only read their own graph/project settings.
+    // filter by createdBy so users can only read their own graph/project settings.
     const graph = await this.graphDao.getOne({
       id: graphId,
       createdBy: userId,
     });
-    const graphLimit = this.toLimit(graph?.settings?.['costLimitUsd']);
+    const graphLimit = this.toLimit(graph?.settings?.costLimitUsd);
 
     let projectLimit: number | null = null;
     if (graph?.projectId) {
@@ -29,7 +29,7 @@ export class CostLimitResolverService {
         id: graph.projectId,
         createdBy: userId,
       });
-      projectLimit = this.toLimit(project?.settings?.['costLimitUsd']);
+      projectLimit = this.toLimit(project?.settings?.costLimitUsd);
     }
 
     const userLimit = this.toLimit(
