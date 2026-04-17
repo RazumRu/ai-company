@@ -9,7 +9,6 @@ import { ChatOpenAI } from '@langchain/openai';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import type { CostLimitResolverService } from '../../../cost-limits/services/cost-limit-resolver.service';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { CostLimitExceededError } from '../../agents.errors';
@@ -798,16 +797,7 @@ describe('InvokeLlmNode', () => {
         tool_calls: [],
       }) as unknown as AIMessageChunk;
 
-    const makeResolver = (
-      resolved: number | null,
-    ): CostLimitResolverService => {
-      const resolveForThread = vi.fn().mockResolvedValue(resolved);
-      return {
-        resolveForThread,
-      } as unknown as CostLimitResolverService;
-    };
-
-    it('does not enforce when resolver is undefined (subagent path)', async () => {
+    it('does not enforce when enforceCostLimit is not set (subagent path)', async () => {
       const usage: RequestTokenUsage = {
         inputTokens: 10,
         outputTokens: 1,
@@ -821,13 +811,12 @@ describe('InvokeLlmNode', () => {
       const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
       (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
 
-      // Node created without resolver (default ctor)
       const res = await node.invoke(createState({ totalPrice: 100 }), {
         configurable: {
           run_id: 'run-1',
           thread_id: 'thread-1',
-          thread_created_by: 'user-1',
-          graph_id: 'graph-1',
+          // effective_cost_limit_usd would over-budget but enforceCostLimit=false
+          effective_cost_limit_usd: 1,
         },
       } as any);
 
@@ -835,7 +824,7 @@ describe('InvokeLlmNode', () => {
       expect(res.messages?.items).toBeDefined();
     });
 
-    it('does not enforce when resolver returns null (no limit configured)', async () => {
+    it('does not enforce when effective_cost_limit_usd is null (no limit configured)', async () => {
       const usage: RequestTokenUsage = {
         inputTokens: 10,
         outputTokens: 1,
@@ -849,32 +838,21 @@ describe('InvokeLlmNode', () => {
       const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
       (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
 
-      const resolver = makeResolver(null);
-      const nodeWithResolver = new InvokeLlmNode(
+      const enforcingNode = new InvokeLlmNode(
         mockLitellm as unknown as LitellmService,
         mockLlm,
         [],
-        { systemPrompt: 'Test' },
-        undefined,
-        resolver,
+        { systemPrompt: 'Test', enforceCostLimit: true },
       );
 
-      const res = await nodeWithResolver.invoke(
-        createState({ totalPrice: 100 }),
-        {
-          configurable: {
-            run_id: 'run-1',
-            thread_id: 'thread-1',
-            thread_created_by: 'user-1',
-            graph_id: 'graph-1',
-          },
-        } as any,
-      );
+      const res = await enforcingNode.invoke(createState({ totalPrice: 100 }), {
+        configurable: {
+          run_id: 'run-1',
+          thread_id: 'thread-1',
+          effective_cost_limit_usd: null,
+        },
+      } as any);
 
-      expect(resolver.resolveForThread).toHaveBeenCalledWith(
-        'user-1',
-        'graph-1',
-      );
       expect(res).toBeDefined();
     });
 
@@ -892,23 +870,19 @@ describe('InvokeLlmNode', () => {
       const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
       (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
 
-      const resolver = makeResolver(10.0);
-      const nodeWithResolver = new InvokeLlmNode(
+      const enforcingNode = new InvokeLlmNode(
         mockLitellm as unknown as LitellmService,
         mockLlm,
         [],
-        { systemPrompt: 'Test' },
-        undefined,
-        resolver,
+        { systemPrompt: 'Test', enforceCostLimit: true },
       );
 
       await expect(
-        nodeWithResolver.invoke(createState({ totalPrice: 0.5 }), {
+        enforcingNode.invoke(createState({ totalPrice: 0.5 }), {
           configurable: {
             run_id: 'run-1',
             thread_id: 'thread-1',
-            thread_created_by: 'user-1',
-            graph_id: 'graph-1',
+            effective_cost_limit_usd: 10.0,
           },
         } as any),
       ).resolves.toBeDefined();
@@ -928,23 +902,19 @@ describe('InvokeLlmNode', () => {
       const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
       (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
 
-      const resolver = makeResolver(5.0);
-      const nodeWithResolver = new InvokeLlmNode(
+      const enforcingNode = new InvokeLlmNode(
         mockLitellm as unknown as LitellmService,
         mockLlm,
         [],
-        { systemPrompt: 'Test' },
-        undefined,
-        resolver,
+        { systemPrompt: 'Test', enforceCostLimit: true },
       );
 
-      const error = await nodeWithResolver
+      const error = await enforcingNode
         .invoke(createState({ totalPrice: 4.0 }), {
           configurable: {
             run_id: 'run-1',
             thread_id: 'thread-1',
-            thread_created_by: 'user-1',
-            graph_id: 'graph-1',
+            effective_cost_limit_usd: 5.0,
           },
         } as any)
         .catch((e) => e);
@@ -955,86 +925,6 @@ describe('InvokeLlmNode', () => {
         7.0,
         5,
       );
-    });
-
-    it('does not enforce when thread_created_by is missing (defensive)', async () => {
-      const usage: RequestTokenUsage = {
-        inputTokens: 10,
-        outputTokens: 1,
-        totalTokens: 11,
-        totalPrice: 500,
-      };
-      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
-        usage,
-      );
-
-      const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
-      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
-
-      const resolver = makeResolver(1.0);
-      const nodeWithResolver = new InvokeLlmNode(
-        mockLitellm as unknown as LitellmService,
-        mockLlm,
-        [],
-        { systemPrompt: 'Test' },
-        undefined,
-        resolver,
-      );
-
-      const res = await nodeWithResolver.invoke(
-        createState({ totalPrice: 500 }),
-        {
-          configurable: {
-            run_id: 'run-1',
-            thread_id: 'thread-1',
-            // thread_created_by intentionally missing
-            graph_id: 'graph-1',
-          },
-        } as any,
-      );
-
-      expect(resolver.resolveForThread).not.toHaveBeenCalled();
-      expect(res).toBeDefined();
-    });
-
-    it('does not enforce when graph_id is missing (defensive)', async () => {
-      const usage: RequestTokenUsage = {
-        inputTokens: 10,
-        outputTokens: 1,
-        totalTokens: 11,
-        totalPrice: 500,
-      };
-      (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(
-        usage,
-      );
-
-      const invokeSpy = vi.fn().mockResolvedValue(makeLlmRes());
-      (mockLlm as any).bindTools.mockReturnValueOnce({ invoke: invokeSpy });
-
-      const resolver = makeResolver(1.0);
-      const nodeWithResolver = new InvokeLlmNode(
-        mockLitellm as unknown as LitellmService,
-        mockLlm,
-        [],
-        { systemPrompt: 'Test' },
-        undefined,
-        resolver,
-      );
-
-      const res = await nodeWithResolver.invoke(
-        createState({ totalPrice: 500 }),
-        {
-          configurable: {
-            run_id: 'run-1',
-            thread_id: 'thread-1',
-            thread_created_by: 'user-1',
-            // graph_id intentionally missing
-          },
-        } as any,
-      );
-
-      expect(resolver.resolveForThread).not.toHaveBeenCalled();
-      expect(res).toBeDefined();
     });
   });
 });

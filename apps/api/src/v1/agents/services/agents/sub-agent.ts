@@ -198,9 +198,9 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           systemPrompt: config.instructions,
           toolChoice: toolsArray.length > 0 ? 'auto' : undefined,
           parallelToolCalls: useParallelToolCall,
+          enforceCostLimit: false,
         },
         this.logger,
-        undefined,
       );
 
       const toolExecutorNode = new ToolExecutorNode(

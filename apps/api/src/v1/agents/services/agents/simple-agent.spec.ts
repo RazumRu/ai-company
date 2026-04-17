@@ -6,7 +6,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { LoggerModule } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { CostLimitResolverService } from '../../../cost-limits/services/cost-limit-resolver.service';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
 import { NotificationsService } from '../../../notifications/services/notifications.service';
@@ -137,12 +136,6 @@ describe('SimpleAgent', () => {
         {
           provide: PgCheckpointSaver,
           useValue: mockCheckpointSaver,
-        },
-        {
-          provide: CostLimitResolverService,
-          useValue: {
-            resolveForThread: vi.fn().mockResolvedValue(null),
-          } as unknown as CostLimitResolverService,
         },
       ],
     }).compile();

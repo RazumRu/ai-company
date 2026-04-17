@@ -28,7 +28,6 @@ import {
 } from '../../../agent-tools/tools/common/tool-search.tool';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
 import { WaitForTool } from '../../../agent-tools/tools/core/wait-for.tool';
-import { CostLimitResolverService } from '../../../cost-limits/services/cost-limit-resolver.service';
 import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
@@ -93,7 +92,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     private readonly litellmService: LitellmService,
     private readonly logger: DefaultLogger,
     private readonly llmModelsService: LlmModelsService,
-    private readonly costLimitResolver: CostLimitResolverService,
   ) {
     super();
   }
@@ -212,9 +210,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           systemPrompt: config.instructions,
           toolChoice: 'auto',
           parallelToolCalls: useParallelToolCall,
+          enforceCostLimit: true,
         },
         this.logger,
-        this.costLimitResolver,
       );
 
       // ---- tool executor ----
@@ -534,27 +532,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     stateChange.totalPrice = nextState.totalPrice;
     stateChange.currentContext = nextState.currentContext;
 
-    // Emit null on any resolver failure rather than blocking the state update.
-    const userId = runnableConfig.configurable?.thread_created_by;
-    const graphId = runnableConfig.configurable?.graph_id;
-    let effectiveCostLimitUsd: number | null = null;
-    if (userId && graphId) {
-      try {
-        effectiveCostLimitUsd = await this.costLimitResolver.resolveForThread(
-          userId,
-          graphId,
-        );
-      } catch (err) {
-        this.logger.debug(
-          'Failed to resolve effective cost limit for state update',
-          {
-            threadId,
-            error: err instanceof Error ? err.message : String(err),
-          },
-        );
-      }
-    }
-    stateChange.effectiveCostLimitUsd = effectiveCostLimitUsd;
+    // Read the effective limit from the runnable config — it was resolved once
+    // upstream (GraphsService.executeTrigger) and persisted to thread metadata.
+    // The agent must not re-resolve on every state update.
+    const configuredLimit =
+      runnableConfig.configurable?.effective_cost_limit_usd;
+    stateChange.effectiveCostLimitUsd =
+      typeof configuredLimit === 'number' ? configuredLimit : null;
 
     this.emit({
       type: 'stateUpdate',

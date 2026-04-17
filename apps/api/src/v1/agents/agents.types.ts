@@ -156,6 +156,13 @@ export type BaseAgentConfigurable = {
   graph_created_by?: string;
   thread_created_by?: string;
   graph_project_id?: string;
+  /**
+   * Effective USD cost limit for the thread, resolved once by the caller
+   * (GraphsService.executeTrigger) and propagated through the agent run.
+   * InvokeLlmNode enforces against this value when `enforceCostLimit` is set.
+   * `null` / `undefined` = no limit.
+   */
+  effective_cost_limit_usd?: number | null;
   llmRequestContext?: LLMRequestContext;
   // SECURITY: This index signature is required by LangGraph's RunnableConfig
   // constraint. Never spread HTTP request body fields into this type — always

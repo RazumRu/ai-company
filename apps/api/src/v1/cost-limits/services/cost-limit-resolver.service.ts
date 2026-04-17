@@ -3,8 +3,8 @@ import { Injectable } from '@nestjs/common';
 import {
   extractCostLimit,
   resolveEffectiveCostLimit,
-} from '../../../utils/cost-limits/cost-limit.utils';
-import type { CostLimitSettings } from '../../../utils/cost-limits/cost-limit-settings.schema';
+} from '../../agents/cost-limits/cost-limit.utils';
+import type { CostLimitSettings } from '../../agents/cost-limits/cost-limit-settings.schema';
 import { UserPreferencesService } from '../../user-preferences/services/user-preferences.service';
 import { CostLimitsDao } from '../dao/cost-limits.dao';
 

@@ -10,9 +10,7 @@ import { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { BaseChatOpenAICallOptions, ChatOpenAI } from '@langchain/openai';
 import { DefaultLogger } from '@packages/common';
 
-import { isCostLimitExceeded } from '../../../../utils/cost-limits/cost-limit.utils';
 import { FinishTool } from '../../../agent-tools/tools/core/finish.tool';
-import type { CostLimitResolverService } from '../../../cost-limits/services/cost-limit-resolver.service';
 import { UsageMetadata } from '../../../litellm/litellm.types';
 import type { LitellmService } from '../../../litellm/services/litellm.service';
 import { CostLimitExceededError } from '../../agents.errors';
@@ -28,6 +26,7 @@ import {
   stripProxyPrefix,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
+import { isCostLimitExceeded } from '../../cost-limits/cost-limit.utils';
 import { BaseNode } from './base-node';
 
 type ToolWithTitle = DynamicStructuredTool & {
@@ -38,6 +37,12 @@ type InvokeLlmNodeOpts = {
   systemPrompt?: string;
   toolChoice?: BaseChatOpenAICallOptions['tool_choice'];
   parallelToolCalls?: boolean;
+  /**
+   * When true, the node enforces the effective cost limit read from
+   * `config.configurable.effective_cost_limit_usd`. Subagents pass false so
+   * their LLM calls don't enforce (parent enforces after subagent returns).
+   */
+  enforceCostLimit?: boolean;
 };
 
 export class InvokeLlmNode extends BaseNode<
@@ -50,7 +55,6 @@ export class InvokeLlmNode extends BaseNode<
     private tools: ToolWithTitle[],
     private opts?: InvokeLlmNodeOpts,
     private readonly logger?: DefaultLogger,
-    private readonly costLimitResolver?: CostLimitResolverService,
   ) {
     super();
   }
@@ -173,25 +177,24 @@ export class InvokeLlmNode extends BaseNode<
       threadUsage.durationMs = durationMs;
     }
 
-    // When costLimitResolver is undefined (subagent path), skip enforcement —
-    // subagent costs fold up via tool-executor-node's usage merge and are checked on the next parent LLM call.
-    // Slight overshoot is acceptable: subagent costs count toward the parent thread's limit eventually.
-    if (this.costLimitResolver) {
-      const userId = cfg.configurable?.thread_created_by;
-      const graphId = cfg.configurable?.graph_id;
-      if (userId && graphId) {
-        const effectiveLimit = await this.costLimitResolver.resolveForThread(
-          userId,
-          graphId,
+    // Enforcement is opt-in via `enforceCostLimit`. The effective limit is
+    // provided by the caller through `config.configurable.effective_cost_limit_usd`
+    // (resolved once per user message in GraphsService.executeTrigger and
+    // persisted to thread metadata). Subagents skip enforcement by construction:
+    // their costs fold up via tool-executor-node's usage merge and are checked
+    // on the next parent LLM call. Slight overshoot is acceptable.
+    if (this.opts?.enforceCostLimit) {
+      const effectiveLimit =
+        typeof cfg.configurable?.effective_cost_limit_usd === 'number'
+          ? cfg.configurable.effective_cost_limit_usd
+          : null;
+      const projectedTotal =
+        (state.totalPrice ?? 0) + (threadUsage?.totalPrice ?? 0);
+      if (isCostLimitExceeded(projectedTotal, effectiveLimit)) {
+        throw new CostLimitExceededError(
+          effectiveLimit as number,
+          projectedTotal,
         );
-        const projectedTotal =
-          (state.totalPrice ?? 0) + (threadUsage?.totalPrice ?? 0);
-        if (isCostLimitExceeded(projectedTotal, effectiveLimit)) {
-          throw new CostLimitExceededError(
-            effectiveLimit as number,
-            projectedTotal,
-          );
-        }
       }
     }
 

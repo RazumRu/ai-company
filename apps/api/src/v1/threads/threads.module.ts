@@ -2,7 +2,6 @@ import { forwardRef, Module } from '@nestjs/common';
 import { registerEntities } from '@packages/mikroorm';
 
 import { AgentsModule } from '../agents/agents.module';
-import { CostLimitsModule } from '../cost-limits/cost-limits.module';
 import { GraphsModule } from '../graphs/graphs.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -26,7 +25,6 @@ import { ThreadsListener } from './threads.listener';
     NotificationsModule,
     LitellmModule,
     OpenaiModule,
-    CostLimitsModule,
   ],
   controllers: [ThreadsController],
   providers: [

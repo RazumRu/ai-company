@@ -10,7 +10,6 @@ import { PassThrough, Readable } from 'stream';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
-import { CostLimitResolverService } from '../../cost-limits/services/cost-limit-resolver.service';
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageRole } from '../../graphs/graphs.types';
 import { GraphsService } from '../../graphs/services/graphs.service';
@@ -46,7 +45,6 @@ export class ThreadsService {
     private readonly checkpointStateService: CheckpointStateService,
     private readonly graphDao: GraphDao,
     private readonly threadResumeService: ThreadResumeService,
-    private readonly costLimitResolver: CostLimitResolverService,
   ) {}
 
   async getThreads(
@@ -333,32 +331,19 @@ export class ThreadsService {
     const graphIds = [...new Set(entities.map((e) => e.graphId))];
     const agentsByGraphId = await this.graphDao.getAgentsByGraphIds(graphIds);
 
-    const costLimitCache = new Map<string, Promise<number | null>>();
-    const getEffectiveCostLimit = (
-      userId: string,
-      graphId: string,
-    ): Promise<number | null> => {
-      const cacheKey = `${userId}:${graphId}`;
-      const cached = costLimitCache.get(cacheKey);
-      if (cached) {
-        return cached;
-      }
-      const promise = this.costLimitResolver.resolveForThread(userId, graphId);
-      costLimitCache.set(cacheKey, promise);
-      return promise;
-    };
-
-    const effectiveCostLimits = await Promise.all(
-      entities.map((entity) =>
-        getEffectiveCostLimit(entity.createdBy, entity.graphId),
-      ),
-    );
-
-    return entities.map((entity, index) => {
+    return entities.map((entity) => {
       const { deletedAt: _deletedAt, ...entityWithoutExcludedFields } = entity;
-      const stopReason =
-        (entity.metadata as { stopReason?: string } | undefined)?.stopReason ??
-        null;
+      const metadata = entity.metadata as
+        | {
+            stopReason?: string;
+            effectiveCostLimitUsd?: number | null;
+          }
+        | undefined;
+      const stopReason = metadata?.stopReason ?? null;
+      const effectiveCostLimitUsd =
+        typeof metadata?.effectiveCostLimitUsd === 'number'
+          ? metadata.effectiveCostLimitUsd
+          : null;
       return {
         ...entityWithoutExcludedFields,
         createdAt: new Date(entity.createdAt).toISOString(),
@@ -366,7 +351,7 @@ export class ThreadsService {
         metadata: entity.metadata || {},
         agents: agentsByGraphId.get(entity.graphId) ?? null,
         stopReason,
-        effectiveCostLimitUsd: effectiveCostLimits[index] ?? null,
+        effectiveCostLimitUsd,
       };
     });
   }

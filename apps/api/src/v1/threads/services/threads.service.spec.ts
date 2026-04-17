@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
-import { CostLimitResolverService } from '../../cost-limits/services/cost-limit-resolver.service';
 import { GraphDao } from '../../graphs/dao/graph.dao';
 import { MessageRole } from '../../graphs/graphs.types';
 import { GraphsService } from '../../graphs/services/graphs.service';
@@ -29,7 +28,6 @@ describe('ThreadsService', () => {
   let graphDao: GraphDao;
   let graphsService: GraphsService;
   let threadResumeService: ThreadResumeService;
-  let costLimitResolver: CostLimitResolverService;
 
   const mockUserId = 'user-123';
   const mockGraphId = 'graph-456';
@@ -141,12 +139,6 @@ describe('ThreadsService', () => {
             cancelWait: vi.fn(),
           },
         },
-        {
-          provide: CostLimitResolverService,
-          useValue: {
-            resolveForThread: vi.fn().mockResolvedValue(null),
-          },
-        },
       ],
     }).compile();
 
@@ -161,9 +153,6 @@ describe('ThreadsService', () => {
     graphDao = module.get<GraphDao>(GraphDao);
     graphsService = module.get<GraphsService>(GraphsService);
     threadResumeService = module.get<ThreadResumeService>(ThreadResumeService);
-    costLimitResolver = module.get<CostLimitResolverService>(
-      CostLimitResolverService,
-    );
   });
 
   describe('getThreads', () => {
@@ -408,57 +397,65 @@ describe('ThreadsService', () => {
       expect(result.stopReason).toBe('cost_limit');
     });
 
-    it('reflects the resolver output in effectiveCostLimitUsd', async () => {
-      const mockThread = createMockThreadEntity();
+    it('reflects the metadata-stored value in effectiveCostLimitUsd', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { effectiveCostLimitUsd: 5.25 },
+      });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(5.25);
 
       const result = await service.getThreadById(mockCtx, mockThreadId);
 
-      expect(costLimitResolver.resolveForThread).toHaveBeenCalledWith(
-        mockUserId,
-        mockGraphId,
-      );
       expect(result.effectiveCostLimitUsd).toBe(5.25);
     });
 
-    it('returns effectiveCostLimitUsd as null when resolver returns null', async () => {
-      const mockThread = createMockThreadEntity();
+    it('returns effectiveCostLimitUsd as null when metadata has no entry', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { otherKey: 'value' },
+      });
 
       vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(null);
 
       const result = await service.getThreadById(mockCtx, mockThreadId);
 
       expect(result.effectiveCostLimitUsd).toBeNull();
     });
 
-    it('memoizes resolver calls per (userId, graphId) across a list response', async () => {
+    it('returns effectiveCostLimitUsd as null when metadata stores null', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { effectiveCostLimitUsd: null },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      const result = await service.getThreadById(mockCtx, mockThreadId);
+
+      expect(result.effectiveCostLimitUsd).toBeNull();
+    });
+
+    it('reads each thread limit from its own metadata in list responses', async () => {
       const mockThreads = [
-        createMockThreadEntity({ id: 'thread-a' }),
-        createMockThreadEntity({ id: 'thread-b' }),
-        createMockThreadEntity({ id: 'thread-c', graphId: 'graph-other' }),
+        createMockThreadEntity({
+          id: 'thread-a',
+          metadata: { effectiveCostLimitUsd: 1 },
+        }),
+        createMockThreadEntity({
+          id: 'thread-b',
+          metadata: { effectiveCostLimitUsd: 1 },
+        }),
+        createMockThreadEntity({
+          id: 'thread-c',
+          graphId: 'graph-other',
+          metadata: { effectiveCostLimitUsd: 2 },
+        }),
       ];
 
       vi.spyOn(threadsDao, 'getAll').mockResolvedValue(mockThreads);
-      vi.mocked(costLimitResolver.resolveForThread).mockImplementation(
-        async (_userId, graphId) => (graphId === mockGraphId ? 1 : 2),
-      );
 
       const query: GetThreadsQueryDto = { limit: 50, offset: 0 };
 
       const result = await service.getThreads(mockCtx, query);
 
-      expect(costLimitResolver.resolveForThread).toHaveBeenCalledTimes(2);
-      expect(costLimitResolver.resolveForThread).toHaveBeenCalledWith(
-        mockUserId,
-        mockGraphId,
-      );
-      expect(costLimitResolver.resolveForThread).toHaveBeenCalledWith(
-        mockUserId,
-        'graph-other',
-      );
       expect(result[0]!.effectiveCostLimitUsd).toBe(1);
       expect(result[1]!.effectiveCostLimitUsd).toBe(1);
       expect(result[2]!.effectiveCostLimitUsd).toBe(2);

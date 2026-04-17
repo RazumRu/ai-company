@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { registerEntities } from '@packages/mikroorm';
 
 import { AgentToolsModule } from '../agent-tools/agent-tools.module';
-import { CostLimitsModule } from '../cost-limits/cost-limits.module';
 import { LitellmModule } from '../litellm/litellm.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RuntimeModule } from '../runtime/runtime.module';
@@ -22,7 +21,6 @@ import { PgCheckpointSaver } from './services/pg-checkpoint-saver';
     AgentToolsModule,
     NotificationsModule,
     LitellmModule,
-    CostLimitsModule,
   ],
   controllers: [],
   providers: [
