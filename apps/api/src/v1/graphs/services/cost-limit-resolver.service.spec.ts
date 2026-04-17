@@ -1,17 +1,21 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { UserPreferencesService } from '../../user-preferences/services/user-preferences.service';
-import { CostLimitsDao } from '../dao/cost-limits.dao';
+import { GraphDao } from '../dao/graph.dao';
 import { CostLimitResolverService } from './cost-limit-resolver.service';
 
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_GRAPH_ID = '00000000-0000-0000-0000-000000000aaa';
 const TEST_PROJECT_ID = '00000000-0000-0000-0000-000000000bbb';
 
-const mockDao = {
-  getGraphCostLimitRow: vi.fn(),
-  getProjectCostLimitRow: vi.fn(),
+const mockGraphDao = {
+  getById: vi.fn(),
+};
+
+const mockProjectsDao = {
+  getById: vi.fn(),
 };
 
 const mockUserPreferencesService = {
@@ -27,7 +31,8 @@ describe('CostLimitResolverService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CostLimitResolverService,
-        { provide: CostLimitsDao, useValue: mockDao },
+        { provide: GraphDao, useValue: mockGraphDao },
+        { provide: ProjectsDao, useValue: mockProjectsDao },
         {
           provide: UserPreferencesService,
           useValue: mockUserPreferencesService,
@@ -39,13 +44,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('returns null when all three sources are null', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: {},
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
-      settings: {},
-    });
+    mockProjectsDao.getById.mockResolvedValue({ settings: {} });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
 
     const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
@@ -54,13 +57,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('returns the graph limit when only graph is set', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: { costLimitUsd: 0.5 },
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
-      settings: {},
-    });
+    mockProjectsDao.getById.mockResolvedValue({ settings: {} });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
 
     const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
@@ -69,11 +70,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('returns the project limit when only project is set', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: {},
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 1.25 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
@@ -84,13 +85,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('returns the user limit when only user preference is set', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: {},
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
-      settings: {},
-    });
+    mockProjectsDao.getById.mockResolvedValue({ settings: {} });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(3.5);
 
     const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
@@ -99,11 +98,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('returns the strictest (smallest) non-zero limit when all three are present', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: { costLimitUsd: 5 },
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 2 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(10);
@@ -114,11 +113,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('treats zero as unlimited and picks the remaining non-zero limit', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: { costLimitUsd: 0 },
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 2 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
@@ -129,7 +128,7 @@ describe('CostLimitResolverService', () => {
   });
 
   it('skips the project lookup when graph has no projectId', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: null,
       settings: { costLimitUsd: 1 },
     });
@@ -138,25 +137,25 @@ describe('CostLimitResolverService', () => {
     const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
 
     expect(result).toBe(1);
-    expect(mockDao.getProjectCostLimitRow).not.toHaveBeenCalled();
+    expect(mockProjectsDao.getById).not.toHaveBeenCalled();
   });
 
   it('treats graph as null when graph is not found', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue(null);
+    mockGraphDao.getById.mockResolvedValue(null);
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(4);
 
     const result = await service.resolveForThread(TEST_USER_ID, TEST_GRAPH_ID);
 
     expect(result).toBe(4);
-    expect(mockDao.getProjectCostLimitRow).not.toHaveBeenCalled();
+    expect(mockProjectsDao.getById).not.toHaveBeenCalled();
   });
 
   it('treats user as null when the user preferences row is missing', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: {},
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 7 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
@@ -167,11 +166,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('treats NaN as no limit and picks the remaining value', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: { costLimitUsd: Number.NaN },
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 2 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
@@ -182,11 +181,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('treats Infinity as no limit and picks the remaining value', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: { costLimitUsd: Number.POSITIVE_INFINITY },
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 2 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
@@ -197,11 +196,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('treats negative numbers as no limit (defensive)', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: { costLimitUsd: -1 },
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 4 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);
@@ -212,11 +211,11 @@ describe('CostLimitResolverService', () => {
   });
 
   it('treats non-numeric settings values as no limit', async () => {
-    mockDao.getGraphCostLimitRow.mockResolvedValue({
+    mockGraphDao.getById.mockResolvedValue({
       projectId: TEST_PROJECT_ID,
       settings: { costLimitUsd: 'not-a-number' },
     });
-    mockDao.getProjectCostLimitRow.mockResolvedValue({
+    mockProjectsDao.getById.mockResolvedValue({
       settings: { costLimitUsd: 3 },
     });
     mockUserPreferencesService.getCostLimitForUser.mockResolvedValue(null);

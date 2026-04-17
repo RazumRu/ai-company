@@ -14,7 +14,6 @@ import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
-import { CostLimitResolverService } from '../../cost-limits/services/cost-limit-resolver.service';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
@@ -46,6 +45,7 @@ import {
   extractNodeDisplayNamesFromMetadata,
   extractTriggerNodesFromSchema,
 } from '../graphs.utils';
+import { CostLimitResolverService } from './cost-limit-resolver.service';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';

@@ -13,7 +13,6 @@ import { AppContextStorage } from '../../../auth/app-context-storage';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
-import { CostLimitResolverService } from '../../cost-limits/services/cost-limit-resolver.service';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
@@ -39,6 +38,7 @@ import {
   MessageRole,
   NodeKind,
 } from '../graphs.types';
+import { CostLimitResolverService } from './cost-limit-resolver.service';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
