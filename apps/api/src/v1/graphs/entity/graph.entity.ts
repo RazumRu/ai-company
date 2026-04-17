@@ -9,6 +9,7 @@ import {
 } from '@mikro-orm/decorators/legacy';
 
 import { AuditEntity } from '../../../auth/audit.entity';
+import type { Settings } from '../../cost-limits/cost-limit-settings.schema';
 import { ThreadEntity } from '../../threads/entity/thread.entity';
 import {
   type GraphAgentInfo,
@@ -50,7 +51,7 @@ export class GraphEntity extends AuditEntity {
   metadata?: Record<string, unknown> | null;
 
   @Property({ type: 'jsonb', default: '{}' })
-  settings!: Record<string, unknown>;
+  settings!: Settings;
 
   @Property({ type: 'jsonb', nullable: true })
   agents?: GraphAgentInfo[] | null;

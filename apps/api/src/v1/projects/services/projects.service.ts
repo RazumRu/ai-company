@@ -30,15 +30,12 @@ export class ProjectsService {
       threadCount: 0,
     },
   ): ProjectDto {
-    const settings = entity.settings as
-      | { costLimitUsd?: number | null }
-      | undefined;
     return {
       ...entity,
       description: entity.description ?? null,
       icon: entity.icon ?? null,
       color: entity.color ?? null,
-      costLimitUsd: settings?.costLimitUsd ?? null,
+      costLimitUsd: entity.settings?.costLimitUsd ?? null,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
       graphCount: stats.graphCount,

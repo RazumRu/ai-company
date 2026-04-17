@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { CostLimitSettingsSchema } from '../../agents/cost-limits/cost-limit-settings.schema';
+import { CostLimitSettingsSchema } from '../../cost-limits/cost-limit-settings.schema';
 
 export const ProjectSchema = z.object({
   id: z.uuid(),

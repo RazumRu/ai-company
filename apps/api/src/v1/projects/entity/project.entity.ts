@@ -6,6 +6,8 @@ import {
 } from '@mikro-orm/decorators/legacy';
 import { TimestampsEntity } from '@packages/mikroorm';
 
+import type { Settings } from '../../cost-limits/cost-limit-settings.schema';
+
 @Entity({ tableName: 'projects' })
 export class ProjectEntity extends TimestampsEntity {
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
@@ -24,7 +26,7 @@ export class ProjectEntity extends TimestampsEntity {
   color?: string | null;
 
   @Property({ type: 'jsonb', default: '{}' })
-  settings!: Record<string, unknown>;
+  settings!: Settings;
 
   @Property({ type: 'varchar' })
   @Index()

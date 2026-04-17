@@ -791,7 +791,7 @@ export class GraphRevisionService {
     const llmRequestContext =
       await this.llmModelsService.buildLLMRequestContext(
         graph.createdBy,
-        project?.settings as Record<string, unknown> | undefined,
+        project?.settings,
       );
     const metadata = {
       graphId: graph.id,

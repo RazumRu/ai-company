@@ -70,10 +70,7 @@ export class GraphsService {
   ) {}
 
   private extractGraphCostLimitUsd(entity: GraphEntity): number | null {
-    return (
-      (entity.settings as { costLimitUsd?: number | null } | undefined)
-        ?.costLimitUsd ?? null
-    );
+    return entity.settings?.costLimitUsd ?? null;
   }
 
   private prepareResponse(

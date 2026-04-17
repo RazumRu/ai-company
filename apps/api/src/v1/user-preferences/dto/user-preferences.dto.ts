@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { CostLimitSettingsSchema } from '../../agents/cost-limits/cost-limit-settings.schema';
+import { CostLimitSettingsSchema } from '../../cost-limits/cost-limit-settings.schema';
 
 const ModelOverridesSchema = z.object({
   llmLargeModel: z.string().max(200).nullable().optional(),
