@@ -85,6 +85,7 @@ export interface IAgentStateUpdateData {
   totalTokens?: number;
   totalPrice?: number;
   currentContext?: number;
+  effectiveCostLimitUsd?: number | null;
 }
 
 export interface IAgentStateUpdateNotification extends INotification<IAgentStateUpdateData> {
@@ -106,6 +107,8 @@ export interface IThreadUpdateData {
   name?: string;
   scheduledResumeAt?: string;
   waitReason?: string;
+  stopReason?: string | null;
+  stopCostUsd?: number | null;
 }
 
 export type ThreadUpdateNotificationData = IThreadUpdateData | ThreadDto;

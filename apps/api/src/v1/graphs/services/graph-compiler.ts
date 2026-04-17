@@ -221,7 +221,7 @@ export class GraphCompiler {
     const llmRequestContext =
       await this.llmModelsService.buildLLMRequestContext(
         entity.createdBy,
-        project?.settings as Record<string, unknown> | undefined,
+        project?.settings,
       );
 
     const metadata: GraphMetadataSchemaType = {

@@ -3,6 +3,11 @@ import { z } from 'zod';
 import type { LLMRequestContext } from '../agents/agents.types';
 import type { GraphStateManager } from './services/graph-state.manager';
 
+export interface GraphSettings {
+  costLimitUsd?: number | null;
+  [key: string]: unknown;
+}
+
 export enum NodeKind {
   Runtime = 'runtime',
   Tool = 'tool',

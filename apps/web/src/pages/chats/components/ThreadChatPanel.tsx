@@ -1162,6 +1162,13 @@ export const ThreadChatPanel: React.FC<ThreadChatPanelProps> = ({
           showNodeHeadings
           pendingMessages={pendingMessages}
           newMessageMode={newMessageMode}
+          stopReason={thread.stopReason}
+          stopCostUsd={
+            typeof thread.metadata?.stopCostUsd === 'number' &&
+            Number.isFinite(thread.metadata.stopCostUsd)
+              ? thread.metadata.stopCostUsd
+              : null
+          }
         />
       </div>
 

@@ -386,6 +386,7 @@ describe('SocketGateway', () => {
         targetVersion: '1.0.0',
         temporary: false,
         schema: {} as any,
+        settings: {},
         status: GraphStatus.Running as any,
         createdAt: new Date(),
         updatedAt: new Date(),

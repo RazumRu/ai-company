@@ -7,6 +7,7 @@ export type ThreadTokenUsageSnapshot = {
   totalTokens?: number;
   totalPrice?: number;
   currentContext?: number;
+  effectiveCostLimitUsd?: number | null;
 };
 
 export type ThreadSocketEventEntry = {

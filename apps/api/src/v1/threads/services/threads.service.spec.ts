@@ -362,6 +362,106 @@ describe('ThreadsService', () => {
     });
   });
 
+  describe('prepareThreadsResponse — stopReason & effectiveCostLimitUsd', () => {
+    it('returns stopReason as null when metadata is absent', async () => {
+      const mockThread = createMockThreadEntity({ metadata: undefined });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      const result = await service.getThreadById(mockCtx, mockThreadId);
+
+      expect(result.stopReason).toBeNull();
+    });
+
+    it('returns stopReason as null when metadata has no stopReason key', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { otherKey: 'value' },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      const result = await service.getThreadById(mockCtx, mockThreadId);
+
+      expect(result.stopReason).toBeNull();
+    });
+
+    it('returns stopReason as "cost_limit" when metadata carries it', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { stopReason: 'cost_limit' },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      const result = await service.getThreadById(mockCtx, mockThreadId);
+
+      expect(result.stopReason).toBe('cost_limit');
+    });
+
+    it('reflects the metadata-stored value in effectiveCostLimitUsd', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { effectiveCostLimitUsd: 5.25 },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      const result = await service.getThreadById(mockCtx, mockThreadId);
+
+      expect(result.effectiveCostLimitUsd).toBe(5.25);
+    });
+
+    it('returns effectiveCostLimitUsd as null when metadata has no entry', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { otherKey: 'value' },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      const result = await service.getThreadById(mockCtx, mockThreadId);
+
+      expect(result.effectiveCostLimitUsd).toBeNull();
+    });
+
+    it('returns effectiveCostLimitUsd as null when metadata stores null', async () => {
+      const mockThread = createMockThreadEntity({
+        metadata: { effectiveCostLimitUsd: null },
+      });
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+
+      const result = await service.getThreadById(mockCtx, mockThreadId);
+
+      expect(result.effectiveCostLimitUsd).toBeNull();
+    });
+
+    it('reads each thread limit from its own metadata in list responses', async () => {
+      const mockThreads = [
+        createMockThreadEntity({
+          id: 'thread-a',
+          metadata: { effectiveCostLimitUsd: 1 },
+        }),
+        createMockThreadEntity({
+          id: 'thread-b',
+          metadata: { effectiveCostLimitUsd: 1 },
+        }),
+        createMockThreadEntity({
+          id: 'thread-c',
+          graphId: 'graph-other',
+          metadata: { effectiveCostLimitUsd: 2 },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getAll').mockResolvedValue(mockThreads);
+
+      const query: GetThreadsQueryDto = { limit: 50, offset: 0 };
+
+      const result = await service.getThreads(mockCtx, query);
+
+      expect(result[0]!.effectiveCostLimitUsd).toBe(1);
+      expect(result[1]!.effectiveCostLimitUsd).toBe(1);
+      expect(result[2]!.effectiveCostLimitUsd).toBe(2);
+    });
+  });
+
   describe('token usage aggregation', () => {
     it('does not include tokenUsage in thread response for running threads', async () => {
       const mockThread = createMockThreadEntity({

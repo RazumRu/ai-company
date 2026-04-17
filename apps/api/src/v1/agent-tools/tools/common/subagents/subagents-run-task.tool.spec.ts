@@ -436,6 +436,46 @@ describe('SubagentsRunTaskTool', () => {
 
       expect(result.output.error).toBe('Aborted');
     });
+
+    it('should surface stopReason="cost_limit" in ToolInvokeResult when sub-agent hits cost limit', async () => {
+      mockSubAgent.runSubagent.mockResolvedValueOnce({
+        result: 'Subagent stopped: cost limit $2.00 reached (total: $3.5000).',
+        statistics: { totalIterations: 2, toolCallsMade: 1, usage: null },
+        exploredFiles: [],
+        error: 'Cost limit reached',
+        stopReason: 'cost_limit' as const,
+        stopCostUsd: 3.5,
+      });
+
+      const result = await tool.invoke(
+        {
+          agentId: 'system:simple',
+          task: 'Do work',
+          purpose: 'Test',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      expect(result.stopReason).toBe('cost_limit');
+      expect(result.stopCostUsd).toBe(3.5);
+      expect(result.output.error).toBe('Cost limit reached');
+    });
+
+    it('should not set stopReason when sub-agent completes normally', async () => {
+      const result = await tool.invoke(
+        {
+          agentId: 'system:simple',
+          task: 'Do work',
+          purpose: 'Test',
+        },
+        makeConfig(),
+        defaultCfg,
+      );
+
+      expect(result.stopReason).toBeUndefined();
+      expect(result.stopCostUsd).toBeUndefined();
+    });
   });
 
   describe('title generation', () => {

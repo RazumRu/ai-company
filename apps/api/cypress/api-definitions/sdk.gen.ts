@@ -9,10 +9,13 @@ import type {
 import type {
   AnalyzeThreadData,
   AnalyzeThreadResponses,
+  CancelWaitData,
+  CancelWaitResponses,
   CheckHealthData,
   CheckHealthResponses,
   CreateCredentialData,
   CreateCredentialResponses,
+  CreateData,
   CreateDocData,
   CreateDocResponses,
   CreateGraphData,
@@ -23,8 +26,10 @@ import type {
   CreateProjectResponses,
   CreateRepositoryData,
   CreateRepositoryResponses,
+  CreateResponses,
   DeleteCredentialData,
   DeleteCredentialResponses,
+  DeleteData,
   DeleteDocData,
   DeleteDocResponses,
   DeleteGraphData,
@@ -35,6 +40,7 @@ import type {
   DeleteProjectResponses,
   DeleteRepositoryData,
   DeleteRepositoryResponses,
+  DeleteResponses,
   DeleteThreadData,
   DeleteThreadResponses,
   DestroyGraphData,
@@ -49,16 +55,26 @@ import type {
   FindGraphByIdResponses,
   FindProjectByIdData,
   FindProjectByIdResponses,
+  GetAll2Data,
+  GetAll2Responses,
+  GetAllData,
   GetAllGraphsData,
   GetAllGraphsResponses,
   GetAllProjectsData,
   GetAllProjectsResponses,
+  GetAllResponses,
   GetAllTemplatesData,
   GetAllTemplatesResponses,
   GetAuthConfigData,
   GetAuthConfigResponses,
   GetByGraphData,
   GetByGraphResponses,
+  GetById2Data,
+  GetById2Responses,
+  GetById3Data,
+  GetById3Responses,
+  GetByIdData,
+  GetByIdResponses,
   GetCompiledNodesData,
   GetCompiledNodesResponses,
   GetDocData,
@@ -103,6 +119,7 @@ import type {
   LinkViaOAuthCodeResponses,
   ListCredentialsData,
   ListCredentialsResponses,
+  ListData,
   ListDocsData,
   ListDocsResponses,
   ListInstallationsData,
@@ -113,6 +130,9 @@ import type {
   ListModelsResponses,
   ListProvidersData,
   ListProvidersResponses,
+  ListResponses,
+  ResumeThreadData,
+  ResumeThreadResponses,
   RunGraphData,
   RunGraphResponses,
   SetThreadMetadataByExternalIdData,
@@ -139,6 +159,7 @@ import type {
   TriggerReindexResponses,
   UnlinkInstallationData,
   UnlinkInstallationResponses,
+  UpdateData,
   UpdateDocData,
   UpdateDocResponses,
   UpdateGraphData,
@@ -151,6 +172,7 @@ import type {
   UpdateProjectResponses,
   UpdateRepositoryData,
   UpdateRepositoryResponses,
+  UpdateResponses,
 } from './types.gen.js';
 
 export type Options<
@@ -1102,6 +1124,83 @@ export const stopThreadByExternalId = <ThrowOnError extends boolean = false>(
     ...options,
   });
 
+export const resumeThread = <ThrowOnError extends boolean = false>(
+  options: Options<ResumeThreadData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<ResumeThreadResponses, unknown, ThrowOnError>(
+    {
+      security: [{ scheme: 'bearer', type: 'http' }],
+      url: '/api/v1/threads/{threadId}/resume',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    },
+  );
+
+export const cancelWait = <ThrowOnError extends boolean = false>(
+  options: Options<CancelWaitData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<CancelWaitResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/threads/{threadId}/cancel-wait',
+    ...options,
+  });
+
+export const list = <ThrowOnError extends boolean = false>(
+  options?: Options<ListData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<ListResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/secrets',
+    ...options,
+  });
+
+export const create = <ThrowOnError extends boolean = false>(
+  options: Options<CreateData, ThrowOnError>,
+) =>
+  (options.client ?? client).post<CreateResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/secrets',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+export const delete_ = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteData, ThrowOnError>,
+) =>
+  (options.client ?? client).delete<DeleteResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/secrets/{id}',
+    ...options,
+  });
+
+export const getById = <ThrowOnError extends boolean = false>(
+  options: Options<GetByIdData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<GetByIdResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/secrets/{id}',
+    ...options,
+  });
+
+export const update = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateData, ThrowOnError>,
+) =>
+  (options.client ?? client).patch<UpdateResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/secrets/{id}',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
 export const getOverview = <ThrowOnError extends boolean = false>(
   options?: Options<GetOverviewData, ThrowOnError>,
 ) =>
@@ -1117,6 +1216,42 @@ export const getByGraph = <ThrowOnError extends boolean = false>(
   (options?.client ?? client).get<GetByGraphResponses, unknown, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/analytics/by-graph',
+    ...options,
+  });
+
+export const getAll = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAllData, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetAllResponses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/system-agents',
+    ...options,
+  });
+
+export const getById2 = <ThrowOnError extends boolean = false>(
+  options: Options<GetById2Data, ThrowOnError>,
+) =>
+  (options.client ?? client).get<GetById2Responses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/system-agents/{id}',
+    ...options,
+  });
+
+export const getAll2 = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAll2Data, ThrowOnError>,
+) =>
+  (options?.client ?? client).get<GetAll2Responses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/instruction-blocks',
+    ...options,
+  });
+
+export const getById3 = <ThrowOnError extends boolean = false>(
+  options: Options<GetById3Data, ThrowOnError>,
+) =>
+  (options.client ?? client).get<GetById3Responses, unknown, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/instruction-blocks/{id}',
     ...options,
   });
 

@@ -13,6 +13,7 @@ import { isEqual } from 'lodash';
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { BaseTrigger } from '../../agent-triggers/services/base-trigger';
 import { SimpleAgent } from '../../agents/services/agents/simple-agent';
+import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
@@ -44,6 +45,7 @@ import {
   extractNodeDisplayNamesFromMetadata,
   extractTriggerNodesFromSchema,
 } from '../graphs.utils';
+import { CostLimitResolverService } from './cost-limit-resolver.service';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -63,7 +65,13 @@ export class GraphsService {
     private readonly projectsDao: ProjectsDao,
     private readonly templateRegistry: TemplateRegistry,
     private readonly threadResumeQueueService: ThreadResumeQueueService,
+    private readonly costLimitResolver: CostLimitResolverService,
+    private readonly checkpointStateService: CheckpointStateService,
   ) {}
+
+  private extractGraphCostLimitUsd(entity: GraphEntity): number | null {
+    return entity.settings?.costLimitUsd ?? null;
+  }
 
   private prepareResponse(
     entity: GraphEntity,
@@ -75,6 +83,7 @@ export class GraphsService {
       totalThreads: threadCounts?.total ?? 0,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
+      costLimitUsd: this.extractGraphCostLimitUsd(entity),
     };
   }
 
@@ -213,6 +222,7 @@ export class GraphsService {
         updatedAt: new Date(entity.updatedAt).toISOString(),
         temporary: entity.temporary,
         projectId: entity.projectId,
+        costLimitUsd: this.extractGraphCostLimitUsd(entity),
       };
     });
   }
@@ -249,8 +259,15 @@ export class GraphsService {
     data: UpdateGraphDto,
   ): Promise<UpdateGraphResponseDto> {
     const userId = ctx.checkSub();
-    const { currentVersion, metadata, schema, name, description, temporary } =
-      data;
+    const {
+      currentVersion,
+      metadata,
+      schema,
+      name,
+      description,
+      temporary,
+      costLimitUsd,
+    } = data;
 
     // Use transaction with row-level locking to prevent simultaneous updates.
     // Post-transaction data (revision to enqueue, notification to emit) is returned
@@ -318,6 +335,13 @@ export class GraphsService {
           temporary !== graph.temporary
         ) {
           syncUpdates.temporary = temporary;
+        }
+
+        if (costLimitUsd !== undefined) {
+          syncUpdates.settings = {
+            ...(graph.settings ?? {}),
+            costLimitUsd,
+          };
         }
 
         if (Object.keys(syncUpdates).length > 0) {
@@ -723,27 +747,108 @@ export class GraphsService {
       );
     }
 
-    // If the thread is currently waiting, cancel the pending resume job
-    // so the user's message takes over (edge case: user sends message to waiting thread)
-    if (dto.threadSubId) {
-      const existingThread = await this.threadsDao.getOne({
-        externalThreadId: `${graphId}:${dto.threadSubId}`,
-        graphId: graphId,
-      });
+    // Resolve the effective cost limit once at the trigger boundary so both
+    // the running agent and the persisted thread metadata agree. This is also
+    // the single "new user message" write point that refreshes the stored
+    // limit when the user or admin changes the configured value between
+    // messages.
+    const effectiveCostLimitUsd = await this.costLimitResolver.resolveForThread(
+      userId,
+      graphId,
+    );
 
-      if (existingThread?.status === ThreadStatus.Waiting) {
-        try {
-          await this.threadResumeQueueService.cancelResumeJob(
-            existingThread.id,
-          );
-          await this.threadsDao.updateById(existingThread.id, {
-            status: ThreadStatus.Running,
-            metadata: clearWaitMetadata(existingThread.metadata),
-          });
-        } catch {
-          // Best effort — the user message will proceed regardless
+    if (dto.threadSubId) {
+      // wrap the entire "existing thread" branch in a pessimistic-write
+      // transaction to prevent TOCTOU races where two concurrent requests
+      // read Stopped status simultaneously and both bypass the resume guard.
+      await this.em.transactional(async (em: EntityManager) => {
+        const existingThread = await this.threadsDao.getOne(
+          {
+            externalThreadId: `${graphId}:${dto.threadSubId}`,
+            graphId: graphId,
+          },
+          { lockMode: LockMode.PESSIMISTIC_WRITE },
+          em,
+        );
+
+        if (!existingThread) {
+          return;
         }
-      }
+
+        let nextMetadata = { ...(existingThread.metadata ?? {}) } as Record<
+          string,
+          unknown
+        >;
+        let nextStatus: ThreadStatus | undefined;
+
+        if (existingThread.status === ThreadStatus.Waiting) {
+          // Cancel the pending resume job so the user's message takes over.
+          try {
+            await this.threadResumeQueueService.cancelResumeJob(
+              existingThread.id,
+            );
+            nextMetadata = clearWaitMetadata(existingThread.metadata) ?? {};
+            nextStatus = ThreadStatus.Running;
+          } catch {
+            // Best effort — the user message will proceed regardless
+          }
+        } else if (
+          existingThread.status === ThreadStatus.Stopped &&
+          ((existingThread.metadata as { stopReason?: string } | undefined)
+            ?.stopReason === 'cost_limit' ||
+            (existingThread.metadata as { costLimitHit?: boolean } | undefined)
+              ?.costLimitHit === true)
+        ) {
+          // Prefer the persisted stopCostUsd (captured at the moment the limit
+          // was exceeded) over the checkpoint total. When CostLimitExceededError
+          // fires, execution exits before the over-budget call's usage is written
+          // to the checkpoint, so the checkpoint read here would otherwise be the
+          // PRE-call total and would allow resume without the user raising the
+          // limit.
+          const metadataStopCost = (
+            existingThread.metadata as { stopCostUsd?: number } | undefined
+          )?.stopCostUsd;
+
+          // if effectiveCostLimitUsd is null the user removed all limits —
+          // allow resume unconditionally. Otherwise require a valid stopCostUsd
+          // (drop the checkpoint fallback which could underestimate the cost).
+          if (effectiveCostLimitUsd !== null) {
+            if (typeof metadataStopCost !== 'number') {
+              throw new BadRequestException(
+                'THREAD_COST_LIMIT_REACHED',
+                'Raise the configured cost limit to resume this thread.',
+              );
+            }
+            if (metadataStopCost >= effectiveCostLimitUsd) {
+              throw new BadRequestException(
+                'THREAD_COST_LIMIT_REACHED',
+                `Raise the limit above $${metadataStopCost.toFixed(2)} to resume.`,
+              );
+            }
+          }
+
+          // Limit has been raised (or removed) — clear all cost-limit markers.
+          // Do NOT pre-set status: Running; the agent-run event flow sets status.
+          delete (nextMetadata as { stopReason?: string }).stopReason;
+          delete (nextMetadata as { stopCostUsd?: number }).stopCostUsd;
+          delete (nextMetadata as { costLimitHit?: boolean }).costLimitHit;
+        }
+
+        // Always refresh the persisted effective limit for the new user message
+        // so the stored value matches what the running agent is about to enforce.
+        (
+          nextMetadata as { effectiveCostLimitUsd?: number | null }
+        ).effectiveCostLimitUsd = effectiveCostLimitUsd;
+
+        await this.threadsDao.updateById(
+          existingThread.id,
+          {
+            metadata: nextMetadata,
+            ...(nextStatus ? { status: nextStatus } : {}),
+          },
+          em,
+        );
+      });
     }
 
     const res = await trigger.invokeAgent(messages, {
@@ -752,6 +857,7 @@ export class GraphsService {
         async: dto.async,
         thread_metadata: dto.metadata,
         thread_created_by: userId,
+        effective_cost_limit_usd: effectiveCostLimitUsd,
       },
     });
 
@@ -767,6 +873,19 @@ export class GraphsService {
       forkedEm,
     );
     if (!existingThread) {
+      // strip reserved server-managed keys from client-supplied metadata so
+      // clients cannot poison cost-limit state by sending these in dto.metadata.
+      const {
+        effectiveCostLimitUsd: _e,
+        stopReason: _s,
+        stopCostUsd: _c,
+        costLimitHit: _h,
+        ...clientMetadata
+      } = dto.metadata ?? {};
+      const initialMetadata: Record<string, unknown> = {
+        ...clientMetadata,
+        effectiveCostLimitUsd,
+      };
       try {
         await this.threadsDao.create(
           {
@@ -775,7 +894,7 @@ export class GraphsService {
             projectId: graph.projectId,
             externalThreadId,
             status: ThreadStatus.Running,
-            ...(dto.metadata ? { metadata: dto.metadata } : {}),
+            metadata: initialMetadata,
           },
           forkedEm,
         );

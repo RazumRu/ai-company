@@ -32,6 +32,7 @@ import { GraphExecutionMetadata } from '../../../graphs/graphs.types';
 import type { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
 import { LlmModelsService } from '../../../litellm/services/llm-models.service';
+import { CostLimitExceededError } from '../../agents.errors';
 import {
   BaseAgentConfigurable,
   BaseAgentState,
@@ -209,6 +210,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           systemPrompt: config.instructions,
           toolChoice: 'auto',
           parallelToolCalls: useParallelToolCall,
+          enforceCostLimit: true,
         },
         this.logger,
       );
@@ -460,8 +462,12 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       return;
     }
 
+    type StateChangePayload = Partial<BaseAgentState> & {
+      effectiveCostLimitUsd?: number | null;
+    };
+
     // Build state change object with only changed fields
-    const stateChange: Partial<BaseAgentState> = {};
+    const stateChange: StateChangePayload = {};
 
     if (prevState.toolsMetadata !== nextState.toolsMetadata) {
       stateChange.toolsMetadata = nextState.toolsMetadata;
@@ -525,6 +531,14 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     stateChange.totalTokens = nextState.totalTokens;
     stateChange.totalPrice = nextState.totalPrice;
     stateChange.currentContext = nextState.currentContext;
+
+    // Read the effective limit from the runnable config — it was resolved once
+    // upstream (GraphsService.executeTrigger) and persisted to thread metadata.
+    // The agent must not re-resolve on every state update.
+    const configuredLimit =
+      runnableConfig.configurable?.effective_cost_limit_usd;
+    stateChange.effectiveCostLimitUsd =
+      typeof configuredLimit === 'number' ? configuredLimit : null;
 
     this.emit({
       type: 'stateUpdate',
@@ -1042,45 +1056,80 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         }
       }
     } catch (err) {
-      const name = (err as { name?: string })?.name;
-      const msg = (err as { message?: string })?.message || '';
-      const aborted = abortController.signal.aborted;
-      if (
-        !aborted ||
-        (name !== 'AbortError' && !msg.toLowerCase().includes('abort'))
-      ) {
-        const error = err as Error;
+      if (err instanceof CostLimitExceededError) {
+        runEntry.stopped = true;
+        runEntry.stopReason = 'cost_limit';
 
-        // Emit a user-visible error message into the thread history
-        const errorText = error.message || 'Unknown error';
-        const errorMsg = markMessageHideForLlm(
-          new AIMessage(`Execution failed: ${errorText}`),
+        // Emit a user-visible SystemMessage describing the cost-limit stop.
+        const limitText = err.effectiveLimitUsd.toFixed(2);
+        const stopMsg = markMessageHideForLlm(
+          new SystemMessage(`Cost limit reached ($${limitText})`),
         );
-        errorMsg.additional_kwargs = {
-          ...(errorMsg.additional_kwargs ?? {}),
-          __isErrorMessage: true,
-        };
-        const errorMsgs = updateMessagesListWithMetadata(
-          [errorMsg],
+        const stopMsgs = updateMessagesListWithMetadata(
+          [stopMsg],
           mergedConfig,
         );
         this.emit({
           type: 'message',
           data: {
             threadId,
-            messages: errorMsgs,
+            messages: stopMsgs,
             config: mergedConfig,
           },
         });
 
-        this.activeRuns.delete(runId);
-
+        // Emit the stop event so GraphStateManager can deterministically transition
+        // the thread to Stopped with stopReason='cost_limit'.
         this.emit({
-          type: 'run',
-          data: { threadId, messages, config: mergedConfig, error },
+          type: 'stop',
+          data: {
+            config: mergedConfig,
+            threadId,
+            stopReason: 'cost_limit',
+            stopCostUsd: err.totalPriceUsd,
+          },
         });
+      } else {
+        const name = (err as { name?: string })?.name;
+        const msg = (err as { message?: string })?.message || '';
+        const aborted = abortController.signal.aborted;
+        if (
+          !aborted ||
+          (name !== 'AbortError' && !msg.toLowerCase().includes('abort'))
+        ) {
+          const error = err as Error;
 
-        throw error;
+          // Emit a user-visible error message into the thread history
+          const errorText = error.message || 'Unknown error';
+          const errorMsg = markMessageHideForLlm(
+            new AIMessage(`Execution failed: ${errorText}`),
+          );
+          errorMsg.additional_kwargs = {
+            ...(errorMsg.additional_kwargs ?? {}),
+            __isErrorMessage: true,
+          };
+          const errorMsgs = updateMessagesListWithMetadata(
+            [errorMsg],
+            mergedConfig,
+          );
+          this.emit({
+            type: 'message',
+            data: {
+              threadId,
+              messages: errorMsgs,
+              config: mergedConfig,
+            },
+          });
+
+          // M2: do NOT call this.activeRuns.delete(runId) here — the finally
+          // block always runs and handles cleanup to avoid a double-delete.
+          this.emit({
+            type: 'run',
+            data: { threadId, messages, config: mergedConfig, error },
+          });
+
+          throw error;
+        }
       }
     } finally {
       this.activeRuns.delete(runId);
@@ -1129,6 +1178,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       ? new Error(runEntry.stopReason ?? this.formatStoppedReason())
       : undefined;
 
+    // M1: the cost_limit stop path already emitted a dedicated 'stop' event
+    // (with stopReason/stopCostUsd) above; emitting a second 'run' event here
+    // would overwrite the thread's Stopped status. Skip for cost_limit stops.
+    if (runEntry.stopReason === 'cost_limit') {
+      return result;
+    }
+
     // Emit run event with result or stop error so thread status can be updated
     const runEvent: AgentRunEvent = {
       threadId,
@@ -1174,18 +1230,19 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
         this.emit({
           type: 'stop',
-          data: { config: run.runnableConfig, threadId: run.threadId },
+          data: {
+            config: run.runnableConfig,
+            threadId: run.threadId,
+            stopReason: null,
+            stopCostUsd: null,
+          },
         });
       }
 
       run.stopped = true;
       run.stopReason ??= this.formatStoppedReason(run.stopReason);
 
-      try {
-        run.abortController.abort();
-      } catch {
-        // noop
-      }
+      run.abortController.abort();
 
       this.activeRuns.delete(runId);
     }
@@ -1237,11 +1294,18 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           },
         });
 
-        // Emit stop event so GraphStateManager can deterministically emit ThreadUpdate(Sto pped)
+        // Emit stop event so GraphStateManager can deterministically emit ThreadUpdate(Stopped)
         // even if the underlying LangGraph run is aborted before it reaches the final `run` event.
+        // stopReason: null explicitly clears any previously-set cost_limit marker so a manual
+        // stop after an auto-stop doesn't leave a stale stopReason in the thread metadata.
         this.emit({
           type: 'stop',
-          data: { config: run.runnableConfig, threadId: run.threadId },
+          data: {
+            config: run.runnableConfig,
+            threadId: run.threadId,
+            stopReason: null,
+            stopCostUsd: null,
+          },
         });
 
         // Best-effort: if the agent already decided to call the shell tool but the run is being
@@ -1288,11 +1352,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       run.stopped = true;
       run.stopReason ??= this.formatStoppedReason(reason);
 
-      try {
-        run.abortController.abort();
-      } catch {
-        // noop
-      }
+      run.abortController.abort();
     }
 
     return stopped;

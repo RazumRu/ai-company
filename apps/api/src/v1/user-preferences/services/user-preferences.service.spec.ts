@@ -59,10 +59,27 @@ describe('UserPreferencesService', () => {
       expect(mockDao.upsertByUserId).not.toHaveBeenCalled();
       expect(mockDao.getOne).toHaveBeenCalledWith({ userId: TEST_USER_ID });
     });
+
+    it('should expose top-level costLimitUsd projection from stored JSONB', async () => {
+      const existing = {
+        id: 'some-uuid',
+        userId: TEST_USER_ID,
+        preferences: { costLimitUsd: 3.5 },
+        createdAt: new Date('2025-01-01T00:00:00Z'),
+        updatedAt: new Date('2025-01-01T00:00:00Z'),
+      };
+      mockDao.getOne.mockResolvedValue(existing);
+
+      const result = await service.getPreferences(ctx);
+
+      expect(result.costLimitUsd).toBe(3.5);
+      expect(result.preferences.costLimitUsd).toBe(3.5);
+    });
   });
 
   describe('updatePreferences', () => {
-    it('should replace models — no merge with existing', async () => {
+    it('should write models when dto provides models', async () => {
+      mockDao.getOne.mockResolvedValue(null);
       mockDao.upsertByUserId.mockImplementation(
         (_userId: string, preferences: Record<string, unknown>) => ({
           id: 'existing-uuid',
@@ -80,10 +97,10 @@ describe('UserPreferencesService', () => {
       expect(mockDao.upsertByUserId).toHaveBeenCalledWith(TEST_USER_ID, {
         models: { llmLargeModel: 'new-large' },
       });
-      expect(mockDao.getOne).not.toHaveBeenCalled();
     });
 
     it('should create row on first update when no row exists', async () => {
+      mockDao.getOne.mockResolvedValue(null);
       mockDao.upsertByUserId.mockImplementation(
         (_userId: string, preferences: Record<string, unknown>) => ({
           id: 'new-uuid',
@@ -104,7 +121,8 @@ describe('UserPreferencesService', () => {
       });
     });
 
-    it('should use empty models object when models not provided in dto', async () => {
+    it('should not touch models when dto omits models', async () => {
+      mockDao.getOne.mockResolvedValue(null);
       mockDao.upsertByUserId.mockImplementation(
         (_userId: string, preferences: Record<string, unknown>) => ({
           id: 'existing-uuid',
@@ -117,8 +135,83 @@ describe('UserPreferencesService', () => {
 
       await service.updatePreferences(ctx, {});
 
+      expect(mockDao.upsertByUserId).toHaveBeenCalledWith(TEST_USER_ID, {});
+    });
+
+    it('should write costLimitUsd through to stored JSONB', async () => {
+      mockDao.getOne.mockResolvedValue(null);
+      mockDao.upsertByUserId.mockImplementation(
+        (_userId: string, preferences: Record<string, unknown>) => ({
+          id: 'new-uuid',
+          userId: TEST_USER_ID,
+          preferences,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+
+      const result = await service.updatePreferences(ctx, {
+        costLimitUsd: 5,
+      });
+
       expect(mockDao.upsertByUserId).toHaveBeenCalledWith(TEST_USER_ID, {
-        models: {},
+        costLimitUsd: 5,
+      });
+      expect(result.costLimitUsd).toBe(5);
+      expect(result.preferences.costLimitUsd).toBe(5);
+    });
+
+    it('should preserve existing models when only costLimitUsd is updated', async () => {
+      mockDao.getOne.mockResolvedValue({
+        id: 'existing-uuid',
+        userId: TEST_USER_ID,
+        preferences: { models: { llmLargeModel: 'x' } },
+        createdAt: new Date('2025-01-01T00:00:00Z'),
+        updatedAt: new Date('2025-01-01T00:00:00Z'),
+      });
+      mockDao.upsertByUserId.mockImplementation(
+        (_userId: string, preferences: Record<string, unknown>) => ({
+          id: 'existing-uuid',
+          userId: TEST_USER_ID,
+          preferences,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+
+      await service.updatePreferences(ctx, { costLimitUsd: 2 });
+
+      expect(mockDao.upsertByUserId).toHaveBeenCalledWith(TEST_USER_ID, {
+        models: { llmLargeModel: 'x' },
+        costLimitUsd: 2,
+      });
+    });
+
+    it('should preserve existing costLimitUsd when only models is updated', async () => {
+      mockDao.getOne.mockResolvedValue({
+        id: 'existing-uuid',
+        userId: TEST_USER_ID,
+        preferences: { costLimitUsd: 2 },
+        createdAt: new Date('2025-01-01T00:00:00Z'),
+        updatedAt: new Date('2025-01-01T00:00:00Z'),
+      });
+      mockDao.upsertByUserId.mockImplementation(
+        (_userId: string, preferences: Record<string, unknown>) => ({
+          id: 'existing-uuid',
+          userId: TEST_USER_ID,
+          preferences,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        }),
+      );
+
+      await service.updatePreferences(ctx, {
+        models: { llmLargeModel: 'y' },
+      });
+
+      expect(mockDao.upsertByUserId).toHaveBeenCalledWith(TEST_USER_ID, {
+        costLimitUsd: 2,
+        models: { llmLargeModel: 'y' },
       });
     });
   });
@@ -160,6 +253,44 @@ describe('UserPreferencesService', () => {
       const result = await service.getModelOverridesForUser(TEST_USER_ID);
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getCostLimitForUser', () => {
+    it('should return null when no row exists', async () => {
+      mockDao.getOne.mockResolvedValue(null);
+
+      const result = await service.getCostLimitForUser(TEST_USER_ID);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null when row exists but payload missing costLimitUsd', async () => {
+      mockDao.getOne.mockResolvedValue({
+        id: 'some-uuid',
+        userId: TEST_USER_ID,
+        preferences: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.getCostLimitForUser(TEST_USER_ID);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return the value when present', async () => {
+      mockDao.getOne.mockResolvedValue({
+        id: 'some-uuid',
+        userId: TEST_USER_ID,
+        preferences: { costLimitUsd: 7.25 },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await service.getCostLimitForUser(TEST_USER_ID);
+
+      expect(result).toBe(7.25);
     });
   });
 });

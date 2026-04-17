@@ -1,6 +1,12 @@
 // ThreadMessagesView.tsx
 import isPlainObject from 'lodash/isPlainObject';
-import { ChevronDown, ChevronRight, Loader2, Wrench } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  Wrench,
+} from 'lucide-react';
 import React, {
   useCallback,
   useEffect,
@@ -19,6 +25,11 @@ import {
   getAgentColor,
   getAgentInitials,
 } from '../../../components/ui/agent-avatar';
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from '../../../components/ui/alert';
 import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { ChatBubble } from '../../../components/ui/chat-bubble';
 import {
@@ -36,6 +47,7 @@ import {
 } from '../../../components/ui/token-display';
 import { extractTextFromContentBlocks } from '../../../utils/imageAttachments';
 import { STREAMING_REASONING_FLAG } from '../../../utils/threadMessages';
+import { formatUsd } from '../../chats/utils/chatsPageUtils';
 import type { PendingMessage } from '../types/messages';
 import {
   extractImageUrls,
@@ -86,6 +98,8 @@ export interface ThreadMessagesViewProps {
   currentThreadLastRunId?: string | null;
   pendingMessages?: PendingMessage[];
   newMessageMode?: 'inject_after_tool_call' | 'wait_for_completion';
+  stopReason?: string | null;
+  stopCostUsd?: number | null;
 }
 
 // ─── Shell tool display adapter ──────────────────────────────────────────────
@@ -227,6 +241,8 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
     currentThreadLastRunId,
     pendingMessages = [],
     newMessageMode,
+    stopReason,
+    stopCostUsd,
   }) => {
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const isPrependingRef = useRef<boolean>(false);
@@ -1588,6 +1604,22 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               </div>
             </div>
           )}
+          {stopReason === 'cost_limit' && (
+            <div className="px-4 pt-2 pb-4">
+              <Alert variant="destructive">
+                <AlertTriangle aria-hidden="true" />
+                <AlertTitle>Cost limit reached</AlertTitle>
+                <AlertDescription className="text-sm">
+                  This thread was stopped because the configured cost limit was
+                  reached.
+                  {typeof stopCostUsd === 'number' &&
+                    Number.isFinite(stopCostUsd) && (
+                      <> Cost at stop: {formatUsd(stopCostUsd)}.</>
+                    )}
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
           {pendingMessages && pendingMessages.length > 0 && (
             <div
               style={{
@@ -1645,7 +1677,9 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
       prevProps.currentThreadLastRunId === nextProps.currentThreadLastRunId &&
       pendingMessagesEqual &&
       prevProps.newMessageMode === nextProps.newMessageMode &&
-      prevProps.onLoadMoreMessages === nextProps.onLoadMoreMessages
+      prevProps.onLoadMoreMessages === nextProps.onLoadMoreMessages &&
+      prevProps.stopReason === nextProps.stopReason &&
+      prevProps.stopCostUsd === nextProps.stopCostUsd
     );
   },
 );
@@ -1752,4 +1786,17 @@ function CollapsibleInnerArea({
       ))}
     </div>
   );
+}
+
+// ─── Exported pure helpers ────────────────────────────────────────────────────
+
+/**
+ * Returns true when the cost-limit stopped-thread banner should be displayed.
+ * Exported so unit tests can exercise the exact same condition used in the
+ * component without requiring a DOM environment.
+ */
+export function shouldShowCostLimitBanner(
+  stopReason: string | null | undefined,
+): boolean {
+  return stopReason === 'cost_limit';
 }

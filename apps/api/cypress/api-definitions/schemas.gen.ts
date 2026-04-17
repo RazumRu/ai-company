@@ -8,7 +8,7 @@ export const RuntimeHealthDtoSchema = {
     },
     type: {
       type: 'string',
-      enum: ['Docker', 'Daytona'],
+      enum: ['Docker', 'Daytona', 'K8s'],
     },
     error: {
       type: 'string',
@@ -47,7 +47,7 @@ export const RuntimeInstanceDtoSchema = {
     },
     type: {
       type: 'string',
-      enum: ['Docker', 'Daytona'],
+      enum: ['Docker', 'Daytona', 'K8s'],
     },
     status: {
       type: 'string',
@@ -932,7 +932,29 @@ export const UserPreferencesDtoSchema = {
             },
           },
         },
+        costLimitUsd: {
+          anyOf: [
+            {
+              type: 'number',
+              minimum: 0,
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
       },
+    },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     createdAt: {
       type: 'string',
@@ -1024,6 +1046,17 @@ export const UpdateUserPreferencesDtoSchema = {
         },
       },
     },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
 } as const;
 
@@ -1074,6 +1107,17 @@ export const CreateProjectDtoSchema = {
         type: 'string',
       },
       additionalProperties: {},
+    },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
   },
   required: ['name'],
@@ -1128,6 +1172,17 @@ export const ProjectDtoSchema = {
         type: 'string',
       },
       additionalProperties: {},
+    },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
     createdBy: {
       type: 'string',
@@ -1214,6 +1269,17 @@ export const UpdateProjectDtoSchema = {
         type: 'string',
       },
       additionalProperties: {},
+    },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
     },
   },
 } as const;
@@ -1785,6 +1851,24 @@ export const CreateGraphDtoSchema = {
         },
       ],
     },
+    settings: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
   required: ['name', 'schema'],
 } as const;
@@ -1968,6 +2052,24 @@ export const GraphDtoSchema = {
         },
       ],
     },
+    settings: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
   required: [
     'id',
@@ -2129,6 +2231,17 @@ export const GraphPreviewDtoSchema = {
         },
       ],
     },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
   },
   required: [
     'id',
@@ -2157,7 +2270,15 @@ export const GraphNodeWithStatusDtoSchema = {
     },
     type: {
       type: 'string',
-      enum: ['runtime', 'tool', 'simpleAgent', 'trigger', 'resource', 'mcp'],
+      enum: [
+        'runtime',
+        'tool',
+        'simpleAgent',
+        'trigger',
+        'resource',
+        'mcp',
+        'instruction',
+      ],
     },
     status: {
       type: 'string',
@@ -2309,6 +2430,24 @@ export const UpdateGraphDtoSchema = {
         {
           default: false,
           type: 'boolean',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    settings: {
+      type: 'object',
+      propertyNames: {
+        type: 'string',
+      },
+      additionalProperties: {},
+    },
+    costLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
+          minimum: 0,
         },
         {
           type: 'null',
@@ -2499,6 +2638,24 @@ export const UpdateGraphResponseDtoSchema = {
               format: 'uuid',
               pattern:
                 '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+            },
+            {
+              type: 'null',
+            },
+          ],
+        },
+        settings: {
+          type: 'object',
+          propertyNames: {
+            type: 'string',
+          },
+          additionalProperties: {},
+        },
+        costLimitUsd: {
+          anyOf: [
+            {
+              type: 'number',
+              minimum: 0,
             },
             {
               type: 'null',
@@ -2819,7 +2976,63 @@ export const ExecuteTriggerDtoSchema = {
       type: 'array',
       minItems: 1,
       items: {
-        type: 'string',
+        anyOf: [
+          {
+            type: 'string',
+          },
+          {
+            type: 'object',
+            properties: {
+              content: {
+                minItems: 1,
+                type: 'array',
+                items: {
+                  oneOf: [
+                    {
+                      type: 'object',
+                      properties: {
+                        type: {
+                          type: 'string',
+                          const: 'text',
+                        },
+                        text: {
+                          type: 'string',
+                          minLength: 1,
+                        },
+                      },
+                      required: ['type', 'text'],
+                    },
+                    {
+                      type: 'object',
+                      properties: {
+                        type: {
+                          type: 'string',
+                          const: 'image_url',
+                        },
+                        image_url: {
+                          type: 'object',
+                          properties: {
+                            url: {
+                              type: 'string',
+                            },
+                            detail: {
+                              default: 'auto',
+                              type: 'string',
+                              enum: ['auto', 'low', 'high'],
+                            },
+                          },
+                          required: ['url'],
+                        },
+                      },
+                      required: ['type', 'image_url'],
+                    },
+                  ],
+                },
+              },
+            },
+            required: ['content'],
+          },
+        ],
       },
     },
     threadSubId: {
@@ -3151,7 +3364,15 @@ export const TemplateDtoSchema = {
     },
     kind: {
       type: 'string',
-      enum: ['runtime', 'tool', 'simpleAgent', 'trigger', 'resource', 'mcp'],
+      enum: [
+        'runtime',
+        'tool',
+        'simpleAgent',
+        'trigger',
+        'resource',
+        'mcp',
+        'instruction',
+      ],
     },
     schema: {
       type: 'object',
@@ -3180,6 +3401,7 @@ export const TemplateDtoSchema = {
                   'trigger',
                   'resource',
                   'mcp',
+                  'instruction',
                 ],
               },
               required: {
@@ -3233,6 +3455,7 @@ export const TemplateDtoSchema = {
                   'trigger',
                   'resource',
                   'mcp',
+                  'instruction',
                 ],
               },
               required: {
@@ -3265,6 +3488,24 @@ export const TemplateDtoSchema = {
           },
         ],
       },
+    },
+    systemAgentId: {
+      type: 'string',
+    },
+    systemAgentContentHash: {
+      type: 'string',
+    },
+    systemAgentPredefinedTools: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
+    instructionBlockId: {
+      type: 'string',
+    },
+    instructionBlockContentHash: {
+      type: 'string',
     },
   },
   required: ['id', 'name', 'description', 'kind', 'schema'],
@@ -3349,7 +3590,7 @@ export const ThreadDtoSchema = {
     },
     status: {
       type: 'string',
-      enum: ['running', 'done', 'need_more_info', 'stopped'],
+      enum: ['running', 'done', 'need_more_info', 'stopped', 'waiting'],
     },
     agents: {
       anyOf: [
@@ -3370,6 +3611,26 @@ export const ThreadDtoSchema = {
             },
             required: ['nodeId', 'name'],
           },
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    stopReason: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    effectiveCostLimitUsd: {
+      anyOf: [
+        {
+          type: 'number',
         },
         {
           type: 'null',
@@ -3430,7 +3691,57 @@ export const ThreadMessageDtoSchema = {
               const: 'human',
             },
             content: {
-              type: 'string',
+              anyOf: [
+                {
+                  type: 'string',
+                },
+                {
+                  minItems: 1,
+                  type: 'array',
+                  items: {
+                    oneOf: [
+                      {
+                        type: 'object',
+                        properties: {
+                          type: {
+                            type: 'string',
+                            const: 'text',
+                          },
+                          text: {
+                            type: 'string',
+                            minLength: 1,
+                          },
+                        },
+                        required: ['type', 'text'],
+                      },
+                      {
+                        type: 'object',
+                        properties: {
+                          type: {
+                            type: 'string',
+                            const: 'image_url',
+                          },
+                          image_url: {
+                            type: 'object',
+                            properties: {
+                              url: {
+                                type: 'string',
+                              },
+                              detail: {
+                                default: 'auto',
+                                type: 'string',
+                                enum: ['auto', 'low', 'high'],
+                              },
+                            },
+                            required: ['url'],
+                          },
+                        },
+                        required: ['type', 'image_url'],
+                      },
+                    ],
+                  },
+                },
+              ],
             },
             runId: {
               anyOf: [
@@ -3869,6 +4180,111 @@ export const SetThreadMetadataDtoSchema = {
   required: ['metadata'],
 } as const;
 
+export const ResumeThreadDtoSchema = {
+  type: 'object',
+  properties: {
+    message: {
+      type: 'string',
+    },
+  },
+} as const;
+
+export const CreateSecretDtoSchema = {
+  type: 'object',
+  properties: {
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 255,
+      pattern: '^[A-Z][A-Z0-9_]*$',
+    },
+    value: {
+      type: 'string',
+      minLength: 1,
+    },
+    description: {
+      anyOf: [
+        {
+          type: 'string',
+          maxLength: 1000,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+  },
+  required: ['name', 'value'],
+} as const;
+
+export const SecretResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    name: {
+      type: 'string',
+    },
+    description: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    projectId: {
+      type: 'string',
+      format: 'uuid',
+      pattern:
+        '^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$',
+    },
+    createdBy: {
+      type: 'string',
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      pattern:
+        '^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$',
+    },
+  },
+  required: ['id', 'name', 'projectId', 'createdBy', 'createdAt', 'updatedAt'],
+} as const;
+
+export const UpdateSecretDtoSchema = {
+  type: 'object',
+  properties: {
+    value: {
+      type: 'string',
+      minLength: 1,
+    },
+    description: {
+      anyOf: [
+        {
+          type: 'string',
+          maxLength: 1000,
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+  },
+} as const;
+
 export const AnalyticsOverviewDtoSchema = {
   type: 'object',
   properties: {
@@ -3965,6 +4381,88 @@ export const AnalyticsByGraphResponseDtoSchema = {
   required: ['graphs'],
 } as const;
 
+export const SystemAgentResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+    },
+    templateId: {
+      type: 'string',
+    },
+    name: {
+      type: 'string',
+    },
+    description: {
+      type: 'string',
+    },
+    tools: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+    },
+    defaultModel: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'null',
+        },
+      ],
+    },
+    instructions: {
+      type: 'string',
+    },
+    contentHash: {
+      type: 'string',
+    },
+  },
+  required: [
+    'id',
+    'templateId',
+    'name',
+    'description',
+    'tools',
+    'defaultModel',
+    'instructions',
+    'contentHash',
+  ],
+} as const;
+
+export const InstructionBlockResponseDtoSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+    },
+    templateId: {
+      type: 'string',
+    },
+    name: {
+      type: 'string',
+    },
+    description: {
+      type: 'string',
+    },
+    instructions: {
+      type: 'string',
+    },
+    contentHash: {
+      type: 'string',
+    },
+  },
+  required: [
+    'id',
+    'templateId',
+    'name',
+    'description',
+    'instructions',
+    'contentHash',
+  ],
+} as const;
+
 export const SystemSettingsResponseDtoSchema = {
   type: 'object',
   properties: {
@@ -3980,12 +4478,20 @@ export const SystemSettingsResponseDtoSchema = {
     githubWebhookEnabled: {
       type: 'boolean',
     },
+    apiVersion: {
+      type: 'string',
+    },
+    webVersion: {
+      type: 'string',
+    },
   },
   required: [
     'githubAppEnabled',
     'litellmManagementEnabled',
     'isAdmin',
     'githubWebhookEnabled',
+    'apiVersion',
+    'webVersion',
   ],
 } as const;
 

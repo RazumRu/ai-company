@@ -232,6 +232,18 @@ export interface CreateGraphDto {
    * @memberof CreateGraphDto
    */
   'temporary'?: boolean | null;
+  /**
+   * Arbitrary per-graph settings stored as JSONB
+   * @type {{ [key: string]: any; }}
+   * @memberof CreateGraphDto
+   */
+  'settings'?: { [key: string]: any };
+  /**
+   *
+   * @type {number}
+   * @memberof CreateGraphDto
+   */
+  'costLimitUsd'?: number | null;
 }
 /**
  *
@@ -513,6 +525,12 @@ export interface CreateProjectDto {
    * @memberof CreateProjectDto
    */
   'settings'?: { [key: string]: any };
+  /**
+   *
+   * @type {number}
+   * @memberof CreateProjectDto
+   */
+  'costLimitUsd'?: number | null;
 }
 /**
  *
@@ -941,6 +959,18 @@ export interface GraphDto {
    * @memberof GraphDto
    */
   'projectId'?: string | null;
+  /**
+   * Arbitrary per-graph settings stored as JSONB
+   * @type {{ [key: string]: any; }}
+   * @memberof GraphDto
+   */
+  'settings'?: { [key: string]: any };
+  /**
+   *
+   * @type {number}
+   * @memberof GraphDto
+   */
+  'costLimitUsd'?: number | null;
 }
 
 export const GraphDtoStatusEnum = {
@@ -1177,6 +1207,12 @@ export interface GraphPreviewDto {
    * @memberof GraphPreviewDto
    */
   'projectId'?: string | null;
+  /**
+   *
+   * @type {number}
+   * @memberof GraphPreviewDto
+   */
+  'costLimitUsd'?: number | null;
 }
 
 export const GraphPreviewDtoStatusEnum = {
@@ -1907,6 +1943,12 @@ export interface ProjectDto {
   'settings': { [key: string]: any };
   /**
    *
+   * @type {number}
+   * @memberof ProjectDto
+   */
+  'costLimitUsd'?: number | null;
+  /**
+   *
    * @type {string}
    * @memberof ProjectDto
    */
@@ -2086,6 +2128,7 @@ export interface RuntimeHealthDto {
 export const RuntimeHealthDtoTypeEnum = {
   Docker: 'Docker',
   Daytona: 'Daytona',
+  K8s: 'K8s',
 } as const;
 
 export type RuntimeHealthDtoTypeEnum =
@@ -2168,6 +2211,7 @@ export interface RuntimeInstanceDto {
 export const RuntimeInstanceDtoTypeEnum = {
   Docker: 'Docker',
   Daytona: 'Daytona',
+  K8s: 'K8s',
 } as const;
 
 export type RuntimeInstanceDtoTypeEnum =
@@ -2882,6 +2926,18 @@ export interface ThreadDto {
    * @memberof ThreadDto
    */
   'agents'?: Array<ThreadDtoAgentsInner> | null;
+  /**
+   *
+   * @type {string}
+   * @memberof ThreadDto
+   */
+  'stopReason'?: string | null;
+  /**
+   *
+   * @type {number}
+   * @memberof ThreadDto
+   */
+  'effectiveCostLimitUsd'?: number | null;
 }
 
 export const ThreadDtoStatusEnum = {
@@ -3764,12 +3820,30 @@ export interface UpdateGraphDto {
    */
   'temporary'?: UpdateGraphDtoTemporary;
   /**
+   * Arbitrary per-graph settings stored as JSONB
+   * @type {{ [key: string]: any; }}
+   * @memberof UpdateGraphDto
+   */
+  'settings'?: { [key: string]: any };
+  /**
+   *
+   * @type {UpdateGraphDtoCostLimitUsd}
+   * @memberof UpdateGraphDto
+   */
+  'costLimitUsd'?: UpdateGraphDtoCostLimitUsd;
+  /**
    * Current version of the graph (for optimistic locking and 3-way merge base)
    * @type {string}
    * @memberof UpdateGraphDto
    */
   'currentVersion': string;
 }
+/**
+ * Optional cost limit in USD projected from settings.costLimitUsd
+ * @export
+ * @interface UpdateGraphDtoCostLimitUsd
+ */
+export interface UpdateGraphDtoCostLimitUsd {}
 /**
  *
  * @export
@@ -4030,6 +4104,18 @@ export interface UpdateGraphResponseDtoGraph {
    * @memberof UpdateGraphResponseDtoGraph
    */
   'projectId'?: string | null;
+  /**
+   * Arbitrary per-graph settings stored as JSONB
+   * @type {{ [key: string]: any; }}
+   * @memberof UpdateGraphResponseDtoGraph
+   */
+  'settings'?: { [key: string]: any };
+  /**
+   *
+   * @type {number}
+   * @memberof UpdateGraphResponseDtoGraph
+   */
+  'costLimitUsd'?: number | null;
 }
 
 export const UpdateGraphResponseDtoGraphStatusEnum = {
@@ -4527,6 +4613,12 @@ export interface UpdateProjectDto {
    * @memberof UpdateProjectDto
    */
   'settings'?: { [key: string]: any };
+  /**
+   *
+   * @type {number}
+   * @memberof UpdateProjectDto
+   */
+  'costLimitUsd'?: number | null;
 }
 /**
  *
@@ -4578,6 +4670,12 @@ export interface UpdateUserPreferencesDto {
    * @memberof UpdateUserPreferencesDto
    */
   'models'?: UserPreferencesDtoPreferencesModels;
+  /**
+   *
+   * @type {number}
+   * @memberof UpdateUserPreferencesDto
+   */
+  'costLimitUsd'?: number | null;
 }
 /**
  *
@@ -4605,6 +4703,12 @@ export interface UserPreferencesDto {
   'preferences': UserPreferencesDtoPreferences;
   /**
    *
+   * @type {number}
+   * @memberof UserPreferencesDto
+   */
+  'costLimitUsd'?: number | null;
+  /**
+   *
    * @type {string}
    * @memberof UserPreferencesDto
    */
@@ -4628,6 +4732,12 @@ export interface UserPreferencesDtoPreferences {
    * @memberof UserPreferencesDtoPreferences
    */
   'models'?: UserPreferencesDtoPreferencesModels;
+  /**
+   *
+   * @type {number}
+   * @memberof UserPreferencesDtoPreferences
+   */
+  'costLimitUsd'?: number | null;
 }
 /**
  *

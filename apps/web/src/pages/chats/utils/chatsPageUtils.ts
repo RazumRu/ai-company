@@ -150,6 +150,15 @@ export const compactUsageUpdate = (
     next.currentContext = currentContext;
   }
 
+  if (source?.effectiveCostLimitUsd === null) {
+    next.effectiveCostLimitUsd = null;
+  } else {
+    const effectiveCostLimitUsd = safeNumber(source?.effectiveCostLimitUsd);
+    if (effectiveCostLimitUsd !== undefined) {
+      next.effectiveCostLimitUsd = effectiveCostLimitUsd;
+    }
+  }
+
   return next;
 };
 

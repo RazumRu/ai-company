@@ -11,6 +11,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { ProjectsModule } from '../projects/projects.module';
 import { SecretsModule } from '../secrets/secrets.module';
 import { ThreadsModule } from '../threads/threads.module';
+import { UserPreferencesModule } from '../user-preferences/user-preferences.module';
 import { GraphRevisionsController } from './controllers/graph-revisions.controller';
 import { GraphsController } from './controllers/graphs.controller';
 import { GraphDao } from './dao/graph.dao';
@@ -18,6 +19,7 @@ import { GraphRevisionDao } from './dao/graph-revision.dao';
 import { GraphEntity } from './entity/graph.entity';
 import { GraphRevisionEntity } from './entity/graph-revision.entity';
 import { GraphsListener } from './graphs.listener';
+import { CostLimitResolverService } from './services/cost-limit-resolver.service';
 import { GraphCompiler } from './services/graph-compiler';
 import { GraphMergeService } from './services/graph-merge.service';
 import { GraphRegistry } from './services/graph-registry';
@@ -39,6 +41,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     ThreadsModule,
     ProjectsModule,
     SecretsModule,
+    UserPreferencesModule,
   ],
   controllers: [GraphsController, GraphRevisionsController],
   providers: [
@@ -47,6 +50,7 @@ import { MessageTransformerService } from './services/message-transformer.servic
     GraphsService,
     GraphRevisionService,
     GraphRevisionQueueService,
+    CostLimitResolverService,
     GraphCompiler,
     GraphRegistry,
     GraphRestorationService,
