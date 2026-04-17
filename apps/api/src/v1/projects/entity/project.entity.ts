@@ -6,7 +6,7 @@ import {
 } from '@mikro-orm/decorators/legacy';
 import { TimestampsEntity } from '@packages/mikroorm';
 
-import type { Settings } from '../../cost-limits/cost-limit-settings.schema';
+import type { ProjectSettings } from '../projects.types';
 
 @Entity({ tableName: 'projects' })
 export class ProjectEntity extends TimestampsEntity {
@@ -26,7 +26,7 @@ export class ProjectEntity extends TimestampsEntity {
   color?: string | null;
 
   @Property({ type: 'jsonb', default: '{}' })
-  settings!: Settings;
+  settings!: ProjectSettings;
 
   @Property({ type: 'varchar' })
   @Index()

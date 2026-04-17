@@ -1,8 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { CostLimitSettingsSchema } from '../../cost-limits/cost-limit-settings.schema';
-
 const ModelOverridesSchema = z.object({
   llmLargeModel: z.string().max(200).nullable().optional(),
   llmLargeCodeModel: z.string().max(200).nullable().optional(),
@@ -12,9 +10,11 @@ const ModelOverridesSchema = z.object({
   llmEmbeddingModel: z.string().max(200).nullable().optional(),
 });
 
+const costLimitUsdSchema = z.number().min(0).nullable().optional();
+
 export const UpdateUserPreferencesSchema = z.object({
   models: ModelOverridesSchema.optional(),
-  ...CostLimitSettingsSchema.shape,
+  costLimitUsd: costLimitUsdSchema,
 });
 
 export const UserPreferencesSchema = z.object({
@@ -22,9 +22,9 @@ export const UserPreferencesSchema = z.object({
   userId: z.string(),
   preferences: z.object({
     models: ModelOverridesSchema.optional(),
-    costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd,
+    costLimitUsd: costLimitUsdSchema,
   }),
-  costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd,
+  costLimitUsd: costLimitUsdSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

@@ -2,7 +2,6 @@ import { zodQueryArray } from '@packages/http-server';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { CostLimitSettingsSchema } from '../../cost-limits/cost-limit-settings.schema';
 import {
   GraphNodeStatus,
   GraphSchema as RealGraphSchema,
@@ -11,6 +10,8 @@ import {
   NodeKind,
 } from '../graphs.types';
 import { GraphRevisionSchema } from './graph-revisions.dto';
+
+const costLimitUsdSchema = z.number().min(0).nullable().optional();
 
 // Node coordinates schema for UI positioning
 export const NodeMetadataSchema = z.object({
@@ -76,7 +77,7 @@ export const GraphSchema = z.object({
     .record(z.string(), z.unknown())
     .optional()
     .describe('Arbitrary per-graph settings stored as JSONB'),
-  costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd.describe(
+  costLimitUsd: costLimitUsdSchema.describe(
     'Optional cost limit in USD projected from settings.costLimitUsd',
   ),
 });
@@ -131,7 +132,7 @@ export const GraphPreviewSchema = z.object({
   updatedAt: z.iso.datetime(),
   temporary: z.boolean().default(false).optional().nullable(),
   projectId: z.uuid().nullable().optional(),
-  costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd.describe(
+  costLimitUsd: costLimitUsdSchema.describe(
     'Optional cost limit in USD projected from settings.costLimitUsd',
   ),
 });

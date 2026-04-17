@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { CostLimitSettingsSchema } from '../../cost-limits/cost-limit-settings.schema';
+const costLimitUsdSchema = z.number().min(0).nullable().optional();
 
 export const ProjectSchema = z.object({
   id: z.uuid(),
@@ -14,7 +14,7 @@ export const ProjectSchema = z.object({
     .nullable()
     .optional(),
   settings: z.record(z.string(), z.unknown()),
-  costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd,
+  costLimitUsd: costLimitUsdSchema,
   createdBy: z.string(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
@@ -32,7 +32,7 @@ export const CreateProjectSchema = z.object({
     .nullable()
     .optional(),
   settings: z.record(z.string(), z.unknown()).optional().default({}),
-  costLimitUsd: CostLimitSettingsSchema.shape.costLimitUsd,
+  costLimitUsd: costLimitUsdSchema,
 });
 
 export const UpdateProjectSchema = CreateProjectSchema.partial();
