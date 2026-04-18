@@ -330,14 +330,28 @@ export class ThreadsService {
     }
     const graphIds = [...new Set(entities.map((e) => e.graphId))];
     const agentsByGraphId = await this.graphDao.getAgentsByGraphIds(graphIds);
+
     return entities.map((entity) => {
       const { deletedAt: _deletedAt, ...entityWithoutExcludedFields } = entity;
+      const metadata = entity.metadata as
+        | {
+            stopReason?: string;
+            effectiveCostLimitUsd?: number | null;
+          }
+        | undefined;
+      const stopReason = metadata?.stopReason ?? null;
+      const effectiveCostLimitUsd =
+        typeof metadata?.effectiveCostLimitUsd === 'number'
+          ? metadata.effectiveCostLimitUsd
+          : null;
       return {
         ...entityWithoutExcludedFields,
         createdAt: new Date(entity.createdAt).toISOString(),
         updatedAt: new Date(entity.updatedAt).toISOString(),
         metadata: entity.metadata || {},
         agents: agentsByGraphId.get(entity.graphId) ?? null,
+        stopReason,
+        effectiveCostLimitUsd,
       };
     });
   }

@@ -81,6 +81,18 @@ export type ToolInvokeResult<TResult> = {
    * attached to the tool message entity.
    */
   toolRequestUsage?: RequestTokenUsage;
+  /**
+   * When a sub-agent tool (e.g. subagents_run_task) stops due to a cost limit,
+   * this field carries the stop reason so the parent agent can propagate it.
+   * The parent's ToolExecutorNode / run loop inspects this and throws
+   * CostLimitExceededError to trigger the parent's cost-limit stop path.
+   */
+  stopReason?: 'cost_limit';
+  /**
+   * The total spend (USD) at the moment the sub-agent hit the cost limit.
+   * Only present when stopReason === 'cost_limit'.
+   */
+  stopCostUsd?: number;
 };
 
 export abstract class BaseTool<TSchema, TConfig = unknown, TResult = unknown> {

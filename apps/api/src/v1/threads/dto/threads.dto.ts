@@ -141,6 +141,16 @@ export const ThreadSchema = z.object({
     .optional()
     .nullable()
     .describe('Agents in the graph this thread belongs to'),
+  stopReason: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Reason a stopped thread was terminated — e.g. "cost_limit"'),
+  effectiveCostLimitUsd: z
+    .number()
+    .nullable()
+    .optional()
+    .describe('Server-resolved effective USD cost limit for this thread'),
 });
 
 export const ThreadMessageSchema = z.object({

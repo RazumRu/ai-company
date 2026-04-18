@@ -162,7 +162,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
       });
       modelCtx = await this.llmModelsService.buildLLMRequestContext(
         userId,
-        project?.settings as Record<string, unknown> | undefined,
+        project?.settings,
       );
     }
 

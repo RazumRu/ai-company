@@ -9,4 +9,5 @@ export type ModelPreferences = {
 
 export type UserPreferencesPayload = {
   models?: ModelPreferences;
+  costLimitUsd?: number | null;
 };

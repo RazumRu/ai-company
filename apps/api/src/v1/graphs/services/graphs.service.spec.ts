@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
+import { CheckpointStateService } from '../../agents/services/checkpoint-state.service';
 import { PgCheckpointSaver } from '../../agents/services/pg-checkpoint-saver';
 import { TemplateRegistry } from '../../graph-templates/services/template-registry';
 import { NotificationEvent } from '../../notifications/notifications.types';
@@ -37,6 +38,7 @@ import {
   MessageRole,
   NodeKind,
 } from '../graphs.types';
+import { CostLimitResolverService } from './cost-limit-resolver.service';
 import { GraphCompiler } from './graph-compiler';
 import { GraphRegistry } from './graph-registry';
 import { GraphRevisionService } from './graph-revision.service';
@@ -59,6 +61,8 @@ describe('GraphsService', () => {
   let eventEmitter: EventEmitter2;
   let logger: DefaultLogger;
   let projectsDao: ProjectsDao;
+  let costLimitResolver: CostLimitResolverService;
+  let checkpointStateService: CheckpointStateService;
 
   const mockUserId = 'user-123';
   const mockProjectId = '11111111-1111-1111-1111-111111111111';
@@ -302,6 +306,18 @@ describe('GraphsService', () => {
             scheduleResume: vi.fn().mockResolvedValue(undefined),
           },
         },
+        {
+          provide: CostLimitResolverService,
+          useValue: {
+            resolveForThread: vi.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: CheckpointStateService,
+          useValue: {
+            getThreadTokenUsage: vi.fn().mockResolvedValue(null),
+          },
+        },
       ],
     }).compile();
 
@@ -323,6 +339,12 @@ describe('GraphsService', () => {
     eventEmitter = module.get<EventEmitter2>(EventEmitter2);
     logger = module.get<DefaultLogger>(DefaultLogger);
     projectsDao = module.get<ProjectsDao>(ProjectsDao);
+    costLimitResolver = module.get<CostLimitResolverService>(
+      CostLimitResolverService,
+    );
+    checkpointStateService = module.get<CheckpointStateService>(
+      CheckpointStateService,
+    );
     vi.mocked(threadsDao.getOne).mockResolvedValue(null);
     vi.mocked(threadsDao.create).mockResolvedValue({} as any);
     vi.mocked(threadsDao.getAll).mockResolvedValue([]);
@@ -1263,6 +1285,123 @@ describe('GraphsService', () => {
     });
   });
 
+  describe('costLimitUsd projection', () => {
+    it('findById should project costLimitUsd from settings', async () => {
+      const entity = createMockGraphEntity({
+        settings: { costLimitUsd: 42 } as unknown as Record<string, unknown>,
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(entity);
+
+      const result = await service.findById(mockCtx, mockGraphId);
+
+      expect(result.costLimitUsd).toBe(42);
+    });
+
+    it('findById should return costLimitUsd=null when settings is empty', async () => {
+      const entity = createMockGraphEntity({
+        settings: {} as Record<string, unknown>,
+      });
+      vi.mocked(graphDao.getOne).mockResolvedValue(entity);
+
+      const result = await service.findById(mockCtx, mockGraphId);
+
+      expect(result.costLimitUsd).toBeNull();
+    });
+
+    it('findById should return costLimitUsd=null when settings is absent on entity', async () => {
+      const entity = createMockGraphEntity();
+      // Explicitly ensure settings is absent (undefined) to mirror legacy rows.
+      delete (entity as { settings?: unknown }).settings;
+      vi.mocked(graphDao.getOne).mockResolvedValue(entity);
+
+      const result = await service.findById(mockCtx, mockGraphId);
+
+      expect(result.costLimitUsd).toBeNull();
+    });
+
+    it('getGraphsPreview should include costLimitUsd in each row', async () => {
+      const entities = [
+        createMockGraphEntity({
+          id: 'graph-1',
+          settings: { costLimitUsd: 10 } as Record<string, unknown>,
+        }),
+        createMockGraphEntity({
+          id: 'graph-2',
+          settings: {} as Record<string, unknown>,
+        }),
+      ];
+      const graphDaoAny = graphDao as unknown as Record<
+        string,
+        ReturnType<typeof vi.fn>
+      >;
+      graphDaoAny['getPreview'] = vi.fn().mockResolvedValue(entities);
+      graphDaoAny['getSchemaAndMetadata'] = vi.fn().mockResolvedValue(
+        new Map([
+          [
+            'graph-1',
+            { schema: { nodes: [], edges: [] }, metadata: null, agents: [] },
+          ],
+          [
+            'graph-2',
+            { schema: { nodes: [], edges: [] }, metadata: null, agents: [] },
+          ],
+        ]),
+      );
+
+      const result = await service.getGraphsPreview(mockCtx);
+
+      expect(result).toHaveLength(2);
+      expect(result[0]!.costLimitUsd).toBe(10);
+      expect(result[1]!.costLimitUsd).toBeNull();
+    });
+
+    it('update should persist costLimitUsd into settings.costLimitUsd', async () => {
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Created,
+        settings: {} as Record<string, unknown>,
+      });
+      const updateData: UpdateGraphDto = {
+        costLimitUsd: 25,
+        currentVersion: mockGraph.version,
+      };
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
+
+      const result = await service.update(mockCtx, mockGraphId, updateData);
+
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        { settings: { costLimitUsd: 25 } },
+        expect.any(Object),
+      );
+      expect(result.graph.costLimitUsd).toBe(25);
+      expect(graphRevisionService.queueRevision).not.toHaveBeenCalled();
+    });
+
+    it('update should preserve existing settings keys when setting costLimitUsd', async () => {
+      const mockGraph = createMockGraphEntity({
+        status: GraphStatus.Created,
+        settings: { foo: 'bar' } as Record<string, unknown>,
+      });
+      const updateData: UpdateGraphDto = {
+        costLimitUsd: 5,
+        currentVersion: mockGraph.version,
+      };
+
+      vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+      vi.mocked(graphDao.updateById).mockResolvedValue(1);
+
+      await service.update(mockCtx, mockGraphId, updateData);
+
+      expect(graphDao.updateById).toHaveBeenCalledWith(
+        mockGraphId,
+        { settings: { foo: 'bar', costLimitUsd: 5 } },
+        expect.any(Object),
+      );
+    });
+  });
+
   describe('delete', () => {
     it('should delete graph successfully when not running', async () => {
       const graph = createMockGraphEntity({ status: GraphStatus.Created });
@@ -1869,11 +2008,12 @@ describe('GraphsService', () => {
       expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
         [expect.objectContaining({ content: 'Async test message' })],
         {
-          configurable: {
+          configurable: expect.objectContaining({
             thread_id: customThreadId,
             async: true,
             thread_created_by: mockUserId,
-          },
+            effective_cost_limit_usd: null,
+          }),
         },
       );
     });
@@ -1939,11 +2079,12 @@ describe('GraphsService', () => {
       expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
         [expect.objectContaining({ content: 'Async test message' })],
         {
-          configurable: {
+          configurable: expect.objectContaining({
             thread_id: undefined,
             async: true,
             thread_created_by: mockUserId,
-          },
+            effective_cost_limit_usd: null,
+          }),
         },
       );
     });
@@ -2013,10 +2154,11 @@ describe('GraphsService', () => {
       expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
         [expect.objectContaining({ content: 'Test message' })],
         {
-          configurable: {
+          configurable: expect.objectContaining({
             thread_id: customThreadId,
             thread_created_by: mockUserId,
-          },
+            effective_cost_limit_usd: null,
+          }),
         },
       );
     });
@@ -2089,10 +2231,11 @@ describe('GraphsService', () => {
       expect(mockTrigger.invokeAgent).toHaveBeenCalledWith(
         [expect.objectContaining({ content: 'Test message' })],
         {
-          configurable: {
+          configurable: expect.objectContaining({
             thread_id: undefined, // No threadId provided
             thread_created_by: mockUserId,
-          },
+            effective_cost_limit_usd: null,
+          }),
         },
       );
     });
@@ -2268,7 +2411,7 @@ describe('GraphsService', () => {
             projectId: 'project-123',
             externalThreadId: expectedThreadId,
             status: ThreadStatus.Running,
-            metadata: { key: 'value' },
+            metadata: { key: 'value', effectiveCostLimitUsd: null },
           },
           expect.anything(),
         );
@@ -2345,25 +2488,29 @@ describe('GraphsService', () => {
 
         expect(result.externalThreadId).toBe(expectedThreadId);
 
-        // Should look up thread using full externalThreadId format
-        expect(threadsDao.getOne).toHaveBeenCalledWith({
-          externalThreadId: expectedThreadId,
-          graphId: mockGraphId,
-        });
-
         // Should cancel the pending resume job
         expect(resumeQueueService.cancelResumeJob).toHaveBeenCalledWith(
           'waiting-thread-id',
         );
 
-        // Should clear wait metadata and set to Running
-        expect(threadsDao.updateById).toHaveBeenCalledWith(
-          'waiting-thread-id',
-          {
-            status: ThreadStatus.Running,
-            metadata: { customField: 'preserved' },
-          },
-        );
+        // Should clear wait metadata, set to Running, and persist the resolved
+        // effective cost limit (null when no limit is configured).
+        // H1: updateById now receives a 3rd arg (transactional em) — use
+        // mock.calls to check the first two args without strict arity matching.
+        const updateCall = vi
+          .mocked(threadsDao.updateById)
+          .mock.calls.find(([id]) => id === 'waiting-thread-id') as [
+          string,
+          { status?: ThreadStatus; metadata: Record<string, unknown> },
+          unknown,
+        ];
+        expect(updateCall).toBeDefined();
+        const [, update] = updateCall;
+        expect(update.status).toBe(ThreadStatus.Running);
+        expect(update.metadata).toMatchObject({
+          customField: 'preserved',
+          effectiveCostLimitUsd: null,
+        });
       });
 
       it('should swallow unique constraint error when handler wins the race', async () => {
@@ -2390,6 +2537,322 @@ describe('GraphsService', () => {
         expect(logger.debug).toHaveBeenCalledWith(
           expect.stringContaining('Eager thread creation skipped'),
         );
+      });
+    });
+
+    describe('cost-limit resume guard', () => {
+      const triggerId = 'trigger-1';
+      const expectedThreadId = `${mockGraphId}:my-thread`;
+
+      const setupTriggerMocks = () => {
+        const mockTrigger = {
+          isStarted: true,
+          invokeAgent: vi.fn().mockResolvedValue({
+            messages: [],
+            threadId: expectedThreadId,
+            checkpointNs: `${expectedThreadId}:agent-1`,
+          }),
+        };
+        const mockTriggerNode = {
+          id: triggerId,
+          type: NodeKind.Trigger,
+          template: 'manual-trigger',
+          instance: mockTrigger,
+          handle: {
+            provide: async () => mockTrigger,
+            configure: vi.fn().mockResolvedValue(undefined),
+            destroy: vi.fn().mockResolvedValue(undefined),
+          },
+          getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
+        };
+        const mockGraph = createMockGraphEntity({
+          status: GraphStatus.Running,
+        });
+        const mockCompiledGraph = createMockCompiledGraph();
+
+        vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+        vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+        vi.mocked(graphRegistry.getNode).mockReturnValue(
+          mockTriggerNode as unknown as CompiledGraphNode,
+        );
+
+        return mockTrigger;
+      };
+
+      const makeStoppedThread = (
+        overrides: Partial<{
+          metadata: Record<string, unknown>;
+          status: ThreadStatus;
+        }> = {},
+      ) =>
+        ({
+          id: 'stopped-thread-id',
+          graphId: mockGraphId,
+          externalThreadId: expectedThreadId,
+          createdBy: mockUserId,
+          status: ThreadStatus.Stopped,
+          // H2: include stopCostUsd in default so resume-guard tests have a valid
+          // metadataStopCost to read (checkpoint fallback was removed by H2).
+          metadata: {
+            stopReason: 'cost_limit',
+            stopCostUsd: 3,
+            other: 'keep-me',
+          },
+          ...overrides,
+        }) as any;
+
+      it('clears stopReason and proceeds when limit is raised above current cost', async () => {
+        setupTriggerMocks();
+        // Default makeStoppedThread includes stopCostUsd=3; limit raised to 10.
+        const stoppedThread = makeStoppedThread();
+        vi.mocked(threadsDao.getOne)
+          .mockResolvedValueOnce(stoppedThread)
+          .mockResolvedValueOnce(stoppedThread);
+        vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(10);
+
+        const result = await service.executeTrigger(
+          mockCtx,
+          mockGraphId,
+          triggerId,
+          {
+            messages: ['Continue'],
+            threadSubId: 'my-thread',
+          },
+        );
+
+        expect(result.externalThreadId).toBe(expectedThreadId);
+        // H2: checkpoint no longer consulted — metadataStopCost=3 < limit=10, so proceed.
+        expect(
+          checkpointStateService.getThreadTokenUsage,
+        ).not.toHaveBeenCalled();
+        expect(costLimitResolver.resolveForThread).toHaveBeenCalledWith(
+          mockUserId,
+          mockGraphId,
+        );
+
+        const updateCall = vi
+          .mocked(threadsDao.updateById)
+          .mock.calls.find(([id]) => id === 'stopped-thread-id') as [
+          string,
+          { metadata: Record<string, unknown>; status?: unknown },
+          unknown,
+        ];
+        expect(updateCall).toBeDefined();
+        const [, update] = updateCall;
+        // stopReason, stopCostUsd, and costLimitHit must all be cleared.
+        expect(update.metadata).not.toHaveProperty('stopReason');
+        expect(update.metadata).not.toHaveProperty('stopCostUsd');
+        expect(update.metadata).not.toHaveProperty('costLimitHit');
+        expect(update.metadata).toMatchObject({
+          other: 'keep-me',
+          effectiveCostLimitUsd: 10,
+        });
+        expect(update.status).toBeUndefined();
+      });
+
+      it('throws BadRequestException when current cost is still at or above limit', async () => {
+        setupTriggerMocks();
+        // stopCostUsd=6 is >= limit=5, so the guard must block the resume.
+        const stoppedThread = makeStoppedThread({
+          metadata: {
+            stopReason: 'cost_limit',
+            stopCostUsd: 6,
+            other: 'keep-me',
+          },
+        });
+        vi.mocked(threadsDao.getOne).mockResolvedValueOnce(stoppedThread);
+        vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(5);
+
+        const err = await service
+          .executeTrigger(mockCtx, mockGraphId, triggerId, {
+            messages: ['Continue'],
+            threadSubId: 'my-thread',
+          })
+          .catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(BadRequestException);
+        expect(
+          (err as BadRequestException & { errorCode?: string }).errorCode,
+        ).toBe('THREAD_COST_LIMIT_REACHED');
+        // H2: error message now uses metadataStopCost directly (not checkpoint value).
+        expect((err as Error).message).toContain('6.00');
+
+        expect(threadsDao.updateById).not.toHaveBeenCalled();
+      });
+
+      it('clears stopReason and proceeds when effective limit is null (all layers removed)', async () => {
+        setupTriggerMocks();
+        // H2: when effectiveCostLimitUsd === null, all checks are skipped —
+        // resume is allowed unconditionally regardless of stopCostUsd.
+        const stoppedThread = makeStoppedThread();
+        vi.mocked(threadsDao.getOne)
+          .mockResolvedValueOnce(stoppedThread)
+          .mockResolvedValueOnce(stoppedThread);
+        vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(null);
+
+        const result = await service.executeTrigger(
+          mockCtx,
+          mockGraphId,
+          triggerId,
+          {
+            messages: ['Continue'],
+            threadSubId: 'my-thread',
+          },
+        );
+
+        expect(result.externalThreadId).toBe(expectedThreadId);
+        expect(costLimitResolver.resolveForThread).toHaveBeenCalledWith(
+          mockUserId,
+          mockGraphId,
+        );
+        // Checkpoint not consulted because effectiveCostLimitUsd=null skips both checks.
+        expect(
+          checkpointStateService.getThreadTokenUsage,
+        ).not.toHaveBeenCalled();
+
+        const updateCall = vi
+          .mocked(threadsDao.updateById)
+          .mock.calls.find(([id]) => id === 'stopped-thread-id') as [
+          string,
+          { metadata: Record<string, unknown> },
+          unknown,
+        ];
+        expect(updateCall).toBeDefined();
+        const [, update] = updateCall;
+        // stopReason, stopCostUsd, and costLimitHit must all be cleared.
+        expect(update.metadata).not.toHaveProperty('stopReason');
+        expect(update.metadata).not.toHaveProperty('stopCostUsd');
+        expect(update.metadata).not.toHaveProperty('costLimitHit');
+        expect(update.metadata).toMatchObject({
+          other: 'keep-me',
+          effectiveCostLimitUsd: null,
+        });
+      });
+
+      it('skips guard when thread is Stopped but stopReason is not cost_limit', async () => {
+        setupTriggerMocks();
+        const stoppedThread = makeStoppedThread({
+          metadata: { stopReason: 'user_cancelled' },
+        });
+        vi.mocked(threadsDao.getOne)
+          .mockResolvedValueOnce(stoppedThread)
+          .mockResolvedValueOnce(stoppedThread);
+        vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(null);
+
+        await service.executeTrigger(mockCtx, mockGraphId, triggerId, {
+          messages: ['Continue'],
+          threadSubId: 'my-thread',
+        });
+
+        // Resolver is consulted once per user message to refresh metadata,
+        // but the checkpoint lookup only happens on the cost_limit guard path.
+        expect(
+          checkpointStateService.getThreadTokenUsage,
+        ).not.toHaveBeenCalled();
+        // Metadata refresh still writes the effective limit — the stopReason is
+        // preserved (not a cost_limit stop) alongside the new limit.
+        const updateCall = vi
+          .mocked(threadsDao.updateById)
+          .mock.calls.find(([id]) => id === 'stopped-thread-id') as [
+          string,
+          { metadata: Record<string, unknown> },
+          unknown,
+        ];
+        expect(updateCall).toBeDefined();
+        const [, update] = updateCall;
+        expect(update.metadata).toMatchObject({
+          stopReason: 'user_cancelled',
+          effectiveCostLimitUsd: null,
+        });
+      });
+
+      it('skips guard when thread is not Stopped', async () => {
+        setupTriggerMocks();
+        const runningThread = makeStoppedThread({
+          status: ThreadStatus.Running,
+          metadata: { stopReason: 'cost_limit' },
+        });
+        vi.mocked(threadsDao.getOne)
+          .mockResolvedValueOnce(runningThread)
+          .mockResolvedValueOnce(runningThread);
+        vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(null);
+
+        await service.executeTrigger(mockCtx, mockGraphId, triggerId, {
+          messages: ['Continue'],
+          threadSubId: 'my-thread',
+        });
+
+        expect(
+          checkpointStateService.getThreadTokenUsage,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('uses metadata.stopCostUsd over checkpoint when present and still above limit', async () => {
+        // Covers the key resume-guard bug: when CostLimitExceededError fires, the
+        // over-budget call's usage is NOT written to the checkpoint. The persisted
+        // metadata.stopCostUsd is the authoritative source.
+        setupTriggerMocks();
+        const stoppedThread = makeStoppedThread({
+          metadata: {
+            stopReason: 'cost_limit',
+            stopCostUsd: 1.03,
+            other: 'keep-me',
+          },
+        });
+        vi.mocked(threadsDao.getOne).mockResolvedValueOnce(stoppedThread);
+        // Checkpoint still shows the PRE-call total that is BELOW the limit.
+        vi.mocked(checkpointStateService.getThreadTokenUsage).mockResolvedValue(
+          { totalPrice: 0.98 } as any,
+        );
+        vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(1);
+
+        const err = await service
+          .executeTrigger(mockCtx, mockGraphId, triggerId, {
+            messages: ['Continue'],
+            threadSubId: 'my-thread',
+          })
+          .catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(BadRequestException);
+        expect(
+          (err as BadRequestException & { errorCode?: string }).errorCode,
+        ).toBe('THREAD_COST_LIMIT_REACHED');
+        // Message must reflect the metadata value, not the checkpoint value.
+        expect((err as Error).message).toContain('1.03');
+        // When metadata.stopCostUsd is present, checkpoint is NOT consulted.
+        expect(
+          checkpointStateService.getThreadTokenUsage,
+        ).not.toHaveBeenCalled();
+        expect(threadsDao.updateById).not.toHaveBeenCalled();
+      });
+
+      it('throws THREAD_COST_LIMIT_REACHED when metadata.stopCostUsd is absent (conservative block, H2)', async () => {
+        // H2: the checkpoint fallback was removed because it underestimates cost.
+        // When stopCostUsd is missing and the limit is non-null, we conservatively
+        // block the resume rather than read a stale pre-call checkpoint value.
+        setupTriggerMocks();
+        const stoppedThread = makeStoppedThread({
+          metadata: { stopReason: 'cost_limit', other: 'keep-me' },
+        });
+        vi.mocked(threadsDao.getOne).mockResolvedValueOnce(stoppedThread);
+        vi.mocked(costLimitResolver.resolveForThread).mockResolvedValue(1);
+
+        const err = await service
+          .executeTrigger(mockCtx, mockGraphId, triggerId, {
+            messages: ['Continue'],
+            threadSubId: 'my-thread',
+          })
+          .catch((e: unknown) => e);
+
+        expect(err).toBeInstanceOf(BadRequestException);
+        expect(
+          (err as BadRequestException & { errorCode?: string }).errorCode,
+        ).toBe('THREAD_COST_LIMIT_REACHED');
+        // Checkpoint must NOT be consulted — we block conservatively.
+        expect(
+          checkpointStateService.getThreadTokenUsage,
+        ).not.toHaveBeenCalled();
+        expect(threadsDao.updateById).not.toHaveBeenCalled();
       });
     });
 

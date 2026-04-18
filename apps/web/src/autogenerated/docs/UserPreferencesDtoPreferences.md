@@ -2,9 +2,10 @@
 
 ## Properties
 
-| Name       | Type                                                                              | Description | Notes                             |
-| ---------- | --------------------------------------------------------------------------------- | ----------- | --------------------------------- |
-| **models** | [**UserPreferencesDtoPreferencesModels**](UserPreferencesDtoPreferencesModels.md) |             | [optional] [default to undefined] |
+| Name             | Type                                                                              | Description | Notes                             |
+| ---------------- | --------------------------------------------------------------------------------- | ----------- | --------------------------------- |
+| **models**       | [**UserPreferencesDtoPreferencesModels**](UserPreferencesDtoPreferencesModels.md) |             | [optional] [default to undefined] |
+| **costLimitUsd** | **number**                                                                        |             | [optional] [default to undefined] |
 
 ## Example
 
@@ -13,6 +14,7 @@ import { UserPreferencesDtoPreferences } from './api';
 
 const instance: UserPreferencesDtoPreferences = {
   models,
+  costLimitUsd,
 };
 ```
 

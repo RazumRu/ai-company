@@ -22,6 +22,7 @@
 | **updatedAt**        | **string**                                                                               |                                                       | [default to undefined]            |
 | **temporary**        | **boolean**                                                                              |                                                       | [optional] [default to false]     |
 | **projectId**        | **string**                                                                               |                                                       | [optional] [default to undefined] |
+| **costLimitUsd**     | **number**                                                                               |                                                       | [optional] [default to undefined] |
 
 ## Example
 
@@ -47,6 +48,7 @@ const instance: GraphPreviewDto = {
   updatedAt,
   temporary,
   projectId,
+  costLimitUsd,
 };
 ```
 

@@ -71,7 +71,7 @@ export class KnowledgeService {
 
     const modelCtx = await this.llmModelsService.buildLLMRequestContext(
       userId,
-      project.settings as Record<string, unknown> | undefined,
+      project.settings,
     );
     const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(
       modelCtx?.models?.llmEmbeddingModel,
@@ -141,7 +141,7 @@ export class KnowledgeService {
       });
       const modelCtx = await this.llmModelsService.buildLLMRequestContext(
         userId,
-        project?.settings as Record<string, unknown> | undefined,
+        project?.settings,
       );
       const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel(
         modelCtx?.models?.llmEmbeddingModel,

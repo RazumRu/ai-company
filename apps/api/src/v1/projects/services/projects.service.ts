@@ -35,6 +35,7 @@ export class ProjectsService {
       description: entity.description ?? null,
       icon: entity.icon ?? null,
       color: entity.color ?? null,
+      costLimitUsd: entity.settings?.costLimitUsd ?? null,
       createdAt: new Date(entity.createdAt).toISOString(),
       updatedAt: new Date(entity.updatedAt).toISOString(),
       graphCount: stats.graphCount,
@@ -49,13 +50,19 @@ export class ProjectsService {
     const userId = ctx.checkSub();
 
     return await this.em.transactional(async (em: EntityManager) => {
+      const settings = {
+        ...(dto.settings ?? {}),
+        ...(dto.costLimitUsd !== undefined
+          ? { costLimitUsd: dto.costLimitUsd }
+          : {}),
+      };
       const project = await this.projectsDao.create(
         {
           name: dto.name,
           description: dto.description ?? null,
           icon: dto.icon ?? null,
           color: dto.color ?? null,
-          settings: dto.settings ?? {},
+          settings,
           createdBy: userId,
         },
         em,
@@ -117,7 +124,22 @@ export class ProjectsService {
         throw new NotFoundException('PROJECT_NOT_FOUND');
       }
 
-      await this.projectsDao.updateById(id, dto, em);
+      const { costLimitUsd, settings: dtoSettings, ...rest } = dto;
+      const mergedSettings =
+        dtoSettings !== undefined || costLimitUsd !== undefined
+          ? {
+              ...(existing.settings ?? {}),
+              ...(dtoSettings ?? {}),
+              ...(costLimitUsd !== undefined ? { costLimitUsd } : {}),
+            }
+          : undefined;
+
+      const updateData: Partial<ProjectEntity> = {
+        ...rest,
+        ...(mergedSettings !== undefined ? { settings: mergedSettings } : {}),
+      };
+
+      await this.projectsDao.updateById(id, updateData, em);
       const updated = await this.projectsDao.getOne(
         { id, createdBy: userId },
         undefined,

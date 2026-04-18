@@ -13,6 +13,7 @@ import { ThreadEntity } from '../../threads/entity/thread.entity';
 import {
   type GraphAgentInfo,
   type GraphSchemaType,
+  type GraphSettings,
   GraphStatus,
 } from '../graphs.types';
 
@@ -48,6 +49,9 @@ export class GraphEntity extends AuditEntity {
 
   @Property({ type: 'jsonb', nullable: true })
   metadata?: Record<string, unknown> | null;
+
+  @Property({ type: 'jsonb', default: '{}' })
+  settings!: GraphSettings;
 
   @Property({ type: 'jsonb', nullable: true })
   agents?: GraphAgentInfo[] | null;

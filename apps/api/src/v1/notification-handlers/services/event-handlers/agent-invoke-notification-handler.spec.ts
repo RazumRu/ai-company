@@ -53,6 +53,7 @@ describe('AgentInvokeNotificationHandler', () => {
       nodes: [],
       edges: [],
     },
+    settings: {},
     status: GraphStatus.Running,
     createdBy: mockUserId,
     projectId: mockProjectId,

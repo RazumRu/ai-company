@@ -45,6 +45,10 @@ export type AgentStopEvent = {
   config: RunnableConfig<BaseAgentConfigurable>;
   error?: unknown;
   threadId: string;
+  // null = explicit clear; undefined = no change; string = set
+  stopReason?: string | null;
+  // null = explicit clear; undefined = no change; number = set
+  stopCostUsd?: number | null;
 };
 
 export type AgentInvokeEvent = {

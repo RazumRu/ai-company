@@ -392,5 +392,263 @@ describe('ThreadUpdateNotificationHandler', () => {
         status: ThreadStatus.Done,
       });
     });
+
+    describe('stopReason three-way semantics', () => {
+      it('persists stopReason string into metadata.stopReason', async () => {
+        const thread = createMockThreadEntity({
+          status: ThreadStatus.Running,
+          metadata: { existingField: 'keep' },
+        });
+        const updatedThread = {
+          ...thread,
+          status: ThreadStatus.Stopped,
+          metadata: { existingField: 'keep', stopReason: 'cost_limit' },
+          updatedAt: new Date('2024-01-01T00:00:01Z'),
+        } satisfies ThreadEntity;
+
+        const notification = createMockNotification({
+          data: {
+            status: ThreadStatus.Stopped,
+            stopReason: 'cost_limit',
+          },
+        });
+
+        vi.spyOn(threadsDao, 'getOne')
+          .mockResolvedValueOnce(thread)
+          .mockResolvedValueOnce(updatedThread);
+        const updateSpy = vi
+          .spyOn(threadsDao, 'updateById')
+          .mockResolvedValue(1);
+
+        await handler.handle(notification);
+
+        expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+          status: ThreadStatus.Stopped,
+          // M4: costLimitHit must be set to true whenever stopReason='cost_limit'
+          metadata: {
+            existingField: 'keep',
+            stopReason: 'cost_limit',
+            costLimitHit: true,
+          },
+        });
+      });
+
+      it('leaves metadata.stopReason untouched when stopReason is undefined (key absent)', async () => {
+        const thread = createMockThreadEntity({
+          status: ThreadStatus.Running,
+          metadata: { stopReason: 'prior_reason', other: 'value' },
+        });
+        const updatedThread = {
+          ...thread,
+          status: ThreadStatus.Done,
+          updatedAt: new Date('2024-01-01T00:00:01Z'),
+        } satisfies ThreadEntity;
+
+        const notification = createMockNotification({
+          data: { status: ThreadStatus.Done },
+        });
+
+        vi.spyOn(threadsDao, 'getOne')
+          .mockResolvedValueOnce(thread)
+          .mockResolvedValueOnce(updatedThread);
+        const updateSpy = vi
+          .spyOn(threadsDao, 'updateById')
+          .mockResolvedValue(1);
+
+        await handler.handle(notification);
+
+        // Since stopReason key is absent, metadata should not appear in updates
+        expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+          status: ThreadStatus.Done,
+        });
+      });
+
+      it('deletes metadata.stopReason when stopReason is explicitly null', async () => {
+        const thread = createMockThreadEntity({
+          status: ThreadStatus.Running,
+          metadata: {
+            stopReason: 'cost_limit',
+            preservedField: 'keep-me',
+          },
+        });
+        const updatedThread = {
+          ...thread,
+          status: ThreadStatus.Stopped,
+          metadata: { preservedField: 'keep-me' },
+          updatedAt: new Date('2024-01-01T00:00:01Z'),
+        } satisfies ThreadEntity;
+
+        const notification = createMockNotification({
+          data: {
+            status: ThreadStatus.Stopped,
+            stopReason: null,
+          },
+        });
+
+        vi.spyOn(threadsDao, 'getOne')
+          .mockResolvedValueOnce(thread)
+          .mockResolvedValueOnce(updatedThread);
+        const updateSpy = vi
+          .spyOn(threadsDao, 'updateById')
+          .mockResolvedValue(1);
+
+        await handler.handle(notification);
+
+        expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+          status: ThreadStatus.Stopped,
+          metadata: { preservedField: 'keep-me' },
+        });
+      });
+
+      it('clears wait keys AND sets stopReason when transitioning Waiting -> Stopped with stopReason=cost_limit', async () => {
+        const waitMetadata = {
+          scheduledResumeAt: '2026-04-02T10:00:00.000Z',
+          waitReason: 'Waiting for CI',
+          waitNodeId: 'node-abc',
+          waitCheckPrompt: 'Check CI status',
+          keepMe: 'preserved',
+        };
+        const thread = createMockThreadEntity({
+          status: ThreadStatus.Waiting,
+          metadata: waitMetadata,
+        });
+        const updatedThread = {
+          ...thread,
+          status: ThreadStatus.Stopped,
+          metadata: { keepMe: 'preserved', stopReason: 'cost_limit' },
+          updatedAt: new Date('2024-01-01T00:00:01Z'),
+        } satisfies ThreadEntity;
+
+        const notification = createMockNotification({
+          data: {
+            status: ThreadStatus.Stopped,
+            stopReason: 'cost_limit',
+          },
+        });
+
+        vi.spyOn(threadsDao, 'getOne')
+          .mockResolvedValueOnce(thread)
+          .mockResolvedValueOnce(updatedThread);
+        const updateSpy = vi
+          .spyOn(threadsDao, 'updateById')
+          .mockResolvedValue(1);
+
+        await handler.handle(notification);
+
+        expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+          status: ThreadStatus.Stopped,
+          metadata: {
+            keepMe: 'preserved',
+            stopReason: 'cost_limit',
+            // M4: costLimitHit must also be set so resume guard survives a
+            // subsequent manual-stop that clears stopReason.
+            costLimitHit: true,
+          },
+        });
+      });
+    });
+
+    describe('stopCostUsd three-way semantics', () => {
+      it('persists stopCostUsd number into metadata.stopCostUsd', async () => {
+        const thread = createMockThreadEntity({
+          status: ThreadStatus.Running,
+          metadata: { existingField: 'keep' },
+        });
+        const updatedThread = {
+          ...thread,
+          status: ThreadStatus.Stopped,
+          metadata: { existingField: 'keep', stopCostUsd: 1.03 },
+          updatedAt: new Date('2024-01-01T00:00:01Z'),
+        } satisfies ThreadEntity;
+
+        const notification = createMockNotification({
+          data: {
+            status: ThreadStatus.Stopped,
+            stopCostUsd: 1.03,
+          },
+        });
+
+        vi.spyOn(threadsDao, 'getOne')
+          .mockResolvedValueOnce(thread)
+          .mockResolvedValueOnce(updatedThread);
+        const updateSpy = vi
+          .spyOn(threadsDao, 'updateById')
+          .mockResolvedValue(1);
+
+        await handler.handle(notification);
+
+        expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+          status: ThreadStatus.Stopped,
+          metadata: { existingField: 'keep', stopCostUsd: 1.03 },
+        });
+      });
+
+      it('leaves metadata.stopCostUsd untouched when stopCostUsd is undefined (key absent)', async () => {
+        const thread = createMockThreadEntity({
+          status: ThreadStatus.Running,
+          metadata: { stopCostUsd: 2.5, other: 'value' },
+        });
+        const updatedThread = {
+          ...thread,
+          status: ThreadStatus.Done,
+          updatedAt: new Date('2024-01-01T00:00:01Z'),
+        } satisfies ThreadEntity;
+
+        const notification = createMockNotification({
+          data: { status: ThreadStatus.Done },
+        });
+
+        vi.spyOn(threadsDao, 'getOne')
+          .mockResolvedValueOnce(thread)
+          .mockResolvedValueOnce(updatedThread);
+        const updateSpy = vi
+          .spyOn(threadsDao, 'updateById')
+          .mockResolvedValue(1);
+
+        await handler.handle(notification);
+
+        // Since stopCostUsd key is absent, metadata should not appear in updates
+        expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+          status: ThreadStatus.Done,
+        });
+      });
+
+      it('deletes metadata.stopCostUsd when stopCostUsd is explicitly null', async () => {
+        const thread = createMockThreadEntity({
+          status: ThreadStatus.Running,
+          metadata: {
+            stopCostUsd: 1.03,
+            preservedField: 'keep-me',
+          },
+        });
+        const updatedThread = {
+          ...thread,
+          status: ThreadStatus.Stopped,
+          metadata: { preservedField: 'keep-me' },
+          updatedAt: new Date('2024-01-01T00:00:01Z'),
+        } satisfies ThreadEntity;
+
+        const notification = createMockNotification({
+          data: {
+            status: ThreadStatus.Stopped,
+            stopCostUsd: null,
+          },
+        });
+
+        vi.spyOn(threadsDao, 'getOne')
+          .mockResolvedValueOnce(thread)
+          .mockResolvedValueOnce(updatedThread);
+        const updateSpy = vi
+          .spyOn(threadsDao, 'updateById')
+          .mockResolvedValue(1);
+
+        await handler.handle(notification);
+
+        expect(updateSpy).toHaveBeenCalledWith(thread.id, {
+          status: ThreadStatus.Stopped,
+          metadata: { preservedField: 'keep-me' },
+        });
+      });
+    });
   });
 });

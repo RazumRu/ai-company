@@ -6,6 +6,8 @@ export type ModelSlotKey =
   | 'llmMiniModel'
   | 'llmEmbeddingModel';
 
+export type ModelOverrides = Partial<Record<ModelSlotKey, string | null>>;
+
 export interface ModelSlotDefinition {
   key: ModelSlotKey;
   label: string;

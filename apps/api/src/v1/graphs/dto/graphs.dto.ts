@@ -11,6 +11,8 @@ import {
 } from '../graphs.types';
 import { GraphRevisionSchema } from './graph-revisions.dto';
 
+const costLimitUsdSchema = z.number().min(0).nullable().optional();
+
 // Node coordinates schema for UI positioning
 export const NodeMetadataSchema = z.object({
   id: z.string(),
@@ -71,6 +73,13 @@ export const GraphSchema = z.object({
     .nullable()
     .optional()
     .describe('Project this graph belongs to'),
+  settings: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe('Arbitrary per-graph settings stored as JSONB'),
+  costLimitUsd: costLimitUsdSchema.describe(
+    'Optional cost limit in USD projected from settings.costLimitUsd',
+  ),
 });
 
 export const TriggerNodeInfoSchema = z.object({
@@ -123,6 +132,9 @@ export const GraphPreviewSchema = z.object({
   updatedAt: z.iso.datetime(),
   temporary: z.boolean().default(false).optional().nullable(),
   projectId: z.uuid().nullable().optional(),
+  costLimitUsd: costLimitUsdSchema.describe(
+    'Optional cost limit in USD projected from settings.costLimitUsd',
+  ),
 });
 
 export const GetGraphsPreviewQuerySchema = z.object({
@@ -148,6 +160,9 @@ export const GraphEditableSchema = GraphSchema.omit({
   version: true,
   targetVersion: true,
   projectId: true,
+  // settings is server-managed JSONB; clients must not supply it directly.
+  // Individual projected fields (e.g. costLimitUsd) are the intended API surface.
+  settings: true,
 });
 
 /**
