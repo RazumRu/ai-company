@@ -1296,5 +1296,216 @@ describe('SubAgent', () => {
       // Guards against accidental removal of the finally flush during refactors.
       expect(SubAgent.prototype.runSubagent.toString()).toMatch(/finally/);
     });
+
+    // Per-block-id accumulation: regression tests for OpenAI Responses API
+    // where chunk.id changes on every streaming chunk but contentBlocks[].id
+    // is stable across chunks for the same reasoning block.
+
+    it('accumulates chunks with different chunk.id but same contentBlock.id into one message', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext({ toolCallId: 'tc-1' });
+      const events = collectMessageEvents(subAgent);
+
+      // Simulate OpenAI Responses API: chunk.id changes on every token,
+      // but the reasoning block inside carries a stable blockId.
+      const stableBlockId = 'block-stable-001';
+      const chunk1 = {
+        id: 'chunk-token-001',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'It seems ', id: stableBlockId },
+        ],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+      const chunk2 = {
+        id: 'chunk-token-002',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'like a ', id: stableBlockId },
+        ],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+      const chunk3 = {
+        id: 'chunk-token-003',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'good plan.', id: stableBlockId },
+        ],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+
+      priv.handleReasoningChunk(chunk1, entries, emitContext);
+      priv.handleReasoningChunk(chunk2, entries, emitContext);
+      priv.handleReasoningChunk(chunk3, entries, emitContext);
+
+      // No flush yet — all three tokens share the same blockId
+      expect(events).toHaveLength(0);
+      expect(entries.size).toBe(1);
+
+      priv.flushReasoningEntries(entries, emitContext);
+
+      expect(events).toHaveLength(1);
+      const emittedMsgs = (
+        events[0] as Extract<AgentEventType, { type: 'message' }>
+      ).data.messages;
+      expect(emittedMsgs).toHaveLength(1);
+      // id is keyed on the stable blockId, not the per-token chunk.id
+      expect(emittedMsgs[0]?.id).toBe(`reasoning:${stableBlockId}`);
+      expect(emittedMsgs[0]?.content).toBe('It seems like a good plan.');
+      expect(entries.size).toBe(0);
+    });
+
+    it('falls back to chunk.id when contentBlock carries no id (backward compat)', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext();
+      const events = collectMessageEvents(subAgent);
+
+      // Block with no id — uses chunk.id as fallback
+      const chunk = {
+        id: 'chunk-fallback',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'fallback text' }],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+
+      priv.handleReasoningChunk(chunk, entries, emitContext);
+      priv.flushReasoningEntries(entries, emitContext);
+
+      expect(events).toHaveLength(1);
+      const msg = (events[0] as Extract<AgentEventType, { type: 'message' }>)
+        .data.messages[0];
+      expect(msg?.id).toBe('reasoning:chunk-fallback');
+      expect(msg?.content).toBe('fallback text');
+    });
+
+    it('two different stable blockIds in sequence produce two separate messages', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext();
+      const events = collectMessageEvents(subAgent);
+
+      const chunkA1 = {
+        id: 'c-token-1',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'block-A part 1 ', id: 'block-A' },
+        ],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+      const chunkA2 = {
+        id: 'c-token-2',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'block-A part 2', id: 'block-A' },
+        ],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+      const chunkB1 = {
+        id: 'c-token-3',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'block-B text', id: 'block-B' },
+        ],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+
+      priv.handleReasoningChunk(chunkA1, entries, emitContext);
+      priv.handleReasoningChunk(chunkA2, entries, emitContext);
+      // block-B triggers flush of block-A
+      priv.handleReasoningChunk(chunkB1, entries, emitContext);
+      priv.flushReasoningEntries(entries, emitContext);
+
+      expect(events).toHaveLength(2);
+      const msgA = (events[0] as Extract<AgentEventType, { type: 'message' }>)
+        .data.messages[0];
+      const msgB = (events[1] as Extract<AgentEventType, { type: 'message' }>)
+        .data.messages[0];
+      expect(msgA?.id).toBe('reasoning:block-A');
+      expect(msgA?.content).toBe('block-A part 1 block-A part 2');
+      expect(msgB?.id).toBe('reasoning:block-B');
+      expect(msgB?.content).toBe('block-B text');
+    });
+
+    // Strip-guard tests for the AIMessage clone path (Part 2 of the fix)
+
+    it('does not emit a clone when AIMessage content is only reasoning blocks', async () => {
+      // An AIMessage that contains ONLY reasoning blocks (no text) should be
+      // dropped from the clone-emit path entirely. The reasoning was already
+      // emitted as per-id ChatMessages via the messages stream.
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: [
+            { type: 'reasoning', reasoning: 'pure reasoning, no text' },
+          ] as unknown as string,
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const collectedEvents: AgentEventType[] = [];
+      subAgent.subscribe(async (event) => {
+        collectedEvents.push(event);
+      });
+
+      await subAgent.runSubagent([new HumanMessage('Think only')], defaultCfg);
+
+      const messageEvents = collectedEvents.filter(
+        (e): e is Extract<AgentEventType, { type: 'message' }> =>
+          e.type === 'message',
+      );
+
+      // There must be no bundled AIMessage clone emitted with empty content.
+      // (No text content was present, so the clone is dropped.)
+      const emptyArrayContentMessages = messageEvents.flatMap((e) =>
+        e.data.messages.filter((msg) => {
+          const c = msg.content;
+          return Array.isArray(c) && (c as unknown[]).length === 0;
+        }),
+      );
+      expect(emptyArrayContentMessages).toHaveLength(0);
+    });
+
+    it('emits a clone unchanged when AIMessage has text content but no reasoning blocks', async () => {
+      // An AIMessage with only text content should be emitted as-is, with the
+      // content array reference not needlessly replaced.
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: [
+            { type: 'text', text: 'plain answer' },
+          ] as unknown as string,
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const collectedEvents: AgentEventType[] = [];
+      subAgent.subscribe(async (event) => {
+        collectedEvents.push(event);
+      });
+
+      await subAgent.runSubagent([new HumanMessage('Answer')], defaultCfg);
+
+      const messageEvents = collectedEvents.filter(
+        (e): e is Extract<AgentEventType, { type: 'message' }> =>
+          e.type === 'message',
+      );
+
+      // At least one bundled message event should have text content
+      const textBlockMessages = messageEvents.flatMap((e) =>
+        e.data.messages.flatMap((msg) => {
+          const c = msg.content;
+          return Array.isArray(c)
+            ? (c as { type?: unknown; text?: unknown }[]).filter(
+                (b) => b.type === 'text' || b.type === 'output_text',
+              )
+            : [];
+        }),
+      );
+      expect(textBlockMessages.length).toBeGreaterThan(0);
+
+      // No reasoning blocks should appear in any clone
+      const reasoningBlocks = messageEvents.flatMap((e) =>
+        e.data.messages.flatMap((msg) => {
+          const c = msg.content;
+          return Array.isArray(c)
+            ? (c as { type?: unknown }[]).filter((b) => b.type === 'reasoning')
+            : [];
+        }),
+      );
+      expect(reasoningBlocks).toHaveLength(0);
+    });
   });
 });

@@ -595,12 +595,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       return;
     }
 
-    const reasoningText = this.extractReasoningFromChunk(messageChunk);
-    const reasoningId = messageChunk.id
-      ? `reasoning:${messageChunk.id}`
-      : undefined;
+    const reasoningEntries = this.extractReasoningFromChunk(messageChunk);
 
-    if (!reasoningText || !reasoningId) {
+    if (!reasoningEntries) {
       return;
     }
 
@@ -631,34 +628,40 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         activeRunConfigurable.__sourceAgentNodeId;
     }
 
-    const currentEntry = prevReasoningChunks.get(reasoningId);
+    // Build up an updated chunks map by processing each per-block entry.
+    // Use prevReasoningChunks as the starting point and mutate a working copy.
+    let workingChunks = new Map<string, ChatMessage>(prevReasoningChunks);
 
-    // When the incoming chunk has a different id from what is already accumulated,
-    // flush the existing in-flight entry as its own persisted ChatMessage before
-    // starting fresh for the new id. Each provider-assigned id represents a distinct
-    // reasoning block and must not be concatenated across ids.
-    if (!currentEntry && prevReasoningChunks.size > 0 && activeRun) {
-      this.flushReasoningEntries(
-        threadId,
-        prevReasoningChunks,
-        activeRun.runnableConfig,
+    for (const { text, blockId } of reasoningEntries) {
+      const reasoningId = `reasoning:${blockId}`;
+      const currentEntry = workingChunks.get(reasoningId);
+
+      // When the incoming block belongs to a different id from what is already
+      // accumulated, flush the existing in-flight entries as their own persisted
+      // ChatMessages before starting fresh for the new id. Each provider-assigned
+      // block id represents a distinct reasoning block and must not be concatenated
+      // across ids.
+      if (!currentEntry && workingChunks.size > 0 && activeRun) {
+        this.flushReasoningEntries(
+          threadId,
+          workingChunks,
+          activeRun.runnableConfig,
+        );
+        workingChunks = new Map<string, ChatMessage>();
+      }
+
+      const currentContent =
+        typeof currentEntry?.content === 'string' ? currentEntry.content : '';
+      const nextContent = currentContent + text;
+
+      workingChunks.set(
+        reasoningId,
+        buildReasoningMessage(nextContent, blockId, reasoningContext),
       );
     }
 
-    const currentContent =
-      typeof currentEntry?.content === 'string' ? currentEntry.content : '';
-    const nextContent = currentContent + reasoningText;
-
-    const nextReasoningChunks = new Map<string, ChatMessage>(
-      currentEntry ? prevReasoningChunks : undefined,
-    );
-    nextReasoningChunks.set(
-      reasoningId,
-      buildReasoningMessage(nextContent, messageChunk.id, reasoningContext),
-    );
-
     this.graphThreadState.applyForThread(threadId, {
-      reasoningChunks: nextReasoningChunks,
+      reasoningChunks: workingChunks,
     });
   }
 
@@ -870,25 +873,43 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     };
   }
 
-  private extractReasoningFromChunk(chunk: AIMessageChunk): string | null {
+  /**
+   * Extracts per-block reasoning entries from a streaming AIMessageChunk.
+   * Returns one entry per reasoning content block found in the chunk, using
+   * the block's own stable id (b.id) as the key for accumulation. Falls back
+   * to chunk.id when the block carries no id of its own (older providers).
+   */
+  private extractReasoningFromChunk(
+    chunk: AIMessageChunk,
+  ): { text: string; blockId: string }[] | null {
     const blocks =
       chunk?.contentBlocks ?? chunk?.response_metadata?.output ?? [];
 
-    if (Array.isArray(blocks)) {
-      const reasoningBlocks = blocks.filter(
-        (b) =>
-          b &&
-          b.type === 'reasoning' &&
-          typeof b.reasoning === 'string' &&
-          b.reasoning.length > 0,
-      );
-
-      if (reasoningBlocks.length) {
-        return reasoningBlocks.map((b) => b.reasoning).join('\n');
-      }
+    if (!Array.isArray(blocks)) {
+      return null;
     }
 
-    return null;
+    const entries: { text: string; blockId: string }[] = [];
+    for (const b of blocks as {
+      type?: unknown;
+      reasoning?: unknown;
+      id?: unknown;
+    }[]) {
+      if (!b || b.type !== 'reasoning') {
+        continue;
+      }
+      if (typeof b.reasoning !== 'string' || b.reasoning.length === 0) {
+        continue;
+      }
+      const blockId =
+        typeof b.id === 'string' && b.id.length > 0 ? b.id : (chunk.id ?? '');
+      if (!blockId) {
+        continue;
+      }
+      entries.push({ text: b.reasoning, blockId });
+    }
+
+    return entries.length > 0 ? entries : null;
   }
 
   public async run(

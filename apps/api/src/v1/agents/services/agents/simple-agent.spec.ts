@@ -1478,6 +1478,190 @@ describe('SimpleAgent', () => {
 
       unsubscribe();
     });
+
+    // Test E: per-block-id accumulation — regression for OpenAI Responses API
+    // where chunk.id changes on every token but contentBlocks[].id is stable.
+    it('should accumulate chunks with different chunk.id but same contentBlock.id into one ChatMessage', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: {
+          run_id: runId,
+          graph_id: 'graph-1',
+        },
+      } as RunnableConfig<BaseAgentConfigurable>;
+
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig,
+        threadId,
+        lastState: {
+          messages: [],
+          summary: '',
+          toolsMetadata: {},
+          toolUsageGuardActivated: false,
+          toolUsageGuardActivatedCount: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+          totalPrice: 0,
+          currentContext: 0,
+        },
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      const stableBlockId = 'block-openai-stable';
+
+      // Three chunks: chunk.id changes every token (OpenAI Responses API behavior),
+      // but contentBlocks[].id is stable — that is the true accumulation key.
+      const chunk1 = {
+        id: 'token-001',
+        content: '',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'need ', id: stableBlockId },
+        ],
+        response_metadata: {},
+      } as AIMessageChunk;
+      const chunk2 = {
+        id: 'token-002',
+        content: '',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'to ', id: stableBlockId },
+        ],
+        response_metadata: {},
+      } as AIMessageChunk;
+      const chunk3 = {
+        id: 'token-003',
+        content: '',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'think.', id: stableBlockId },
+        ],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, chunk1);
+      (agent as any).handleReasoningChunk(threadId, chunk2);
+      (agent as any).handleReasoningChunk(threadId, chunk3);
+
+      // Flush via clearReasoningState
+      (agent as any).clearReasoningState(threadId, {
+        persist: true,
+        config: runnableConfig,
+      });
+
+      await waitForMicrotasks();
+
+      const messageEvents = events.filter(
+        (event): event is Extract<AgentEventType, { type: 'message' }> =>
+          event?.type === 'message',
+      );
+
+      const reasoningMessages = messageEvents.flatMap((e) =>
+        e.data.messages.filter(
+          (m) =>
+            (m as unknown as { role?: unknown }).role === 'reasoning' ||
+            m.type === 'reasoning',
+        ),
+      );
+
+      // All three tokens share the same blockId → must produce exactly ONE message
+      expect(reasoningMessages).toHaveLength(1);
+      const content =
+        typeof reasoningMessages[0]?.content === 'string'
+          ? reasoningMessages[0].content
+          : '';
+      expect(content).toBe('need to think.');
+
+      // The persisted message id is keyed on the stable blockId
+      expect(reasoningMessages[0]?.id).toBe(`reasoning:${stableBlockId}`);
+
+      unsubscribe();
+    });
+
+    // Test F: fallback to chunk.id when contentBlock carries no id (backward compat)
+    it('should fall back to chunk.id when contentBlock carries no id', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: {
+          run_id: runId,
+          graph_id: 'graph-1',
+        },
+      } as RunnableConfig<BaseAgentConfigurable>;
+
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig,
+        threadId,
+        lastState: {
+          messages: [],
+          summary: '',
+          toolsMetadata: {},
+          toolUsageGuardActivated: false,
+          toolUsageGuardActivatedCount: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+          totalPrice: 0,
+          currentContext: 0,
+        },
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      // Block with no id field — should fall back to chunk.id
+      const chunkNoBlockId = {
+        id: 'chunk-fallback-id',
+        content: '',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'fallback reasoning' }],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, chunkNoBlockId);
+
+      (agent as any).clearReasoningState(threadId, {
+        persist: true,
+        config: runnableConfig,
+      });
+
+      await waitForMicrotasks();
+
+      const messageEvents = events.filter(
+        (event): event is Extract<AgentEventType, { type: 'message' }> =>
+          event?.type === 'message',
+      );
+
+      const reasoningMessages = messageEvents.flatMap((e) =>
+        e.data.messages.filter(
+          (m) =>
+            (m as unknown as { role?: unknown }).role === 'reasoning' ||
+            m.type === 'reasoning',
+        ),
+      );
+
+      expect(reasoningMessages).toHaveLength(1);
+      expect(reasoningMessages[0]?.id).toBe('reasoning:chunk-fallback-id');
+      expect(
+        typeof reasoningMessages[0]?.content === 'string'
+          ? reasoningMessages[0].content
+          : '',
+      ).toBe('fallback reasoning');
+
+      unsubscribe();
+    });
   });
 
   describe('deferred tool loading', () => {

@@ -235,16 +235,20 @@ describe('MessageTransformerService', () => {
 
       const result = service.transformMessageToDto(m);
 
-      expect(result.role).toBe('reasoning');
-      expect(result.id).toBe('reasoning:provider-xyz');
-      expect(result.additionalKwargs).toMatchObject({
-        __hideForLlm: true,
-        __reasoningId: 'reasoning:provider-xyz',
-        __subagentCommunication: true,
-        __toolCallId: 'tc-parent-1',
-        __sourceAgentNodeId: 'node-parent',
-        __model: 'claude-opus-4',
-      });
+      expect(result).toEqual({
+        role: 'reasoning',
+        content: 'subagent reasoning',
+        id: 'reasoning:provider-xyz',
+        runId: null,
+        additionalKwargs: {
+          __hideForLlm: true,
+          __reasoningId: 'reasoning:provider-xyz',
+          __subagentCommunication: true,
+          __toolCallId: 'tc-parent-1',
+          __sourceAgentNodeId: 'node-parent',
+          __model: 'claude-opus-4',
+        },
+      } as ReasoningMessageDto);
     });
 
     it('should transform tool message', () => {
