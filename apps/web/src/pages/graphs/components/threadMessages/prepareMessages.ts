@@ -24,6 +24,13 @@ import {
   parseJsonSafe,
 } from './threadMessagesViewUtils';
 
+const getLoadedTools = (
+  msg: ThreadMessageDto | undefined,
+): string[] | undefined => {
+  const raw = getAdditionalKwargs(msg?.message)?.['__loadedTools'];
+  return Array.isArray(raw) ? (raw as string[]) : undefined;
+};
+
 interface PrepareReadyMessagesOptions {
   isNodeRunning: boolean;
   isThreadStopped: boolean;
@@ -954,12 +961,7 @@ export const prepareReadyMessages = (
           createdAt: matched?.createdAt ?? m.createdAt,
           roleLabel: effectiveTitle || name || 'tool',
           title: effectiveTitle,
-          loadedTools: (() => {
-            const raw = getAdditionalKwargs(matched?.message)?.[
-              '__loadedTools'
-            ];
-            return Array.isArray(raw) ? (raw as string[]) : undefined;
-          })(),
+          loadedTools: getLoadedTools(matched),
           inCommunicationExec: isInterAgent,
           inSubagentExec: isSubagent,
           sourceAgentNodeId,
@@ -1004,7 +1006,6 @@ export const prepareReadyMessages = (
         : null;
       const shellCommand = resultObj?.command;
       const isShell = (name || '').toLowerCase() === 'shell';
-      const toolOptions = undefined;
 
       const standaloneToolId = `tool-standalone-${m.id || m.createdAt}`;
       prepared.push({
@@ -1015,7 +1016,7 @@ export const prepareReadyMessages = (
         id: standaloneToolId,
         toolKind: isShell ? 'shell' : 'generic',
         shellCommand,
-        toolOptions,
+        toolOptions: undefined,
         requestTokenUsage: m.requestTokenUsage,
         requestTokenUsageOut: m.requestTokenUsage,
         durationMs: isShell
@@ -1026,10 +1027,7 @@ export const prepareReadyMessages = (
         createdAt: m.createdAt,
         roleLabel: title || name || 'tool',
         title,
-        loadedTools: (() => {
-          const raw = getAdditionalKwargs(m.message)?.['__loadedTools'];
-          return Array.isArray(raw) ? (raw as string[]) : undefined;
-        })(),
+        loadedTools: getLoadedTools(m),
         inCommunicationExec: isInterAgent,
         inSubagentExec: isSubagent,
         sourceAgentNodeId,
@@ -1265,18 +1263,17 @@ export const prepareReadyMessages = (
           }
         }
 
-        const commModel = (() => {
-          for (const item of groupItems) {
-            const rawMsg = getRawMsg(item);
-            if (rawMsg) {
-              const additional = getAdditionalKwargs(rawMsg.message);
-              if (typeof additional?.__model === 'string') {
-                return additional.__model;
-              }
+        let commModel: string | undefined;
+        for (const item of groupItems) {
+          const rawMsg = getRawMsg(item);
+          if (rawMsg) {
+            const additional = getAdditionalKwargs(rawMsg.message);
+            if (typeof additional?.__model === 'string') {
+              commModel = additional.__model;
+              break;
             }
           }
-          return undefined;
-        })();
+        }
 
         // Extract resultText/errorText from the communication_exec tool
         // result when available.  The group key is the inner messages'

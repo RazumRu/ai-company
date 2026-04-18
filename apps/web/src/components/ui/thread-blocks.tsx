@@ -43,6 +43,32 @@ import {
 export type { TokenInfo } from './token-display';
 export { fmtK, StatRow, TokenBadge } from './token-display';
 
+/** Builds a TokenInfo for the StatFooter from raw consumer props. */
+const buildFooterTokens = (
+  usageIn: RawTokenUsage | null | undefined,
+  statistics:
+    | {
+        usage?: {
+          totalTokens?: number;
+          totalPrice?: number;
+          durationMs?: number;
+        };
+      }
+    | undefined,
+): TokenInfo | undefined => {
+  if (usageIn) {
+    return toTokenInfo(usageIn, statistics?.usage?.durationMs);
+  }
+  if (statistics?.usage?.totalTokens) {
+    return {
+      total: statistics.usage.totalTokens,
+      cost: formatUsd(statistics.usage.totalPrice),
+      duration: formatDuration(statistics.usage.durationMs),
+    };
+  }
+  return undefined;
+};
+
 export type InnerMsg =
   | { type: 'reasoning'; content: string }
   | {
@@ -1348,16 +1374,7 @@ export function SubagentBlock(props: SubagentBlockProps) {
       status === 'running' ? 'running' : errorText ? 'error' : status;
     const isClickable = status !== 'running' && !!popoverContent;
 
-    // Build TokenInfo from raw consumer stats for StatFooter
-    const footerTokens: TokenInfo | undefined = usageIn
-      ? toTokenInfo(usageIn, statistics?.usage?.durationMs)
-      : statistics?.usage?.totalTokens
-        ? {
-            total: statistics.usage.totalTokens,
-            cost: formatUsd(statistics.usage.totalPrice),
-            duration: formatDuration(statistics.usage.durationMs),
-          }
-        : undefined;
+    const footerTokens = buildFooterTokens(usageIn, statistics);
 
     const header = (
       <BlockHeader left={null} label={headerLabel} status={displayStatus} />
@@ -1681,16 +1698,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
         ? `Providing Instructions for ${cleanTarget}`
         : 'Providing Instructions');
 
-    // Build TokenInfo from raw consumer stats for StatFooter
-    const footerTokens: TokenInfo | undefined = usageIn
-      ? toTokenInfo(usageIn, statistics?.usage?.durationMs)
-      : statistics?.usage?.totalTokens
-        ? {
-            total: statistics.usage.totalTokens,
-            cost: formatUsd(statistics.usage.totalPrice),
-            duration: formatDuration(statistics.usage.durationMs),
-          }
-        : undefined;
+    const footerTokens = buildFooterTokens(usageIn, statistics);
 
     const hasAgentPair = !!(cleanSource && cleanTarget);
 

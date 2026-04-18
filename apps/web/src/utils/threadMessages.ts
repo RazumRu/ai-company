@@ -197,9 +197,6 @@ export const removeStreamingReasoningMessages = (
   msgs: ThreadMessageDto[],
   predicate: (msg: ThreadMessageDto) => boolean,
 ): ThreadMessageDto[] => {
-  if (!predicate) {
-    return msgs;
-  }
   return msgs.filter((msg) => {
     if (!isStreamingReasoningMessage(msg)) {
       return true;
@@ -430,13 +427,6 @@ export const mergeMessagesReplacingStreaming = (
   return sortMessagesChronologically(Array.from(map.values()));
 };
 
-export const buildIdSet = (
-  ...values: (string | undefined)[]
-): Set<string> | undefined => {
-  const filtered = values.filter((value): value is string => Boolean(value));
-  return filtered.length > 0 ? new Set(filtered) : undefined;
-};
-
 export interface ReasoningUpsertContext {
   externalThreadId?: string;
   runId?: string;
@@ -558,6 +548,20 @@ const buildReasoningThreadMessage = (
   };
 };
 
+// Shallow comparison — sufficient because buildReasoningThreadMessage
+// only sets primitive values (strings, booleans) in additionalKwargs.
+const shallowObjectChanged = (
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean => {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) {
+    return true;
+  }
+  return aKeys.some((k) => a[k] !== b[k]);
+};
+
 export const upsertReasoningEntries = (
   prev: ThreadMessageDto[],
   entries: ReasoningChunkEntry[],
@@ -645,18 +649,10 @@ export const upsertReasoningEntries = (
     const nextContent = entry.content;
     const nextAdditional =
       (nextMessage.message?.additionalKwargs as Record<string, unknown>) ?? {};
-    // Shallow comparison — sufficient because buildReasoningThreadMessage
-    // only sets primitive values (strings, booleans) in additionalKwargs.
-    const additionalChanged = (() => {
-      const existingKeys = Object.keys(existingAdditional);
-      const nextKeys = Object.keys(nextAdditional);
-      if (existingKeys.length !== nextKeys.length) {
-        return true;
-      }
-      return existingKeys.some(
-        (k) => existingAdditional[k] !== nextAdditional[k],
-      );
-    })();
+    const additionalChanged = shallowObjectChanged(
+      existingAdditional,
+      nextAdditional,
+    );
 
     if (
       !existing ||

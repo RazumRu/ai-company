@@ -273,12 +273,19 @@ export class CommunicationExecTool extends BaseTool<
         },
       };
 
-    let output: unknown;
     try {
-      output = await targetAgent.invokeAgent(
+      const output = await targetAgent.invokeAgent(
         [args.message],
         communicationRunnableConfig,
       );
+      return {
+        output,
+        messageMetadata: {
+          __title: title,
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+        },
+      };
     } catch (error: unknown) {
       if (this.isPromptTooLongError(error)) {
         return {
@@ -307,15 +314,6 @@ export class CommunicationExecTool extends BaseTool<
       }
       throw error;
     }
-
-    return {
-      output,
-      messageMetadata: {
-        __title: title,
-        __interAgentCommunication: true,
-        __sourceAgentNodeId: runnableConfig.configurable?.node_id,
-      },
-    };
   }
 
   private isPromptTooLongError(error: unknown): boolean {
