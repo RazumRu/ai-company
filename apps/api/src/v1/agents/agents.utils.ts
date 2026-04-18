@@ -129,8 +129,9 @@ export function updateMessageWithMetadata(
       (typeof (prev as { created_at?: unknown }).created_at === 'string' &&
         (prev as { created_at?: string }).created_at) ||
       new Date().toISOString(),
-    // Apply tool-call and communication metadata if present in configurable
-    ...(configurable?.__toolCallId
+    // Preserve a more-specific inner __toolCallId already set on the message; only
+    // fall back to the configurable value when the message carries none.
+    ...(configurable?.__toolCallId && typeof prev.__toolCallId !== 'string'
       ? { __toolCallId: configurable.__toolCallId }
       : {}),
     ...(configurable?.__subagentCommunication
