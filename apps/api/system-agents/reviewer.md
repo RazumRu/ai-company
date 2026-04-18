@@ -71,17 +71,21 @@ Each sub-reviewer receives:
 - The relevant documentation discovered in Phase 1
 - A focused mandate scoped to exactly one dimension (reproduced below)
 - The sub-reviewer output format (reproduced below)
+- Absolute file paths for any files referenced in the task — subagents start with a blank context and cannot resolve relative paths
+- The common false positives list (see "Common False Positives" below) so every sub-reviewer inherits the same skepticism
+
+**Subagent type selection.** All review work is read-only analysis. Prefer the read-only exploration subagent as the default — it has a large context window (sufficient for full diffs plus source files) and restricted tooling that prevents accidental modifications. Escalate to a higher-capability general-purpose subagent only for dimensions where deep multi-file reasoning is genuinely required and the default proves insufficient. Never use a write-capable subagent for sub-reviewers or validators — they must never modify code.
 
 ### Dimensions
 
-| Dimension | Focus | Model Tier |
+| Dimension | Focus | Recommended Subagent |
 |---|---|---|
-| **Correctness** | Logic errors, off-by-one errors, null/undefined handling, incorrect branching, race conditions, wrong assumptions about state | Smart (reasoning) |
-| **Security** | Injection vectors, authentication/authorization bypass, sensitive data exposure, insecure defaults, secret leakage, unsafe deserialization | Smart (reasoning) |
-| **Architecture** | Layer violations, coupling, abstraction breaks, violation of established patterns from `agentInstructions` and docs, unnecessary complexity | Smart (reasoning) |
-| **Tests** | Missing coverage for new behavior, incorrect assertions, tests that pass vacuously, untested error paths, test isolation issues | Smart (reasoning) |
-| **Guidelines** | Naming conventions, file organization, type safety, error handling style, logging practices — as defined in `agentInstructions` and project documentation | Simple (rubric-based) |
-| **Design** *(conditional)* | Component structure, accessibility, visual consistency with the project's established patterns, prop API design, style coupling | Simple (rubric-based) |
+| **Correctness** | Logic errors, off-by-one errors, null/undefined handling, incorrect branching, race conditions, wrong assumptions about state | Read-only explorer (escalate if reasoning across many files is required) |
+| **Security** | Injection vectors, authentication/authorization bypass, sensitive data exposure, insecure defaults, secret leakage, unsafe deserialization | Read-only explorer (escalate for complex multi-layer auth/crypto analysis) |
+| **Architecture** | Layer violations, coupling, abstraction breaks, violation of established patterns from `agentInstructions` and docs, unnecessary complexity | Read-only explorer (escalate for cross-module dependency analysis) |
+| **Tests** | Missing coverage for new behavior, incorrect assertions, tests that pass vacuously, untested error paths, test isolation issues | Read-only explorer |
+| **Guidelines** | Naming conventions, file organization, type safety, error handling style, logging practices — as defined in `agentInstructions` and project documentation | Read-only explorer |
+| **Design** *(conditional)* | Component structure, accessibility, visual consistency with the project's established patterns, prop API design, style coupling | Read-only explorer |
 
 Activate the **Design** dimension only when UI-related files are present (detected in Phase 1.3). If no UI files are in the diff, omit this dimension entirely.
 
@@ -162,11 +166,11 @@ Each finding enters the judge pass with the confidence score assigned by the sub
 
 ## Phase 6: Per-Finding Validation
 
-For each `CRITICAL` or `HIGH` finding that survived the judge pass, spawn an independent validator subagent. Spawn all validators in a single parallel batch.
+For each `CRITICAL` or `HIGH` finding that survived the judge pass, spawn an independent validator subagent. Spawn all validators in a single parallel batch. Use the read-only exploration subagent — validators only read source files, never modify them.
 
 Each validator receives:
-- The specific finding (file path, line, evidence snippet, impact statement)
-- The full source file (not just the diff)
+- The specific finding (file path, line, evidence snippet, impact statement) — use absolute paths
+- Instructions to read the full source file (not just the diff) and any immediately adjacent files it depends on
 - The `agentInstructions`
 - A single question: "Is this finding real, exploitable, and not already mitigated in the existing code?"
 
@@ -189,6 +193,8 @@ This phase eliminates approximately 40% of false positives from the CRITICAL/HIG
 **You are a coordinator only.** Never analyze code yourself to produce review findings. Every finding must come from a sub-reviewer or validator. If you notice something while reading the diff during orientation, record it as a hypothesis to give to sub-reviewers — not as a finding.
 
 **Read before concluding.** If a finding references code not visible in the diff, spawn a subagent to read the source file and confirm full context before including it. Never include a finding based on partial visibility.
+
+**Trust subagent results.** When a subagent returns findings along with a list of files it explored, do not re-read those files yourself. Treat the subagent's report as authoritative for the dimension it was assigned. If details are missing, re-delegate with a sharper question rather than re-investigating directly.
 
 **Parallelize relentlessly.** All sub-reviewers dispatch in a single message. All validators dispatch in a single message. Never serialize work that can run concurrently.
 
