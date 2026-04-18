@@ -114,7 +114,7 @@ describe('ToolExecutorNode', () => {
         { input: 'test input' },
         {
           configurable: {
-            ...mockConfig.configurable,
+            ...(mockConfig.configurable as Record<string, unknown>),
             __toolCallId: 'call-1',
           },
           signal: undefined,
@@ -157,7 +157,7 @@ describe('ToolExecutorNode', () => {
         { input: 'input 1' },
         {
           configurable: {
-            ...mockConfig.configurable,
+            ...(mockConfig.configurable as Record<string, unknown>),
             __toolCallId: 'call-1',
           },
           signal: undefined,
@@ -167,7 +167,7 @@ describe('ToolExecutorNode', () => {
         { input: 'input 2' },
         {
           configurable: {
-            ...mockConfig.configurable,
+            ...(mockConfig.configurable as Record<string, unknown>),
             __toolCallId: 'call-2',
           },
           signal: undefined,
