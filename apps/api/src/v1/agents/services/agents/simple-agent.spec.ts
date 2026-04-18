@@ -1170,6 +1170,314 @@ describe('SimpleAgent', () => {
 
       unsubscribe();
     });
+
+    // Test A: two chunks with different ids → two separate persisted ChatMessages
+    it('should emit two separate ChatMessages when two chunks with different ids arrive in sequence', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: {
+          run_id: runId,
+          graph_id: 'graph-1',
+        },
+      } as RunnableConfig<BaseAgentConfigurable>;
+
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig,
+        threadId,
+        lastState: buildLastState(),
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      // First chunk with id "chunk-A"
+      const chunkA = {
+        id: 'chunk-A',
+        content: '',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'reasoning block A' }],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      // Second chunk with different id "chunk-B"
+      const chunkB = {
+        id: 'chunk-B',
+        content: '',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'reasoning block B' }],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, chunkA);
+      // Arriving chunk-B with a different id should flush chunk-A first
+      (agent as any).handleReasoningChunk(threadId, chunkB);
+
+      // Now clear with persist to flush chunk-B
+      (agent as any).clearReasoningState(threadId, {
+        persist: true,
+        config: runnableConfig,
+      });
+
+      await waitForMicrotasks();
+
+      const messageEvents = events.filter(
+        (event): event is Extract<AgentEventType, { type: 'message' }> =>
+          event?.type === 'message',
+      );
+
+      const reasoningMessages = messageEvents.flatMap((e) =>
+        e.data.messages.filter(
+          (m) =>
+            (m as unknown as { role?: unknown }).role === 'reasoning' ||
+            m.type === 'reasoning',
+        ),
+      );
+
+      // Must produce exactly two reasoning messages — one per id
+      expect(reasoningMessages).toHaveLength(2);
+
+      const contents = reasoningMessages.map((m) =>
+        typeof m.content === 'string' ? m.content : '',
+      );
+      expect(contents).toContain('reasoning block A');
+      expect(contents).toContain('reasoning block B');
+
+      // Each emitted message must carry the correct single-prefixed id
+      // ("reasoning:<originalId>"), not a double-prefixed one.
+      const ids = reasoningMessages.map((m) => m.id);
+      expect(ids).toContain('reasoning:chunk-A');
+      expect(ids).toContain('reasoning:chunk-B');
+
+      unsubscribe();
+    });
+
+    // Test B: multiple chunks with same id → accumulate into one ChatMessage
+    it('should accumulate multiple chunks with the same id into one ChatMessage', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: {
+          run_id: runId,
+          graph_id: 'graph-1',
+        },
+      } as RunnableConfig<BaseAgentConfigurable>;
+
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig,
+        threadId,
+        lastState: buildLastState(),
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      // Three chunks sharing the same id "chunk-same"
+      const makeChunk = (text: string) =>
+        ({
+          id: 'chunk-same',
+          content: '',
+          contentBlocks: [{ type: 'reasoning', reasoning: text }],
+          response_metadata: {},
+        }) as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, makeChunk('part 1 '));
+      (agent as any).handleReasoningChunk(threadId, makeChunk('part 2 '));
+      (agent as any).handleReasoningChunk(threadId, makeChunk('part 3'));
+
+      (agent as any).clearReasoningState(threadId, {
+        persist: true,
+        config: runnableConfig,
+      });
+
+      await waitForMicrotasks();
+
+      const messageEvents = events.filter(
+        (event): event is Extract<AgentEventType, { type: 'message' }> =>
+          event?.type === 'message',
+      );
+
+      const reasoningMessages = messageEvents.flatMap((e) =>
+        e.data.messages.filter(
+          (m) =>
+            (m as unknown as { role?: unknown }).role === 'reasoning' ||
+            m.type === 'reasoning',
+        ),
+      );
+
+      // All three parts should accumulate into one message
+      expect(reasoningMessages).toHaveLength(1);
+      const content =
+        typeof reasoningMessages[0]?.content === 'string'
+          ? reasoningMessages[0].content
+          : '';
+      expect(content).toBe('part 1 part 2 part 3');
+
+      unsubscribe();
+    });
+
+    // Test C: in-flight chunk at invoke_llm completion is persisted (not discarded)
+    it('should persist in-flight reasoning chunk when invoke_llm node update is received', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: {
+          run_id: runId,
+          graph_id: 'graph-1',
+        },
+      } as RunnableConfig<BaseAgentConfigurable>;
+
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig,
+        threadId,
+        lastState: buildLastState(),
+      });
+
+      // Seed an in-flight reasoning chunk directly in the state
+      const inFlightReasoning = buildReasoningMessage(
+        'in-flight reasoning',
+        'chunk-inflight',
+      );
+      if (!inFlightReasoning.id) {
+        throw new Error('Reasoning message id missing');
+      }
+      graphThreadState.applyForThread(threadId, {
+        reasoningChunks: new Map([[inFlightReasoning.id, inFlightReasoning]]),
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      // Simulate what happens after invoke_llm: clearReasoningState with persist:true
+      (agent as any).clearReasoningState(threadId, {
+        persist: true,
+        config: runnableConfig,
+      });
+
+      await waitForMicrotasks();
+
+      const messageEvents = events.filter(
+        (event): event is Extract<AgentEventType, { type: 'message' }> =>
+          event?.type === 'message',
+      );
+
+      const reasoningMessages = messageEvents.flatMap((e) =>
+        e.data.messages.filter(
+          (m) =>
+            (m as unknown as { role?: unknown }).role === 'reasoning' ||
+            m.type === 'reasoning',
+        ),
+      );
+
+      // The in-flight chunk must be persisted
+      expect(reasoningMessages).toHaveLength(1);
+      const content =
+        typeof reasoningMessages[0]?.content === 'string'
+          ? reasoningMessages[0].content
+          : '';
+      expect(content).toBe('in-flight reasoning');
+
+      // State must be cleared
+      const state = graphThreadState.getByThread(threadId);
+      expect(state.reasoningChunks.size).toBe(0);
+
+      unsubscribe();
+    });
+
+    // Test D: routing metadata is preserved per persisted message
+    it('should preserve __toolCallId, __interAgentCommunication, and __sourceAgentNodeId per persisted reasoning message on id change', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const runnableConfig = {
+        configurable: {
+          run_id: runId,
+          graph_id: 'graph-1',
+          __toolCallId: 'tc-routing',
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: 'node-src',
+        },
+      } as RunnableConfig<BaseAgentConfigurable>;
+
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig,
+        threadId,
+        lastState: buildLastState(),
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      // First chunk — will be flushed when second different-id chunk arrives
+      const chunkFirst = {
+        id: 'chunk-first',
+        content: '',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'first block' }],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      // Second chunk with different id — triggers flush of first
+      const chunkSecond = {
+        id: 'chunk-second',
+        content: '',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'second block' }],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, chunkFirst);
+      (agent as any).handleReasoningChunk(threadId, chunkSecond);
+
+      // Flush the second chunk
+      (agent as any).clearReasoningState(threadId, {
+        persist: true,
+        config: runnableConfig,
+      });
+
+      await waitForMicrotasks();
+
+      const messageEvents = events.filter(
+        (event): event is Extract<AgentEventType, { type: 'message' }> =>
+          event?.type === 'message',
+      );
+
+      const reasoningMessages = messageEvents.flatMap((e) =>
+        e.data.messages.filter(
+          (m) =>
+            (m as unknown as { role?: unknown }).role === 'reasoning' ||
+            m.type === 'reasoning',
+        ),
+      );
+
+      expect(reasoningMessages).toHaveLength(2);
+
+      for (const msg of reasoningMessages) {
+        const kwargs = msg.additional_kwargs as Record<string, unknown>;
+        expect(kwargs.__toolCallId).toBe('tc-routing');
+        expect(kwargs.__interAgentCommunication).toBe(true);
+        expect(kwargs.__sourceAgentNodeId).toBe('node-src');
+      }
+
+      // Each emitted message must carry the correct single-prefixed id
+      // ("reasoning:<originalId>"), not a double-prefixed one.
+      const ids = reasoningMessages.map((m) => m.id);
+      expect(ids).toContain('reasoning:chunk-first');
+      expect(ids).toContain('reasoning:chunk-second');
+
+      unsubscribe();
+    });
   });
 
   describe('deferred tool loading', () => {

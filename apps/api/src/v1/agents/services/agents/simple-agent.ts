@@ -607,27 +607,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     const { reasoningChunks: prevReasoningChunks } =
       this.graphThreadState.getByThread(threadId);
 
-    // IMPORTANT:
-    // Some providers emit reasoning chunks with different `chunk.id` values even though they
-    // eventually get persisted as a single reasoning message. To avoid accumulating multiple
-    // "reasoning:*" entries in socket metadata, we keep reasoningChunks at max size 1 and
-    // migrate accumulated content when the id changes.
-    const combinedPreviousContent = Array.from(prevReasoningChunks.values())
-      .map((msg) => (typeof msg.content === 'string' ? msg.content : ''))
-      .join('');
-
-    const currentEntry = prevReasoningChunks.get(reasoningId);
-    const currentContent =
-      typeof currentEntry?.content === 'string' ? currentEntry.content : '';
-
-    const nextContent =
-      (currentEntry ? currentContent : combinedPreviousContent) + reasoningText;
-
     // Read context at chunk-handle time from the active run's configurable.
-    // This ensures migrated content always inherits the current run's context,
-    // even when the chunk id changes and content is migrated to a new entry.
-    const activeRunConfigurable =
-      this.getActiveRunByThread(threadId)?.runnableConfig?.configurable;
+    const activeRun = this.getActiveRunByThread(threadId);
+    const activeRunConfigurable = activeRun?.runnableConfig?.configurable;
     const reasoningContext: ReasoningMessageContext = {};
     if (
       typeof activeRunConfigurable?.__toolCallId === 'string' &&
@@ -649,7 +631,27 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         activeRunConfigurable.__sourceAgentNodeId;
     }
 
-    const nextReasoningChunks = new Map<string, ChatMessage>();
+    const currentEntry = prevReasoningChunks.get(reasoningId);
+
+    // When the incoming chunk has a different id from what is already accumulated,
+    // flush the existing in-flight entry as its own persisted ChatMessage before
+    // starting fresh for the new id. Each provider-assigned id represents a distinct
+    // reasoning block and must not be concatenated across ids.
+    if (!currentEntry && prevReasoningChunks.size > 0 && activeRun) {
+      this.flushReasoningEntries(
+        threadId,
+        prevReasoningChunks,
+        activeRun.runnableConfig,
+      );
+    }
+
+    const currentContent =
+      typeof currentEntry?.content === 'string' ? currentEntry.content : '';
+    const nextContent = currentContent + reasoningText;
+
+    const nextReasoningChunks = new Map<string, ChatMessage>(
+      currentEntry ? prevReasoningChunks : undefined,
+    );
     nextReasoningChunks.set(
       reasoningId,
       buildReasoningMessage(nextContent, messageChunk.id, reasoningContext),
@@ -658,6 +660,44 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     this.graphThreadState.applyForThread(threadId, {
       reasoningChunks: nextReasoningChunks,
     });
+  }
+
+  /**
+   * Emits each entry in the provided reasoningChunks map as its own persisted
+   * ChatMessage. Does not clear the in-memory state — callers are responsible
+   * for resetting reasoningChunks after calling this method.
+   *
+   * Each entry is already a fully-formed ChatMessage with the correct id
+   * ("reasoning:<parentId>"), role, and additional_kwargs set by
+   * buildReasoningMessage at accumulation time. We emit it directly to avoid
+   * double-prefixing the id (which would produce "reasoning:reasoning:<parentId>").
+   */
+  private flushReasoningEntries(
+    threadId: string,
+    reasoningChunks: Map<string, ChatMessage>,
+    config: RunnableConfig<BaseAgentConfigurable>,
+  ) {
+    for (const entry of reasoningChunks.values()) {
+      const content = typeof entry.content === 'string' ? entry.content : '';
+      if (content.length === 0) {
+        continue;
+      }
+      // Shallow-clone to avoid mutating the in-memory state entry while
+      // updateMessagesListWithMetadata attaches run metadata.
+      const reasoningMsg = Object.assign(
+        Object.create(Object.getPrototypeOf(entry) as object) as ChatMessage,
+        entry,
+      );
+      const tagged = updateMessagesListWithMetadata([reasoningMsg], config);
+      this.emit({
+        type: 'message',
+        data: {
+          threadId,
+          messages: tagged,
+          config,
+        },
+      });
+    }
   }
 
   /**
@@ -688,31 +728,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
 
     // Persist accumulated reasoning so it survives page reloads after stop.
+    // Each entry in the map corresponds to a distinct provider-assigned reasoning
+    // id and is emitted as its own ChatMessage rather than a single joined blob.
     if (options?.persist && options.config) {
-      const combinedContent = Array.from(reasoningChunks.values())
-        .map((msg) => (typeof msg.content === 'string' ? msg.content : ''))
-        .join('');
-
-      if (combinedContent.length > 0) {
-        // Use the first chunk's original message ID for a stable reasoningId
-        const firstEntry = reasoningChunks.entries().next().value;
-        const parentId = firstEntry
-          ? (firstEntry[1].id ?? undefined)
-          : undefined;
-        const reasoningMsg = buildReasoningMessage(combinedContent, parentId);
-        const tagged = updateMessagesListWithMetadata(
-          [reasoningMsg],
-          options.config,
-        );
-        this.emit({
-          type: 'message',
-          data: {
-            threadId,
-            messages: tagged,
-            config: options.config,
-          },
-        });
-      }
+      this.flushReasoningEntries(threadId, reasoningChunks, options.config);
     }
 
     this.graphThreadState.applyForThread(threadId, {
@@ -1085,7 +1104,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             );
 
             if (_nodeName === 'invoke_llm') {
-              this.clearReasoningState(threadId);
+              this.clearReasoningState(threadId, {
+                persist: true,
+                config: mergedConfig,
+              });
             }
           }
         } else if (mode === 'messages') {
