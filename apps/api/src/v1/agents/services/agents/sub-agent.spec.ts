@@ -24,9 +24,43 @@ import { filterMessagesForLlm } from '../../agents.utils';
 import { AgentEventType } from './base-agent';
 import { SubAgent, SubAgentSchemaType } from './sub-agent';
 
-const { mockLlmInvokeRef } = vi.hoisted(() => ({
+const { mockLlmInvokeRef, mockCompiledStreamRef } = vi.hoisted(() => ({
   mockLlmInvokeRef: vi.fn(),
+  // When non-null, the StateGraph mock below routes compiled.stream() here.
+  // Leave null for tests that use the real graph (existing tests).
+  mockCompiledStreamRef: { current: null as AsyncGenerator<unknown> | null },
 }));
+
+// Conditionally intercept compiled.stream() for leak-guard tests.
+// When mockCompiledStreamRef.current is non-null, stream() returns it;
+// otherwise passes through to the real compiled graph (used by existing tests).
+vi.mock('@langchain/langgraph', async (importActual) => {
+  const actual = await importActual<typeof import('@langchain/langgraph')>();
+
+  // Wrap StateGraph so compiled.stream() can be intercepted per-test.
+
+  const OriginalStateGraph = actual.StateGraph as any;
+
+  class PatchedStateGraph extends (OriginalStateGraph as new (
+    ...a: any[]
+  ) => any) {
+    compile(...args: any[]) {
+      const compiledGraph: { stream: (...s: any[]) => unknown } = super.compile(
+        ...args,
+      );
+      if (mockCompiledStreamRef.current !== null) {
+        const injectedStream = mockCompiledStreamRef.current;
+        return {
+          ...compiledGraph,
+          stream: async () => injectedStream,
+        };
+      }
+      return compiledGraph;
+    }
+  }
+
+  return { ...actual, StateGraph: PatchedStateGraph };
+});
 
 vi.mock('../../../../environments', () => ({
   environment: {
@@ -1506,6 +1540,117 @@ describe('SubAgent', () => {
         }),
       );
       expect(reasoningBlocks).toHaveLength(0);
+    });
+
+    // Part 3: cloneMessageForEmit must return null for standalone ChatMessage(role='reasoning').
+    // Such messages are produced by InvokeLlmNode and were already persisted via
+    // the messages-mode flush path; emitting them again would double-persist reasoning.
+    it('does not emit a standalone ChatMessage(role=reasoning) via the clone path', async () => {
+      // An AIMessage (the text response) alongside a standalone reasoning ChatMessage.
+      // The clone path must drop the ChatMessage(role='reasoning') entirely.
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'final answer',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      // Inject a standalone ChatMessage(role='reasoning') into the graph state by
+      // calling cloneMessageForEmit directly.
+      type SubAgentPrivateClone = {
+        cloneMessageForEmit: (msg: BaseMessage) => BaseMessage | null;
+      };
+
+      const priv = subAgent as unknown as SubAgentPrivateClone;
+
+      const reasoningMsg = new ChatMessage(
+        'internal reasoning step',
+        'reasoning',
+      );
+      const result = priv.cloneMessageForEmit(reasoningMsg);
+
+      // Must be null — reasoning ChatMessages are not forwarded to the parent.
+      expect(result).toBeNull();
+    });
+
+    // Part 2: LangGraph JS leaks messages-mode events from nested compiled.stream()
+    // calls into the parent subagent's stream. The guard rejects leaked chunks that
+    // arrive after the parent's own updates/invoke_llm event has fired.
+    it('should ignore leaked invoke_llm messages-mode chunks that arrive after the parent invoke_llm updates event', async () => {
+      const parentChunk = {
+        id: 'resp_parent-P1',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'parent reasoning P1' },
+        ],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+
+      const leakedChunk = {
+        id: 'resp_leaked-L1',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'leaked subagent' }],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+
+      async function* leakStream() {
+        // (a) Parent reasoning chunk arrives before updates/invoke_llm
+        yield [
+          'messages',
+          [parentChunk, { langgraph_node: 'invoke_llm' }],
+        ] as const;
+
+        // (b) updates/invoke_llm fires — marks the boundary
+        yield [
+          'updates',
+          { invoke_llm: { messages: { mode: 'append', items: [] } } },
+        ] as const;
+
+        // (c) Leaked subagent chunk arrives after updates/invoke_llm
+        yield [
+          'messages',
+          [leakedChunk, { langgraph_node: 'invoke_llm' }],
+        ] as const;
+      }
+
+      // Route compiled.stream() to our controlled sequence for this test only.
+      mockCompiledStreamRef.current = leakStream();
+
+      const collectedEvents: AgentEventType[] = [];
+      subAgent.subscribe(async (event) => {
+        collectedEvents.push(event);
+      });
+
+      // runSubagent will hit the stream and then try to read finalState.messages.
+      // Our mock stream doesn't produce an AIMessage in state, so the result
+      // will fall back to 'Task completed.' — that is fine for this test.
+      await subAgent.runSubagent(
+        [new HumanMessage('test leak guard')],
+        defaultCfg,
+      );
+
+      // Reset mock stream so subsequent tests use the real graph.
+      mockCompiledStreamRef.current = null;
+
+      const reasoningEvents = collectedEvents
+        .filter(
+          (e): e is Extract<AgentEventType, { type: 'message' }> =>
+            e.type === 'message',
+        )
+        .flatMap((e) =>
+          e.data.messages.filter(
+            (m) =>
+              (m as unknown as { role?: unknown }).role === 'reasoning' ||
+              m.type === 'reasoning',
+          ),
+        );
+
+      // Only the parent's chunk (P1) must be persisted; the leaked chunk must be dropped.
+      expect(reasoningEvents).toHaveLength(1);
+      const content =
+        typeof reasoningEvents[0]?.content === 'string'
+          ? reasoningEvents[0].content
+          : '';
+      expect(content).toBe('parent reasoning P1');
+      expect(reasoningEvents[0]?.id).toBe('reasoning:resp_parent-P1');
     });
   });
 });

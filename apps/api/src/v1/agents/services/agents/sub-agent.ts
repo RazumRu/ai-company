@@ -345,6 +345,11 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         },
       );
 
+      // Track the most recent updates-mode node. Same guard as SimpleAgent:
+      // leaked messages-mode chunks from nested graphs arrive after the parent's
+      // updates/invoke_llm event, so we reject them by checking lastUpdatesNode.
+      let lastUpdatesNode: string | null = null;
+
       for await (const event of stream) {
         const [mode, value] = event as ['updates' | 'messages', unknown];
 
@@ -352,6 +357,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           const chunk = value as Record<string, BaseAgentStateChange>;
 
           for (const [nodeName, nodeState] of Object.entries(chunk)) {
+            lastUpdatesNode = nodeName;
             if (!nodeState || typeof nodeState !== 'object') {
               continue;
             }
@@ -409,7 +415,11 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
             AIMessageChunk,
             Record<string, unknown>,
           ];
-          if (metadata.langgraph_node === 'invoke_llm') {
+          // Guard: reject leaked messages-mode chunks from nested graph invocations.
+          if (
+            metadata.langgraph_node === 'invoke_llm' &&
+            lastUpdatesNode !== 'invoke_llm'
+          ) {
             this.handleReasoningChunk(
               messageChunk,
               reasoningEntries,
@@ -702,6 +712,13 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
    * render as a blank subagent block on the web.
    */
   private cloneMessageForEmit(msg: BaseMessage): BaseMessage | null {
+    // Standalone ChatMessage(role='reasoning') was already persisted via the
+    // messages-mode flush path — skip it here to avoid double-persisting.
+    const role = (msg as unknown as { role?: unknown }).role;
+    if (role === 'reasoning') {
+      return null;
+    }
+
     const rawContent = msg.content as unknown;
     const strippedContent = Array.isArray(rawContent)
       ? rawContent.filter(

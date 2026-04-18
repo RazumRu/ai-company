@@ -1074,6 +1074,11 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     // Emit initial messages notification
     await this.emitNewMessages(updateMessages, mergedConfig, threadId);
 
+    // Track the most recent updates-mode node. Leaked subagent invoke_llm chunks
+    // arrive after the parent's updates/invoke_llm event fires, so we can
+    // distinguish them from legitimate parent reasoning chunks.
+    let lastUpdatesNode: string | null = null;
+
     try {
       for await (const event of stream) {
         const [mode, value] = event as ['updates' | 'messages', unknown];
@@ -1082,6 +1087,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           const chunk = value as Record<string, BaseAgentStateChange>;
 
           for (const [_nodeName, nodeState] of Object.entries(chunk)) {
+            lastUpdatesNode = _nodeName;
             // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
             const stateChange = nodeState;
             if (!stateChange || typeof stateChange !== 'object') {
@@ -1137,7 +1143,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             Record<string, unknown>,
           ];
 
-          if (metadata.langgraph_node === 'invoke_llm') {
+          // Guard: reject leaked chunks from nested subagent graphs (LangGraph JS
+          // leaks messages-mode events from nested compiled.stream() calls into
+          // the parent stream; they arrive after the parent's updates/invoke_llm).
+          if (
+            metadata.langgraph_node === 'invoke_llm' &&
+            lastUpdatesNode !== 'invoke_llm'
+          ) {
             this.handleReasoningChunk(threadId, messageChunk);
           }
         }

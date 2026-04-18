@@ -1662,6 +1662,110 @@ describe('SimpleAgent', () => {
 
       unsubscribe();
     });
+
+    // Test G: LangGraph JS leaks messages-mode events from nested compiled.stream()
+    // calls into the parent stream; they carry the same langgraph_node='invoke_llm'
+    // but arrive AFTER the parent's updates/invoke_llm event has already fired.
+    it('should ignore leaked subagent invoke_llm chunks that arrive after the parent invoke_llm updates event', async () => {
+      const config = {
+        summarizeMaxTokens: 1000,
+        summarizeKeepTokens: 500,
+        instructions: 'Test instructions',
+        name: 'Test Agent',
+        description: 'Test agent description',
+        invokeModelName: 'gpt-5-mini',
+        invokeModelReasoningEffort: ReasoningEffort.None,
+        maxIterations: 50,
+      };
+
+      // (a) Parent reasoning chunk for block A — arrives before invoke_llm updates
+      const parentChunkA = {
+        id: 'resp_parent-A',
+        content: '',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'parent reasoning A' }],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      // (c) Leaked subagent chunk — different block id, arrives after invoke_llm updates
+      const leakedChunk = {
+        id: 'resp_subagent-B',
+        content: '',
+        contentBlocks: [{ type: 'reasoning', reasoning: 'subagent leaked' }],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      async function* mockStream() {
+        // (a) messages-mode: parent reasoning chunk before updates/invoke_llm
+        yield [
+          'messages',
+          [parentChunkA, { langgraph_node: 'invoke_llm' }],
+        ] as const;
+
+        // (b) updates-mode: invoke_llm fires — parent's LLM turn complete
+        yield [
+          'updates',
+          {
+            invoke_llm: {
+              messages: { mode: 'append', items: [] },
+            },
+          },
+        ] as const;
+
+        // (c) messages-mode: leaked subagent chunk arrives AFTER invoke_llm updates
+        yield [
+          'messages',
+          [leakedChunk, { langgraph_node: 'invoke_llm' }],
+        ] as const;
+
+        // (d) updates-mode: tools node fires — clears lastUpdatesNode to 'tools'
+        yield [
+          'updates',
+          {
+            tools: {
+              messages: { mode: 'append', items: [] },
+            },
+          },
+        ] as const;
+      }
+
+      const mockGraph = {
+        stream: vi.fn().mockReturnValue(mockStream()),
+      };
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      await agent.run('thread-leak-guard', [new HumanMessage('test')], config);
+
+      const allEvents = emitSpy.mock.calls.map((c) => c[0] as AgentEventType);
+
+      // Collect all reasoning messages emitted via message events
+      const reasoningMessages = allEvents
+        .filter(
+          (e): e is Extract<AgentEventType, { type: 'message' }> =>
+            e?.type === 'message',
+        )
+        .flatMap((e) =>
+          e.data.messages.filter(
+            (m) =>
+              (m as unknown as { role?: unknown }).role === 'reasoning' ||
+              m.type === 'reasoning',
+          ),
+        );
+
+      // Only block A (parent reasoning) must be persisted — the leaked subagent
+      // chunk must be silently dropped.
+      expect(reasoningMessages).toHaveLength(1);
+      const content =
+        typeof reasoningMessages[0]?.content === 'string'
+          ? reasoningMessages[0].content
+          : '';
+      expect(content).toBe('parent reasoning A');
+      expect(reasoningMessages[0]?.id).toBe('reasoning:resp_parent-A');
+    });
   });
 
   describe('deferred tool loading', () => {
