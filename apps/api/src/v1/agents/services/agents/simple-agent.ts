@@ -43,6 +43,7 @@ import {
 import {
   buildReasoningMessage,
   markMessageHideForLlm,
+  type ReasoningMessageContext,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { GraphThreadState } from '../graph-thread-state';
@@ -608,10 +609,36 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     const nextContent =
       (currentEntry ? currentContent : combinedPreviousContent) + reasoningText;
 
+    // Read context at chunk-handle time from the active run's configurable.
+    // This ensures migrated content always inherits the current run's context,
+    // even when the chunk id changes and content is migrated to a new entry.
+    const activeRunConfigurable =
+      this.getActiveRunByThread(threadId)?.runnableConfig?.configurable;
+    const reasoningContext: ReasoningMessageContext = {};
+    if (
+      typeof activeRunConfigurable?.__toolCallId === 'string' &&
+      activeRunConfigurable.__toolCallId
+    ) {
+      reasoningContext.toolCallId = activeRunConfigurable.__toolCallId;
+    }
+    if (activeRunConfigurable?.__subagentCommunication === true) {
+      reasoningContext.subagentCommunication = true;
+    }
+    if (activeRunConfigurable?.__interAgentCommunication === true) {
+      reasoningContext.interAgentCommunication = true;
+    }
+    if (
+      typeof activeRunConfigurable?.__sourceAgentNodeId === 'string' &&
+      activeRunConfigurable.__sourceAgentNodeId
+    ) {
+      reasoningContext.sourceAgentNodeId =
+        activeRunConfigurable.__sourceAgentNodeId;
+    }
+
     const nextReasoningChunks = new Map<string, ChatMessage>();
     nextReasoningChunks.set(
       reasoningId,
-      buildReasoningMessage(nextContent, messageChunk.id),
+      buildReasoningMessage(nextContent, messageChunk.id, reasoningContext),
     );
 
     this.graphThreadState.applyForThread(threadId, {
@@ -749,11 +776,28 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       })),
       reasoningChunks: Array.from(threadState.reasoningChunks.entries()).reduce(
         (res, [id, msg]) => {
-          res[id] = {
+          const kwargs = msg.additional_kwargs as Record<string, unknown>;
+          const entry: Record<string, unknown> = {
             content: msg.content,
             id: msg.id,
             role: msg.role,
           };
+          if (typeof kwargs.__toolCallId === 'string' && kwargs.__toolCallId) {
+            entry.toolCallId = kwargs.__toolCallId;
+          }
+          if (kwargs.__subagentCommunication === true) {
+            entry.subagentCommunication = true;
+          }
+          if (kwargs.__interAgentCommunication === true) {
+            entry.interAgentCommunication = true;
+          }
+          if (
+            typeof kwargs.__sourceAgentNodeId === 'string' &&
+            kwargs.__sourceAgentNodeId
+          ) {
+            entry.sourceAgentNodeId = kwargs.__sourceAgentNodeId;
+          }
+          res[id] = entry;
           return res;
         },
         {} as Record<string, unknown>,

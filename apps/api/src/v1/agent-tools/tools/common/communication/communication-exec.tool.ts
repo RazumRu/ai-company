@@ -263,9 +263,22 @@ export class CommunicationExecTool extends BaseTool<
       );
     }
 
+    const communicationRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> =
+      {
+        ...runnableConfig,
+        configurable: {
+          ...(runnableConfig.configurable ?? {}),
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+        },
+      };
+
     let output: unknown;
     try {
-      output = await targetAgent.invokeAgent([args.message], runnableConfig);
+      output = await targetAgent.invokeAgent(
+        [args.message],
+        communicationRunnableConfig,
+      );
     } catch (error: unknown) {
       if (this.isPromptTooLongError(error)) {
         return {
@@ -312,17 +325,12 @@ export class CommunicationExecTool extends BaseTool<
         : typeof (error as { message?: unknown })?.message === 'string'
           ? (error as { message: string }).message
           : '';
-    if (typeof message === 'string') {
-      const lower = message.toLowerCase();
-      if (
-        lower.includes('prompt is too long') ||
-        lower.includes('maximum context length') ||
-        lower.includes('context_length_exceeded') ||
-        lower.includes('too many tokens')
-      ) {
-        return true;
-      }
-    }
-    return false;
+    const lower = message.toLowerCase();
+    return (
+      lower.includes('prompt is too long') ||
+      lower.includes('maximum context length') ||
+      lower.includes('context_length_exceeded') ||
+      lower.includes('too many tokens')
+    );
   }
 }

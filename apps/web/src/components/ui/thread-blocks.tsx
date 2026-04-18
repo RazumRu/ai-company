@@ -15,7 +15,7 @@ import {
   Timer,
   XCircle,
 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useReasoningReveal } from '../../hooks/useReasoningReveal';
@@ -40,7 +40,6 @@ import {
   TokenUsageDetail,
   toTokenInfo,
 } from './token-display';
-
 export type { TokenInfo } from './token-display';
 export { fmtK, StatRow, TokenBadge } from './token-display';
 
@@ -330,12 +329,27 @@ export function ReasoningBlock({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = (content?.length ?? 0) > 130;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Pin the scroll to the bottom so the latest streaming lines are always visible.
+  // Only active while streaming, not expanded, and content is long enough to clip.
+  useLayoutEffect(() => {
+    if (isStreaming && !expanded && isLong && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [content, isStreaming, expanded, isLong]);
 
   if (isStreaming) {
     return (
       <div className="bg-muted/40 border border-border/50 rounded-lg px-3 py-2.5 text-[12px] text-muted-foreground italic">
-        <p className="leading-relaxed whitespace-pre-wrap">{content}</p>
-        <div className="flex items-center gap-1.5 mt-1.5">
+        {!expanded && isLong ? (
+          <div ref={containerRef} className="overflow-hidden max-h-[2lh]">
+            <p className="leading-relaxed whitespace-pre-wrap">{content}</p>
+          </div>
+        ) : (
+          <p className="leading-relaxed whitespace-pre-wrap">{content}</p>
+        )}
+        <div className="flex items-center justify-between mt-1.5">
           <span
             className="text-[10px] not-italic text-muted-foreground/50"
             style={{
@@ -344,6 +358,13 @@ export function ReasoningBlock({
             }}>
             reasoning…
           </span>
+          {isLong && (
+            <button
+              className="text-[10px] not-italic hover:text-foreground transition-colors"
+              onClick={() => setExpanded((v) => !v)}>
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
         </div>
       </div>
     );

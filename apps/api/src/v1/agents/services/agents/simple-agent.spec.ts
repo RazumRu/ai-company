@@ -1024,6 +1024,151 @@ describe('SimpleAgent', () => {
       expect(metadataEntry).toBeDefined();
       expect(metadataEntry?.content).toBe('DeepSeek reasoning chunk');
     });
+
+    it('should propagate __toolCallId and __interAgentCommunication into the reasoningChunks socket payload', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      // Register an active run that carries the communication context
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig: {
+          configurable: {
+            run_id: runId,
+            graph_id: 'graph-1',
+            __toolCallId: 'tc-1',
+            __interAgentCommunication: true,
+          },
+        } as RunnableConfig<BaseAgentConfigurable>,
+        threadId,
+        lastState: buildLastState(),
+      });
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      const reasoningChunk = {
+        id: 'chunk-tagged',
+        content: '',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'tagged reasoning step' },
+        ],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, reasoningChunk);
+
+      await waitForMicrotasks();
+
+      const metadataEvent = events
+        .filter(
+          (
+            event,
+          ): event is Extract<
+            AgentEventType,
+            { type: 'nodeAdditionalMetadataUpdate' }
+          > => event.type === 'nodeAdditionalMetadataUpdate',
+        )
+        .at(-1);
+
+      expect(metadataEvent).toBeDefined();
+
+      const reasoningChunks = metadataEvent?.data.additionalMetadata
+        ?.reasoningChunks as
+        | Record<
+            string,
+            {
+              id: string;
+              content: string;
+              toolCallId?: string;
+              interAgentCommunication?: boolean;
+            }
+          >
+        | undefined;
+
+      const entry = reasoningChunks?.['reasoning:chunk-tagged'];
+      expect(entry).toBeDefined();
+      expect(entry?.toolCallId).toBe('tc-1');
+      expect(entry?.interAgentCommunication).toBe(true);
+
+      unsubscribe();
+    });
+
+    it('should forward __toolCallId and __interAgentCommunication to persisted message when clearReasoningState is called with persist:true', async () => {
+      const graphThreadState = new GraphThreadState();
+      setGraphThreadState(graphThreadState);
+
+      const persistRunnableConfig = {
+        configurable: {
+          run_id: runId,
+          graph_id: 'graph-1',
+          __toolCallId: 'tc-1',
+          __interAgentCommunication: true,
+        },
+      } as RunnableConfig<BaseAgentConfigurable>;
+
+      // Register active run so handleReasoningChunk can read the context
+      agent['activeRuns'].set(runId, {
+        abortController: new AbortController(),
+        runnableConfig: persistRunnableConfig,
+        threadId,
+        lastState: buildLastState(),
+      });
+
+      // Drive a reasoning chunk to populate graphThreadState.reasoningChunks
+      const reasoningChunk = {
+        id: 'chunk-persist',
+        content: '',
+        contentBlocks: [
+          { type: 'reasoning', reasoning: 'persist reasoning step' },
+        ],
+        response_metadata: {},
+      } as AIMessageChunk;
+
+      (agent as any).handleReasoningChunk(threadId, reasoningChunk);
+
+      const events: AgentEventType[] = [];
+      const unsubscribe = agent.subscribe(async (event) => {
+        events.push(event);
+      });
+
+      // Clear with persist:true — this should emit a 'message' event whose
+      // reasoning ChatMessage has __toolCallId + __interAgentCommunication
+      (agent as any).clearReasoningState(threadId, {
+        persist: true,
+        config: persistRunnableConfig,
+      });
+
+      await waitForMicrotasks();
+
+      const messageEvent = events
+        .filter(
+          (event): event is Extract<AgentEventType, { type: 'message' }> =>
+            event?.type === 'message',
+        )
+        .at(-1);
+
+      expect(messageEvent).toBeDefined();
+
+      const reasoningMsg = messageEvent?.data.messages.find(
+        (m) =>
+          (m as unknown as { role?: unknown }).role === 'reasoning' ||
+          m.type === 'reasoning',
+      );
+
+      expect(reasoningMsg).toBeDefined();
+
+      const kwargs = reasoningMsg?.additional_kwargs as
+        | Record<string, unknown>
+        | undefined;
+
+      expect(kwargs?.__toolCallId).toBe('tc-1');
+      expect(kwargs?.__interAgentCommunication).toBe(true);
+
+      unsubscribe();
+    });
   });
 
   describe('deferred tool loading', () => {

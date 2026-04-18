@@ -1927,6 +1927,41 @@ const SB_INNER_MSGS: InnerMsg[] = [
   },
 ];
 
+// ─── Streaming ReasoningBlock storybook helpers ───────────────────────────────
+
+const STREAMING_REASONING_LONG_CONTENT = `First, I need to understand the full scope of the task. The user wants a deep security audit of the authentication module, covering both the OAuth 2.0 token flow and the session management layer.
+
+Let me start by mapping the attack surface. The token validation path goes through three middleware layers: JwtAuthGuard, RolesGuard, and the tenant-isolation filter. Any bypass in the first layer propagates unchecked through the rest.
+
+Next, I will look at the session store configuration. Redis-backed sessions with a 7-day TTL could be problematic if logout does not actively invalidate the session key — a classic session-fixation vector.
+
+Finally, I want to trace the PKCE flow to confirm the code_verifier is validated server-side and not merely echoed back. A missing server-side check here would allow an attacker who intercepts the authorization code to exchange it without the original verifier.`;
+
+/**
+ * Demonstrates the expanded state of a streaming ReasoningBlock (after Show more
+ * is clicked). Uses an effect to programmatically trigger the button so the visual
+ * state matches what users see after interacting with the block.
+ */
+function StreamingReasoningExpandedDemo() {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!wrapperRef.current) {
+      return;
+    }
+    const btn = wrapperRef.current.querySelector<HTMLButtonElement>('button');
+    if (btn) {
+      btn.click();
+    }
+  }, []);
+
+  return (
+    <div ref={wrapperRef}>
+      <ReasoningBlock content={STREAMING_REASONING_LONG_CONTENT} isStreaming />
+    </div>
+  );
+}
+
 function ThreadBlocksSection() {
   return (
     <Section
@@ -1960,6 +1995,23 @@ function ThreadBlocksSection() {
               </p>
             </div>
           </ReasoningBlock>
+        </div>
+      </Row>
+      <Row
+        label="Streaming — line-clamp-2 + tail view"
+        code="isStreaming (collapsed)">
+        <div className="w-full max-w-2xl">
+          <ReasoningBlock
+            content={STREAMING_REASONING_LONG_CONTENT}
+            isStreaming
+          />
+        </div>
+      </Row>
+      <Row
+        label="Streaming — line-clamp-2 + tail view"
+        code="isStreaming (expanded — after Show more clicked)">
+        <div className="w-full max-w-2xl">
+          <StreamingReasoningExpandedDemo />
         </div>
       </Row>
       <Row label="Tool — done">

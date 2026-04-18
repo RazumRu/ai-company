@@ -114,6 +114,8 @@ export function updateMessageWithMetadata(
   const prev = getMessageKwargs(clone);
   const configurable = runnableConfig?.configurable as
     | (BaseAgentConfigurable & {
+        __toolCallId?: string;
+        __subagentCommunication?: boolean;
         __interAgentCommunication?: boolean;
         __sourceAgentNodeId?: string;
       })
@@ -127,7 +129,13 @@ export function updateMessageWithMetadata(
       (typeof (prev as { created_at?: unknown }).created_at === 'string' &&
         (prev as { created_at?: string }).created_at) ||
       new Date().toISOString(),
-    // Apply inter-agent communication metadata if present in configurable
+    // Apply tool-call and communication metadata if present in configurable
+    ...(configurable?.__toolCallId
+      ? { __toolCallId: configurable.__toolCallId }
+      : {}),
+    ...(configurable?.__subagentCommunication
+      ? { __subagentCommunication: true }
+      : {}),
     ...(configurable?.__interAgentCommunication
       ? {
           __interAgentCommunication: true,
@@ -467,9 +475,17 @@ function extractFilePathsFromToolResult(
   }
 }
 
+export type ReasoningMessageContext = {
+  toolCallId?: string;
+  subagentCommunication?: boolean;
+  interAgentCommunication?: boolean;
+  sourceAgentNodeId?: string;
+};
+
 export function buildReasoningMessage(
   content: string,
   parentMessageId?: string,
+  context?: ReasoningMessageContext,
 ): ChatMessage {
   const msg = new ChatMessage(content, 'reasoning');
   if (parentMessageId) {
@@ -486,6 +502,17 @@ export function buildReasoningMessage(
   msg.additional_kwargs = {
     ...(msg.additional_kwargs ?? {}),
     __hideForSummary: true,
+    // Merge context fields when present and truthy
+    ...(context?.toolCallId ? { __toolCallId: context.toolCallId } : {}),
+    ...(context?.subagentCommunication
+      ? { __subagentCommunication: true }
+      : {}),
+    ...(context?.interAgentCommunication
+      ? { __interAgentCommunication: true }
+      : {}),
+    ...(context?.sourceAgentNodeId
+      ? { __sourceAgentNodeId: context.sourceAgentNodeId }
+      : {}),
   };
 
   return markMessageHideForLlm(msg);
