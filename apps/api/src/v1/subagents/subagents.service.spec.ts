@@ -17,12 +17,13 @@ describe('SubagentsService', () => {
   describe('getAllSystem', () => {
     it('should return all subagent definitions', () => {
       const all = service.getAllSystem();
-      expect(all.length).toBeGreaterThanOrEqual(3);
+      expect(all.length).toBeGreaterThanOrEqual(4);
     });
 
-    it('should include explorer, simple, and smart agents', () => {
+    it('should include explorer, smart-explorer, simple, and smart agents', () => {
       const ids = service.getAllSystem().map((d) => d.id);
       expect(ids).toContain('system:explorer');
+      expect(ids).toContain('system:smart-explorer');
       expect(ids).toContain('system:simple');
       expect(ids).toContain('system:smart');
     });
@@ -37,14 +38,22 @@ describe('SubagentsService', () => {
       }
     });
 
-    it('should have maxContextTokens on explorer and simple, not on smart', () => {
+    it('should have maxContextTokens on explorer, smart-explorer, and simple, not on smart', () => {
       const explorer = service.getById('system:explorer');
+      const smartExplorer = service.getById('system:smart-explorer');
       const simple = service.getById('system:simple');
       const smart = service.getById('system:smart');
 
       expect(explorer!.maxContextTokens).toBe(200_000);
+      expect(smartExplorer!.maxContextTokens).toBe(200_000);
       expect(simple!.maxContextTokens).toBe(70_000);
       expect(smart!.maxContextTokens).toBeUndefined();
+    });
+
+    it('should give smart-explorer read-only tools', () => {
+      const smartExplorer = service.getById('system:smart-explorer');
+
+      expect(smartExplorer!.toolIds).toEqual(['shell:read-only', 'files:read-only']);
     });
   });
 

@@ -74,18 +74,23 @@ Each sub-reviewer receives:
 - Absolute file paths for any files referenced in the task — subagents start with a blank context and cannot resolve relative paths
 - The common false positives list (see "Common False Positives" below) so every sub-reviewer inherits the same skepticism
 
-**Subagent type selection.** All review work is read-only analysis. Prefer the read-only exploration subagent as the default — it has a large context window (sufficient for full diffs plus source files) and restricted tooling that prevents accidental modifications. Escalate to a higher-capability general-purpose subagent only for dimensions where deep multi-file reasoning is genuinely required and the default proves insufficient. Never use a write-capable subagent for sub-reviewers or validators — they must never modify code.
+**Subagent type selection.** All review work is read-only analysis. Two read-only subagents are available:
+
+- **`system:smart-explorer`** — read-only, uses the same large model as the parent agent. Use for dimensions that need deep reasoning: Correctness, Security, Architecture, Tests. Also use for the relevance filter pass and per-finding validators — both require nuanced judgment.
+- **`system:explorer`** — read-only, uses a fast/small model. Use for rubric-based dimensions where the sub-reviewer is essentially pattern-matching against a checklist: Guidelines, Design.
+
+Never use a write-capable subagent (`system:simple`, `system:smart`) for sub-reviewers or validators — they must never modify code.
 
 ### Dimensions
 
-| Dimension | Focus | Recommended Subagent |
+| Dimension | Focus | Subagent |
 |---|---|---|
-| **Correctness** | Logic errors, off-by-one errors, null/undefined handling, incorrect branching, race conditions, wrong assumptions about state | Read-only explorer (escalate if reasoning across many files is required) |
-| **Security** | Injection vectors, authentication/authorization bypass, sensitive data exposure, insecure defaults, secret leakage, unsafe deserialization | Read-only explorer (escalate for complex multi-layer auth/crypto analysis) |
-| **Architecture** | Layer violations, coupling, abstraction breaks, violation of established patterns from `agentInstructions` and docs, unnecessary complexity | Read-only explorer (escalate for cross-module dependency analysis) |
-| **Tests** | Missing coverage for new behavior, incorrect assertions, tests that pass vacuously, untested error paths, test isolation issues | Read-only explorer |
-| **Guidelines** | Naming conventions, file organization, type safety, error handling style, logging practices — as defined in `agentInstructions` and project documentation | Read-only explorer |
-| **Design** *(conditional)* | Component structure, accessibility, visual consistency with the project's established patterns, prop API design, style coupling | Read-only explorer |
+| **Correctness** | Logic errors, off-by-one errors, null/undefined handling, incorrect branching, race conditions, wrong assumptions about state | `system:smart-explorer` |
+| **Security** | Injection vectors, authentication/authorization bypass, sensitive data exposure, insecure defaults, secret leakage, unsafe deserialization | `system:smart-explorer` |
+| **Architecture** | Layer violations, coupling, abstraction breaks, violation of established patterns from `agentInstructions` and docs, unnecessary complexity | `system:smart-explorer` |
+| **Tests** | Missing coverage for new behavior, incorrect assertions, tests that pass vacuously, untested error paths, test isolation issues | `system:smart-explorer` |
+| **Guidelines** | Naming conventions, file organization, type safety, error handling style, logging practices — as defined in `agentInstructions` and project documentation | `system:explorer` |
+| **Design** *(conditional)* | Component structure, accessibility, visual consistency with the project's established patterns, prop API design, style coupling | `system:explorer` |
 
 Activate the **Design** dimension only when UI-related files are present (detected in Phase 1.3). If no UI files are in the diff, omit this dimension entirely.
 
@@ -166,7 +171,7 @@ Each finding enters the judge pass with the confidence score assigned by the sub
 
 ## Phase 6: Per-Finding Validation
 
-For each `CRITICAL` or `HIGH` finding that survived the judge pass, spawn an independent validator subagent. Spawn all validators in a single parallel batch. Use the read-only exploration subagent — validators only read source files, never modify them.
+For each `CRITICAL` or `HIGH` finding that survived the judge pass, spawn an independent validator subagent. Spawn all validators in a single parallel batch. Use `system:smart-explorer` — validators must reason carefully about whether the finding is real and unmitigated, and they must not modify code.
 
 Each validator receives:
 - The specific finding (file path, line, evidence snippet, impact statement) — use absolute paths
