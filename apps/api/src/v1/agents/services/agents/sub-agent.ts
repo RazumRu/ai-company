@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import {
   AIMessage,
+  AIMessageChunk,
   BaseMessage,
+  ChatMessage,
   SystemMessage,
 } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
@@ -15,6 +17,7 @@ import {
 import { MemorySaver } from '@langchain/langgraph-checkpoint';
 import { Injectable, Scope } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
+import { isPlainObject } from 'lodash';
 
 import { RequestTokenUsage } from '../../../litellm/litellm.types';
 import { LitellmService } from '../../../litellm/services/litellm.service';
@@ -26,8 +29,10 @@ import {
   SUBAGENT_THREAD_PREFIX,
 } from '../../agents.types';
 import {
+  buildReasoningMessage,
   extractExploredFilesFromMessages,
   extractTextFromResponseContent,
+  type ReasoningMessageContext,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { InvokeLlmNode } from '../nodes/invoke-llm-node';
@@ -180,6 +185,36 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       currentContext: 0,
     };
 
+    // Build subagent configurable: inherit parent config but strip inter-agent
+    // communication flags so they don't propagate via updateMessageWithMetadata()
+    // into the subagent's internal messages.  Subagent messages get their own
+    // __subagentCommunication flag instead.
+    const {
+      __interAgentCommunication: _stripInterAgent,
+      __sourceAgentNodeId: _stripSourceNode,
+      ...parentConfigurable
+    } = (runnableConfig?.configurable ?? {}) as Record<string, unknown>;
+
+    // Capture parent-context values for reasoning emission.
+    // __sourceAgentNodeId is stripped above so we preserve it here before loss.
+    // __toolCallId is kept in parentConfigurable but captured separately for clarity.
+    const reasoningSourceAgentNodeId =
+      typeof _stripSourceNode === 'string' ? _stripSourceNode : undefined;
+    const reasoningToolCallId =
+      typeof parentConfigurable.__toolCallId === 'string'
+        ? parentConfigurable.__toolCallId
+        : undefined;
+    const reasoningEntries = new Map<string, ChatMessage>();
+
+    const emitContext = {
+      threadId,
+      toolCallId: reasoningToolCallId,
+      sourceAgentNodeId: reasoningSourceAgentNodeId,
+      modelName: config.invokeModelName,
+      runnableConfig: (runnableConfig ??
+        {}) as RunnableConfig<BaseAgentConfigurable>,
+    };
+
     try {
       const [
         useParallelToolCall,
@@ -296,16 +331,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         messages: { mode: 'append', items: initialMessages },
       };
 
-      // Build subagent configurable: inherit parent config but strip inter-agent
-      // communication flags so they don't propagate via updateMessageWithMetadata()
-      // into the subagent's internal messages.  Subagent messages get their own
-      // __subagentCommunication flag instead.
-      const {
-        __interAgentCommunication: _stripInterAgent,
-        __sourceAgentNodeId: _stripSourceNode,
-        ...parentConfigurable
-      } = (runnableConfig?.configurable ?? {}) as Record<string, unknown>;
-
       const stream = await compiled.stream(
         initialState as unknown as Record<string, unknown>,
         {
@@ -315,13 +340,13 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
             thread_id: threadId,
           },
           recursionLimit: config.maxIterations,
-          streamMode: ['updates'],
+          streamMode: ['updates', 'messages'],
           signal: abortSignal,
         },
       );
 
       for await (const event of stream) {
-        const [mode, value] = event as ['updates', unknown];
+        const [mode, value] = event as ['updates' | 'messages', unknown];
 
         if (mode === 'updates') {
           const chunk = value as Record<string, BaseAgentStateChange>;
@@ -336,6 +361,11 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
 
             if (nodeName === 'invoke_llm') {
               totalIterations++;
+              // Flush any in-flight reasoning accumulated for this LLM invocation
+              // before the node boundary so each invoke_llm reasoning block is
+              // emitted as its own persisted message (mirrors SimpleAgent's
+              // clearReasoningState({ persist: true }) at the invoke_llm boundary).
+              this.flushReasoningEntries(reasoningEntries, emitContext);
             }
 
             if (nodeName === 'tools') {
@@ -349,10 +379,25 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
             // mutation propagates back into the subagent's own state, causing
             // filterMessagesForLlm to drop all AI/Tool messages and creating
             // an infinite tool-call loop.
+            //
+            // For AIMessage instances, reasoning content blocks are stripped
+            // from the clone because we already emitted them as per-id reasoning
+            // rows via the 'messages' stream mode.  Keeping them here would
+            // cause double-render on the web (Requirement 6).
             const newMessages = finalState.messages.slice(prevMessages.length);
             if (newMessages.length > 0) {
-              const clonedMessages = newMessages.map((msg) =>
-                Object.assign(
+              const clonedMessages = newMessages.map((msg) => {
+                const rawContent = msg.content as unknown;
+                const strippedContent = Array.isArray(rawContent)
+                  ? rawContent.filter(
+                      (b) =>
+                        !(
+                          isPlainObject(b) &&
+                          (b as { type?: unknown }).type === 'reasoning'
+                        ),
+                    )
+                  : rawContent;
+                return Object.assign(
                   Object.create(
                     Object.getPrototypeOf(msg) as object,
                   ) as BaseMessage,
@@ -362,9 +407,15 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
                       ...(msg.additional_kwargs ?? {}),
                       __subagentCommunication: true,
                     },
+                    // Only override content when reasoning blocks were actually
+                    // removed so HumanMessage / ToolMessage content is untouched
+                    // and tool_calls on AIMessage are preserved unchanged.
+                    ...(strippedContent !== rawContent
+                      ? { content: strippedContent }
+                      : {}),
                   },
-                ),
-              );
+                );
+              });
               this.emit({
                 type: 'message',
                 data: {
@@ -393,6 +444,18 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
                 config.maxContextTokens,
               );
             }
+          }
+        } else if (mode === 'messages') {
+          const [messageChunk, metadata] = value as [
+            AIMessageChunk,
+            Record<string, unknown>,
+          ];
+          if (metadata.langgraph_node === 'invoke_llm') {
+            this.handleReasoningChunk(
+              messageChunk,
+              reasoningEntries,
+              emitContext,
+            );
           }
         }
       }
@@ -471,6 +534,161 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         exploredFiles: extractExploredFilesFromMessages(finalState.messages),
         error: errorMessage,
       };
+    } finally {
+      // Flush any remaining in-flight reasoning on every exit path (normal
+      // completion, abort, cost-limit, recursion-limit, context-limit, generic
+      // error).  No-op when reasoningEntries is empty.  Mirrors the
+      // clearReasoningState({ persist: true }) guarantee in SimpleAgent.
+      this.flushReasoningEntries(reasoningEntries, emitContext);
+    }
+  }
+
+  /**
+   * Extracts joined reasoning text from a streaming AIMessageChunk.
+   * Mirrors SimpleAgent.extractReasoningFromChunk (simple-agent.ts:873-892).
+   */
+  private extractReasoningFromChunk(chunk: AIMessageChunk): string | null {
+    const blocks =
+      chunk?.contentBlocks ?? chunk?.response_metadata?.output ?? [];
+
+    if (Array.isArray(blocks)) {
+      const reasoningBlocks = (
+        blocks as { type?: unknown; reasoning?: unknown }[]
+      ).filter(
+        (b) =>
+          b &&
+          b.type === 'reasoning' &&
+          typeof b.reasoning === 'string' &&
+          b.reasoning.length > 0,
+      );
+
+      if (reasoningBlocks.length) {
+        return reasoningBlocks.map((b) => b.reasoning as string).join('\n');
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Accumulates reasoning text from a streaming chunk into the provided map,
+   * keyed by "reasoning:<chunk.id>".  When a new chunk.id arrives and the map
+   * already holds a different in-flight id, the existing entries are flushed
+   * first so each provider-assigned id produces its own persisted message.
+   *
+   * No-op when reasoningText or chunk.id is missing.
+   */
+  private handleReasoningChunk(
+    chunk: AIMessageChunk,
+    entries: Map<string, ChatMessage>,
+    emitContext: {
+      threadId: string;
+      toolCallId: string | undefined;
+      sourceAgentNodeId: string | undefined;
+      modelName: string;
+      runnableConfig: RunnableConfig<BaseAgentConfigurable>;
+    },
+  ): void {
+    const reasoningText = this.extractReasoningFromChunk(chunk);
+    const reasoningId = chunk.id ? `reasoning:${chunk.id}` : undefined;
+
+    if (!reasoningText || !reasoningId) {
+      return;
+    }
+
+    const currentEntry = entries.get(reasoningId);
+
+    // When the incoming chunk belongs to a different id than the one already
+    // accumulated, flush the existing entries before starting fresh so per-id
+    // boundaries are preserved over the wire.
+    if (!currentEntry && entries.size > 0) {
+      this.flushReasoningEntries(entries, emitContext);
+    }
+
+    const currentContent =
+      typeof currentEntry?.content === 'string' ? currentEntry.content : '';
+    const nextContent = currentContent + reasoningText;
+
+    const context: ReasoningMessageContext = {
+      subagentCommunication: true,
+    };
+    if (emitContext.toolCallId) {
+      context.toolCallId = emitContext.toolCallId;
+    }
+    if (emitContext.sourceAgentNodeId) {
+      context.sourceAgentNodeId = emitContext.sourceAgentNodeId;
+    }
+
+    entries.set(
+      reasoningId,
+      buildReasoningMessage(nextContent, chunk.id, context),
+    );
+  }
+
+  /**
+   * Emits each entry in the reasoning map as its own persisted ChatMessage,
+   * decorated with subagent-communication tags so the web groups them inside
+   * the correct SubagentBlock.  Clears the map after emission.
+   *
+   * No-op when the map is empty (safe to call on every exit path).
+   */
+  private flushReasoningEntries(
+    entries: Map<string, ChatMessage>,
+    emitContext: {
+      threadId: string;
+      toolCallId: string | undefined;
+      sourceAgentNodeId: string | undefined;
+      modelName: string;
+      runnableConfig: RunnableConfig<BaseAgentConfigurable>;
+    },
+  ): void {
+    if (entries.size === 0) {
+      return;
+    }
+
+    // Snapshot + clear BEFORE the emit loop so that if any subscriber throws
+    // the map is already empty and a subsequent flush call (e.g. in the finally
+    // block) won't re-emit the same entries.
+    const snapshot = [...entries.values()];
+    entries.clear();
+
+    for (const entry of snapshot) {
+      const content = typeof entry.content === 'string' ? entry.content : '';
+      if (content.length === 0) {
+        continue;
+      }
+
+      // Rebuild the message so additional_kwargs carries all required tags.
+      // We do NOT use updateMessagesListWithMetadata here because the parent's
+      // run metadata is already on the runnableConfig; we just need the tags.
+      const msg = Object.assign(
+        Object.create(Object.getPrototypeOf(entry) as object) as ChatMessage,
+        entry,
+        {
+          additional_kwargs: {
+            ...(entry.additional_kwargs ?? {}),
+            __subagentCommunication: true,
+            ...(emitContext.toolCallId
+              ? { __toolCallId: emitContext.toolCallId }
+              : {}),
+            ...(emitContext.sourceAgentNodeId
+              ? { __sourceAgentNodeId: emitContext.sourceAgentNodeId }
+              : {}),
+            ...(emitContext.modelName
+              ? { __model: emitContext.modelName }
+              : {}),
+          },
+        },
+      );
+
+      this.emit({
+        type: 'message',
+        data: {
+          threadId: emitContext.threadId,
+          messages: [msg],
+          config: emitContext.runnableConfig,
+        },
+      });
     }
   }
 

@@ -316,3 +316,74 @@ describe('adoptOrphanStreamingReasoning — no block present (G5)', () => {
     expect(rootReasoning).toHaveLength(1);
   });
 });
+
+// ── Scenario: persisted vs streaming subagent-inner reasoning (pre-scan wins) ──
+
+describe('subagent-inner reasoning pre-scan grouping', () => {
+  it('routes persisted subagent reasoning (no streaming flag) into the SubagentBlock via pre-scan', () => {
+    // Persisted reasoning after reload: carries __toolCallId + __subagentCommunication,
+    // but NOT STREAMING_REASONING_FLAG.  The pre-scan at prepareMessages.ts:391-428
+    // groups it into subagentInnerByToolCallId so it renders inside the SubagentBlock
+    // rather than leaking to the parent timeline.
+    const msgs: ThreadMessageDto[] = [
+      makeSubagentCallMsg('ai-call-1', 'tc1'),
+      makeMsg('reasoning-1', 'reasoning', 'thinking...', {
+        __toolCallId: 'tc1',
+        __subagentCommunication: true,
+        __reasoningId: 'reasoning:chunk-a',
+      }),
+      makeSubagentResultMsg('tool-result-1', 'tc1'),
+    ];
+
+    const prepared = prepareReadyMessages(msgs, defaultOptions);
+
+    // Exactly one top-level item, of type 'subagent'.
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].type).toBe('subagent');
+
+    // Reasoning is inside the subagent block.
+    const block = findSubagentBlock(prepared, 'tc1');
+    expect(block).toBeDefined();
+    const innerReasoning = block!.innerMessages.filter(
+      (m) => m.type === 'reasoning',
+    );
+    expect(innerReasoning).toHaveLength(1);
+
+    // And NOT at the top level.
+    const rootReasoning = prepared.filter((m) => m.type === 'reasoning');
+    expect(rootReasoning).toHaveLength(0);
+  });
+
+  it('subagent-tagged streaming reasoning with matching __toolCallId is routed by pre-scan (not orphan adoption)', () => {
+    // Mid-run streaming: no tool result yet, reasoning carries both STREAMING_REASONING_FLAG
+    // (from makeStreamingReasoning) AND __toolCallId matching a loaded subagents_run_task
+    // call.  Because the pre-scan runs BEFORE adoptOrphanStreamingReasoning, the
+    // reasoning ends up inside the 'calling' subagent block via pre-scan — not via
+    // orphan adoption.  The end result looks the same, but this test locks in
+    // the execution order so future refactors don't silently route through orphan
+    // adoption.
+    const msgs: ThreadMessageDto[] = [
+      makeSubagentCallMsg('ai-call-1', 'tc1'),
+      makeStreamingReasoning('reasoning:chunk-a', {
+        toolCallId: 'tc1',
+        subagentCommunication: true,
+      }),
+    ];
+
+    const prepared = prepareReadyMessages(msgs, {
+      ...defaultOptions,
+      isNodeRunning: true,
+    });
+
+    // The subagent block ('calling' status — no tool result yet) contains the reasoning.
+    const block = findSubagentBlock(prepared, 'tc1');
+    expect(block).toBeDefined();
+    const innerReasoning = block!.innerMessages.filter(
+      (m) => m.type === 'reasoning',
+    );
+    expect(innerReasoning).toHaveLength(1);
+
+    // No top-level reasoning — neither pre-scan nor orphan adoption must duplicate.
+    expect(prepared.filter((m) => m.type === 'reasoning')).toHaveLength(0);
+  });
+});

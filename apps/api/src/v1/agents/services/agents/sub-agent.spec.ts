@@ -1,10 +1,13 @@
 import {
   AIMessage,
+  AIMessageChunk,
   BaseMessage,
+  ChatMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
+import { RunnableConfig } from '@langchain/core/runnables';
 import {
   DynamicStructuredTool,
   ToolRunnableConfig,
@@ -18,6 +21,7 @@ import { LitellmService } from '../../../litellm/services/litellm.service';
 import { CostLimitExceededError } from '../../agents.errors';
 import { BaseAgentConfigurable } from '../../agents.types';
 import { filterMessagesForLlm } from '../../agents.utils';
+import { AgentEventType } from './base-agent';
 import { SubAgent, SubAgentSchemaType } from './sub-agent';
 
 const { mockLlmInvokeRef } = vi.hoisted(() => ({
@@ -120,7 +124,7 @@ describe('SubAgent', () => {
         new AIMessage({
           content: [
             { type: 'output_text', text: 'Findings from analysis' },
-          ] as any,
+          ] as unknown as string,
           response_metadata: { usage: {} },
         }),
       );
@@ -140,7 +144,7 @@ describe('SubAgent', () => {
           content: [
             { type: 'text', text: 'Part one' },
             { type: 'output_text', text: 'Part two' },
-          ] as any,
+          ] as unknown as string,
           response_metadata: { usage: {} },
         }),
       );
@@ -210,7 +214,7 @@ describe('SubAgent', () => {
       // Exact scenario from the bug report: content is [{type: "output_text", text: ""}]
       mockLlmInvokeRef.mockResolvedValueOnce(
         new AIMessage({
-          content: [{ type: 'output_text', text: '' }] as any,
+          content: [{ type: 'output_text', text: '' }] as unknown as string,
           response_metadata: { usage: {} },
         }),
       );
@@ -955,6 +959,342 @@ describe('SubAgent', () => {
       expect(result.stopReason).toBeUndefined();
       expect(result.error).toBeUndefined();
       expect(result.result).toBe('done within budget');
+    });
+  });
+
+  describe('reasoning streaming', () => {
+    // Helpers for directly invoking private methods on SubAgent
+    type SubAgentPrivate = {
+      handleReasoningChunk: (
+        chunk: AIMessageChunk,
+        entries: Map<string, ChatMessage>,
+        emitContext: {
+          threadId: string;
+          toolCallId: string | undefined;
+          sourceAgentNodeId: string | undefined;
+          modelName: string;
+          runnableConfig: RunnableConfig<BaseAgentConfigurable>;
+        },
+      ) => void;
+      flushReasoningEntries: (
+        entries: Map<string, ChatMessage>,
+        emitContext: {
+          threadId: string;
+          toolCallId: string | undefined;
+          sourceAgentNodeId: string | undefined;
+          modelName: string;
+          runnableConfig: RunnableConfig<BaseAgentConfigurable>;
+        },
+      ) => void;
+    };
+
+    function makeChunk(id: string, reasoning: string): AIMessageChunk {
+      return {
+        id,
+        contentBlocks: [{ type: 'reasoning', reasoning }],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+    }
+
+    function makeEmitContext(overrides?: {
+      toolCallId?: string;
+      sourceAgentNodeId?: string;
+      modelName?: string;
+    }): {
+      threadId: string;
+      toolCallId: string | undefined;
+      sourceAgentNodeId: string | undefined;
+      modelName: string;
+      runnableConfig: RunnableConfig<BaseAgentConfigurable>;
+    } {
+      return {
+        threadId: 'thread-test',
+        toolCallId: overrides?.toolCallId,
+        sourceAgentNodeId: overrides?.sourceAgentNodeId,
+        modelName: overrides?.modelName ?? 'claude-opus-4',
+        runnableConfig: { configurable: { thread_id: 'thread-test' } },
+      };
+    }
+
+    function collectMessageEvents(agent: SubAgent): AgentEventType[] {
+      const events: AgentEventType[] = [];
+      agent.subscribe(async (event) => {
+        if (event.type === 'message') {
+          events.push(event);
+        }
+      });
+      return events;
+    }
+
+    it('accumulates two chunks with the same id into one emitted message', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext({ toolCallId: 'tc-1' });
+      const events = collectMessageEvents(subAgent);
+
+      const chunk1 = makeChunk('p1', 'hello ');
+      const chunk2 = makeChunk('p1', 'world');
+
+      priv.handleReasoningChunk(chunk1, entries, emitContext);
+      priv.handleReasoningChunk(chunk2, entries, emitContext);
+
+      // No emit yet — flushed only on id-change or explicit flush
+      expect(events).toHaveLength(0);
+      expect(entries.size).toBe(1);
+
+      priv.flushReasoningEntries(entries, emitContext);
+
+      expect(events).toHaveLength(1);
+      const emittedMsgs = (
+        events[0] as Extract<AgentEventType, { type: 'message' }>
+      ).data.messages;
+      expect(emittedMsgs).toHaveLength(1);
+      expect(emittedMsgs[0]?.id).toBe('reasoning:p1');
+      expect(emittedMsgs[0]?.content).toBe('hello world');
+      expect(entries.size).toBe(0);
+    });
+
+    it('emits two separate messages for two distinct chunk ids', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext();
+      const events = collectMessageEvents(subAgent);
+
+      const chunkA = makeChunk('a', 'reasoning-a');
+      const chunkB = makeChunk('b', 'reasoning-b');
+
+      // chunk A — stored
+      priv.handleReasoningChunk(chunkA, entries, emitContext);
+      // chunk B — different id triggers flush of A, then stores B
+      priv.handleReasoningChunk(chunkB, entries, emitContext);
+      // explicit flush for B
+      priv.flushReasoningEntries(entries, emitContext);
+
+      expect(events).toHaveLength(2);
+      const firstMsg = (
+        events[0] as Extract<AgentEventType, { type: 'message' }>
+      ).data.messages[0];
+      const secondMsg = (
+        events[1] as Extract<AgentEventType, { type: 'message' }>
+      ).data.messages[0];
+
+      expect(firstMsg?.id).toBe('reasoning:a');
+      expect(firstMsg?.content).toBe('reasoning-a');
+      expect(secondMsg?.id).toBe('reasoning:b');
+      expect(secondMsg?.content).toBe('reasoning-b');
+    });
+
+    it('tags emitted reasoning with __subagentCommunication, __toolCallId, __sourceAgentNodeId, __model', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext({
+        toolCallId: 'tc-parent',
+        sourceAgentNodeId: 'node-parent',
+        modelName: 'claude-opus-4',
+      });
+      const events = collectMessageEvents(subAgent);
+
+      priv.handleReasoningChunk(
+        makeChunk('x1', 'reasoning text'),
+        entries,
+        emitContext,
+      );
+      priv.flushReasoningEntries(entries, emitContext);
+
+      expect(events).toHaveLength(1);
+      const msg = (events[0] as Extract<AgentEventType, { type: 'message' }>)
+        .data.messages[0];
+      const kwargs = msg?.additional_kwargs ?? {};
+
+      expect(kwargs['__subagentCommunication']).toBe(true);
+      expect(kwargs['__toolCallId']).toBe('tc-parent');
+      expect(kwargs['__sourceAgentNodeId']).toBe('node-parent');
+      expect(kwargs['__model']).toBe('claude-opus-4');
+    });
+
+    it('skips undefined tags from additional_kwargs when emitContext fields are undefined', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext({
+        toolCallId: undefined,
+        sourceAgentNodeId: undefined,
+        modelName: 'claude-opus-4',
+      });
+      const events = collectMessageEvents(subAgent);
+
+      priv.handleReasoningChunk(
+        makeChunk('x2', 'some reasoning'),
+        entries,
+        emitContext,
+      );
+      priv.flushReasoningEntries(entries, emitContext);
+
+      expect(events).toHaveLength(1);
+      const msg = (events[0] as Extract<AgentEventType, { type: 'message' }>)
+        .data.messages[0];
+      const kwargs = msg?.additional_kwargs ?? {};
+
+      expect(kwargs['__subagentCommunication']).toBe(true);
+      expect(kwargs['__model']).toBe('claude-opus-4');
+      // Keys must not be present at all (not even as undefined)
+      expect(Object.prototype.hasOwnProperty.call(kwargs, '__toolCallId')).toBe(
+        false,
+      );
+      expect(
+        Object.prototype.hasOwnProperty.call(kwargs, '__sourceAgentNodeId'),
+      ).toBe(false);
+    });
+
+    it('is a no-op when chunk has no reasoning text', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext();
+      const events = collectMessageEvents(subAgent);
+
+      const textOnlyChunk = {
+        id: 'c1',
+        contentBlocks: [{ type: 'text', text: 'hi' }],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+
+      priv.handleReasoningChunk(textOnlyChunk, entries, emitContext);
+
+      expect(entries.size).toBe(0);
+      expect(events).toHaveLength(0);
+    });
+
+    it('is a no-op when chunk has no id', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext();
+      const events = collectMessageEvents(subAgent);
+
+      const noIdChunk = {
+        // id is deliberately absent
+        contentBlocks: [{ type: 'reasoning', reasoning: 'some reasoning' }],
+        response_metadata: {},
+      } as unknown as AIMessageChunk;
+
+      priv.handleReasoningChunk(noIdChunk, entries, emitContext);
+
+      expect(entries.size).toBe(0);
+      expect(events).toHaveLength(0);
+    });
+
+    it('flushReasoningEntries is a no-op on empty map', () => {
+      const priv = subAgent as unknown as SubAgentPrivate;
+      const events = collectMessageEvents(subAgent);
+
+      priv.flushReasoningEntries(new Map(), makeEmitContext());
+
+      expect(events).toHaveLength(0);
+    });
+
+    it('strips reasoning content blocks from the bundled AIMessage before emitting', async () => {
+      // Mock returns an AIMessage with both text and reasoning content blocks.
+      // After runSubagent, no emitted bundled message should contain reasoning blocks.
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: [
+            { type: 'text', text: 'the answer' },
+            { type: 'reasoning', reasoning: 'should-be-stripped' },
+          ] as unknown as string,
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const collectedEvents: AgentEventType[] = [];
+      subAgent.subscribe(async (event) => {
+        collectedEvents.push(event);
+      });
+
+      await subAgent.runSubagent([new HumanMessage('Do work')], defaultCfg);
+
+      const messageEvents = collectedEvents.filter(
+        (e): e is Extract<AgentEventType, { type: 'message' }> =>
+          e.type === 'message',
+      );
+
+      // At least one message event must have been emitted (the bundled AI message)
+      expect(messageEvents.length).toBeGreaterThan(0);
+
+      // Collect all content blocks across all emitted message arrays
+      const allContentBlocks = messageEvents.flatMap((e) =>
+        e.data.messages.flatMap((msg) => {
+          const c = msg.content;
+          return Array.isArray(c) ? (c as { type?: unknown }[]) : [];
+        }),
+      );
+
+      // No reasoning block should survive in any bundled message
+      const reasoningBlocks = allContentBlocks.filter(
+        (b) => b && b.type === 'reasoning',
+      );
+      expect(reasoningBlocks).toHaveLength(0);
+
+      // Text blocks must still be present
+      const textBlocks = allContentBlocks.filter(
+        (b) => b && (b.type === 'text' || b.type === 'output_text'),
+      );
+      expect(textBlocks.length).toBeGreaterThan(0);
+    });
+
+    it('flushReasoningEntries emits all entries and clears the map (snapshot-then-clear guarantee)', () => {
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext();
+      const events = collectMessageEvents(subAgent);
+
+      (subAgent as unknown as SubAgentPrivate).handleReasoningChunk(
+        makeChunk('p1', 'partial reasoning'),
+        entries,
+        emitContext,
+      );
+      expect(entries.size).toBe(1);
+
+      // Act: flushReasoningEntries must emit the accumulated entry and clear the map.
+      (subAgent as unknown as SubAgentPrivate).flushReasoningEntries(
+        entries,
+        emitContext,
+      );
+
+      // The entry was emitted as a message event and the map is empty (snapshot-then-clear:
+      // even if emit had thrown, the map would still be cleared).
+      expect(events).toHaveLength(1);
+      expect(entries.size).toBe(0);
+    });
+
+    it('clears the entries Map even when a subscriber throws during emit', () => {
+      const entries = new Map<string, ChatMessage>();
+      const emitContext = makeEmitContext();
+
+      (subAgent as unknown as SubAgentPrivate).handleReasoningChunk(
+        makeChunk('p1', 'reasoning text'),
+        entries,
+        emitContext,
+      );
+      expect(entries.size).toBe(1);
+
+      // Attach a subscriber that throws.  The snapshot-then-clear fix means the
+      // Map MUST be cleared before the throw propagates so subsequent flush calls
+      // won't re-emit the same entries (the duplicate-emit risk SEC-H1 identified).
+      subAgent.subscribe(() => {
+        throw new Error('subscriber failure');
+      });
+
+      expect(() =>
+        (subAgent as unknown as SubAgentPrivate).flushReasoningEntries(
+          entries,
+          emitContext,
+        ),
+      ).toThrow('subscriber failure');
+
+      // Critical assertion: map was cleared before the throw.
+      expect(entries.size).toBe(0);
+    });
+
+    it('finally block is present in runSubagent (code-integrity smoke test)', () => {
+      // Guards against accidental removal of the finally flush during refactors.
+      expect(SubAgent.prototype.runSubagent.toString()).toMatch(/finally/);
     });
   });
 });
