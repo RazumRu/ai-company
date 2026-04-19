@@ -441,16 +441,6 @@ export class RepoIndexerService {
     return res.stdout.trim();
   }
 
-  /**
-   * Returns the embedding vector size for the given model. Fixed at
-   * configuration time via LLM_EMBEDDING_DIMENSIONS rather than discovered
-   * by a probe call — every embedding request uses the same `dimensions`
-   * parameter so sizes are deterministic and there is no startup latency.
-   */
-  getVectorSizeForModel(_model: string): number {
-    return environment.llmEmbeddingDimensions;
-  }
-
   // ---------------------------------------------------------------------------
   // Public: naming & signature helpers
   // ---------------------------------------------------------------------------
@@ -601,7 +591,7 @@ export class RepoIndexerService {
     collection: string;
   }> {
     const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
-    const vectorSize = await this.getVectorSizeForModel(embeddingModel);
+    const vectorSize = environment.llmEmbeddingDimensions;
     const chunkingSignatureHash = this.getChunkingSignatureHash();
     const repoSlug = this.deriveRepoSlug(repositoryId);
     const branchSlug = this.deriveBranchSlug(branch);

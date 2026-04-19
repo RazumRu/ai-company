@@ -58,7 +58,6 @@ const mockRepoIndexerService = {
   estimateChangedTokenCount: vi.fn().mockResolvedValue(100),
   resolveCurrentCommit: vi.fn().mockResolvedValue('abc123'),
   getCurrentBranch: vi.fn().mockResolvedValue('main'),
-  getVectorSizeForModel: vi.fn().mockResolvedValue(1536),
   getChunkingSignatureHash: vi.fn().mockReturnValue('sig-hash-123'),
   deriveRepoId: vi.fn((url: string) => url),
   deriveRepoSlug: vi.fn().mockReturnValue('my_repo'),
@@ -134,7 +133,6 @@ describe('RepoIndexService', () => {
     mockRepoIndexerService.estimateChangedTokenCount.mockResolvedValue(100);
     mockRepoIndexerService.resolveCurrentCommit.mockResolvedValue('abc123');
     mockRepoIndexerService.getCurrentBranch.mockResolvedValue('main');
-    mockRepoIndexerService.getVectorSizeForModel.mockResolvedValue(1536);
     mockRepoIndexerService.getChunkingSignatureHash.mockReturnValue(
       'sig-hash-123',
     );
