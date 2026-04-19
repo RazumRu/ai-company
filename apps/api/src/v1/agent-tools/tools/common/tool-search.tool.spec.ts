@@ -528,4 +528,67 @@ describe('ToolSearchTool', () => {
       expect(instructions).toContain('tool_search');
     });
   });
+
+  // ----- Reproduction of field-observed behavior (Apr 18 threads 276319e9, a9abe921) -----
+  describe('REPRO field-observed', () => {
+    it('kitchen-sink query with gh_clone buried: does it appear in top 3?', () => {
+      // Production-accurate descriptions copied verbatim from the actual tool source files.
+      const config = makeConfig({
+        gh_clone: makeEntry(
+          'Clone a GitHub repository into the runtime container and return the absolute clone path for all subsequent operations. Also discovers and returns agent instruction files from the repository root — you MUST follow the rules they define. Supports optional branch/tag checkout, shallow cloning (depth), and custom clone destinations (workdir). If the repository is already cloned, navigate to the existing path instead of re-cloning.',
+        ),
+        shell: makeEntry(
+          'Execute a shell command inside the runtime container and return its exit code, stdout, and stderr. Commands within the same thread share a persistent session, so environment variables and working directory changes (cd) persist across calls. Output is automatically truncated to fit within the configured token budget. Use this for git operations, build/test/install commands, and system inspection — but prefer specialized file tools (files_read, files_search_text, etc.) for reading, searching, and editing files.',
+        ),
+        codebase_search: makeEntry(
+          'Preferred first step for codebase exploration. Perform semantic search across a git repository to find relevant code by meaning. Use natural-language queries (not single keywords) for best results. Returns file paths, line ranges, total_lines (file size), and code snippets ranked by relevance. Use this tool first after gh_clone — it is faster and more precise than files_directory_tree or files_find_paths. If indexing is in progress, partial results may be returned — supplement with other file tools for complete coverage. Check total_lines in results: read small files (≤300 lines) entirely, but for large files (>300 lines) ALWAYS use fromLineNumber/toLineNumber in files_read. The repository must be cloned first with gh_clone.',
+        ),
+        files_read: makeEntry('Read a file.'),
+        files_directory_tree: makeEntry(
+          'Generate a visual tree representation of a directory structure showing files and subdirectories. Prefer codebase_search first for code discovery — it is faster and more precise. Use this tool when you need a structural overview of the directory layout, or as a fallback when codebase_search indexing is in progress. Start with a shallow maxDepth (3-5) for large repositories. Common build/cache directories are excluded by default. Does not return file contents — use files_read for that.',
+        ),
+        files_find_paths: makeEntry(
+          'Find file paths matching a glob pattern and return their absolute paths without reading file content. Prefer codebase_search for code discovery — it finds relevant code by meaning and returns paths with line numbers. Use this tool when you need to list files by name/extension pattern (e.g., "*.config.ts", "*migration*"), or as a fallback when codebase_search indexing is in progress. Returns up to maxResults paths (default 200). Common build/cache directories (node_modules, dist, .next, etc.) are excluded by default. Set includeSubdirectories=false to search only the specified directory without recursion.',
+        ),
+        files_search_text: makeEntry('Search text inside files.'),
+        knowledge_search_docs: makeEntry('Search knowledge documents.'),
+        knowledge_search_chunks: makeEntry(
+          'Perform semantic search within specific knowledge documents and return the most relevant content snippets ranked by similarity to your query. Requires document public IDs obtained from knowledge_search_docs. Returns up to 20 chunk snippets with chunk IDs and relevance scores — use knowledge_get_chunks to retrieve full text for the most relevant chunks. Start with topK 3-7 for focused queries and increase if needed.',
+        ),
+        knowledge_get_chunks: makeEntry('Fetch full chunks by id.'),
+      });
+
+      const result = toolInstance.invoke(
+        {
+          query:
+            'gh_clone files_read files_directory_tree files_find_paths files_search_text knowledge_search_docs knowledge_search_chunks knowledge_get_chunks shell',
+        },
+        config,
+        defaultRunnableConfig,
+      );
+
+      const names = result.output.results.map((r) => r.name);
+      // FIELD-OBSERVED: gh_clone was missing from top 3 even when named in query.
+      expect(names).toContain('gh_clone');
+    });
+
+    it('exact-name query for a tool known to be deferred returns it', () => {
+      // If communication_exec is in deferredTools, "communication_exec" should find it.
+      const config = makeConfig({
+        communication_exec: makeEntry(
+          'Send a message to another agent in the system and receive their response.',
+        ),
+        web_search: makeEntry('Search the web.'),
+      });
+
+      const result = toolInstance.invoke(
+        { query: 'communication_exec' },
+        config,
+        defaultRunnableConfig,
+      );
+
+      expect(result.output.results.length).toBeGreaterThan(0);
+      expect(result.output.results.at(0)?.name).toBe('communication_exec');
+    });
+  });
 });

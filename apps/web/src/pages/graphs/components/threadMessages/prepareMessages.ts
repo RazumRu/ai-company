@@ -24,6 +24,13 @@ import {
   parseJsonSafe,
 } from './threadMessagesViewUtils';
 
+const getLoadedTools = (
+  msg: ThreadMessageDto | undefined,
+): string[] | undefined => {
+  const raw = getAdditionalKwargs(msg?.message)?.['__loadedTools'];
+  return Array.isArray(raw) ? (raw as string[]) : undefined;
+};
+
 interface PrepareReadyMessagesOptions {
   isNodeRunning: boolean;
   isThreadStopped: boolean;
@@ -180,7 +187,7 @@ export const prepareReadyMessages = (
   const allowCallingIndicators = isNodeRunning && !isThreadStopped;
 
   // Filter out messages explicitly hidden from the UI by the backend.
-  msgs = msgs.filter((m) => {
+  const visibleMsgs = msgs.filter((m) => {
     const additional = getAdditionalKwargs(m.message);
     return !additional?.__hideForUi;
   });
@@ -217,7 +224,7 @@ export const prepareReadyMessages = (
     );
   };
 
-  const toolCallResultsById = buildToolCallResultIndex(msgs);
+  const toolCallResultsById = buildToolCallResultIndex(visibleMsgs);
   const consumedToolCallIds = new Set<string>();
   const consumedToolMessageKeys = new Set<string>();
 
@@ -232,7 +239,7 @@ export const prepareReadyMessages = (
   // Map communication_exec tool call ID → __createdAt of the parent AI message.
   // Used to temporally disambiguate when multiple calls target the same agent.
   const commToolCallCreatedAt = new Map<string, string>();
-  for (const msg of msgs) {
+  for (const msg of visibleMsgs) {
     if ((msg.message?.role as string) !== 'ai') {
       continue;
     }
@@ -381,7 +388,7 @@ export const prepareReadyMessages = (
     return tcs.some((tc) => tc.id === toolCallId);
   };
 
-  for (const msg of msgs) {
+  for (const msg of visibleMsgs) {
     const additional = getAdditionalKwargs(msg.message);
     const parentToolCallId =
       typeof additional?.__toolCallId === 'string'
@@ -533,7 +540,7 @@ export const prepareReadyMessages = (
 
   // Build a set of all tool call IDs that exist in current messages
   const existingToolCallIds = new Set<string>();
-  msgs.forEach((m) => {
+  visibleMsgs.forEach((m) => {
     const role = (m.message?.role as string) || '';
     if (role === 'ai') {
       const messageToolCalls = getMessageValue<ToolCall[]>(
@@ -560,7 +567,7 @@ export const prepareReadyMessages = (
     string,
     { toolCallId: string; content: unknown }[]
   >();
-  for (const msg of msgs) {
+  for (const msg of visibleMsgs) {
     if (!isToolLikeRole(msg.message?.role as string)) {
       continue;
     }
@@ -582,7 +589,7 @@ export const prepareReadyMessages = (
   }
 
   // First pass: mark tool results that belong to AI messages as consumed
-  msgs.forEach((m) => {
+  visibleMsgs.forEach((m) => {
     const role = (m.message?.role as string) || '';
     if (role === 'ai') {
       const messageToolCalls = getMessageValue<ToolCall[]>(
@@ -613,8 +620,8 @@ export const prepareReadyMessages = (
 
   let i = 0;
 
-  while (i < msgs.length) {
-    const m = msgs[i];
+  while (i < visibleMsgs.length) {
+    const m = visibleMsgs[i];
 
     // Skip subagent / communication inner messages — consumed into blocks.
     const mToolKey = getToolMessageKey(m);
@@ -700,10 +707,10 @@ export const prepareReadyMessages = (
       const followingTools: ThreadMessageDto[] = [];
       let j = i + 1;
       while (
-        j < msgs.length &&
-        isToolLikeRole(msgs[j].message?.role as string)
+        j < visibleMsgs.length &&
+        isToolLikeRole(visibleMsgs[j].message?.role as string)
       ) {
-        followingTools.push(msgs[j]);
+        followingTools.push(visibleMsgs[j]);
         j++;
       }
 
@@ -954,12 +961,7 @@ export const prepareReadyMessages = (
           createdAt: matched?.createdAt ?? m.createdAt,
           roleLabel: effectiveTitle || name || 'tool',
           title: effectiveTitle,
-          loadedTools: (() => {
-            const raw = getAdditionalKwargs(matched?.message)?.[
-              '__loadedTools'
-            ];
-            return Array.isArray(raw) ? (raw as string[]) : undefined;
-          })(),
+          loadedTools: getLoadedTools(matched),
           inCommunicationExec: isInterAgent,
           inSubagentExec: isSubagent,
           sourceAgentNodeId,
@@ -1004,7 +1006,6 @@ export const prepareReadyMessages = (
         : null;
       const shellCommand = resultObj?.command;
       const isShell = (name || '').toLowerCase() === 'shell';
-      const toolOptions = undefined;
 
       const standaloneToolId = `tool-standalone-${m.id || m.createdAt}`;
       prepared.push({
@@ -1015,7 +1016,7 @@ export const prepareReadyMessages = (
         id: standaloneToolId,
         toolKind: isShell ? 'shell' : 'generic',
         shellCommand,
-        toolOptions,
+        toolOptions: undefined,
         requestTokenUsage: m.requestTokenUsage,
         requestTokenUsageOut: m.requestTokenUsage,
         durationMs: isShell
@@ -1026,10 +1027,7 @@ export const prepareReadyMessages = (
         createdAt: m.createdAt,
         roleLabel: title || name || 'tool',
         title,
-        loadedTools: (() => {
-          const raw = getAdditionalKwargs(m.message)?.['__loadedTools'];
-          return Array.isArray(raw) ? (raw as string[]) : undefined;
-        })(),
+        loadedTools: getLoadedTools(m),
         inCommunicationExec: isInterAgent,
         inSubagentExec: isSubagent,
         sourceAgentNodeId,
@@ -1265,18 +1263,17 @@ export const prepareReadyMessages = (
           }
         }
 
-        const commModel = (() => {
-          for (const item of groupItems) {
-            const rawMsg = getRawMsg(item);
-            if (rawMsg) {
-              const additional = getAdditionalKwargs(rawMsg.message);
-              if (typeof additional?.__model === 'string') {
-                return additional.__model;
-              }
+        let commModel: string | undefined;
+        for (const item of groupItems) {
+          const rawMsg = getRawMsg(item);
+          if (rawMsg) {
+            const additional = getAdditionalKwargs(rawMsg.message);
+            if (typeof additional?.__model === 'string') {
+              commModel = additional.__model;
+              break;
             }
           }
-          return undefined;
-        })();
+        }
 
         // Extract resultText/errorText from the communication_exec tool
         // result when available.  The group key is the inner messages'
@@ -1485,6 +1482,38 @@ const findDeepestActiveBlock = (
 };
 
 /**
+ * Find the block whose `toolCallId` matches the given key, regardless of
+ * `status` (matches both `calling` and `executed`).  Recurses into
+ * `innerMessages` first so the deepest match wins when multiple nested blocks
+ * share the same `toolCallId` (shouldn't happen in practice).
+ *
+ * IMPORTANT: `toolCallId` only exists on the `subagent` and `communication`
+ * arms of the `PreparedMessage` discriminated union.  Always narrow `item.type`
+ * before reading `item.toolCallId`.
+ */
+const findBlockByToolCallId = (
+  items: PreparedMessage[],
+  toolCallId: string,
+): BlockItem | undefined => {
+  for (let idx = items.length - 1; idx >= 0; idx--) {
+    const item = items[idx];
+    // toolCallId only exists on subagent and communication arms — narrow first.
+    if (item.type !== 'subagent' && item.type !== 'communication') {
+      continue;
+    }
+    // Recurse first to prefer the deepest match.
+    const deeper = findBlockByToolCallId(item.innerMessages, toolCallId);
+    if (deeper) {
+      return deeper;
+    }
+    if (item.toolCallId === toolCallId) {
+      return item as BlockItem;
+    }
+  }
+  return undefined;
+};
+
+/**
  * Recursively rebuilds the block tree to append `orphans` to `target`,
  * producing shallow copies of every block on the path to avoid mutation.
  */
@@ -1524,25 +1553,55 @@ const adoptOrphanStreamingReasoning = (
     return items;
   }
 
-  const deepestBlock = findDeepestActiveBlock(items);
-  if (!deepestBlock) {
-    return items;
-  }
-
-  const orphans: PreparedMessage[] = [];
+  // Partition orphans: keyed by __toolCallId when present, unkeyed otherwise.
+  const byToolCallId = new Map<string, PreparedMessage[]>();
+  const unkeyed: PreparedMessage[] = [];
   const rest: PreparedMessage[] = [];
 
   for (const item of items) {
     if (isStreamingReasoningOrphan(item, getRawMsg)) {
-      orphans.push(item);
+      const rawMsg = getRawMsg(item);
+      const toolCallId = getAdditionalKwargs(rawMsg?.message)?.__toolCallId;
+      if (typeof toolCallId === 'string' && toolCallId.length > 0) {
+        if (!byToolCallId.has(toolCallId)) {
+          byToolCallId.set(toolCallId, []);
+        }
+        byToolCallId.get(toolCallId)!.push(item);
+      } else {
+        unkeyed.push(item);
+      }
     } else {
       rest.push(item);
     }
   }
 
-  if (orphans.length === 0) {
-    return items;
+  // Route each keyed group into its matching block (any status — fixes
+  // "reasoning disappears after completion" when block transitions to executed).
+  let result = rest;
+
+  for (const [toolCallId, orphans] of byToolCallId) {
+    const target = findBlockByToolCallId(result, toolCallId);
+    if (target) {
+      result = appendToBlock(result, target, orphans);
+    } else {
+      // No matching block found (race condition or stale toolCallId) — fall
+      // back to the deepest active block, same as the unkeyed path.
+      unkeyed.push(...orphans);
+    }
   }
 
-  return appendToBlock(rest, deepestBlock, orphans);
+  // Route unkeyed orphans into the deepest active block (preserves G5: top-level
+  // reasoning stays at root when no subagent/communication blocks are active).
+  if (unkeyed.length > 0) {
+    const deepestBlock = findDeepestActiveBlock(result);
+    if (deepestBlock) {
+      result = appendToBlock(result, deepestBlock, unkeyed);
+    } else {
+      // No active block — re-insert unkeyed orphans at the end of the top-level
+      // list so they remain visible.
+      result = [...result, ...unkeyed];
+    }
+  }
+
+  return result;
 };

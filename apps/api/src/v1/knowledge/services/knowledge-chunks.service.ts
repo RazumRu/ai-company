@@ -64,9 +64,6 @@ export type KnowledgeIndexResult = {
 
 @Injectable()
 export class KnowledgeChunksService {
-  /** Cached vector size resolved from the first embedding call. */
-  private knowledgeVectorSizePromise?: Promise<number>;
-
   constructor(
     private readonly qdrantService: QdrantService,
     private readonly openaiService: OpenaiService,
@@ -80,6 +77,7 @@ export class KnowledgeChunksService {
     const result = await this.openaiService.embeddings({
       model: this.llmModelsService.getKnowledgeEmbeddingModel(model),
       input: texts,
+      dimensions: environment.llmEmbeddingDimensions,
     });
     return result.embeddings;
   }
@@ -124,14 +122,17 @@ export class KnowledgeChunksService {
       throw new BadRequestException('EMBEDDING_FAILED');
     }
 
-    const collection = this.qdrantService.buildSizedCollectionName(
-      this.knowledgeCollection,
-      this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
+    const collection = this.knowledgeCollectionForConfiguredDim;
+    // Overfetch cosine candidates per variant so post-sort by score gives a
+    // better top-K than the raw topK-per-variant limit would.
+    const perVariantLimit = Math.max(
+      params.topK,
+      params.topK * environment.knowledgeSearchOverfetchFactor,
     );
     const searches = this.buildSearchBatch(
       embeddings,
       params.docIds,
-      params.topK,
+      perVariantLimit,
     );
     const batchResults = await this.qdrantService.searchMany(
       collection,
@@ -173,18 +174,7 @@ export class KnowledgeChunksService {
     embeddings: number[][],
   ): Promise<void> {
     const storedChunks = this.buildStoredChunks(docId, docPublicId, chunks);
-    const collection = this.qdrantService.buildSizedCollectionName(
-      this.knowledgeCollection,
-      this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
-    );
-
-    // Cache vector size from the first successful upsert so that
-    // deleteDocChunks can resolve the collection without a probe embedding.
-    if (!this.knowledgeVectorSizePromise) {
-      this.knowledgeVectorSizePromise = Promise.resolve(
-        this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
-      );
-    }
+    const collection = this.knowledgeCollectionForConfiguredDim;
 
     // Upsert first so search never returns zero results mid-update.
     // Deterministic point IDs (uuid5 from docId+chunkHash) ensure that
@@ -212,24 +202,25 @@ export class KnowledgeChunksService {
   }
 
   async deleteDocChunks(docId: string): Promise<void> {
-    const collection = await this.getKnowledgeCollectionForCurrentModel();
     await this.qdrantService.deleteByFilter(
-      collection,
+      this.knowledgeCollectionForConfiguredDim,
       this.buildDocFilter([docId]),
     );
   }
 
   /** Resolves the Qdrant collection name used for knowledge chunks (sized by embedding dimension). */
-  async getCollectionName(): Promise<string> {
-    return this.getKnowledgeCollectionForCurrentModel();
+  getCollectionName(): string {
+    return this.knowledgeCollectionForConfiguredDim;
   }
 
   async getDocChunks(docId: string): Promise<StoredChunkInput[]> {
-    const collection = await this.getKnowledgeCollectionForCurrentModel();
-    const chunks = await this.qdrantService.scrollAll(collection, {
-      filter: this.buildDocFilter([docId]),
-      with_payload: true,
-    } as Parameters<QdrantService['scrollAll']>[1]);
+    const chunks = await this.qdrantService.scrollAll(
+      this.knowledgeCollectionForConfiguredDim,
+      {
+        filter: this.buildDocFilter([docId]),
+        with_payload: true,
+      } as Parameters<QdrantService['scrollAll']>[1],
+    );
 
     return chunks
       .map((chunk) => this.parseStoredChunk(chunk))
@@ -240,23 +231,11 @@ export class KnowledgeChunksService {
     return environment.knowledgeChunksCollection ?? 'knowledge_chunks';
   }
 
-  private async getKnowledgeCollectionForCurrentModel(): Promise<string> {
-    const vectorSize = await this.getKnowledgeVectorSize();
+  private get knowledgeCollectionForConfiguredDim(): string {
     return this.qdrantService.buildSizedCollectionName(
       this.knowledgeCollection,
-      vectorSize,
+      environment.llmEmbeddingDimensions,
     );
-  }
-
-  private async getKnowledgeVectorSize(): Promise<number> {
-    if (!this.knowledgeVectorSizePromise) {
-      // Probe embedding to discover vector dimensions on first use.
-      this.knowledgeVectorSizePromise = this.embedTexts(['probe']).then(
-        (embeddings) =>
-          this.qdrantService.getVectorSizeFromEmbeddings(embeddings),
-      );
-    }
-    return this.knowledgeVectorSizePromise;
   }
 
   private buildSearchBatch(
@@ -565,8 +544,14 @@ export class KnowledgeChunksService {
       }
       if (i > 0) {
         const prev = chunks[i - 1]!;
-        if (chunk.start !== prev.end) {
-          return `Chunk ${i} does not align with previous end`;
+        // Chunks may overlap (chunk.start < prev.end) when overlap is configured,
+        // but must progress (starts strictly increase) and never leave gaps
+        // in content coverage.
+        if (chunk.start <= prev.start) {
+          return `Chunk ${i} does not progress past previous chunk`;
+        }
+        if (chunk.start > prev.end) {
+          return `Chunk ${i} leaves a gap after previous chunk`;
         }
       }
     }
@@ -609,10 +594,17 @@ export class KnowledgeChunksService {
       '',
     ];
 
+    const overlapChars =
+      environment.knowledgeChunkOverlapTokens * CHARS_PER_TOKEN;
+
     for (const chunkSize of this.buildChunkSizes(maxChars)) {
+      // Cap overlap at half of chunkSize to avoid pathological shrinkage as
+      // chunkSize iterates downward — an overlap >= chunkSize produces
+      // duplicate/empty segments.
+      const chunkOverlap = Math.min(overlapChars, Math.floor(chunkSize / 2));
       const splitter = new RecursiveCharacterTextSplitter({
         chunkSize,
-        chunkOverlap: 0,
+        chunkOverlap,
         separators: baseSeparators,
         keepSeparator: true,
       });
@@ -655,35 +647,47 @@ export class KnowledgeChunksService {
     }
 
     const chunks: KnowledgeChunkBoundary[] = [];
-    let offset = 0;
+    let searchFrom = 0;
+    let prevStart = -1;
+    let prevEnd = 0;
 
     for (const split of splits) {
       if (!split) {
         return null;
       }
-      const matchIndex = content.indexOf(split, offset);
+      const matchIndex = content.indexOf(split, searchFrom);
       if (matchIndex === -1) {
         return null;
       }
-      const gap = content.slice(offset, matchIndex);
-      if (/\S/.test(gap)) {
+      if (matchIndex <= prevStart) {
         return null;
       }
+      // Any non-whitespace between prev.end and this chunk's start is a gap
+      // in content coverage — abort so a smaller chunkSize is tried.
+      if (matchIndex > prevEnd) {
+        const gap = content.slice(prevEnd, matchIndex);
+        if (/\S/.test(gap)) {
+          return null;
+        }
+      }
 
-      const start = offset;
+      const start = matchIndex;
       const end = matchIndex + split.length;
       if (end <= start) {
         return null;
       }
       chunks.push({ start, end });
-      offset = end;
+      prevStart = start;
+      prevEnd = end;
+      searchFrom = start + 1;
       if (chunks.length > maxCount) {
         return null;
       }
     }
 
-    if (offset !== content.length) {
-      const remainder = content.slice(offset);
+    // Force-extend the last chunk to EOF if only trailing whitespace remains.
+    if (prevEnd < content.length) {
+      const remainder = content.slice(prevEnd);
       if (/\S/.test(remainder)) {
         return null;
       }
@@ -692,6 +696,16 @@ export class KnowledgeChunksService {
         return null;
       }
       lastChunk.end = content.length;
+    }
+
+    // Force-start the first chunk at 0 if only leading whitespace precedes it.
+    const firstChunk = chunks[0];
+    if (firstChunk && firstChunk.start > 0) {
+      const prefix = content.slice(0, firstChunk.start);
+      if (/\S/.test(prefix)) {
+        return null;
+      }
+      firstChunk.start = 0;
     }
 
     return chunks;

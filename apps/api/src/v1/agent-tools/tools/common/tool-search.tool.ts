@@ -64,7 +64,7 @@ export class ToolSearchTool extends BaseTool<
 
   public name = TOOL_SEARCH_TOOL_NAME;
   public description =
-    'Searches for and loads available tools by keyword. The <available-tools> block in the system prompt lists all unloaded tools — consult it before searching. Exact and partial name matches are prioritized over description matches. Returns up to the top 3 highly-relevant results; zero results is a normal outcome, try a different keyword. Once a tool is loaded, it remains available for the rest of the conversation.';
+    'Searches for and loads available tools by keyword. The <available-tools> block in the system prompt lists all unloaded tools — consult it before searching. If a tool already appears in your bound function schemas, call it directly — tool_search only loads tools that are NOT yet bound. Exact and partial name matches are prioritized over description matches. Returns up to 3 non-exact matches, plus all tools whose names exactly match a query term (so a multi-name query can load several tools at once). Once a tool is loaded, it remains available for the rest of the conversation.';
 
   public getDetailedInstructions(
     _config: ToolSearchToolConfig,
@@ -78,6 +78,9 @@ export class ToolSearchTool extends BaseTool<
       - When you need a capability but are unsure which tool provides it
       - When you want to find a tool by its name for an exact match
       - When you need to explore available tools in a category (e.g. "file", "github", "search")
+
+      ### When NOT to Use
+      - The tool already appears in your bound function schemas — call it directly, do not search for it. \`tool_search\` only finds tools from the \`<available-tools>\` list (the ones not yet bound).
 
       ### How It Works
       1. The \`<available-tools>\` block in the system prompt lists all available tools by name
@@ -120,6 +123,7 @@ export class ToolSearchTool extends BaseTool<
     _toolMetadata?: unknown,
   ): ToolInvokeResult<ToolSearchOutput> {
     const queryTerms = this.tokenize(args.query).slice(0, 50);
+    const queryTermSet = new Set(queryTerms);
     const scored: ScoredEntry[] = [];
 
     for (const [name, entry] of config.deferredTools.entries()) {
@@ -129,11 +133,31 @@ export class ToolSearchTool extends BaseTool<
       }
     }
 
-    scored.sort((a, b) => b.score - a.score);
-    const topScore = scored.at(0)?.score ?? 0;
-    const minScore = Math.max(Math.floor(topScore * 0.5), 30);
-    const filtered = scored.filter((s) => s.score >= minScore);
-    const topMatches = filtered.slice(0, 3);
+    // Exact-name matches (a query term exactly equals the tool name) are
+    // always returned up to MAX_EXACT, regardless of how many other tools
+    // outrank them on description cross-references. This handles multi-name
+    // kitchen-sink queries where the LLM is explicitly listing tools to load.
+    const exactMatches: ScoredEntry[] = [];
+    const nonExactMatches: ScoredEntry[] = [];
+    for (const entry of scored) {
+      if (queryTermSet.has(entry.name.toLowerCase())) {
+        exactMatches.push(entry);
+      } else {
+        nonExactMatches.push(entry);
+      }
+    }
+    exactMatches.sort((a, b) => b.score - a.score);
+    nonExactMatches.sort((a, b) => b.score - a.score);
+
+    const MAX_EXACT = 10;
+    const MAX_NON_EXACT = 3;
+    const cappedExact = exactMatches.slice(0, MAX_EXACT);
+    const nonExactTopScore = nonExactMatches.at(0)?.score ?? 0;
+    const minScore = Math.max(Math.floor(nonExactTopScore * 0.5), 30);
+    const cappedNonExact = nonExactMatches
+      .filter((s) => s.score >= minScore)
+      .slice(0, MAX_NON_EXACT);
+    const topMatches = [...cappedExact, ...cappedNonExact];
 
     if (topMatches.length === 0) {
       return {
@@ -215,6 +239,8 @@ export class ToolSearchTool extends BaseTool<
     const propNames = this.getSchemaPropertyNames(entry.tool);
 
     let score = 0;
+    let descMatches = 0;
+    let propMatches = 0;
 
     if (nameLower === fullQuery) {
       score += 100;
@@ -225,14 +251,18 @@ export class ToolSearchTool extends BaseTool<
         score += 80;
       }
       if (descLower.includes(term)) {
-        score += 10;
+        descMatches++;
       }
       for (const propName of propNames) {
         if (propName.toLowerCase().includes(term)) {
-          score += 10;
+          propMatches++;
+          break;
         }
       }
     }
+
+    score += Math.min(descMatches * 10, 20);
+    score += Math.min(propMatches * 10, 10);
 
     return score;
   }

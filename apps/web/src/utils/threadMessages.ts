@@ -9,6 +9,10 @@ export interface ReasoningChunkEntry {
   updatedAt?: string;
   runId?: string;
   threadId?: string;
+  toolCallId?: string;
+  subagentCommunication?: boolean;
+  interAgentCommunication?: boolean;
+  sourceAgentNodeId?: string;
 }
 
 export const STREAMING_REASONING_FLAG = '__streamingReasoning';
@@ -49,7 +53,7 @@ export const extractReasoningEntries = (
 
   const entries: ReasoningChunkEntry[] = [];
 
-  Object.entries(source as Record<string, unknown>).forEach(([key, raw]) => {
+  for (const [key, raw] of Object.entries(source as Record<string, unknown>)) {
     if (typeof raw === 'string') {
       entries.push({
         reasoningId: key,
@@ -57,7 +61,7 @@ export const extractReasoningEntries = (
         threadId: context.threadId,
         runId: context.runId,
       });
-      return;
+      continue;
     }
 
     if (isPlainObject(raw)) {
@@ -87,8 +91,20 @@ export const extractReasoningEntries = (
               : undefined,
           runId: nestedRunId,
           threadId: nestedThreadId,
+          toolCallId:
+            typeof rawObject.toolCallId === 'string'
+              ? rawObject.toolCallId
+              : undefined,
+          subagentCommunication:
+            rawObject.subagentCommunication === true || undefined,
+          interAgentCommunication:
+            rawObject.interAgentCommunication === true || undefined,
+          sourceAgentNodeId:
+            typeof rawObject.sourceAgentNodeId === 'string'
+              ? rawObject.sourceAgentNodeId
+              : undefined,
         });
-        return;
+        continue;
       }
 
       entries.push(
@@ -98,7 +114,7 @@ export const extractReasoningEntries = (
         }),
       );
     }
-  });
+  }
 
   return entries;
 };
@@ -113,16 +129,16 @@ export const narrowReasoningContainer = (
   let current: unknown = source;
   let narrowed = false;
 
-  keys.forEach((key) => {
+  for (const key of keys) {
     if (!key || !isPlainObject(current)) {
-      return;
+      continue;
     }
     const next = (current as Record<string, unknown>)[key];
     if (next !== undefined) {
       current = next;
       narrowed = true;
     }
-  });
+  }
 
   return narrowed ? current : source;
 };
@@ -181,9 +197,6 @@ export const removeStreamingReasoningMessages = (
   msgs: ThreadMessageDto[],
   predicate: (msg: ThreadMessageDto) => boolean,
 ): ThreadMessageDto[] => {
-  if (!predicate) {
-    return msgs;
-  }
   return msgs.filter((msg) => {
     if (!isStreamingReasoningMessage(msg)) {
       return true;
@@ -216,6 +229,41 @@ const normalizeMessageContent = (raw: unknown): string | null => {
   return null;
 };
 
+/**
+ * Extract comm-routing fields from a message's additionalKwargs.
+ * Returns only truthy values; never returns undefined-valued keys.
+ */
+const extractCommRoutingKwargs = (
+  msg: ThreadMessageDto,
+): Record<string, unknown> => {
+  const kwargs = msg.message?.additionalKwargs as
+    | Record<string, unknown>
+    | undefined;
+  if (!kwargs) {
+    return {};
+  }
+  const result: Record<string, unknown> = {};
+  if (
+    typeof kwargs.__toolCallId === 'string' &&
+    kwargs.__toolCallId.length > 0
+  ) {
+    result.__toolCallId = kwargs.__toolCallId;
+  }
+  if (kwargs.__subagentCommunication === true) {
+    result.__subagentCommunication = true;
+  }
+  if (kwargs.__interAgentCommunication === true) {
+    result.__interAgentCommunication = true;
+  }
+  if (
+    typeof kwargs.__sourceAgentNodeId === 'string' &&
+    kwargs.__sourceAgentNodeId.length > 0
+  ) {
+    result.__sourceAgentNodeId = kwargs.__sourceAgentNodeId;
+  }
+  return result;
+};
+
 export const mergeMessagesReplacingStreaming = (
   prev: ThreadMessageDto[],
   incoming: ThreadMessageDto[],
@@ -236,6 +284,35 @@ export const mergeMessagesReplacingStreaming = (
       .map((msg) => getMessageRunId(msg))
       .filter((runId): runId is string => Boolean(runId)),
   );
+
+  // Defensive carry-forward: capture comm-routing kwargs from streaming entries
+  // that are about to be replaced by persisted reasoning messages. If the
+  // persisted message lacks __toolCallId (backend drift or race), we copy the
+  // fields from the outgoing streaming entry so grouping stays stable.
+  const streamingKwargsByReasoningId = new Map<
+    string,
+    Record<string, unknown>
+  >();
+  const streamingKwargsByRunId = new Map<string, Record<string, unknown>>();
+  if (reasoningIds.size > 0 || reasoningRunIds.size > 0) {
+    prev.forEach((msg) => {
+      if (!isStreamingReasoningMessage(msg)) {
+        return;
+      }
+      const commKwargs = extractCommRoutingKwargs(msg);
+      if (Object.keys(commKwargs).length === 0) {
+        return;
+      }
+      const reasoningId = getReasoningIdentifier(msg);
+      if (reasoningId && reasoningIds.has(reasoningId)) {
+        streamingKwargsByReasoningId.set(reasoningId, commKwargs);
+      }
+      const runId = getMessageRunId(msg);
+      if (runId && reasoningRunIds.has(runId)) {
+        streamingKwargsByRunId.set(runId, commKwargs);
+      }
+    });
+  }
 
   const cleanedPrev =
     reasoningIds.size > 0 || reasoningRunIds.size > 0
@@ -305,17 +382,49 @@ export const mergeMessagesReplacingStreaming = (
     map.set(msg.id, msg);
   });
 
-  // Add incoming messages
-  incoming.forEach((msg) => map.set(msg.id, msg));
+  // Add incoming messages, applying defensive carry-forward of comm-routing
+  // kwargs from replaced streaming entries onto persisted reasoning messages
+  // that lack __toolCallId (guards against backend tagging drift).
+  incoming.forEach((msg) => {
+    if (!isReasoningMessage(msg)) {
+      map.set(msg.id, msg);
+      return;
+    }
+
+    const incomingCommKwargs = extractCommRoutingKwargs(msg);
+    const alreadyTagged = typeof incomingCommKwargs.__toolCallId === 'string';
+
+    if (alreadyTagged) {
+      map.set(msg.id, msg);
+      return;
+    }
+
+    // Look up carried-forward kwargs from the outgoing streaming entry
+    const reasoningId = getReasoningIdentifier(msg);
+    const runId = getMessageRunId(msg);
+    const carriedKwargs =
+      (reasoningId && streamingKwargsByReasoningId.get(reasoningId)) ||
+      (runId && streamingKwargsByRunId.get(runId));
+
+    if (!carriedKwargs || Object.keys(carriedKwargs).length === 0) {
+      map.set(msg.id, msg);
+      return;
+    }
+
+    const existingKwargs =
+      (msg.message?.additionalKwargs as Record<string, unknown> | undefined) ??
+      {};
+    const patchedMsg: ThreadMessageDto = {
+      ...msg,
+      message: {
+        ...msg.message,
+        additionalKwargs: { ...existingKwargs, ...carriedKwargs },
+      } as ThreadMessageDto['message'],
+    };
+    map.set(patchedMsg.id, patchedMsg);
+  });
 
   return sortMessagesChronologically(Array.from(map.values()));
-};
-
-export const buildIdSet = (
-  ...values: (string | undefined)[]
-): Set<string> | undefined => {
-  const filtered = values.filter((value): value is string => Boolean(value));
-  return filtered.length > 0 ? new Set(filtered) : undefined;
 };
 
 export interface ReasoningUpsertContext {
@@ -323,6 +432,10 @@ export interface ReasoningUpsertContext {
   runId?: string;
   selectedThreadId?: string;
   nodeId?: string;
+  toolCallId?: string;
+  subagentCommunication?: boolean;
+  interAgentCommunication?: boolean;
+  sourceAgentNodeId?: string;
 }
 
 const buildReasoningThreadMessage = (
@@ -381,8 +494,42 @@ const buildReasoningThreadMessage = (
     additionalKwargs.__createdAt = createdAt;
   }
 
-  if (!additionalKwargs.__reasoningId) {
-    additionalKwargs.__reasoningId = entry.reasoningId;
+  const resolvedToolCallId =
+    (typeof entry.toolCallId === 'string' && entry.toolCallId.length > 0
+      ? entry.toolCallId
+      : undefined) ??
+    (typeof context.toolCallId === 'string' && context.toolCallId.length > 0
+      ? context.toolCallId
+      : undefined);
+  if (resolvedToolCallId) {
+    additionalKwargs.__toolCallId = resolvedToolCallId;
+  }
+
+  if (
+    entry.subagentCommunication === true ||
+    context.subagentCommunication === true
+  ) {
+    additionalKwargs.__subagentCommunication = true;
+  }
+
+  if (
+    entry.interAgentCommunication === true ||
+    context.interAgentCommunication === true
+  ) {
+    additionalKwargs.__interAgentCommunication = true;
+  }
+
+  const resolvedSourceAgentNodeId =
+    (typeof entry.sourceAgentNodeId === 'string' &&
+    entry.sourceAgentNodeId.length > 0
+      ? entry.sourceAgentNodeId
+      : undefined) ??
+    (typeof context.sourceAgentNodeId === 'string' &&
+    context.sourceAgentNodeId.length > 0
+      ? context.sourceAgentNodeId
+      : undefined);
+  if (resolvedSourceAgentNodeId) {
+    additionalKwargs.__sourceAgentNodeId = resolvedSourceAgentNodeId;
   }
 
   return {
@@ -399,6 +546,20 @@ const buildReasoningThreadMessage = (
       additionalKwargs,
     } as ThreadMessageDto['message'],
   };
+};
+
+// Shallow comparison — sufficient because buildReasoningThreadMessage
+// only sets primitive values (strings, booleans) in additionalKwargs.
+const shallowObjectChanged = (
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean => {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) {
+    return true;
+  }
+  return aKeys.some((k) => a[k] !== b[k]);
 };
 
 export const upsertReasoningEntries = (
@@ -485,34 +646,19 @@ export const upsertReasoningEntries = (
           : nextMessageContent;
     }
 
-    const nextContent = entry.content;
     const nextAdditional =
       (nextMessage.message?.additionalKwargs as Record<string, unknown>) ?? {};
-    // Shallow comparison — sufficient because buildReasoningThreadMessage
-    // only sets primitive values (strings, booleans) in additionalKwargs.
-    const additionalChanged = (() => {
-      const existingKeys = Object.keys(existingAdditional);
-      const nextKeys = Object.keys(nextAdditional);
-      if (existingKeys.length !== nextKeys.length) {
-        return true;
-      }
-      return existingKeys.some(
-        (k) => existingAdditional[k] !== nextAdditional[k],
-      );
-    })();
+    const additionalChanged = shallowObjectChanged(
+      existingAdditional,
+      nextAdditional,
+    );
 
     if (
       !existing ||
-      existingContent !== nextContent ||
-      existing?.updatedAt !== nextMessage.updatedAt ||
+      existingContent !== entry.content ||
+      existing.updatedAt !== nextMessage.updatedAt ||
       additionalChanged ||
-      Boolean(
-        (
-          nextMessage.message?.additionalKwargs as
-            | Record<string, unknown>
-            | undefined
-        )?.[STREAMING_REASONING_FLAG],
-      )
+      Boolean(nextAdditional[STREAMING_REASONING_FLAG])
     ) {
       hasChanges = true;
       if (!existing) {

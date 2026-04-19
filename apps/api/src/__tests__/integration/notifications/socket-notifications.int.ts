@@ -1459,6 +1459,258 @@ describe('Socket Notifications Integration Tests', () => {
         }
       },
     );
+
+    it(
+      'should include toolCallId, interAgentCommunication, and sourceAgentNodeId in socket payload when agent runs inside a communication runnable',
+      { timeout: 90000 },
+      async () => {
+        const graphId = baseGraphId;
+        await restartGraph(graphId);
+
+        const triggerResult = await graphsService.executeTrigger(
+          contextDataStorage,
+          graphId,
+          'trigger-1',
+          {
+            messages: ['Start comm-context reasoning test'],
+            threadSubId: uniqueThreadSubId('reasoning-comm-context-thread'),
+            async: true,
+          },
+        );
+
+        const threadId = triggerResult.externalThreadId;
+        expect(threadId).toBeDefined();
+
+        await waitForCondition(
+          () =>
+            graphsService.getCompiledNodes(contextDataStorage, graphId, {
+              threadId,
+            }),
+          (snapshots) =>
+            snapshots.some(
+              (node) =>
+                node.id === 'agent-1' &&
+                node.status === GraphNodeStatus.Running,
+            ),
+          { timeout: 120_000, interval: 1_000 },
+        );
+
+        const agentNode = graphRegistry.getNode<SimpleAgent>(
+          graphId,
+          'agent-1',
+        );
+        if (!agentNode) {
+          throw new Error('Agent node agent-1 not found');
+        }
+
+        const persistedThread = await waitForCondition(
+          () =>
+            threadsService
+              .getThreadByExternalId(contextDataStorage, threadId)
+              .catch(() => undefined),
+          (thread): thread is ThreadDto => !!thread,
+          { timeout: 60000, interval: 250 },
+        );
+
+        if (!persistedThread) {
+          throw new Error('Thread was not persisted');
+        }
+
+        const agentInstance = agentNode.instance;
+        const agentInternals = agentInstance as unknown as {
+          handleReasoningChunk?: (tid: string, chunk: AIMessageChunk) => void;
+          clearReasoningState?: (
+            tid: string,
+            options?: {
+              persist?: boolean;
+              config?: { configurable?: Record<string, unknown> };
+            },
+          ) => void;
+          activeRuns?: Map<
+            string,
+            {
+              threadId: string;
+              runnableConfig: {
+                configurable: Record<string, unknown>;
+              };
+            }
+          >;
+          graphThreadState?: GraphThreadState;
+        };
+
+        const graphThreadStateMaybe = await waitForCondition(
+          () => Promise.resolve(agentInternals.graphThreadState),
+          (state) => !!state,
+          { timeout: 10000, interval: 100 },
+        );
+
+        if (!graphThreadStateMaybe) {
+          throw new Error('graphThreadState not available on agent');
+        }
+
+        const handleReasoningChunk =
+          agentInternals.handleReasoningChunk?.bind(agentInstance);
+
+        if (!handleReasoningChunk) {
+          throw new Error('handleReasoningChunk is not available on agent');
+        }
+
+        // Inject communication context into the existing active run for this thread
+        // so handleReasoningChunk can read __toolCallId etc. from runnableConfig.configurable
+        const existingRun = agentInternals.activeRuns
+          ? Array.from(agentInternals.activeRuns.values()).find(
+              (r) => r.threadId === threadId,
+            )
+          : undefined;
+
+        if (!existingRun) {
+          throw new Error('No active run found for thread — agent not running');
+        }
+
+        existingRun.runnableConfig.configurable.__toolCallId = 'tc-int-1';
+        existingRun.runnableConfig.configurable.__interAgentCommunication = true;
+        existingRun.runnableConfig.configurable.__sourceAgentNodeId =
+          'source-node';
+
+        const emitSpy = vi.spyOn(notificationsService, 'emit');
+        let processedCallIndex = 0;
+        const waitForNotification = async (
+          predicate: (event: Notification) => boolean,
+        ): Promise<Notification> => {
+          const timeoutAt = Date.now() + 10_000;
+          while (Date.now() < timeoutAt) {
+            for (
+              let i = processedCallIndex;
+              i < emitSpy.mock.calls.length;
+              i++
+            ) {
+              const [event] = emitSpy.mock.calls[i] as [Notification];
+              if (predicate(event)) {
+                processedCallIndex = i + 1;
+                return event;
+              }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error('Timeout waiting for notification');
+        };
+
+        try {
+          const commReasoningChunk = {
+            id: 'chunk-comm-context',
+            content: '',
+            contentBlocks: [
+              {
+                type: 'reasoning' as const,
+                reasoning: 'comm-context reasoning step',
+              },
+            ],
+            response_metadata: {},
+          } as AIMessageChunk;
+
+          handleReasoningChunk(threadId, commReasoningChunk);
+
+          const reasoningNotification = await waitForNotification(
+            (event) =>
+              event.type === NotificationEvent.GraphNodeUpdate &&
+              event.graphId === graphId &&
+              event.nodeId === 'agent-1' &&
+              !!(
+                event.data as {
+                  additionalNodeMetadata?: Record<string, unknown>;
+                }
+              )?.additionalNodeMetadata?.reasoningChunks,
+          );
+
+          const reasoningChunksPayload =
+            (
+              reasoningNotification.data as {
+                additionalNodeMetadata?: {
+                  reasoningChunks?: Record<
+                    string,
+                    {
+                      id: string;
+                      content: string;
+                      toolCallId?: string;
+                      interAgentCommunication?: boolean;
+                      sourceAgentNodeId?: string;
+                    }
+                  >;
+                };
+              }
+            )?.additionalNodeMetadata?.reasoningChunks ?? {};
+
+          const commEntry =
+            reasoningChunksPayload['reasoning:chunk-comm-context'];
+          expect(commEntry).toBeDefined();
+          expect(commEntry?.toolCallId).toBe('tc-int-1');
+          expect(commEntry?.interAgentCommunication).toBe(true);
+          expect(commEntry?.sourceAgentNodeId).toBe('source-node');
+
+          // Verify that clearReasoningState with persist:true propagates
+          // __toolCallId and __interAgentCommunication into the DB message's
+          // additional_kwargs via updateMessagesListWithMetadata.
+          const clearReasoningState =
+            agentInternals.clearReasoningState?.bind(agentInstance);
+
+          if (!clearReasoningState) {
+            throw new Error('clearReasoningState is not available on agent');
+          }
+
+          clearReasoningState(threadId, {
+            persist: true,
+            config: {
+              configurable: {
+                thread_id: threadId,
+                node_id: 'agent-1',
+                graph_id: graphId,
+                __toolCallId: 'tc-int-1',
+                __interAgentCommunication: true,
+                __sourceAgentNodeId: 'source-node',
+              },
+            },
+          });
+
+          // Allow time for the message event to propagate through the
+          // notification handler and be written to the database.
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+
+          const storedMessages = await threadsService.getThreadMessages(
+            contextDataStorage,
+            persistedThread.id,
+          );
+
+          const storedReasoning = storedMessages.find(
+            (msg) =>
+              msg.message.role === 'reasoning' &&
+              (msg.message.additionalKwargs as Record<string, unknown>)
+                ?.__toolCallId === 'tc-int-1',
+          ) as
+            | (ThreadMessageDto & { message: ReasoningMessageDto })
+            | undefined;
+
+          expect(storedReasoning).toBeDefined();
+          expect(
+            (
+              storedReasoning?.message.additionalKwargs as Record<
+                string,
+                unknown
+              >
+            )?.__toolCallId,
+          ).toBe('tc-int-1');
+          expect(
+            (
+              storedReasoning?.message.additionalKwargs as Record<
+                string,
+                unknown
+              >
+            )?.__interAgentCommunication,
+          ).toBe(true);
+        } finally {
+          emitSpy.mockRestore();
+        }
+      },
+    );
   });
 
   describe('Thread Notifications', () => {
