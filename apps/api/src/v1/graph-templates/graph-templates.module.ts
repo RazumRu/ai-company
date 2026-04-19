@@ -31,6 +31,7 @@ import { GhToolTemplate } from './templates/tools/gh-tool.template';
 import { KnowledgeToolsTemplate } from './templates/tools/knowledge-tools.template';
 import { ShellToolTemplate } from './templates/tools/shell-tool.template';
 import { SubagentsToolTemplate } from './templates/tools/subagents-tool.template';
+import { ThreadStoreToolTemplate } from './templates/tools/thread-store-tool.template';
 import { WebSearchToolTemplate } from './templates/tools/web-search-tool.template';
 import { GitHubIssuesTriggerTemplate } from './templates/triggers/github-issues-trigger.template';
 import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.template';
@@ -65,6 +66,7 @@ import { ManualTriggerTemplate } from './templates/triggers/manual-trigger.templ
     GhToolTemplate,
     FilesToolTemplate,
     SubagentsToolTemplate,
+    ThreadStoreToolTemplate,
     // --- mcp ---
     CustomMcpTemplate,
     FilesystemMcpTemplate,

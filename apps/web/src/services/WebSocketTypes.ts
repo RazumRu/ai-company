@@ -183,6 +183,20 @@ export interface GraphRevisionProgressNotification extends BaseNotification {
   data: GraphRevisionProgressData;
 }
 
+// Thread store update notification
+export interface ThreadStoreUpdateNotification extends BaseNotification {
+  type: 'thread.store.update';
+  threadId: string;
+  data: {
+    threadId: string;
+    namespace: string;
+    key: string;
+    mode: 'kv' | 'append';
+    action: 'put' | 'append' | 'delete';
+    authorAgentId?: string | null;
+  };
+}
+
 // Runtime status notification
 export type RuntimeStatusValue =
   | 'Starting'
@@ -220,7 +234,8 @@ export type SocketNotification =
   | GraphNodeUpdateNotification
   | GraphRevisionNotification
   | GraphRevisionProgressNotification
-  | RuntimeStatusNotification;
+  | RuntimeStatusNotification
+  | ThreadStoreUpdateNotification;
 
 // Client to Server events payload types
 export interface SubscribeGraphPayload {

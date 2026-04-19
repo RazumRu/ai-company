@@ -53,7 +53,11 @@ describe('SubagentsService', () => {
     it('should give smart-explorer read-only tools', () => {
       const smartExplorer = service.getById('system:smart-explorer');
 
-      expect(smartExplorer!.toolIds).toEqual(['shell:read-only', 'files:read-only']);
+      expect(smartExplorer!.toolIds).toEqual([
+        'shell:read-only',
+        'files:read-only',
+        'thread-store:read-only',
+      ]);
     });
   });
 

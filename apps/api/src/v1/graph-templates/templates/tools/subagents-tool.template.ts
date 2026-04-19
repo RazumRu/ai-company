@@ -6,6 +6,7 @@ import { BuiltAgentTool } from '../../../agent-tools/tools/base-tool';
 import { FilesToolGroup } from '../../../agent-tools/tools/common/files/files-tool-group';
 import { ShellTool } from '../../../agent-tools/tools/common/shell.tool';
 import { SubagentsToolGroup } from '../../../agent-tools/tools/common/subagents/subagents-tool-group';
+import { ThreadStoreToolGroup } from '../../../agent-tools/tools/common/thread-store/thread-store-tool-group';
 import { GraphNode, NodeKind } from '../../../graphs/graphs.types';
 import { GraphRegistry } from '../../../graphs/services/graph-registry';
 import { RuntimeThreadProvider } from '../../../runtime/services/runtime-thread-provider';
@@ -47,6 +48,7 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
     private readonly subagentsToolGroup: SubagentsToolGroup,
     private readonly shellTool: ShellTool,
     private readonly filesToolGroup: FilesToolGroup,
+    private readonly threadStoreToolGroup: ThreadStoreToolGroup,
     private readonly graphRegistry: GraphRegistry,
   ) {
     super();
@@ -120,6 +122,19 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
           includeEditActions: true,
         });
         toolSets.set(SubagentToolId.FilesFull, filesFull.tools);
+
+        // Thread store (full access)
+        const threadStoreFull = this.threadStoreToolGroup.buildTools({});
+        toolSets.set(SubagentToolId.ThreadStore, threadStoreFull.tools);
+
+        // Thread store (read-only)
+        const threadStoreReadOnly = this.threadStoreToolGroup.buildTools({
+          readOnly: true,
+        });
+        toolSets.set(
+          SubagentToolId.ThreadStoreReadOnly,
+          threadStoreReadOnly.tools,
+        );
 
         // Build the subagents tool group
         const { tools, instructions } = this.subagentsToolGroup.buildTools({

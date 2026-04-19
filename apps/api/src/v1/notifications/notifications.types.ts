@@ -28,6 +28,7 @@ export enum NotificationEvent {
   GraphRevisionProgress = 'graph.revision.progress',
   RuntimeStatus = 'runtime.status',
   GraphPreview = 'graph.preview',
+  ThreadStoreUpdate = 'thread.store.update',
 }
 
 export interface INotification<T> {
@@ -190,6 +191,20 @@ export interface IGraphPreviewNotification extends INotification<GraphPreviewPay
   type: NotificationEvent.GraphPreview;
 }
 
+export interface IThreadStoreUpdateData {
+  threadId: string;
+  namespace: string;
+  key: string;
+  mode: 'kv' | 'append';
+  action: 'put' | 'append' | 'delete';
+  authorAgentId?: string | null;
+}
+
+export interface IThreadStoreUpdateNotification extends INotification<IThreadStoreUpdateData> {
+  type: NotificationEvent.ThreadStoreUpdate;
+  threadId: string;
+}
+
 export type Notification =
   | IGraphNotification
   | IAgentMessageNotification
@@ -202,4 +217,5 @@ export type Notification =
   | IGraphRevisionNotification
   | IGraphRevisionProgressNotification
   | IRuntimeStatusNotification
-  | IGraphPreviewNotification;
+  | IGraphPreviewNotification
+  | IThreadStoreUpdateNotification;

@@ -11,6 +11,10 @@ export enum SubagentToolId {
   FilesReadOnly = 'files:read-only',
   /** File tools with all actions. */
   FilesFull = 'files:full',
+  /** Full thread-store access (put, append, get, list, delete). */
+  ThreadStore = 'thread-store:full',
+  /** Thread-store read-only (get, list). */
+  ThreadStoreReadOnly = 'thread-store:read-only',
 }
 
 /** Context passed to the model resolver callback at runtime. */
