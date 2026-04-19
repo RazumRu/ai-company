@@ -1,5 +1,6 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
+import { BadRequestException } from '@packages/common';
 import dedent from 'dedent';
 import { z } from 'zod';
 
@@ -76,7 +77,7 @@ export class WaitForTool extends BaseTool<WaitForToolSchemaType> {
 
   public name = WaitForTool.TOOL_NAME;
   public description =
-    'Schedule a delayed resumption of the current thread. Use this tool when you need to wait for an external process to complete before checking its result. This is ideal for CI pipelines, deployments, PR reviews, or any long-running external operation where polling would waste tokens. This tool ends your current turn (like finish) and must be called alone, not alongside other tools.';
+    'Schedule a delayed resumption of the current thread. Use this tool when you need to wait for an external process to complete before checking its result. This is ideal for CI pipelines, deployments, PR reviews, or any long-running external operation where polling would waste tokens. This tool ends your current turn (like finish) and must be called alone, not alongside other tools. Only the root agent may use this tool — if you were invoked by another agent (inter-agent communication), use finish instead and let the caller schedule any waits.';
 
   protected override generateTitle(
     args: WaitForToolSchemaType,
@@ -115,6 +116,14 @@ export class WaitForTool extends BaseTool<WaitForToolSchemaType> {
       After resuming, if the condition is not yet met, you can call wait_for again
       to schedule another check. This allows monitoring over extended periods.
 
+      ### Restriction: Inter-Agent Callees
+      If you were invoked by another agent (inter-agent communication), this tool is
+      forbidden and will throw ${'`WAIT_FOR_FORBIDDEN_IN_CALLEE`'}. As a callee, your
+      job is to finish synchronously and return to your caller — use ${'`finish`'}
+      with a clear summary of what you accomplished. If a wait is genuinely needed,
+      say so in your finish message; only the caller (who owns the root thread) may
+      schedule the wait.
+
       ### Important
       This tool ends your current turn (like finish). Do not call other tools after it.
       Call it alone, not alongside other tools.
@@ -128,9 +137,18 @@ export class WaitForTool extends BaseTool<WaitForToolSchemaType> {
   public invoke(
     args: WaitForToolSchemaType,
     _config: Record<PropertyKey, unknown>,
-    _cfg: ToolRunnableConfig<BaseAgentConfigurable>,
+    cfg: ToolRunnableConfig<BaseAgentConfigurable>,
     _toolMetadata?: unknown,
   ): ToolInvokeResult<WaitForToolOutput> {
+    if (cfg?.configurable?.__interAgentCommunication === true) {
+      throw new BadRequestException(
+        'WAIT_FOR_FORBIDDEN_IN_CALLEE',
+        'wait_for is not allowed when you were invoked by another agent. ' +
+          'As a callee in an inter-agent call, finish synchronously and return to the caller using the `finish` tool. ' +
+          'If a wait is genuinely needed, explain that in your finish message so the caller (who owns the root thread) can schedule it.',
+      );
+    }
+
     const title = this.generateTitle?.(args, _config);
 
     const stateChange: WaitForToolState = {

@@ -209,8 +209,11 @@ export class CommunicationExecTool extends BaseTool<
       - "Agent not found" → Check the name matches one of the connected agents
       - "No agents configured" → No agents are available for communication
       - Empty response → Agent may have failed or returned no output
+      - "WAIT_FOR_FORBIDDEN_IN_CALLEE" → The target agent tried to call \`wait_for\` while running as a callee; this is not allowed. If your workflow requires a wait, call \`wait_for\` yourself (on the root thread) after collecting the callee's response.
 
       ### Integration with Workflows
+      Callees (agents invoked via this tool) cannot pause with \`wait_for\` — they must finish synchronously and return a response. If a wait is needed, you (the caller) must schedule it on the root thread after the callee returns.
+
       Use communication when:
       - A task falls outside your expertise
       - Parallel work is possible

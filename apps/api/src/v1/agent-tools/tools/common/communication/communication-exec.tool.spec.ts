@@ -248,4 +248,13 @@ describe('CommunicationExecTool', () => {
       expect(builtTool.description).toBe(tool.description);
     });
   });
+
+  describe('getDetailedInstructions', () => {
+    it('documents the callee wait_for restriction so callers know what to do', () => {
+      const instructions = tool.getDetailedInstructions({ agents: [] });
+      expect(instructions).toContain('WAIT_FOR_FORBIDDEN_IN_CALLEE');
+      expect(instructions).toContain('wait_for');
+      expect(instructions).toContain('finish synchronously');
+    });
+  });
 });
