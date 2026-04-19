@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 
-import { Notification } from '../notifications.types';
+import { environment } from '../../../environments';
+import { Notification, NotificationSchema } from '../notifications.types';
 
 /**
  * Synchronous in-process notification dispatcher.
@@ -18,17 +19,35 @@ export class NotificationsService {
   constructor(private readonly logger: DefaultLogger) {}
 
   async emit(event: Notification): Promise<void> {
+    const parsed = NotificationSchema.safeParse(event);
+    if (!parsed.success) {
+      this.logger.error(
+        parsed.error as unknown as Error,
+        'Invalid notification payload — dropping event',
+        {
+          type: (event as { type?: string })?.type,
+          graphId: (event as { graphId?: string })?.graphId,
+          issues: parsed.error.issues,
+        },
+      );
+      if (environment.env !== 'production') {
+        throw parsed.error;
+      }
+      return;
+    }
+
+    const validated = parsed.data as Notification;
     await Promise.all(
       this.subscribers.map(async (subscriber) => {
         try {
-          await subscriber(event);
+          await subscriber(validated);
         } catch (error) {
           this.logger.error(
             error as Error,
             'Subscriber failed to process notification',
             {
-              type: event.type,
-              graphId: event.graphId,
+              type: validated.type,
+              graphId: validated.graphId,
             },
           );
         }
