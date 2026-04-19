@@ -187,7 +187,7 @@ export const prepareReadyMessages = (
   const allowCallingIndicators = isNodeRunning && !isThreadStopped;
 
   // Filter out messages explicitly hidden from the UI by the backend.
-  msgs = msgs.filter((m) => {
+  const visibleMsgs = msgs.filter((m) => {
     const additional = getAdditionalKwargs(m.message);
     return !additional?.__hideForUi;
   });
@@ -224,7 +224,7 @@ export const prepareReadyMessages = (
     );
   };
 
-  const toolCallResultsById = buildToolCallResultIndex(msgs);
+  const toolCallResultsById = buildToolCallResultIndex(visibleMsgs);
   const consumedToolCallIds = new Set<string>();
   const consumedToolMessageKeys = new Set<string>();
 
@@ -239,7 +239,7 @@ export const prepareReadyMessages = (
   // Map communication_exec tool call ID → __createdAt of the parent AI message.
   // Used to temporally disambiguate when multiple calls target the same agent.
   const commToolCallCreatedAt = new Map<string, string>();
-  for (const msg of msgs) {
+  for (const msg of visibleMsgs) {
     if ((msg.message?.role as string) !== 'ai') {
       continue;
     }
@@ -388,7 +388,7 @@ export const prepareReadyMessages = (
     return tcs.some((tc) => tc.id === toolCallId);
   };
 
-  for (const msg of msgs) {
+  for (const msg of visibleMsgs) {
     const additional = getAdditionalKwargs(msg.message);
     const parentToolCallId =
       typeof additional?.__toolCallId === 'string'
@@ -540,7 +540,7 @@ export const prepareReadyMessages = (
 
   // Build a set of all tool call IDs that exist in current messages
   const existingToolCallIds = new Set<string>();
-  msgs.forEach((m) => {
+  visibleMsgs.forEach((m) => {
     const role = (m.message?.role as string) || '';
     if (role === 'ai') {
       const messageToolCalls = getMessageValue<ToolCall[]>(
@@ -567,7 +567,7 @@ export const prepareReadyMessages = (
     string,
     { toolCallId: string; content: unknown }[]
   >();
-  for (const msg of msgs) {
+  for (const msg of visibleMsgs) {
     if (!isToolLikeRole(msg.message?.role as string)) {
       continue;
     }
@@ -589,7 +589,7 @@ export const prepareReadyMessages = (
   }
 
   // First pass: mark tool results that belong to AI messages as consumed
-  msgs.forEach((m) => {
+  visibleMsgs.forEach((m) => {
     const role = (m.message?.role as string) || '';
     if (role === 'ai') {
       const messageToolCalls = getMessageValue<ToolCall[]>(
@@ -620,8 +620,8 @@ export const prepareReadyMessages = (
 
   let i = 0;
 
-  while (i < msgs.length) {
-    const m = msgs[i];
+  while (i < visibleMsgs.length) {
+    const m = visibleMsgs[i];
 
     // Skip subagent / communication inner messages — consumed into blocks.
     const mToolKey = getToolMessageKey(m);
@@ -707,10 +707,10 @@ export const prepareReadyMessages = (
       const followingTools: ThreadMessageDto[] = [];
       let j = i + 1;
       while (
-        j < msgs.length &&
-        isToolLikeRole(msgs[j].message?.role as string)
+        j < visibleMsgs.length &&
+        isToolLikeRole(visibleMsgs[j].message?.role as string)
       ) {
-        followingTools.push(msgs[j]);
+        followingTools.push(visibleMsgs[j]);
         j++;
       }
 

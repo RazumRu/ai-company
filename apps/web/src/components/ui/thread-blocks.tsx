@@ -69,6 +69,26 @@ const buildFooterTokens = (
   return undefined;
 };
 
+function resolveConsumerDisplayStatus(
+  status: 'running' | 'done' | 'error',
+  errorText: string | undefined | null,
+): 'running' | 'done' | 'error' {
+  if (status === 'running') {
+    return 'running';
+  }
+  if (errorText) {
+    return 'error';
+  }
+  return status;
+}
+
+function resolveIsClickable(
+  status: 'running' | 'done' | 'error',
+  popoverContent: React.ReactNode,
+): boolean {
+  return status !== 'running' && !!popoverContent;
+}
+
 export type InnerMsg =
   | { type: 'reasoning'; content: string }
   | {
@@ -114,12 +134,11 @@ export type InnerMsg =
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const RESULT_CLASS =
-  'bg-[#f6ffed] border border-[#b7eb8f] text-[#135200]';
+const RESULT_CLASS = 'bg-[#f6ffed] border border-[#b7eb8f] text-[#135200]';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export function tryParseJsonObject(
+function tryParseJsonObject(
   s: string,
 ): Record<string, unknown> | unknown[] | null {
   try {
@@ -137,7 +156,7 @@ export function tryParseJsonObject(
  * Maps tool call statuses used by ThreadMessagesView ('calling'|'executed'|'stopped')
  * to the standard display statuses ('running'|'done'|'error').
  */
-export function mapToolStatus(
+function mapToolStatus(
   status: 'calling' | 'executed' | 'stopped',
   hasError?: boolean,
 ): 'running' | 'done' | 'error' {
@@ -157,8 +176,9 @@ export function mapToolStatus(
 
 const ansiUp = (() => {
   const instance = new AnsiUp();
-  (instance as unknown as Record<string, unknown>).escape_html = true;
-  (instance as unknown as Record<string, unknown>).escape_for_html = true;
+  const inst = instance as unknown as Record<string, unknown>;
+  inst.escape_html = true;
+  inst.escape_for_html = true;
   return instance;
 })();
 
@@ -547,15 +567,18 @@ export function ToolPopoverPanel({
     return null;
   }
 
-  const effectiveOut =
-    usageOut && usageIn
-      ? usageOut.totalTokens !== usageIn.totalTokens ||
-        usageOut.inputTokens !== usageIn.inputTokens ||
-        usageOut.outputTokens !== usageIn.outputTokens ||
-        usageOut.totalPrice !== usageIn.totalPrice
-        ? usageOut
-        : null
-      : (usageOut ?? null);
+  const hasDistinctOut =
+    !!usageOut &&
+    !!usageIn &&
+    (usageOut.totalTokens !== usageIn.totalTokens ||
+      usageOut.inputTokens !== usageIn.inputTokens ||
+      usageOut.outputTokens !== usageIn.outputTokens ||
+      usageOut.totalPrice !== usageIn.totalPrice);
+  const effectiveOut = hasDistinctOut
+    ? usageOut
+    : usageOut && !usageIn
+      ? usageOut
+      : null;
 
   return (
     <div className="max-w-[520px]">
@@ -908,7 +931,7 @@ export function ShellBlock({
     const displayText =
       outputExpanded || !truncatedInfo?.isTruncated
         ? text
-        : (truncatedInfo?.truncated ?? text);
+        : truncatedInfo.truncated;
 
     if (containsAnsi(text)) {
       return (
@@ -1370,9 +1393,8 @@ export function SubagentBlock(props: SubagentBlockProps) {
   // If children are provided, use consumer mode
   if (children !== undefined) {
     const headerLabel = purpose ? `Subagent: ${purpose}` : 'Subagent';
-    const displayStatus: 'running' | 'done' | 'error' =
-      status === 'running' ? 'running' : errorText ? 'error' : status;
-    const isClickable = status !== 'running' && !!popoverContent;
+    const displayStatus = resolveConsumerDisplayStatus(status, errorText);
+    const isClickable = resolveIsClickable(status, popoverContent);
 
     const footerTokens = buildFooterTokens(usageIn, statistics);
 
@@ -1685,9 +1707,8 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
       ? stripRole(targetAgentName)
       : undefined;
 
-    const displayStatus: 'running' | 'done' | 'error' =
-      status === 'running' ? 'running' : errorText ? 'error' : status;
-    const isClickable = status !== 'running' && !!popoverContent;
+    const displayStatus = resolveConsumerDisplayStatus(status, errorText);
+    const isClickable = resolveIsClickable(status, popoverContent);
 
     const errorLbl = cleanTarget ? `Error from ${cleanTarget}` : 'Error';
     const resultLbl =

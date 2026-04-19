@@ -67,7 +67,7 @@ export class CommunicationExecTool extends BaseTool<
       return undefined;
     }
 
-    // 1) Exact match (current behavior)
+    // 1) Exact match
     const exact = config.agents.find((a) => a.name === requested);
     if (exact) {
       return exact;

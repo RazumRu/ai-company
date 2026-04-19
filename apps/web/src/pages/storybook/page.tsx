@@ -2687,22 +2687,19 @@ function LiveThreadSection() {
       }
 
       if (step.kind === 'reasoning') {
-        const chunks = step.chunks;
-        const chunkDelay = step.chunkDelayMs ?? 500;
-
         // Add with first chunk, streaming = true
         setItems((prev) => [
           ...prev,
-          { kind: 'reasoning', content: chunks[0], streaming: true },
+          { kind: 'reasoning', content: step.chunks[0], streaming: true },
         ]);
 
         // Deliver remaining chunks
-        for (let i = 1; i < chunks.length; i++) {
-          await wait(chunkDelay);
+        for (let i = 1; i < step.chunks.length; i++) {
+          await wait(step.chunkDelayMs ?? 500);
           if (cancelRef.current) {
             break;
           }
-          const accumulated = chunks.slice(0, i + 1).join('');
+          const accumulated = step.chunks.slice(0, i + 1).join('');
           setItems((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];

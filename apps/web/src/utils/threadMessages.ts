@@ -53,7 +53,7 @@ export const extractReasoningEntries = (
 
   const entries: ReasoningChunkEntry[] = [];
 
-  Object.entries(source as Record<string, unknown>).forEach(([key, raw]) => {
+  for (const [key, raw] of Object.entries(source as Record<string, unknown>)) {
     if (typeof raw === 'string') {
       entries.push({
         reasoningId: key,
@@ -61,7 +61,7 @@ export const extractReasoningEntries = (
         threadId: context.threadId,
         runId: context.runId,
       });
-      return;
+      continue;
     }
 
     if (isPlainObject(raw)) {
@@ -96,15 +96,15 @@ export const extractReasoningEntries = (
               ? rawObject.toolCallId
               : undefined,
           subagentCommunication:
-            rawObject.subagentCommunication === true ? true : undefined,
+            rawObject.subagentCommunication === true || undefined,
           interAgentCommunication:
-            rawObject.interAgentCommunication === true ? true : undefined,
+            rawObject.interAgentCommunication === true || undefined,
           sourceAgentNodeId:
             typeof rawObject.sourceAgentNodeId === 'string'
               ? rawObject.sourceAgentNodeId
               : undefined,
         });
-        return;
+        continue;
       }
 
       entries.push(
@@ -114,7 +114,7 @@ export const extractReasoningEntries = (
         }),
       );
     }
-  });
+  }
 
   return entries;
 };
@@ -129,16 +129,16 @@ export const narrowReasoningContainer = (
   let current: unknown = source;
   let narrowed = false;
 
-  keys.forEach((key) => {
+  for (const key of keys) {
     if (!key || !isPlainObject(current)) {
-      return;
+      continue;
     }
     const next = (current as Record<string, unknown>)[key];
     if (next !== undefined) {
       current = next;
       narrowed = true;
     }
-  });
+  }
 
   return narrowed ? current : source;
 };
@@ -646,7 +646,6 @@ export const upsertReasoningEntries = (
           : nextMessageContent;
     }
 
-    const nextContent = entry.content;
     const nextAdditional =
       (nextMessage.message?.additionalKwargs as Record<string, unknown>) ?? {};
     const additionalChanged = shallowObjectChanged(
@@ -656,16 +655,10 @@ export const upsertReasoningEntries = (
 
     if (
       !existing ||
-      existingContent !== nextContent ||
-      existing?.updatedAt !== nextMessage.updatedAt ||
+      existingContent !== entry.content ||
+      existing.updatedAt !== nextMessage.updatedAt ||
       additionalChanged ||
-      Boolean(
-        (
-          nextMessage.message?.additionalKwargs as
-            | Record<string, unknown>
-            | undefined
-        )?.[STREAMING_REASONING_FLAG],
-      )
+      Boolean(nextAdditional[STREAMING_REASONING_FLAG])
     ) {
       hasChanges = true;
       if (!existing) {
