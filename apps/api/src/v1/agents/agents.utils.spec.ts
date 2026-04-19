@@ -368,6 +368,41 @@ describe('agents.utils', () => {
 
       expect(updated.additional_kwargs?.__runId).toBe('existing-run');
     });
+
+    it('should preserve an existing specific __toolCallId on the message and NOT overwrite with a broader id from configurable', () => {
+      // Reproduces the subagent->communication nesting bug: SubAgent tags reasoning
+      // with the specific subagents_run_task call id, but ToolExecutorNode calls
+      // updateMessagesListWithMetadata with the outer caller's configurable (whose
+      // __toolCallId is the broader communication_exec id). The inner id must survive.
+      const message = new AIMessage('reasoning content');
+      message.additional_kwargs = { __toolCallId: 'specific-inner' };
+
+      const config = {
+        configurable: {
+          run_id: 'run-1',
+          __toolCallId: 'broader-outer',
+        },
+      };
+
+      const updated = updateMessageWithMetadata(message, config as any);
+
+      expect(updated.additional_kwargs?.__toolCallId).toBe('specific-inner');
+    });
+
+    it('should apply __toolCallId from configurable when the message has none', () => {
+      const message = new AIMessage('some content');
+
+      const config = {
+        configurable: {
+          run_id: 'run-2',
+          __toolCallId: 'from-configurable',
+        },
+      };
+
+      const updated = updateMessageWithMetadata(message, config as any);
+
+      expect(updated.additional_kwargs?.__toolCallId).toBe('from-configurable');
+    });
   });
 
   describe('extractTextFromResponseContent', () => {

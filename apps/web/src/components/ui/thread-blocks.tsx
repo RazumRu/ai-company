@@ -15,7 +15,7 @@ import {
   Timer,
   XCircle,
 } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useReasoningReveal } from '../../hooks/useReasoningReveal';
@@ -40,9 +40,54 @@ import {
   TokenUsageDetail,
   toTokenInfo,
 } from './token-display';
-
 export type { TokenInfo } from './token-display';
 export { fmtK, StatRow, TokenBadge } from './token-display';
+
+/** Builds a TokenInfo for the StatFooter from raw consumer props. */
+const buildFooterTokens = (
+  usageIn: RawTokenUsage | null | undefined,
+  statistics:
+    | {
+        usage?: {
+          totalTokens?: number;
+          totalPrice?: number;
+          durationMs?: number;
+        };
+      }
+    | undefined,
+): TokenInfo | undefined => {
+  if (usageIn) {
+    return toTokenInfo(usageIn, statistics?.usage?.durationMs);
+  }
+  if (statistics?.usage?.totalTokens) {
+    return {
+      total: statistics.usage.totalTokens,
+      cost: formatUsd(statistics.usage.totalPrice),
+      duration: formatDuration(statistics.usage.durationMs),
+    };
+  }
+  return undefined;
+};
+
+function resolveConsumerDisplayStatus(
+  status: 'running' | 'done' | 'error',
+  errorText: string | undefined | null,
+): 'running' | 'done' | 'error' {
+  if (status === 'running') {
+    return 'running';
+  }
+  if (errorText) {
+    return 'error';
+  }
+  return status;
+}
+
+function resolveIsClickable(
+  status: 'running' | 'done' | 'error',
+  popoverContent: React.ReactNode,
+): boolean {
+  return status !== 'running' && !!popoverContent;
+}
 
 export type InnerMsg =
   | { type: 'reasoning'; content: string }
@@ -89,12 +134,11 @@ export type InnerMsg =
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const RESULT_CLASS =
-  'bg-[#f6ffed] border border-[#b7eb8f] text-[#135200]';
+const RESULT_CLASS = 'bg-[#f6ffed] border border-[#b7eb8f] text-[#135200]';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-export function tryParseJsonObject(
+function tryParseJsonObject(
   s: string,
 ): Record<string, unknown> | unknown[] | null {
   try {
@@ -112,7 +156,7 @@ export function tryParseJsonObject(
  * Maps tool call statuses used by ThreadMessagesView ('calling'|'executed'|'stopped')
  * to the standard display statuses ('running'|'done'|'error').
  */
-export function mapToolStatus(
+function mapToolStatus(
   status: 'calling' | 'executed' | 'stopped',
   hasError?: boolean,
 ): 'running' | 'done' | 'error' {
@@ -132,8 +176,9 @@ export function mapToolStatus(
 
 const ansiUp = (() => {
   const instance = new AnsiUp();
-  (instance as unknown as Record<string, unknown>).escape_html = true;
-  (instance as unknown as Record<string, unknown>).escape_for_html = true;
+  const inst = instance as unknown as Record<string, unknown>;
+  inst.escape_html = true;
+  inst.escape_for_html = true;
   return instance;
 })();
 
@@ -330,12 +375,27 @@ export function ReasoningBlock({
 }) {
   const [expanded, setExpanded] = useState(false);
   const isLong = (content?.length ?? 0) > 130;
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  // Pin the scroll to the bottom so the latest streaming lines are always visible.
+  // Only active while streaming, not expanded, and content is long enough to clip.
+  useLayoutEffect(() => {
+    if (isStreaming && !expanded && isLong && containerRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+    }
+  }, [content, isStreaming, expanded, isLong]);
 
   if (isStreaming) {
     return (
       <div className="bg-muted/40 border border-border/50 rounded-lg px-3 py-2.5 text-[12px] text-muted-foreground italic">
-        <p className="leading-relaxed whitespace-pre-wrap">{content}</p>
-        <div className="flex items-center gap-1.5 mt-1.5">
+        {!expanded && isLong ? (
+          <div ref={containerRef} className="overflow-hidden max-h-[2lh]">
+            <p className="leading-relaxed whitespace-pre-wrap">{content}</p>
+          </div>
+        ) : (
+          <p className="leading-relaxed whitespace-pre-wrap">{content}</p>
+        )}
+        <div className="flex items-center justify-between mt-1.5">
           <span
             className="text-[10px] not-italic text-muted-foreground/50"
             style={{
@@ -344,6 +404,13 @@ export function ReasoningBlock({
             }}>
             reasoning…
           </span>
+          {isLong && (
+            <button
+              className="text-[10px] not-italic hover:text-foreground transition-colors"
+              onClick={() => setExpanded((v) => !v)}>
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -500,15 +567,18 @@ export function ToolPopoverPanel({
     return null;
   }
 
-  const effectiveOut =
-    usageOut && usageIn
-      ? usageOut.totalTokens !== usageIn.totalTokens ||
-        usageOut.inputTokens !== usageIn.inputTokens ||
-        usageOut.outputTokens !== usageIn.outputTokens ||
-        usageOut.totalPrice !== usageIn.totalPrice
-        ? usageOut
-        : null
-      : (usageOut ?? null);
+  const hasDistinctOut =
+    !!usageOut &&
+    !!usageIn &&
+    (usageOut.totalTokens !== usageIn.totalTokens ||
+      usageOut.inputTokens !== usageIn.inputTokens ||
+      usageOut.outputTokens !== usageIn.outputTokens ||
+      usageOut.totalPrice !== usageIn.totalPrice);
+  const effectiveOut = hasDistinctOut
+    ? usageOut
+    : usageOut && !usageIn
+      ? usageOut
+      : null;
 
   return (
     <div className="max-w-[520px]">
@@ -861,7 +931,7 @@ export function ShellBlock({
     const displayText =
       outputExpanded || !truncatedInfo?.isTruncated
         ? text
-        : (truncatedInfo?.truncated ?? text);
+        : truncatedInfo.truncated;
 
     if (containsAnsi(text)) {
       return (
@@ -1323,20 +1393,10 @@ export function SubagentBlock(props: SubagentBlockProps) {
   // If children are provided, use consumer mode
   if (children !== undefined) {
     const headerLabel = purpose ? `Subagent: ${purpose}` : 'Subagent';
-    const displayStatus: 'running' | 'done' | 'error' =
-      status === 'running' ? 'running' : errorText ? 'error' : status;
-    const isClickable = status !== 'running' && !!popoverContent;
+    const displayStatus = resolveConsumerDisplayStatus(status, errorText);
+    const isClickable = resolveIsClickable(status, popoverContent);
 
-    // Build TokenInfo from raw consumer stats for StatFooter
-    const footerTokens: TokenInfo | undefined = usageIn
-      ? toTokenInfo(usageIn, statistics?.usage?.durationMs)
-      : statistics?.usage?.totalTokens
-        ? {
-            total: statistics.usage.totalTokens,
-            cost: formatUsd(statistics.usage.totalPrice),
-            duration: formatDuration(statistics.usage.durationMs),
-          }
-        : undefined;
+    const footerTokens = buildFooterTokens(usageIn, statistics);
 
     const header = (
       <BlockHeader left={null} label={headerLabel} status={displayStatus} />
@@ -1647,9 +1707,8 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
       ? stripRole(targetAgentName)
       : undefined;
 
-    const displayStatus: 'running' | 'done' | 'error' =
-      status === 'running' ? 'running' : errorText ? 'error' : status;
-    const isClickable = status !== 'running' && !!popoverContent;
+    const displayStatus = resolveConsumerDisplayStatus(status, errorText);
+    const isClickable = resolveIsClickable(status, popoverContent);
 
     const errorLbl = cleanTarget ? `Error from ${cleanTarget}` : 'Error';
     const resultLbl =
@@ -1660,16 +1719,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
         ? `Providing Instructions for ${cleanTarget}`
         : 'Providing Instructions');
 
-    // Build TokenInfo from raw consumer stats for StatFooter
-    const footerTokens: TokenInfo | undefined = usageIn
-      ? toTokenInfo(usageIn, statistics?.usage?.durationMs)
-      : statistics?.usage?.totalTokens
-        ? {
-            total: statistics.usage.totalTokens,
-            cost: formatUsd(statistics.usage.totalPrice),
-            duration: formatDuration(statistics.usage.durationMs),
-          }
-        : undefined;
+    const footerTokens = buildFooterTokens(usageIn, statistics);
 
     const hasAgentPair = !!(cleanSource && cleanTarget);
 

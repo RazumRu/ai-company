@@ -67,7 +67,7 @@ export class CommunicationExecTool extends BaseTool<
       return undefined;
     }
 
-    // 1) Exact match (current behavior)
+    // 1) Exact match
     const exact = config.agents.find((a) => a.name === requested);
     if (exact) {
       return exact;
@@ -263,9 +263,29 @@ export class CommunicationExecTool extends BaseTool<
       );
     }
 
-    let output: unknown;
+    const communicationRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> =
+      {
+        ...runnableConfig,
+        configurable: {
+          ...(runnableConfig.configurable ?? {}),
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+        },
+      };
+
     try {
-      output = await targetAgent.invokeAgent([args.message], runnableConfig);
+      const output = await targetAgent.invokeAgent(
+        [args.message],
+        communicationRunnableConfig,
+      );
+      return {
+        output,
+        messageMetadata: {
+          __title: title,
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+        },
+      };
     } catch (error: unknown) {
       if (this.isPromptTooLongError(error)) {
         return {
@@ -294,15 +314,6 @@ export class CommunicationExecTool extends BaseTool<
       }
       throw error;
     }
-
-    return {
-      output,
-      messageMetadata: {
-        __title: title,
-        __interAgentCommunication: true,
-        __sourceAgentNodeId: runnableConfig.configurable?.node_id,
-      },
-    };
   }
 
   private isPromptTooLongError(error: unknown): boolean {
@@ -312,17 +323,12 @@ export class CommunicationExecTool extends BaseTool<
         : typeof (error as { message?: unknown })?.message === 'string'
           ? (error as { message: string }).message
           : '';
-    if (typeof message === 'string') {
-      const lower = message.toLowerCase();
-      if (
-        lower.includes('prompt is too long') ||
-        lower.includes('maximum context length') ||
-        lower.includes('context_length_exceeded') ||
-        lower.includes('too many tokens')
-      ) {
-        return true;
-      }
-    }
-    return false;
+    const lower = message.toLowerCase();
+    return (
+      lower.includes('prompt is too long') ||
+      lower.includes('maximum context length') ||
+      lower.includes('context_length_exceeded') ||
+      lower.includes('too many tokens')
+    );
   }
 }

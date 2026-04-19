@@ -112,7 +112,13 @@ describe('ToolExecutorNode', () => {
 
       expect(mockTool1.invoke).toHaveBeenCalledWith(
         { input: 'test input' },
-        mockConfig,
+        {
+          configurable: {
+            ...(mockConfig.configurable as Record<string, unknown>),
+            __toolCallId: 'call-1',
+          },
+          signal: undefined,
+        },
       );
 
       expect(result.messages?.items).toHaveLength(1);
@@ -149,11 +155,23 @@ describe('ToolExecutorNode', () => {
 
       expect(mockTool1.invoke).toHaveBeenCalledWith(
         { input: 'input 1' },
-        mockConfig,
+        {
+          configurable: {
+            ...(mockConfig.configurable as Record<string, unknown>),
+            __toolCallId: 'call-1',
+          },
+          signal: undefined,
+        },
       );
       expect(mockTool2.invoke).toHaveBeenCalledWith(
         { input: 'input 2' },
-        mockConfig,
+        {
+          configurable: {
+            ...(mockConfig.configurable as Record<string, unknown>),
+            __toolCallId: 'call-2',
+          },
+          signal: undefined,
+        },
       );
 
       expect(result.messages?.items).toHaveLength(2);
@@ -448,7 +466,11 @@ describe('ToolExecutorNode', () => {
       expect(mockTool1.invoke).toHaveBeenCalledWith(
         { input: 'test' },
         {
-          configurable: customConfig.configurable,
+          configurable: {
+            ...customConfig.configurable,
+            __toolCallId: 'call-1',
+          },
+          signal: undefined,
         },
       );
     });
