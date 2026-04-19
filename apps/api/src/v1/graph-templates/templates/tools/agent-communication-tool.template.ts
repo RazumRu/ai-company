@@ -1,7 +1,7 @@
 import { BaseMessage, HumanMessage } from '@langchain/core/messages';
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { Injectable } from '@nestjs/common';
-import { NotFoundException } from '@packages/common';
+import { InternalException, NotFoundException } from '@packages/common';
 import { isObject } from 'lodash';
 import { z } from 'zod';
 
@@ -176,6 +176,14 @@ export class AgentCommunicationToolTemplate extends ToolNodeBaseTemplate<
               undefined,
               enrichedConfig,
             );
+
+            if (response.waiting === true) {
+              throw new InternalException(
+                'WAIT_FOR_LEAKED_FROM_CALLEE',
+                `Callee agent "${agentConfig.name}" returned with waiting=true. ` +
+                  'This is a bug — the wait_for guard in wait-for.tool.ts should have blocked it.',
+              );
+            }
 
             const lastMessage = this.findLastNonSystemMessage(
               response.messages,
