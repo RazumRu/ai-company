@@ -106,7 +106,6 @@ export class JobCancelledException extends Error {
 @Injectable()
 export class RepoIndexerService {
   private static readonly IGNORE_CACHE_MAX_SIZE = 50;
-  private static readonly VECTOR_SIZE_CACHE_MAX_SIZE = 10;
 
   /**
    * Built-in file patterns excluded from indexing by default.
@@ -207,7 +206,6 @@ export class RepoIndexerService {
   private static readonly BYTES_PER_TOKEN_ESTIMATE = 3;
 
   private readonly ignoreCache = new Map<string, ReturnType<typeof ignore>>();
-  private readonly vectorSizePromiseCache = new Map<string, Promise<number>>();
 
   constructor(
     private readonly qdrantService: QdrantService,
@@ -443,37 +441,6 @@ export class RepoIndexerService {
     return res.stdout.trim();
   }
 
-  async getVectorSizeForModel(model: string): Promise<number> {
-    const cached = this.vectorSizePromiseCache.get(model);
-    if (cached) {
-      return cached;
-    }
-
-    // Evict oldest entry when cache is full (unlikely with few models, but bounded)
-    if (
-      this.vectorSizePromiseCache.size >=
-      RepoIndexerService.VECTOR_SIZE_CACHE_MAX_SIZE
-    ) {
-      const oldest = this.vectorSizePromiseCache.keys().next().value;
-      if (oldest !== undefined) {
-        this.vectorSizePromiseCache.delete(oldest);
-      }
-    }
-
-    const promise = this.openaiService
-      .embeddings({ model, input: ['ping'] })
-      .then((result) =>
-        this.qdrantService.getVectorSizeFromEmbeddings(result.embeddings),
-      )
-      .catch((err) => {
-        // Evict failed promise so subsequent calls can retry
-        this.vectorSizePromiseCache.delete(model);
-        throw err;
-      });
-    this.vectorSizePromiseCache.set(model, promise);
-    return promise;
-  }
-
   // ---------------------------------------------------------------------------
   // Public: naming & signature helpers
   // ---------------------------------------------------------------------------
@@ -624,7 +591,7 @@ export class RepoIndexerService {
     collection: string;
   }> {
     const embeddingModel = this.llmModelsService.getKnowledgeEmbeddingModel();
-    const vectorSize = await this.getVectorSizeForModel(embeddingModel);
+    const vectorSize = environment.llmEmbeddingDimensions;
     const chunkingSignatureHash = this.getChunkingSignatureHash();
     const repoSlug = this.deriveRepoSlug(repositoryId);
     const branchSlug = this.deriveBranchSlug(branch);
@@ -1859,7 +1826,11 @@ export class RepoIndexerService {
     let lastError: unknown;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const result = await this.openaiService.embeddings({ model, input });
+        const result = await this.openaiService.embeddings({
+          model,
+          input,
+          dimensions: environment.llmEmbeddingDimensions,
+        });
         return result.embeddings;
       } catch (err) {
         lastError = err;

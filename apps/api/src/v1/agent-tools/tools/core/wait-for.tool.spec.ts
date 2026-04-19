@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@packages/common';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { WaitForTool } from './wait-for.tool';
@@ -21,6 +22,17 @@ describe('WaitForTool', () => {
 
     it('should have correct description', () => {
       expect(tool.description).toContain('Schedule a delayed resumption');
+    });
+
+    it('description mentions the root-agent-only restriction', () => {
+      expect(tool.description).toContain('Only the root agent');
+      expect(tool.description).toContain('inter-agent communication');
+    });
+
+    it('detailed instructions include the callee restriction', () => {
+      const instructions = tool.getDetailedInstructions({});
+      expect(instructions).toContain('WAIT_FOR_FORBIDDEN_IN_CALLEE');
+      expect(instructions).toContain('Restriction: Inter-Agent Callees');
     });
   });
 
@@ -155,6 +167,60 @@ describe('WaitForTool', () => {
       );
 
       expect(result.messageMetadata).toEqual({ __title: 'Waiting for build' });
+    });
+  });
+
+  describe('inter-agent callee guard', () => {
+    const validArgs = {
+      durationSeconds: 60,
+      checkPrompt: 'Check status',
+      reason: 'Waiting for external event',
+    };
+
+    it('throws BadRequestException with WAIT_FOR_FORBIDDEN_IN_CALLEE when configurable.__interAgentCommunication === true', () => {
+      const cfg = {
+        configurable: { __interAgentCommunication: true },
+      } as never;
+
+      try {
+        tool.invoke(validArgs, {}, cfg);
+        expect.unreachable('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(BadRequestException);
+        expect((error as BadRequestException).errorCode).toBe(
+          'WAIT_FOR_FORBIDDEN_IN_CALLEE',
+        );
+        expect((error as BadRequestException).message).toContain(
+          'invoked by another agent',
+        );
+        expect((error as BadRequestException).message).toContain('`finish`');
+      }
+    });
+
+    it('succeeds when configurable.__interAgentCommunication is false', () => {
+      const cfg = {
+        configurable: { __interAgentCommunication: false },
+      } as never;
+
+      expect(() => tool.invoke(validArgs, {}, cfg)).not.toThrow();
+    });
+
+    it('succeeds when configurable.__interAgentCommunication is undefined', () => {
+      const cfg = {
+        configurable: { thread_id: 'root-thread' },
+      } as never;
+
+      expect(() => tool.invoke(validArgs, {}, cfg)).not.toThrow();
+    });
+
+    it('succeeds when configurable itself is undefined', () => {
+      expect(() => tool.invoke(validArgs, {}, {} as never)).not.toThrow();
+    });
+
+    it('succeeds when cfg itself is undefined', () => {
+      expect(() =>
+        tool.invoke(validArgs, {}, undefined as unknown as never),
+      ).not.toThrow();
     });
   });
 

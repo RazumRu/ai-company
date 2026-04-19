@@ -67,7 +67,7 @@ export class CommunicationExecTool extends BaseTool<
       return undefined;
     }
 
-    // 1) Exact match (current behavior)
+    // 1) Exact match
     const exact = config.agents.find((a) => a.name === requested);
     if (exact) {
       return exact;
@@ -209,8 +209,11 @@ export class CommunicationExecTool extends BaseTool<
       - "Agent not found" → Check the name matches one of the connected agents
       - "No agents configured" → No agents are available for communication
       - Empty response → Agent may have failed or returned no output
+      - "WAIT_FOR_FORBIDDEN_IN_CALLEE" → The target agent tried to call \`wait_for\` while running as a callee; this is not allowed. If your workflow requires a wait, call \`wait_for\` yourself (on the root thread) after collecting the callee's response.
 
       ### Integration with Workflows
+      Callees (agents invoked via this tool) cannot pause with \`wait_for\` — they must finish synchronously and return a response. If a wait is needed, you (the caller) must schedule it on the root thread after the callee returns.
+
       Use communication when:
       - A task falls outside your expertise
       - Parallel work is possible
@@ -263,9 +266,29 @@ export class CommunicationExecTool extends BaseTool<
       );
     }
 
-    let output: unknown;
+    const communicationRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> =
+      {
+        ...runnableConfig,
+        configurable: {
+          ...(runnableConfig.configurable ?? {}),
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+        },
+      };
+
     try {
-      output = await targetAgent.invokeAgent([args.message], runnableConfig);
+      const output = await targetAgent.invokeAgent(
+        [args.message],
+        communicationRunnableConfig,
+      );
+      return {
+        output,
+        messageMetadata: {
+          __title: title,
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: runnableConfig.configurable?.node_id,
+        },
+      };
     } catch (error: unknown) {
       if (this.isPromptTooLongError(error)) {
         return {
@@ -294,15 +317,6 @@ export class CommunicationExecTool extends BaseTool<
       }
       throw error;
     }
-
-    return {
-      output,
-      messageMetadata: {
-        __title: title,
-        __interAgentCommunication: true,
-        __sourceAgentNodeId: runnableConfig.configurable?.node_id,
-      },
-    };
   }
 
   private isPromptTooLongError(error: unknown): boolean {
@@ -312,17 +326,12 @@ export class CommunicationExecTool extends BaseTool<
         : typeof (error as { message?: unknown })?.message === 'string'
           ? (error as { message: string }).message
           : '';
-    if (typeof message === 'string') {
-      const lower = message.toLowerCase();
-      if (
-        lower.includes('prompt is too long') ||
-        lower.includes('maximum context length') ||
-        lower.includes('context_length_exceeded') ||
-        lower.includes('too many tokens')
-      ) {
-        return true;
-      }
-    }
-    return false;
+    const lower = message.toLowerCase();
+    return (
+      lower.includes('prompt is too long') ||
+      lower.includes('maximum context length') ||
+      lower.includes('context_length_exceeded') ||
+      lower.includes('too many tokens')
+    );
   }
 }

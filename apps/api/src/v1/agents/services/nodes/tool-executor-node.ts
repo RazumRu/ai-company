@@ -159,6 +159,7 @@ export class ToolExecutorNode extends BaseNode<
             configurable: {
               ...(cfg.configurable ?? {}),
               ...(toolMetadata !== undefined ? { toolMetadata } : {}),
+              __toolCallId: callId,
             },
             signal: cfg.signal,
           };

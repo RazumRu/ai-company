@@ -99,7 +99,11 @@ describe('CommunicationExecTool', () => {
       ];
 
       const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
-        configurable: { thread_id: 'test-thread' },
+        configurable: {
+          thread_id: 'test-thread',
+          node_id: 'source-node-1',
+          __toolCallId: 'call-id-1',
+        },
       };
 
       const { output: result } = await tool.invoke(
@@ -114,7 +118,15 @@ describe('CommunicationExecTool', () => {
 
       expect(mockInvokeAgent1).toHaveBeenCalledWith(
         ['Can you research this topic?'],
-        mockRunnableConfig,
+        {
+          ...mockRunnableConfig,
+          configurable: {
+            ...mockRunnableConfig.configurable,
+            __interAgentCommunication: true,
+            __sourceAgentNodeId: 'source-node-1',
+            __toolCallId: 'call-id-1',
+          },
+        },
       );
       expect(mockInvokeAgent2).not.toHaveBeenCalled();
       expect(result).toEqual({ response: 'response from agent 1' });
@@ -184,7 +196,11 @@ describe('CommunicationExecTool', () => {
       ];
 
       const mockRunnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
-        configurable: { thread_id: 'test-thread' },
+        configurable: {
+          thread_id: 'test-thread',
+          node_id: 'source-node-2',
+          __toolCallId: 'call-id-1',
+        },
       };
 
       const { output: result } = await tool.invoke(
@@ -197,10 +213,15 @@ describe('CommunicationExecTool', () => {
         mockRunnableConfig,
       );
 
-      expect(mockInvokeAgent).toHaveBeenCalledWith(
-        ['Please draft a spec'],
-        mockRunnableConfig,
-      );
+      expect(mockInvokeAgent).toHaveBeenCalledWith(['Please draft a spec'], {
+        ...mockRunnableConfig,
+        configurable: {
+          ...mockRunnableConfig.configurable,
+          __interAgentCommunication: true,
+          __sourceAgentNodeId: 'source-node-2',
+          __toolCallId: 'call-id-1',
+        },
+      });
       expect(result).toEqual({ response: 'response from Elias' });
     });
   });
@@ -246,6 +267,15 @@ describe('CommunicationExecTool', () => {
       const builtTool = tool.build({ agents });
 
       expect(builtTool.description).toBe(tool.description);
+    });
+  });
+
+  describe('getDetailedInstructions', () => {
+    it('documents the callee wait_for restriction so callers know what to do', () => {
+      const instructions = tool.getDetailedInstructions({ agents: [] });
+      expect(instructions).toContain('WAIT_FOR_FORBIDDEN_IN_CALLEE');
+      expect(instructions).toContain('wait_for');
+      expect(instructions).toContain('finish synchronously');
     });
   });
 });

@@ -219,6 +219,38 @@ describe('MessageTransformerService', () => {
       } as ReasoningMessageDto);
     });
 
+    it('should preserve subagent-communication kwargs on reasoning messages', () => {
+      const m = new ChatMessage({
+        content: 'subagent reasoning',
+        role: 'reasoning',
+        additional_kwargs: {
+          hideForLlm: true,
+          reasoningId: 'reasoning:provider-xyz',
+          __subagentCommunication: true,
+          __toolCallId: 'tc-parent-1',
+          __sourceAgentNodeId: 'node-parent',
+          __model: 'claude-opus-4',
+        },
+      });
+
+      const result = service.transformMessageToDto(m);
+
+      expect(result).toEqual({
+        role: 'reasoning',
+        content: 'subagent reasoning',
+        id: 'reasoning:provider-xyz',
+        runId: null,
+        additionalKwargs: {
+          __hideForLlm: true,
+          __reasoningId: 'reasoning:provider-xyz',
+          __subagentCommunication: true,
+          __toolCallId: 'tc-parent-1',
+          __sourceAgentNodeId: 'node-parent',
+          __model: 'claude-opus-4',
+        },
+      } as ReasoningMessageDto);
+    });
+
     it('should transform tool message', () => {
       const m = new ToolMessage({
         content: '{"result": "success"}',

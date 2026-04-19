@@ -6,6 +6,7 @@ import {
 } from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { Test, TestingModule } from '@nestjs/testing';
+import { InternalException } from '@packages/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CommunicationToolGroup } from '../../../agent-tools/tools/common/communication/communication-tool-group';
@@ -323,6 +324,75 @@ describe('AgentCommunicationToolTemplate', () => {
       expect(runConfig.configurable.thread_id).toBe(
         'parent-thread__tool-node__Agent One',
       );
+      expect(runConfig.configurable.__interAgentCommunication).toBe(true);
+    });
+
+    it('throws InternalException with WAIT_FOR_LEAKED_FROM_CALLEE when callee returns waiting=true', async () => {
+      const mockLeakingAgent = {
+        ...mockAgent,
+        runOrAppend: vi.fn().mockResolvedValue({
+          messages: [new AIMessage('Will pretend to wait')],
+          threadId: 'test-thread',
+          waiting: true,
+          waitMetadata: {
+            durationSeconds: 60,
+            checkPrompt: 'Check something',
+            reason: 'Pretending to wait',
+          },
+        }),
+      } as unknown as SimpleAgent;
+
+      const leakingAgentNode = buildCompiledNode({
+        id: 'agent-1',
+        type: NodeKind.SimpleAgent,
+        template: 'simple-agent',
+        instance: mockLeakingAgent,
+        config: {
+          name: 'Agent One',
+          description: 'Test agent one',
+        },
+      });
+
+      vi.mocked(mockGraphRegistry.getNode).mockReturnValue(leakingAgentNode);
+
+      const metadata = {
+        graphId: 'graph-1',
+        nodeId: 'tool-node',
+        version: '1',
+        graph_created_by: 'user-1',
+        graph_project_id: '11111111-1111-1111-1111-111111111111',
+      };
+      const outputNodeIds = new Set(['agent-1']);
+
+      const handle = await template.create();
+      const init: GraphNode<Record<string, never>> = {
+        config: {},
+        inputNodeIds: new Set(),
+        outputNodeIds,
+        metadata,
+      };
+      const instance = await handle.provide(init);
+      await handle.configure(init, instance);
+
+      const buildCalls = vi.mocked(mockCommunicationToolGroup.buildTools).mock
+        .calls;
+      const buildConfig = buildCalls[0]![0] as any;
+      const agentInfo = buildConfig.agents[0];
+
+      const toolConfig: RunnableConfig<BaseAgentConfigurable> = {
+        configurable: { thread_id: 'parent-thread' },
+      };
+
+      try {
+        await agentInfo.invokeAgent(['Hello'], toolConfig as any);
+        expect.unreachable('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(InternalException);
+        expect((error as InternalException).errorCode).toBe(
+          'WAIT_FOR_LEAKED_FROM_CALLEE',
+        );
+        expect((error as InternalException).message).toContain('Agent One');
+      }
     });
 
     it('should extract response message when system messages (summary markers) are present', async () => {

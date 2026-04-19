@@ -24,6 +24,9 @@ vi.mock('../../../environments', () => ({
     codebaseIndexTokenThreshold: 30000,
     codebaseUuidNamespace: '6ba7b811-9dad-11d1-80b4-00c04fd430c8',
     codebaseIndexMaxAgeDays: 30,
+    codebaseSearchOverfetchFactor: 6,
+    codebaseSearchOverfetchFactorWithVariants: 3,
+    llmEmbeddingDimensions: 1536,
   },
 }));
 
@@ -55,7 +58,6 @@ const mockRepoIndexerService = {
   estimateChangedTokenCount: vi.fn().mockResolvedValue(100),
   resolveCurrentCommit: vi.fn().mockResolvedValue('abc123'),
   getCurrentBranch: vi.fn().mockResolvedValue('main'),
-  getVectorSizeForModel: vi.fn().mockResolvedValue(1536),
   getChunkingSignatureHash: vi.fn().mockReturnValue('sig-hash-123'),
   deriveRepoId: vi.fn((url: string) => url),
   deriveRepoSlug: vi.fn().mockReturnValue('my_repo'),
@@ -131,7 +133,6 @@ describe('RepoIndexService', () => {
     mockRepoIndexerService.estimateChangedTokenCount.mockResolvedValue(100);
     mockRepoIndexerService.resolveCurrentCommit.mockResolvedValue('abc123');
     mockRepoIndexerService.getCurrentBranch.mockResolvedValue('main');
-    mockRepoIndexerService.getVectorSizeForModel.mockResolvedValue(1536);
     mockRepoIndexerService.getChunkingSignatureHash.mockReturnValue(
       'sig-hash-123',
     );
@@ -399,14 +400,15 @@ describe('RepoIndexService', () => {
       ).toHaveBeenCalledWith({
         model: 'text-embedding-3-small',
         input: ['find authentication logic'],
+        dimensions: 1536,
       });
-      // Verify search was called with expansion factor (topK * 4 = 20)
+      // Verify search was called with expansion factor (topK * 6 = 30)
       expect(
         (mockQdrantService as Record<string, unknown>).searchPoints,
       ).toHaveBeenCalledWith(
         'codebase_my_repo_main_1536',
         [0.1, 0.2, 0.3],
-        20, // topK(5) * SEARCH_EXPANSION_FACTOR(4)
+        30, // topK(5) * codebaseSearchOverfetchFactor(6)
         expect.objectContaining({
           filter: expect.objectContaining({
             must: [
@@ -1411,15 +1413,15 @@ describe('RepoIndexService', () => {
 
       await service.searchCodebase(baseSearchParams);
 
-      // With variants, searchMany should be called with limit = topK * 2
-      // (SEARCH_EXPANSION_FACTOR_WITH_VARIANTS = 2) instead of topK * 4
+      // With variants, searchMany should be called with limit = topK * 3
+      // (codebaseSearchOverfetchFactorWithVariants = 3) instead of topK * 6
       expect(
         (mockQdrantService as Record<string, unknown>).searchMany,
       ).toHaveBeenCalledWith(
         baseSearchParams.collection,
         expect.arrayContaining([
           expect.objectContaining({
-            limit: baseSearchParams.topK * 2, // SEARCH_EXPANSION_FACTOR_WITH_VARIANTS
+            limit: baseSearchParams.topK * 3,
           }),
         ]),
       );
