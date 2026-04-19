@@ -44,6 +44,7 @@ import {
 import {
   buildReasoningMessage,
   markMessageHideForLlm,
+  type ReasoningMessageContext,
   updateMessagesListWithMetadata,
 } from '../../agents.utils';
 import { GraphThreadState } from '../graph-thread-state';
@@ -594,43 +595,112 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       return;
     }
 
-    const reasoningText = this.extractReasoningFromChunk(messageChunk);
-    const reasoningId = messageChunk.id
-      ? `reasoning:${messageChunk.id}`
-      : undefined;
+    const reasoningEntries = this.extractReasoningFromChunk(messageChunk);
 
-    if (!reasoningText || !reasoningId) {
+    if (!reasoningEntries) {
       return;
     }
 
     const { reasoningChunks: prevReasoningChunks } =
       this.graphThreadState.getByThread(threadId);
 
-    // IMPORTANT:
-    // Some providers emit reasoning chunks with different `chunk.id` values even though they
-    // eventually get persisted as a single reasoning message. To avoid accumulating multiple
-    // "reasoning:*" entries in socket metadata, we keep reasoningChunks at max size 1 and
-    // migrate accumulated content when the id changes.
-    const combinedPreviousContent = Array.from(prevReasoningChunks.values())
-      .map((msg) => (typeof msg.content === 'string' ? msg.content : ''))
-      .join('');
+    // Read context at chunk-handle time from the active run's configurable.
+    const activeRun = this.getActiveRunByThread(threadId);
+    const activeRunConfigurable = activeRun?.runnableConfig?.configurable;
+    const reasoningContext: ReasoningMessageContext = {};
+    if (
+      typeof activeRunConfigurable?.__toolCallId === 'string' &&
+      activeRunConfigurable.__toolCallId
+    ) {
+      reasoningContext.toolCallId = activeRunConfigurable.__toolCallId;
+    }
+    if (activeRunConfigurable?.__subagentCommunication === true) {
+      reasoningContext.subagentCommunication = true;
+    }
+    if (activeRunConfigurable?.__interAgentCommunication === true) {
+      reasoningContext.interAgentCommunication = true;
+    }
+    if (
+      typeof activeRunConfigurable?.__sourceAgentNodeId === 'string' &&
+      activeRunConfigurable.__sourceAgentNodeId
+    ) {
+      reasoningContext.sourceAgentNodeId =
+        activeRunConfigurable.__sourceAgentNodeId;
+    }
 
-    const currentEntry = prevReasoningChunks.get(reasoningId);
-    const currentContent =
-      typeof currentEntry?.content === 'string' ? currentEntry.content : '';
+    // Build up an updated chunks map by processing each per-block entry.
+    // Use prevReasoningChunks as the starting point and mutate a working copy.
+    let workingChunks = new Map<string, ChatMessage>(prevReasoningChunks);
 
-    const nextContent =
-      (currentEntry ? currentContent : combinedPreviousContent) + reasoningText;
+    for (const { text, blockId } of reasoningEntries) {
+      const reasoningId = `reasoning:${blockId}`;
+      const currentEntry = workingChunks.get(reasoningId);
 
-    const nextReasoningChunks = new Map<string, ChatMessage>();
-    nextReasoningChunks.set(
-      reasoningId,
-      buildReasoningMessage(nextContent, messageChunk.id),
-    );
+      // When the incoming block belongs to a different id from what is already
+      // accumulated, flush the existing in-flight entries as their own persisted
+      // ChatMessages before starting fresh for the new id. Each provider-assigned
+      // block id represents a distinct reasoning block and must not be concatenated
+      // across ids.
+      if (!currentEntry && workingChunks.size > 0 && activeRun) {
+        this.flushReasoningEntries(
+          threadId,
+          workingChunks,
+          activeRun.runnableConfig,
+        );
+        workingChunks = new Map<string, ChatMessage>();
+      }
+
+      const currentContent =
+        typeof currentEntry?.content === 'string' ? currentEntry.content : '';
+      const nextContent = currentContent + text;
+
+      workingChunks.set(
+        reasoningId,
+        buildReasoningMessage(nextContent, blockId, reasoningContext),
+      );
+    }
 
     this.graphThreadState.applyForThread(threadId, {
-      reasoningChunks: nextReasoningChunks,
+      reasoningChunks: workingChunks,
     });
+  }
+
+  /**
+   * Emits each entry in the provided reasoningChunks map as its own persisted
+   * ChatMessage. Does not clear the in-memory state — callers are responsible
+   * for resetting reasoningChunks after calling this method.
+   *
+   * Each entry is already a fully-formed ChatMessage with the correct id
+   * ("reasoning:<parentId>"), role, and additional_kwargs set by
+   * buildReasoningMessage at accumulation time. We emit it directly to avoid
+   * double-prefixing the id (which would produce "reasoning:reasoning:<parentId>").
+   */
+  private flushReasoningEntries(
+    threadId: string,
+    reasoningChunks: Map<string, ChatMessage>,
+    config: RunnableConfig<BaseAgentConfigurable>,
+  ) {
+    for (const entry of reasoningChunks.values()) {
+      const content = typeof entry.content === 'string' ? entry.content : '';
+      if (content.length === 0) {
+        continue;
+      }
+      // Shallow-clone to avoid mutating the in-memory state entry while
+      // updateMessagesListWithMetadata attaches run metadata.
+      const reasoningMsg = Object.assign(
+        Object.create(Object.getPrototypeOf(entry) as object) as ChatMessage,
+        entry,
+      );
+      const tagged = updateMessagesListWithMetadata([reasoningMsg], config);
+      this.emit({
+        type: 'message',
+        data: {
+          threadId,
+          messages: tagged,
+          config,
+        },
+      });
+    }
   }
 
   /**
@@ -661,31 +731,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     }
 
     // Persist accumulated reasoning so it survives page reloads after stop.
+    // Each entry in the map corresponds to a distinct provider-assigned reasoning
+    // id and is emitted as its own ChatMessage rather than a single joined blob.
     if (options?.persist && options.config) {
-      const combinedContent = Array.from(reasoningChunks.values())
-        .map((msg) => (typeof msg.content === 'string' ? msg.content : ''))
-        .join('');
-
-      if (combinedContent.length > 0) {
-        // Use the first chunk's original message ID for a stable reasoningId
-        const firstEntry = reasoningChunks.entries().next().value;
-        const parentId = firstEntry
-          ? (firstEntry[1].id ?? undefined)
-          : undefined;
-        const reasoningMsg = buildReasoningMessage(combinedContent, parentId);
-        const tagged = updateMessagesListWithMetadata(
-          [reasoningMsg],
-          options.config,
-        );
-        this.emit({
-          type: 'message',
-          data: {
-            threadId,
-            messages: tagged,
-            config: options.config,
-          },
-        });
-      }
+      this.flushReasoningEntries(threadId, reasoningChunks, options.config);
     }
 
     this.graphThreadState.applyForThread(threadId, {
@@ -763,11 +812,28 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       })),
       reasoningChunks: Array.from(threadState.reasoningChunks.entries()).reduce(
         (res, [id, msg]) => {
-          res[id] = {
+          const kwargs = msg.additional_kwargs as Record<string, unknown>;
+          const entry: Record<string, unknown> = {
             content: msg.content,
             id: msg.id,
             role: msg.role,
           };
+          if (typeof kwargs.__toolCallId === 'string' && kwargs.__toolCallId) {
+            entry.toolCallId = kwargs.__toolCallId;
+          }
+          if (kwargs.__subagentCommunication === true) {
+            entry.subagentCommunication = true;
+          }
+          if (kwargs.__interAgentCommunication === true) {
+            entry.interAgentCommunication = true;
+          }
+          if (
+            typeof kwargs.__sourceAgentNodeId === 'string' &&
+            kwargs.__sourceAgentNodeId
+          ) {
+            entry.sourceAgentNodeId = kwargs.__sourceAgentNodeId;
+          }
+          res[id] = entry;
           return res;
         },
         {} as Record<string, unknown>,
@@ -807,25 +873,43 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     };
   }
 
-  private extractReasoningFromChunk(chunk: AIMessageChunk): string | null {
+  /**
+   * Extracts per-block reasoning entries from a streaming AIMessageChunk.
+   * Returns one entry per reasoning content block found in the chunk, using
+   * the block's own stable id (b.id) as the key for accumulation. Falls back
+   * to chunk.id when the block carries no id of its own (older providers).
+   */
+  private extractReasoningFromChunk(
+    chunk: AIMessageChunk,
+  ): { text: string; blockId: string }[] | null {
     const blocks =
       chunk?.contentBlocks ?? chunk?.response_metadata?.output ?? [];
 
-    if (Array.isArray(blocks)) {
-      const reasoningBlocks = blocks.filter(
-        (b) =>
-          b &&
-          b.type === 'reasoning' &&
-          typeof b.reasoning === 'string' &&
-          b.reasoning.length > 0,
-      );
-
-      if (reasoningBlocks.length) {
-        return reasoningBlocks.map((b) => b.reasoning).join('\n');
-      }
+    if (!Array.isArray(blocks)) {
+      return null;
     }
 
-    return null;
+    const entries: { text: string; blockId: string }[] = [];
+    for (const b of blocks as {
+      type?: unknown;
+      reasoning?: unknown;
+      id?: unknown;
+    }[]) {
+      if (!b || b.type !== 'reasoning') {
+        continue;
+      }
+      if (typeof b.reasoning !== 'string' || b.reasoning.length === 0) {
+        continue;
+      }
+      const blockId =
+        typeof b.id === 'string' && b.id.length > 0 ? b.id : (chunk.id ?? '');
+      if (!blockId) {
+        continue;
+      }
+      entries.push({ text: b.reasoning, blockId });
+    }
+
+    return entries.length > 0 ? entries : null;
   }
 
   public async run(
@@ -990,6 +1074,11 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     // Emit initial messages notification
     await this.emitNewMessages(updateMessages, mergedConfig, threadId);
 
+    // Track the most recent updates-mode node. Leaked subagent invoke_llm chunks
+    // arrive after the parent's updates/invoke_llm event fires, so we can
+    // distinguish them from legitimate parent reasoning chunks.
+    let lastUpdatesNode: string | null = null;
+
     try {
       for await (const event of stream) {
         const [mode, value] = event as ['updates' | 'messages', unknown];
@@ -998,6 +1087,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
           const chunk = value as Record<string, BaseAgentStateChange>;
 
           for (const [_nodeName, nodeState] of Object.entries(chunk)) {
+            lastUpdatesNode = _nodeName;
             // Update final state - cast to BaseAgentStateChange first, then to BaseAgentState
             const stateChange = nodeState;
             if (!stateChange || typeof stateChange !== 'object') {
@@ -1041,7 +1131,10 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             );
 
             if (_nodeName === 'invoke_llm') {
-              this.clearReasoningState(threadId);
+              this.clearReasoningState(threadId, {
+                persist: true,
+                config: mergedConfig,
+              });
             }
           }
         } else if (mode === 'messages') {
@@ -1050,7 +1143,13 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
             Record<string, unknown>,
           ];
 
-          if (metadata.langgraph_node === 'invoke_llm') {
+          // Guard: reject leaked chunks from nested subagent graphs (LangGraph JS
+          // leaks messages-mode events from nested compiled.stream() calls into
+          // the parent stream; they arrive after the parent's updates/invoke_llm).
+          if (
+            metadata.langgraph_node === 'invoke_llm' &&
+            lastUpdatesNode !== 'invoke_llm'
+          ) {
             this.handleReasoningChunk(threadId, messageChunk);
           }
         }
