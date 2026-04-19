@@ -50,8 +50,29 @@ export const environment = () =>
     llmCodeExplorerSubagentModel: getEnv('LLM_CODE_EXPLORER_SUBAGENT_MODEL'),
     llmMiniModel: getEnv('LLM_MINI_MODEL', 'gpt-5-mini'),
     llmEmbeddingModel: getEnv('LLM_EMBEDDING_MODEL', 'text-embedding-3-small'),
+    // Fixed embedding vector size — passed to the OpenAI `dimensions` parameter
+    // and used directly to build Qdrant collection names. Replaces the previous
+    // runtime-probe logic. Must match a size the configured embedding model
+    // supports: 1536 (default, full) or 512/768/1024 (smaller/faster) for
+    // text-embedding-3-small, 3072 for text-embedding-3-large.
+    llmEmbeddingDimensions: +getEnv('LLM_EMBEDDING_DIMENSIONS', '1536'),
     knowledgeChunkMaxTokens: +getEnv('KNOWLEDGE_CHUNK_MAX_TOKENS', '500'),
     knowledgeChunkMaxCount: +getEnv('KNOWLEDGE_CHUNK_MAX_COUNT', '100'),
+    // Token overlap between adjacent knowledge-doc chunks. Overlap preserves
+    // context across chunk boundaries — relevant sentences that span two
+    // chunks would otherwise be split in half between both. Default 50 tokens
+    // (≈ 10% of a 500-token chunk).
+    knowledgeChunkOverlapTokens: +getEnv(
+      'KNOWLEDGE_CHUNK_OVERLAP_TOKENS',
+      '50',
+    ),
+    // Multiplier applied to topK when searching Qdrant for knowledge chunks.
+    // A higher factor improves recall (more candidates considered) at the cost
+    // of slightly more payload shipped back from Qdrant.
+    knowledgeSearchOverfetchFactor: +getEnv(
+      'KNOWLEDGE_SEARCH_OVERFETCH_FACTOR',
+      '3',
+    ),
     knowledgeChunksCollection: getEnv(
       'KNOWLEDGE_CHUNKS_COLLECTION',
       'knowledge_chunks',
@@ -78,6 +99,18 @@ export const environment = () =>
     codebaseMaxFileBytes: +getEnv('CODEBASE_MAX_FILE_BYTES', '1048576'),
     codebaseGitExecTimeoutMs: +getEnv('CODEBASE_GIT_EXEC_TIMEOUT_MS', '60000'),
     codebaseIndexMaxAgeDays: +getEnv('CODEBASE_INDEX_MAX_AGE_DAYS', '30'),
+    // Multiplier applied to topK in codebase search to overfetch candidates
+    // before filtering and slicing. Separate env vars cover the single-vector
+    // path and the query-expansion path (where each variant already broadens
+    // coverage, so a smaller per-variant factor stays reasonable).
+    codebaseSearchOverfetchFactor: +getEnv(
+      'CODEBASE_SEARCH_OVERFETCH_FACTOR',
+      '6',
+    ),
+    codebaseSearchOverfetchFactorWithVariants: +getEnv(
+      'CODEBASE_SEARCH_OVERFETCH_FACTOR_WITH_VARIANTS',
+      '3',
+    ),
 
     // LLM model defaults for tools (do not override per-call)
     dockerSocket: getEnv('DOCKER_SOCKET', '/var/run/docker.sock'),

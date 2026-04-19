@@ -54,12 +54,6 @@ const QUERY_EXPANSION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 // don't benefit enough from LLM-based expansion to justify the latency.
 const QUERY_EXPANSION_MIN_TOP_K = 10;
 
-/** Multiplier applied to topK when querying Qdrant to allow post-filtering.
- *  When query expansion is active, the per-variant limit is reduced since
- *  multiple variants already provide broader coverage. */
-const SEARCH_EXPANSION_FACTOR = 4;
-const SEARCH_EXPANSION_FACTOR_WITH_VARIANTS = 2;
-
 /** Shallow clone depth to avoid OOM for very large repositories. */
 const GIT_CLONE_DEPTH = 100;
 
@@ -667,8 +661,8 @@ export class RepoIndexService implements OnModuleInit {
     // so a smaller per-variant factor avoids scanning excessive points.
     const factor =
       embeddings.length > 1
-        ? SEARCH_EXPANSION_FACTOR_WITH_VARIANTS
-        : SEARCH_EXPANSION_FACTOR;
+        ? environment.codebaseSearchOverfetchFactorWithVariants
+        : environment.codebaseSearchOverfetchFactor;
     const searchLimit = topK * factor;
     const repoFilter = this.repoIndexerService.buildRepoFilter(repoId);
 
@@ -1551,6 +1545,7 @@ export class RepoIndexService implements OnModuleInit {
       const apiResult = await this.openaiService.embeddings({
         model,
         input: uncachedTexts,
+        dimensions: environment.llmEmbeddingDimensions,
       });
 
       // Evict enough entries upfront to make room for all new embeddings
@@ -1611,6 +1606,7 @@ export class RepoIndexService implements OnModuleInit {
     const result = await this.openaiService.embeddings({
       model,
       input: [text],
+      dimensions: environment.llmEmbeddingDimensions,
     });
 
     if (result.embeddings.length === 0 || !result.embeddings[0]) {

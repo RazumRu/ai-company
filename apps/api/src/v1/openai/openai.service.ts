@@ -19,6 +19,8 @@ type GenerateResult<T> = {
 type EmbeddingsInput = {
   model: string;
   input: string | string[];
+  /** Matryoshka-style output dimensions. Supported by text-embedding-3-*. */
+  dimensions?: number;
 };
 
 export type EmbeddingsResult = {
@@ -230,6 +232,7 @@ export class OpenaiService {
     const response = await this.client.embeddings.create({
       model: args.model,
       input: wellFormedInput,
+      ...(args.dimensions !== undefined ? { dimensions: args.dimensions } : {}),
     });
     const usage = response.usage
       ? (await this.litellmService.extractTokenUsageFromResponse(args.model, {
