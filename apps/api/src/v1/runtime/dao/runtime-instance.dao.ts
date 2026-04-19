@@ -17,7 +17,7 @@ export interface TransitionStatusExtras {
   errorCode?: RuntimeErrorCode | null;
 }
 
-const TERMINAL_STATUSES: ReadonlySet<RuntimeInstanceStatus> = new Set([
+const POST_STARTING_STATUSES: ReadonlySet<RuntimeInstanceStatus> = new Set([
   RuntimeInstanceStatus.Running,
   RuntimeInstanceStatus.Stopped,
   RuntimeInstanceStatus.Failed,
@@ -44,8 +44,13 @@ export class RuntimeInstanceDao extends BaseDao<RuntimeInstanceEntity> {
     if (entity.status !== next) {
       assertTransition(entity.status, next);
       entity.status = next;
-    } else if (!Object.values(extras).some((value) => value !== undefined)) {
-      return entity;
+    } else {
+      const noExtrasProvided = Object.values(extras).every(
+        (value) => value === undefined,
+      );
+      if (noExtrasProvided) {
+        return entity;
+      }
     }
 
     if (extras.startingPhase !== undefined) {
@@ -59,7 +64,7 @@ export class RuntimeInstanceDao extends BaseDao<RuntimeInstanceEntity> {
     }
 
     if (
-      TERMINAL_STATUSES.has(next) ||
+      POST_STARTING_STATUSES.has(next) ||
       next === RuntimeInstanceStatus.Stopping
     ) {
       entity.startingPhase = null;

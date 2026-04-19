@@ -77,13 +77,6 @@ export enum RuntimeStartingPhase {
   Ready = 'Ready',
 }
 
-export const RUNTIME_STARTING_PHASE_ORDER: readonly RuntimeStartingPhase[] = [
-  RuntimeStartingPhase.PullingImage,
-  RuntimeStartingPhase.ContainerCreated,
-  RuntimeStartingPhase.InitScript,
-  RuntimeStartingPhase.Ready,
-];
-
 export enum RuntimeErrorCode {
   ProviderAuth = 'ProviderAuth',
   RuntimeIo = 'RuntimeIo',

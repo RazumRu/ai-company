@@ -1,5 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { DefaultLogger } from '@packages/common';
+import { DefaultLogger, extractErrorMessage } from '@packages/common';
 import isEqual from 'lodash/isEqual';
 import {
   adjectives,
@@ -119,7 +119,7 @@ export class RuntimeProvider {
         );
       } catch (error) {
         this.logger.warn(
-          `Failed to record runtime phase ${event.data.phase} for ${record.id}: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to record runtime phase ${event.data.phase} for ${record.id}: ${extractErrorMessage(error)}`,
         );
       }
     });
@@ -244,8 +244,7 @@ export class RuntimeProvider {
             return { runtime, cached: true };
           } catch (error) {
             const errorCode = classifyError(error);
-            const lastError =
-              error instanceof Error ? error.message : String(error);
+            const lastError = extractErrorMessage(error);
             await this.runtimeInstanceDao
               .transitionStatus(existing.id, RuntimeInstanceStatus.Failed, {
                 errorCode,
@@ -296,7 +295,7 @@ export class RuntimeProvider {
       runtime = await this.ensureRuntimeForRecord<T>(created);
     } catch (error) {
       const errorCode = classifyError(error);
-      const lastError = error instanceof Error ? error.message : String(error);
+      const lastError = extractErrorMessage(error);
       await this.runtimeInstanceDao
         .transitionStatus(created.id, RuntimeInstanceStatus.Failed, {
           errorCode,
@@ -497,7 +496,7 @@ export class RuntimeProvider {
       await this.stopContainer(instance);
     } catch (error) {
       this.logger.warn(
-        `Failed to stop errored runtime ${instance.id} (${instance.containerName}): ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to stop errored runtime ${instance.id} (${instance.containerName}): ${extractErrorMessage(error)}`,
       );
     }
     await this.runtimeInstanceDao.hardDeleteById(instance.id);
@@ -542,7 +541,7 @@ export class RuntimeProvider {
 
     try {
       await runtime.start({
-        ...(record.config || {}),
+        ...record.config,
         network: record.graphId ? `geniro-${record.graphId}` : undefined,
         registryMirrors,
         insecureRegistries,

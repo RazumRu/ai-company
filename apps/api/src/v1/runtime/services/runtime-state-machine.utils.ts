@@ -3,6 +3,10 @@ import { BadRequestException } from '@packages/common';
 import { RuntimeErrorCode, RuntimeInstanceStatus } from '../runtime.types';
 import { STATUS_TRANSITIONS } from './runtime-state-machine';
 
+function hasErrorCode(error: unknown): error is { code?: string } {
+  return typeof error === 'object' && error !== null;
+}
+
 export function assertTransition(
   from: RuntimeInstanceStatus,
   to: RuntimeInstanceStatus,
@@ -46,8 +50,8 @@ export function classifyError(err: unknown): RuntimeErrorCode {
     /\b(socket|econnrefused|enotfound|etimedout|network|dns|eai_again|connect)\b/.test(
       lower,
     ) ||
-    (err as { code?: string })?.code === 'ECONNREFUSED' ||
-    (err as { code?: string })?.code === 'ENOTFOUND'
+    (hasErrorCode(err) &&
+      (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND'))
   ) {
     return RuntimeErrorCode.RuntimeIo;
   }

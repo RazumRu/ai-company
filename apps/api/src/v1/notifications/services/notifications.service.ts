@@ -22,7 +22,7 @@ export class NotificationsService {
     const parsed = NotificationSchema.safeParse(event);
     if (!parsed.success) {
       this.logger.error(
-        parsed.error as unknown as Error,
+        parsed.error,
         'Invalid notification payload — dropping event',
         {
           type: (event as { type?: string })?.type,
@@ -36,7 +36,7 @@ export class NotificationsService {
       return;
     }
 
-    const validated = parsed.data as Notification;
+    const validated = parsed.data;
     await Promise.all(
       this.subscribers.map(async (subscriber) => {
         try {

@@ -93,12 +93,10 @@ export abstract class BaseRuntime {
    * Returns an unsubscriber function
    */
   subscribe(callback: (event: RuntimeEvent) => Promise<void>): () => void {
-    const handler = (event: RuntimeEvent) => callback(event);
-
-    this.eventEmitter.on('event', handler);
+    this.eventEmitter.on('event', callback);
 
     return () => {
-      this.eventEmitter.off('event', handler);
+      this.eventEmitter.off('event', callback);
     };
   }
 

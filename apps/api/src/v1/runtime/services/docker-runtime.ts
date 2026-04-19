@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Duplex, PassThrough } from 'node:stream';
 
-import { BadRequestException } from '@packages/common';
+import { BadRequestException, extractErrorMessage } from '@packages/common';
 import Docker from 'dockerode';
 
 import { environment } from '../../../environments';
@@ -591,8 +591,7 @@ export class DockerRuntime extends BaseRuntime {
     try {
       return await createFn();
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = extractErrorMessage(error);
       if (
         errorMessage.includes('already in use') ||
         errorMessage.includes('name is already')
@@ -790,14 +789,12 @@ export class DockerRuntime extends BaseRuntime {
 
     if (params.sessionId) {
       try {
-        const result = await this.execInSession(params, fullWorkdir, env);
-        return result;
+        return await this.execInSession(params, fullWorkdir, env);
       } catch (error) {
-        const err = error instanceof Error ? error.message : String(error);
         return {
           exitCode: 124,
           stdout: '',
-          stderr: err,
+          stderr: extractErrorMessage(error),
           fail: true,
           execPath: fullWorkdir,
         };
