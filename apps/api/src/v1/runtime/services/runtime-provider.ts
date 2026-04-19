@@ -17,7 +17,9 @@ import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
 import {
   ProvideRuntimeInstanceParams,
+  RuntimeErrorCode,
   RuntimeInstanceStatus,
+  RuntimeStartingPhase,
   RuntimeType,
 } from '../runtime.types';
 import { BaseRuntime } from './base-runtime';
@@ -27,6 +29,7 @@ import { K8sRuntime } from './k8s-runtime';
 import { K8sRuntimeConfig } from './k8s-runtime.types';
 import { resolveK8sConfigFromEnv } from './k8s-runtime.utils';
 import { K8sWarmPoolService } from './k8s-warm-pool.service';
+import { classifyError } from './runtime-state-machine.utils';
 
 export type ProvideRuntimeResult<T extends BaseRuntime> = {
   runtime: T;
@@ -52,7 +55,12 @@ export class RuntimeProvider {
     runtimeId: string,
     status: IRuntimeStatusData['status'],
     runtimeType: string,
-    message?: string,
+    extras: {
+      message?: string;
+      startingPhase?: RuntimeStartingPhase | null;
+      errorCode?: RuntimeErrorCode | null;
+      lastError?: string | null;
+    } = {},
   ): void {
     // System operations (e.g. repo indexing) have no graph — skip notifications.
     if (!graphId) {
@@ -65,7 +73,17 @@ export class RuntimeProvider {
         graphId,
         threadId,
         nodeId,
-        data: { runtimeId, threadId, nodeId, status, runtimeType, message },
+        data: {
+          runtimeId,
+          threadId,
+          nodeId,
+          status,
+          runtimeType,
+          message: extras.message,
+          startingPhase: extras.startingPhase ?? null,
+          errorCode: extras.errorCode ?? null,
+          lastError: extras.lastError ?? null,
+        },
       })
       .catch((error) => {
         this.logger.error(
@@ -74,6 +92,37 @@ export class RuntimeProvider {
           { graphId, threadId, nodeId, runtimeId, status },
         );
       });
+  }
+
+  private subscribeRuntimePhaseEvents(
+    runtime: BaseRuntime,
+    record: RuntimeInstanceEntity,
+  ): () => void {
+    return runtime.subscribe(async (event) => {
+      if (event.type !== 'phase') {
+        return;
+      }
+      try {
+        await this.runtimeInstanceDao.transitionStatus(
+          record.id,
+          RuntimeInstanceStatus.Starting,
+          { startingPhase: event.data.phase },
+        );
+        this.emitRuntimeStatus(
+          record.graphId,
+          record.threadId,
+          record.nodeId,
+          record.id,
+          'Starting',
+          record.type,
+          { startingPhase: event.data.phase },
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to record runtime phase ${event.data.phase} for ${record.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    });
   }
 
   protected resolveRuntimeConfigByType(
@@ -178,9 +227,10 @@ export class RuntimeProvider {
             );
             const runtime = await this.ensureRuntimeForRecord<T>(existing);
             if (existing.status !== RuntimeInstanceStatus.Running) {
-              await this.runtimeInstanceDao.updateById(existing.id, {
-                status: RuntimeInstanceStatus.Running,
-              });
+              await this.runtimeInstanceDao.transitionStatus(
+                existing.id,
+                RuntimeInstanceStatus.Running,
+              );
             }
 
             this.emitRuntimeStatus(
@@ -193,7 +243,15 @@ export class RuntimeProvider {
             );
             return { runtime, cached: true };
           } catch (error) {
-            await this.cleanupFailedInstance(existing);
+            const errorCode = classifyError(error);
+            const lastError =
+              error instanceof Error ? error.message : String(error);
+            await this.runtimeInstanceDao
+              .transitionStatus(existing.id, RuntimeInstanceStatus.Failed, {
+                errorCode,
+                lastError,
+              })
+              .catch(() => undefined);
             this.emitRuntimeStatus(
               graphId,
               threadId,
@@ -201,8 +259,9 @@ export class RuntimeProvider {
               existing.id,
               'Failed',
               type,
-              error instanceof Error ? error.message : String(error),
+              { message: lastError, errorCode, lastError },
             );
+            await this.cleanupFailedInstance(existing);
             throw error;
           }
         }
@@ -236,7 +295,14 @@ export class RuntimeProvider {
     try {
       runtime = await this.ensureRuntimeForRecord<T>(created);
     } catch (error) {
-      await this.cleanupFailedInstance(created);
+      const errorCode = classifyError(error);
+      const lastError = error instanceof Error ? error.message : String(error);
+      await this.runtimeInstanceDao
+        .transitionStatus(created.id, RuntimeInstanceStatus.Failed, {
+          errorCode,
+          lastError,
+        })
+        .catch(() => undefined);
       this.emitRuntimeStatus(
         graphId,
         threadId,
@@ -244,13 +310,17 @@ export class RuntimeProvider {
         created.id,
         'Failed',
         type,
-        error instanceof Error ? error.message : String(error),
+        { message: lastError, errorCode, lastError },
       );
+      await this.cleanupFailedInstance(created);
       throw error;
     }
 
+    await this.runtimeInstanceDao.transitionStatus(
+      created.id,
+      RuntimeInstanceStatus.Running,
+    );
     await this.runtimeInstanceDao.updateById(created.id, {
-      status: RuntimeInstanceStatus.Running,
       lastUsedAt: new Date(),
     });
 
@@ -266,9 +336,22 @@ export class RuntimeProvider {
   }
 
   async stopRuntime(instance: RuntimeInstanceEntity): Promise<void> {
-    await this.runtimeInstanceDao.updateById(instance.id, {
-      status: RuntimeInstanceStatus.Stopping,
-    });
+    // Terminal states skip the status/emit churn but still attempt the backend
+    // cleanup so idle-reaper passes leave no orphaned containers behind.
+    if (
+      instance.status === RuntimeInstanceStatus.Stopped ||
+      instance.status === RuntimeInstanceStatus.Failed
+    ) {
+      await this.stopContainer(instance);
+      return;
+    }
+
+    if (instance.status !== RuntimeInstanceStatus.Stopping) {
+      await this.runtimeInstanceDao.transitionStatus(
+        instance.id,
+        RuntimeInstanceStatus.Stopping,
+      );
+    }
 
     this.emitRuntimeStatus(
       instance.graphId,
@@ -279,38 +362,12 @@ export class RuntimeProvider {
       instance.type,
     );
 
-    const runtime = this.runtimeInstances.get(instance.id);
+    await this.stopContainer(instance);
 
-    if (runtime) {
-      await runtime.stop().catch(() => undefined);
-      this.runtimeInstances.delete(instance.id);
-    } else {
-      const config = this.resolveRuntimeConfigByType(instance.type);
-
-      switch (instance.type) {
-        case RuntimeType.Docker:
-          await DockerRuntime.stopByName(instance.containerName, config).catch(
-            () => undefined,
-          );
-          break;
-        case RuntimeType.Daytona:
-          await DaytonaRuntime.stopByName(
-            instance.containerName,
-            this.resolveDaytonaConfig(),
-          ).catch(() => undefined);
-          break;
-        case RuntimeType.K8s:
-          await K8sRuntime.stopByName(
-            instance.containerName,
-            this.resolveK8sConfig(),
-          ).catch(() => undefined);
-          break;
-      }
-    }
-
-    await this.runtimeInstanceDao.updateById(instance.id, {
-      status: RuntimeInstanceStatus.Stopped,
-    });
+    await this.runtimeInstanceDao.transitionStatus(
+      instance.id,
+      RuntimeInstanceStatus.Stopped,
+    );
 
     this.emitRuntimeStatus(
       instance.graphId,
@@ -320,6 +377,38 @@ export class RuntimeProvider {
       'Stopped',
       instance.type,
     );
+  }
+
+  private async stopContainer(instance: RuntimeInstanceEntity): Promise<void> {
+    const runtime = this.runtimeInstances.get(instance.id);
+
+    if (runtime) {
+      await runtime.stop().catch(() => undefined);
+      this.runtimeInstances.delete(instance.id);
+      return;
+    }
+
+    const config = this.resolveRuntimeConfigByType(instance.type);
+
+    switch (instance.type) {
+      case RuntimeType.Docker:
+        await DockerRuntime.stopByName(instance.containerName, config).catch(
+          () => undefined,
+        );
+        break;
+      case RuntimeType.Daytona:
+        await DaytonaRuntime.stopByName(
+          instance.containerName,
+          this.resolveDaytonaConfig(),
+        ).catch(() => undefined);
+        break;
+      case RuntimeType.K8s:
+        await K8sRuntime.stopByName(
+          instance.containerName,
+          this.resolveK8sConfig(),
+        ).catch(() => undefined);
+        break;
+    }
   }
 
   async cleanupIdleRuntimes(idleThresholdMs: number): Promise<number> {
@@ -402,7 +491,10 @@ export class RuntimeProvider {
     instance: RuntimeInstanceEntity,
   ): Promise<void> {
     try {
-      await this.stopRuntime(instance);
+      // Entity is already marked Failed (terminal) — skip the DAO status
+      // transitions in stopRuntime() and just stop the underlying container
+      // before hard-deleting the record.
+      await this.stopContainer(instance);
     } catch (error) {
       this.logger.warn(
         `Failed to stop errored runtime ${instance.id} (${instance.containerName}): ${error instanceof Error ? error.message : String(error)}`,
@@ -446,15 +538,21 @@ export class RuntimeProvider {
       labels['geniro.io/temporary'] = 'true';
     }
 
-    await runtime.start({
-      ...(record.config || {}),
-      network: record.graphId ? `geniro-${record.graphId}` : undefined,
-      registryMirrors,
-      insecureRegistries,
-      containerName: record.containerName,
-      labels,
-      recreate: false,
-    });
+    const unsubscribe = this.subscribeRuntimePhaseEvents(runtime, record);
+
+    try {
+      await runtime.start({
+        ...(record.config || {}),
+        network: record.graphId ? `geniro-${record.graphId}` : undefined,
+        registryMirrors,
+        insecureRegistries,
+        containerName: record.containerName,
+        labels,
+        recreate: false,
+      });
+    } finally {
+      unsubscribe();
+    }
 
     this.runtimeInstances.set(record.id, runtime);
     return <T>runtime;

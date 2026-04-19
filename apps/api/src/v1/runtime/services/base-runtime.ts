@@ -7,6 +7,7 @@ import { GraphExecutionMetadata } from '../../graphs/graphs.types';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
+  RuntimeStartingPhase,
   RuntimeStartParams,
 } from '../runtime.types';
 
@@ -31,11 +32,16 @@ export type RuntimeStopEvent = {
   error?: unknown;
 };
 
+export type RuntimePhaseEvent = {
+  phase: RuntimeStartingPhase;
+};
+
 export type RuntimeEvent =
   | { type: 'start'; data: RuntimeStartEvent }
   | { type: 'stop'; data: RuntimeStopEvent }
   | { type: 'execStart'; data: RuntimeExecStartEvent }
-  | { type: 'execEnd'; data: RuntimeExecEndEvent };
+  | { type: 'execEnd'; data: RuntimeExecEndEvent }
+  | { type: 'phase'; data: RuntimePhaseEvent };
 
 export const BASE_RUNTIME_WORKDIR = '/runtime-workspace';
 

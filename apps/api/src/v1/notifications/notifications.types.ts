@@ -167,6 +167,20 @@ export interface IRuntimeStatusData {
   status: 'Starting' | 'Running' | 'Stopping' | 'Stopped' | 'Failed';
   runtimeType: string;
   message?: string;
+  startingPhase?:
+    | 'PullingImage'
+    | 'ContainerCreated'
+    | 'InitScript'
+    | 'Ready'
+    | null;
+  errorCode?:
+    | 'ProviderAuth'
+    | 'RuntimeIo'
+    | 'ImagePull'
+    | 'Timeout'
+    | 'Unknown'
+    | null;
+  lastError?: string | null;
 }
 
 export interface IRuntimeStatusNotification extends INotification<IRuntimeStatusData> {

@@ -1,7 +1,12 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
+import {
+  RuntimeErrorCode,
+  RuntimeInstanceStatus,
+  RuntimeStartingPhase,
+  RuntimeType,
+} from '../runtime.types';
 
 export const GetRuntimesQuerySchema = z.object({
   threadId: z.string().uuid().describe('Filter by thread ID'),
@@ -45,6 +50,30 @@ export const RuntimeHealthSchema = z.object({
     .describe('Error message if the runtime is unhealthy'),
 });
 
+export const RuntimeInstanceStateSchema = z.object({
+  id: z.string().uuid().describe('Runtime instance ID'),
+  status: z
+    .nativeEnum(RuntimeInstanceStatus)
+    .describe('Current runtime lifecycle status'),
+  startingPhase: z
+    .nativeEnum(RuntimeStartingPhase)
+    .nullable()
+    .describe('Sub-phase while status=Starting; null otherwise'),
+  errorCode: z
+    .nativeEnum(RuntimeErrorCode)
+    .nullable()
+    .describe('Classified failure reason when status=Failed'),
+  lastError: z
+    .string()
+    .nullable()
+    .describe('Raw error message captured on the last failure'),
+  lastUsedAt: z.iso.datetime().describe('Last used timestamp'),
+  updatedAt: z.iso.datetime().describe('Last update timestamp'),
+});
+
 export class GetRuntimesQueryDto extends createZodDto(GetRuntimesQuerySchema) {}
 export class RuntimeInstanceDto extends createZodDto(RuntimeInstanceSchema) {}
 export class RuntimeHealthDto extends createZodDto(RuntimeHealthSchema) {}
+export class RuntimeInstanceStateDto extends createZodDto(
+  RuntimeInstanceStateSchema,
+) {}

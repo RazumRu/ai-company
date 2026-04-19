@@ -8,6 +8,7 @@ import { environment } from '../../../environments';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
+  RuntimeStartingPhase,
   RuntimeStartParams,
 } from '../runtime.types';
 import { buildEnvPrefix, shellEscape } from '../runtime.utils';
@@ -153,6 +154,14 @@ export class DaytonaRuntime extends BaseRuntime {
             await this.daytona.start(existing, SANDBOX_CREATE_TIMEOUT_SECONDS);
           }
           this.sandbox = existing;
+          this.emit({
+            type: 'phase',
+            data: { phase: RuntimeStartingPhase.ContainerCreated },
+          });
+          this.emit({
+            type: 'phase',
+            data: { phase: RuntimeStartingPhase.Ready },
+          });
           this.emit({ type: 'start', data: { params: params || {} } });
           return;
         }
@@ -179,6 +188,11 @@ export class DaytonaRuntime extends BaseRuntime {
       // Disable auto-stop so long-running sandbox stays alive
       autoStopInterval: 0,
     };
+
+    this.emit({
+      type: 'phase',
+      data: { phase: RuntimeStartingPhase.PullingImage },
+    });
 
     try {
       this.sandbox = await this.createSandbox(commonParams, snapshotOrImage);
@@ -214,6 +228,11 @@ export class DaytonaRuntime extends BaseRuntime {
       }
     }
 
+    this.emit({
+      type: 'phase',
+      data: { phase: RuntimeStartingPhase.ContainerCreated },
+    });
+
     try {
       // Daytona overrides the image's ENTRYPOINT with its own agent process,
       // so the image entrypoint (e.g. runtime-entrypoint.sh that starts dockerd)
@@ -221,6 +240,10 @@ export class DaytonaRuntime extends BaseRuntime {
       await this.runImageEntrypoint(params?.env);
 
       if (params?.initScript) {
+        this.emit({
+          type: 'phase',
+          data: { phase: RuntimeStartingPhase.InitScript },
+        });
         await this.runInitScript(
           params.initScript,
           params.env,
@@ -228,6 +251,10 @@ export class DaytonaRuntime extends BaseRuntime {
         );
       }
 
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.Ready },
+      });
       this.emit({ type: 'start', data: { params: params || {} } });
     } catch (error) {
       this.emit({ type: 'start', data: { params: params || {}, error } });

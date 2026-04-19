@@ -1382,6 +1382,7 @@ describe('RuntimeProvider failure handling', () => {
     getAll: vi.fn(),
     create: vi.fn(),
     updateById: vi.fn(),
+    transitionStatus: vi.fn(),
     deleteById: vi.fn(),
     hardDeleteById: vi.fn(),
   };
@@ -1428,6 +1429,8 @@ describe('RuntimeProvider failure handling', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDao.transitionStatus.mockResolvedValue(undefined as never);
+    mockNotificationsService.emit.mockResolvedValue(undefined);
     provider = new RuntimeProvider(
       mockDao as never,
       mockLogger as never,
@@ -1454,10 +1457,12 @@ describe('RuntimeProvider failure handling', () => {
         'Sandbox creation timed out after 300s',
       );
 
-      // Should attempt to stop the container
-      expect(mockDao.updateById).toHaveBeenCalledWith(createdRecord.id, {
-        status: RuntimeInstanceStatus.Stopping,
-      });
+      // Failed transition marks the record before cleanup
+      expect(mockDao.transitionStatus).toHaveBeenCalledWith(
+        createdRecord.id,
+        RuntimeInstanceStatus.Failed,
+        expect.objectContaining({ errorCode: expect.any(String) }),
+      );
       // Should hard-delete the record
       expect(mockDao.hardDeleteById).toHaveBeenCalledWith(createdRecord.id);
     });
@@ -1479,10 +1484,12 @@ describe('RuntimeProvider failure handling', () => {
         'Sandbox creation timed out after 300s',
       );
 
-      // Should attempt to stop the container
-      expect(mockDao.updateById).toHaveBeenCalledWith(existingRecord.id, {
-        status: RuntimeInstanceStatus.Stopping,
-      });
+      // Failed transition marks the record before cleanup
+      expect(mockDao.transitionStatus).toHaveBeenCalledWith(
+        existingRecord.id,
+        RuntimeInstanceStatus.Failed,
+        expect.objectContaining({ errorCode: expect.any(String) }),
+      );
       // Should hard-delete the record
       expect(mockDao.hardDeleteById).toHaveBeenCalledWith(existingRecord.id);
     });
@@ -1509,11 +1516,8 @@ describe('RuntimeProvider failure handling', () => {
 
       const result = await provider.provide(baseParams);
 
-      // Should have called stopRuntime on the failed record
-      expect(mockDao.updateById).toHaveBeenCalledWith(failedRecord.id, {
-        status: RuntimeInstanceStatus.Stopping,
-      });
-      // Should have hard-deleted the failed record
+      // Failed records skip the Stopping transition (already terminal) — just
+      // hard-delete before recreating.
       expect(mockDao.hardDeleteById).toHaveBeenCalledWith(failedRecord.id);
       // Should have created a new record
       expect(mockDao.create).toHaveBeenCalled();
@@ -1598,11 +1602,14 @@ describe('RuntimeProvider failure handling', () => {
 
       await provider.provide(baseParams);
 
-      const emitCalls = mockNotificationsService.emit.mock.calls;
-      expect(emitCalls).toHaveLength(2);
+      const emitCalls = mockNotificationsService.emit.mock.calls.map(
+        (c) => c[0] as { data: { status: string; startingPhase?: string } },
+      );
+      // Starting (initial) + phase emits (Starting with startingPhase set) + Running
+      expect(emitCalls.length).toBeGreaterThanOrEqual(2);
 
       const startingCall = emitCalls[0]!;
-      expect(startingCall[0]).toEqual(
+      expect(startingCall).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
           graphId: 'graph-1',
@@ -1616,8 +1623,8 @@ describe('RuntimeProvider failure handling', () => {
         }),
       );
 
-      const runningCall = emitCalls[1]!;
-      expect(runningCall[0]).toEqual(
+      const runningCall = emitCalls[emitCalls.length - 1]!;
+      expect(runningCall).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,
           graphId: 'graph-1',
@@ -1690,7 +1697,7 @@ describe('RuntimeProvider failure handling', () => {
       await provider.provide(baseParams);
 
       const emitCalls = mockNotificationsService.emit.mock.calls;
-      expect(emitCalls).toHaveLength(2);
+      expect(emitCalls.length).toBeGreaterThanOrEqual(2);
 
       const startingCall = emitCalls[0]!;
       expect(startingCall[0]).toEqual(
@@ -1703,7 +1710,7 @@ describe('RuntimeProvider failure handling', () => {
         }),
       );
 
-      const runningCall = emitCalls[1]!;
+      const runningCall = emitCalls[emitCalls.length - 1]!;
       expect(runningCall[0]).toEqual(
         expect.objectContaining({
           type: NotificationEvent.RuntimeStatus,

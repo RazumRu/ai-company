@@ -8,6 +8,7 @@ import { environment } from '../../../environments';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
+  RuntimeStartingPhase,
   RuntimeStartParams,
 } from '../runtime.types';
 import { buildEnvPrefix } from '../runtime.utils';
@@ -647,6 +648,10 @@ export class DockerRuntime extends BaseRuntime {
       await DockerRuntime.stopByInstance(existingContainer);
     }
 
+    this.emit({
+      type: 'phase',
+      data: { phase: RuntimeStartingPhase.PullingImage },
+    });
     await this.ensureImage(imageName);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
@@ -712,7 +717,16 @@ export class DockerRuntime extends BaseRuntime {
       this.container = container;
       this.containerWorkdir = this.getWorkdir(params?.workdir);
 
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.ContainerCreated },
+      });
+
       if (params?.initScript) {
+        this.emit({
+          type: 'phase',
+          data: { phase: RuntimeStartingPhase.InitScript },
+        });
         await this.runInitScript(
           params.initScript,
           params.env,
@@ -720,6 +734,10 @@ export class DockerRuntime extends BaseRuntime {
         );
       }
 
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.Ready },
+      });
       this.emit({ type: 'start', data: { params: params || {} } });
     } catch (error) {
       this.emit({ type: 'start', data: { params: params || {}, error } });

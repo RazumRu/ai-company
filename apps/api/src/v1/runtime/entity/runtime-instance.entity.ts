@@ -8,7 +8,12 @@ import {
 import { TimestampsEntity } from '@packages/mikroorm';
 
 import type { RuntimeStartParams } from '../runtime.types';
-import { RuntimeInstanceStatus, RuntimeType } from '../runtime.types';
+import {
+  RuntimeErrorCode,
+  RuntimeInstanceStatus,
+  RuntimeStartingPhase,
+  RuntimeType,
+} from '../runtime.types';
 
 @Entity({ tableName: 'runtime_instances' })
 @Index({
@@ -57,4 +62,21 @@ export class RuntimeInstanceEntity extends TimestampsEntity {
   @Property({ type: 'timestamptz', defaultRaw: 'CURRENT_TIMESTAMP' })
   @Index()
   lastUsedAt!: Date;
+
+  @Enum({
+    items: () => RuntimeStartingPhase,
+    nativeEnumName: 'runtime_instances_starting_phase_enum',
+    nullable: true,
+  })
+  startingPhase!: RuntimeStartingPhase | null;
+
+  @Enum({
+    items: () => RuntimeErrorCode,
+    nativeEnumName: 'runtime_instances_error_code_enum',
+    nullable: true,
+  })
+  errorCode!: RuntimeErrorCode | null;
+
+  @Property({ type: 'text', nullable: true })
+  lastError!: string | null;
 }
