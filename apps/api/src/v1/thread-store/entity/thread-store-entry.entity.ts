@@ -6,7 +6,6 @@ import {
   ManyToOne,
   PrimaryKey,
   Property,
-  Unique,
 } from '@mikro-orm/decorators/legacy';
 
 import { AuditEntity } from '../../../auth/audit.entity';
@@ -15,10 +14,6 @@ import { ThreadStoreEntryMode } from '../thread-store.types';
 
 @Entity({ tableName: 'thread_store_entries' })
 @Filter({ name: 'softDelete', cond: { deletedAt: null }, default: true })
-@Unique({
-  name: 'thread_store_entries_thread_ns_key_uniq',
-  properties: ['threadId', 'namespace', 'key'],
-})
 @Index({
   name: 'thread_store_entries_thread_ns_idx',
   properties: ['threadId', 'namespace'],
@@ -33,10 +28,10 @@ export class ThreadStoreEntryEntity extends AuditEntity {
   @Property({ type: 'uuid' })
   threadId!: string;
 
-  @Property({ length: 128 })
+  @Property({ type: 'string', length: 128 })
   namespace!: string;
 
-  @Property({ length: 256 })
+  @Property({ type: 'string', length: 256 })
   key!: string;
 
   @Property({ type: 'jsonb' })
@@ -45,7 +40,7 @@ export class ThreadStoreEntryEntity extends AuditEntity {
   @Enum({ items: () => ThreadStoreEntryMode })
   mode!: ThreadStoreEntryMode;
 
-  @Property({ length: 128, nullable: true })
+  @Property({ type: 'string', length: 128, nullable: true })
   authorAgentId!: string | null;
 
   @Property({ type: 'array', columnType: 'text[]', nullable: true })

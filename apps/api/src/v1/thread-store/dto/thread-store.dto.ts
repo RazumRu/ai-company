@@ -7,7 +7,7 @@ import {
   ThreadStoreEntryMode,
 } from '../thread-store.types';
 
-const NamespaceSchema = z
+export const namespaceSchema = z
   .string()
   .min(1)
   .max(THREAD_STORE_MAX_NAMESPACE_LENGTH)
@@ -16,7 +16,14 @@ const NamespaceSchema = z
     'namespace must start with an alphanumeric character and contain only letters, digits, underscores, dashes, or dots',
   );
 
-const KeySchema = z.string().min(1).max(THREAD_STORE_MAX_KEY_LENGTH);
+export const keySchema = z
+  .string()
+  .min(1)
+  .max(THREAD_STORE_MAX_KEY_LENGTH)
+  .regex(
+    /^[^\s/\\]{1,256}$/,
+    'key must not contain whitespace, forward slashes, or backslashes and must be 1-256 characters',
+  );
 
 export const ThreadStoreEntryDtoSchema = z.object({
   id: z.string().uuid(),

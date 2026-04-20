@@ -16,6 +16,8 @@ type ServiceMock = {
   putForUser: ReturnType<typeof vi.fn>;
 };
 
+const PROJECT_ID = 'proj-1';
+
 const buildCfg = (
   overrides: Partial<BaseAgentConfigurable> = {},
 ): ToolRunnableConfig<BaseAgentConfigurable> =>
@@ -23,6 +25,7 @@ const buildCfg = (
     configurable: {
       thread_id: THREAD_EXTERNAL_ID,
       thread_created_by: 'user-1',
+      graph_project_id: PROJECT_ID,
       node_id: 'agent-node',
       ...overrides,
     } as BaseAgentConfigurable,
@@ -68,10 +71,12 @@ describe('ThreadStorePutTool', () => {
 
     expect(service.resolveInternalThreadId).toHaveBeenCalledWith(
       'user-1',
+      PROJECT_ID,
       THREAD_EXTERNAL_ID,
     );
     expect(service.putForUser).toHaveBeenCalledWith(
       'user-1',
+      PROJECT_ID,
       THREAD_INTERNAL_ID,
       expect.objectContaining({
         namespace: 'plan',
@@ -98,6 +103,7 @@ describe('ThreadStorePutTool', () => {
 
     expect(service.resolveInternalThreadId).toHaveBeenCalledWith(
       'user-1',
+      PROJECT_ID,
       THREAD_EXTERNAL_ID,
     );
   });

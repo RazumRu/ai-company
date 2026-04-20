@@ -1,11 +1,14 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { NotFoundException } from '@packages/common';
 import { CtxStorage, OnlyForAuthorized } from '@packages/http-server';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import {
+  keySchema,
   ListEntriesQueryDto,
+  namespaceSchema,
   NamespaceSummaryDto,
   ThreadStoreEntryDto,
 } from '../dto/thread-store.dto';
@@ -18,6 +21,7 @@ import { ThreadStoreService } from '../services/thread-store.service';
 export class ThreadStoreController {
   constructor(private readonly threadStoreService: ThreadStoreService) {}
 
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Get()
   async listNamespaces(
     @Param('threadId') threadId: string,
@@ -26,6 +30,7 @@ export class ThreadStoreController {
     return this.threadStoreService.listNamespaces(ctx, threadId);
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Get(':namespace')
   async listEntries(
     @Param('threadId') threadId: string,
@@ -33,9 +38,16 @@ export class ThreadStoreController {
     @Query() query: ListEntriesQueryDto,
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadStoreEntryDto[]> {
-    return this.threadStoreService.listEntries(ctx, threadId, namespace, query);
+    const validatedNamespace = namespaceSchema.parse(namespace);
+    return this.threadStoreService.listEntries(
+      ctx,
+      threadId,
+      validatedNamespace,
+      query,
+    );
   }
 
+  @Throttle({ default: { ttl: 60000, limit: 50 } })
   @Get(':namespace/:key')
   async getEntry(
     @Param('threadId') threadId: string,
@@ -43,11 +55,13 @@ export class ThreadStoreController {
     @Param('key') key: string,
     @CtxStorage() ctx: AppContextStorage,
   ): Promise<ThreadStoreEntryDto> {
+    const validatedNamespace = namespaceSchema.parse(namespace);
+    const validatedKey = keySchema.parse(key);
     const entry = await this.threadStoreService.get(
       ctx,
       threadId,
-      namespace,
-      key,
+      validatedNamespace,
+      validatedKey,
     );
     if (!entry) {
       throw new NotFoundException('THREAD_STORE_ENTRY_NOT_FOUND');

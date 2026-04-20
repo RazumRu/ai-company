@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { NotificationsService } from '../../notifications/services/notifications.service';
+import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadStoreDao } from '../dao/thread-store.dao';
 import { ThreadStoreEntryEntity } from '../entity/thread-store-entry.entity';
 import {
@@ -16,6 +17,10 @@ import { ThreadStoreService } from './thread-store.service';
 
 type MockedDao = {
   [K in keyof ThreadStoreDao]: ReturnType<typeof vi.fn>;
+};
+
+type MockedThreadsDao = {
+  getOne: ReturnType<typeof vi.fn>;
 };
 
 const USER_ID = 'user-123';
@@ -56,7 +61,8 @@ const buildEntry = (
 describe('ThreadStoreService', () => {
   let service: ThreadStoreService;
   let dao: MockedDao;
-  let em: { findOne: ReturnType<typeof vi.fn> };
+  let threadsDao: MockedThreadsDao;
+  let em: { transactional: ReturnType<typeof vi.fn> };
   let notifications: { emit: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
@@ -69,13 +75,22 @@ describe('ThreadStoreService', () => {
       create: vi.fn(),
       deleteById: vi.fn(),
     } as unknown as MockedDao;
-    em = { findOne: vi.fn() };
+    threadsDao = { getOne: vi.fn() };
+    // em.transactional executes the callback immediately with the same em mock
+    em = {
+      transactional: vi
+        .fn()
+        .mockImplementation(async (cb: (txEm: unknown) => Promise<unknown>) => {
+          return await cb(undefined);
+        }),
+    };
     notifications = { emit: vi.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ThreadStoreService,
         { provide: ThreadStoreDao, useValue: dao },
+        { provide: ThreadsDao, useValue: threadsDao },
         {
           provide: 'EntityManager',
           useValue: em as unknown as EntityManager,
@@ -87,8 +102,9 @@ describe('ThreadStoreService', () => {
       .useFactory({
         factory: () =>
           new ThreadStoreService(
-            dao as unknown as ThreadStoreDao,
             em as unknown as EntityManager,
+            threadsDao as unknown as ThreadsDao,
+            dao as unknown as ThreadStoreDao,
             notifications as unknown as NotificationsService,
           ),
       })
@@ -98,7 +114,7 @@ describe('ThreadStoreService', () => {
   });
 
   it('put: persists a KV entry and emits a notification', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
     dao.getByKey.mockResolvedValue(null);
     dao.countForNamespace.mockResolvedValue(3);
     dao.upsertKvEntry.mockResolvedValue(buildEntry());
@@ -121,6 +137,7 @@ describe('ThreadStoreService', () => {
         createdBy: USER_ID,
         projectId: PROJECT_ID,
       }),
+      undefined,
     );
     expect(notifications.emit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -132,7 +149,7 @@ describe('ThreadStoreService', () => {
   });
 
   it('put: throws NotFoundException when the thread is not owned by the caller', async () => {
-    em.findOne.mockResolvedValue(null);
+    threadsDao.getOne.mockResolvedValue(null);
 
     await expect(
       service.put(buildCtx(), THREAD_ID, {
@@ -144,7 +161,7 @@ describe('ThreadStoreService', () => {
   });
 
   it('put: rejects values over the 32 KB limit', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
     const huge = 'x'.repeat(40_000);
 
     await expect(
@@ -159,7 +176,7 @@ describe('ThreadStoreService', () => {
   });
 
   it('put: rejects when the namespace is at capacity for a new key', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
     dao.getByKey.mockResolvedValue(null);
     dao.countForNamespace.mockResolvedValue(
       THREAD_STORE_MAX_ENTRIES_PER_NAMESPACE,
@@ -175,7 +192,7 @@ describe('ThreadStoreService', () => {
   });
 
   it('put: allows overwriting an existing key even at capacity', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
     dao.getByKey.mockResolvedValue(buildEntry({ key: 'root' }));
     dao.countForNamespace.mockResolvedValue(
       THREAD_STORE_MAX_ENTRIES_PER_NAMESPACE,
@@ -193,7 +210,7 @@ describe('ThreadStoreService', () => {
   });
 
   it('append: uses append mode and auto-generated key', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
     dao.countForNamespace.mockResolvedValue(0);
     dao.create.mockResolvedValue(
       buildEntry({ mode: ThreadStoreEntryMode.Append, key: 'auto-key-1' }),
@@ -209,11 +226,12 @@ describe('ThreadStoreService', () => {
         mode: ThreadStoreEntryMode.Append,
         namespace: 'learnings',
       }),
+      undefined,
     );
   });
 
   it('delete: refuses to delete append entries', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
     dao.getByKey.mockResolvedValue(
       buildEntry({ mode: ThreadStoreEntryMode.Append }),
     );
@@ -225,7 +243,7 @@ describe('ThreadStoreService', () => {
   });
 
   it('delete: removes a KV entry and emits a notification', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
     dao.getByKey.mockResolvedValue(buildEntry());
 
     await service.delete(buildCtx(), THREAD_ID, 'plan', 'root');
@@ -239,19 +257,215 @@ describe('ThreadStoreService', () => {
   });
 
   it('resolveInternalThreadId: maps external thread id to internal id for the caller', async () => {
-    em.findOne.mockResolvedValue(buildThread());
+    threadsDao.getOne.mockResolvedValue(buildThread());
 
     const id = await service.resolveInternalThreadId(
       USER_ID,
+      PROJECT_ID,
       EXTERNAL_THREAD_ID,
     );
 
     expect(id).toBe(THREAD_ID);
-    expect(em.findOne).toHaveBeenCalledWith(
-      expect.anything(),
+    expect(threadsDao.getOne).toHaveBeenCalledWith(
       expect.objectContaining({
         externalThreadId: EXTERNAL_THREAD_ID,
         createdBy: USER_ID,
+        projectId: PROJECT_ID,
+      }),
+    );
+  });
+
+  // -- getForUser --
+
+  it('getForUser: returns mapped DTO when thread and entry exist', async () => {
+    const entry = buildEntry({ key: 'root', namespace: 'plan' });
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.getByKey.mockResolvedValue(entry);
+
+    const result = await service.getForUser(
+      USER_ID,
+      PROJECT_ID,
+      THREAD_ID,
+      'plan',
+      'root',
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.key).toBe('root');
+    expect(result?.namespace).toBe('plan');
+    expect(dao.getByKey).toHaveBeenCalledWith(THREAD_ID, 'plan', 'root');
+  });
+
+  it('getForUser: returns null when the entry is missing', async () => {
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.getByKey.mockResolvedValue(null);
+
+    const result = await service.getForUser(
+      USER_ID,
+      PROJECT_ID,
+      THREAD_ID,
+      'plan',
+      'missing-key',
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it('getForUser: throws NotFoundException when thread ownership check fails', async () => {
+    threadsDao.getOne.mockResolvedValue(null);
+
+    await expect(
+      service.getForUser(USER_ID, PROJECT_ID, THREAD_ID, 'plan', 'root'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('getForUser: passes projectId to the ownership check', async () => {
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.getByKey.mockResolvedValue(null);
+
+    await service.getForUser(USER_ID, 'proj-1', THREAD_ID, 'plan', 'root');
+
+    expect(threadsDao.getOne).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'proj-1' }),
+    );
+  });
+
+  // -- listNamespacesForUser --
+
+  it('listNamespacesForUser: returns mapped namespace summaries', async () => {
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.getNamespaceSummaries.mockResolvedValue([
+      {
+        namespace: 'plan',
+        entryCount: 3,
+        lastUpdatedAt: new Date('2026-04-19T12:00:00Z'),
+      },
+    ]);
+
+    const result = await service.listNamespacesForUser(
+      USER_ID,
+      PROJECT_ID,
+      THREAD_ID,
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      namespace: 'plan',
+      entryCount: 3,
+      lastUpdatedAt: '2026-04-19T12:00:00.000Z',
+    });
+  });
+
+  it('listNamespacesForUser: throws NotFoundException when ownership check fails', async () => {
+    threadsDao.getOne.mockResolvedValue(null);
+
+    await expect(
+      service.listNamespacesForUser(USER_ID, PROJECT_ID, THREAD_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  // -- listEntriesForUser --
+
+  it('listEntriesForUser: returns mapped entries', async () => {
+    const entry = buildEntry({ key: 'root', namespace: 'plan' });
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.listInNamespace.mockResolvedValue([entry]);
+
+    const result = await service.listEntriesForUser(
+      USER_ID,
+      PROJECT_ID,
+      THREAD_ID,
+      'plan',
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.key).toBe('root');
+    expect(dao.listInNamespace).toHaveBeenCalledWith(
+      THREAD_ID,
+      'plan',
+      expect.any(Object),
+    );
+  });
+
+  it('listEntriesForUser: throws NotFoundException when ownership check fails', async () => {
+    threadsDao.getOne.mockResolvedValue(null);
+
+    await expect(
+      service.listEntriesForUser(USER_ID, PROJECT_ID, THREAD_ID, 'plan'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('listEntriesForUser: forwards limit and offset options to the DAO', async () => {
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.listInNamespace.mockResolvedValue([]);
+
+    await service.listEntriesForUser(USER_ID, PROJECT_ID, THREAD_ID, 'plan', {
+      limit: 5,
+      offset: 10,
+    });
+
+    expect(dao.listInNamespace).toHaveBeenCalledWith(
+      THREAD_ID,
+      'plan',
+      expect.objectContaining({ limit: 5, offset: 10 }),
+    );
+  });
+
+  // -- putForUser --
+
+  it('putForUser: invokes em.transactional exactly once', async () => {
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.getByKey.mockResolvedValue(null);
+    dao.countForNamespace.mockResolvedValue(3);
+    dao.upsertKvEntry.mockResolvedValue(buildEntry());
+
+    await service.putForUser(USER_ID, PROJECT_ID, THREAD_ID, {
+      namespace: 'plan',
+      key: 'root',
+      value: { ok: true },
+    });
+
+    expect(em.transactional).toHaveBeenCalledTimes(1);
+  });
+
+  it('putForUser: throws BadRequestException when post-insert recount exceeds the limit', async () => {
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.getByKey.mockResolvedValue(null);
+    // First call (pre-insert assertCapacity): below limit
+    // Second call (post-insert recount inside tx): above limit
+    dao.countForNamespace
+      .mockResolvedValueOnce(THREAD_STORE_MAX_ENTRIES_PER_NAMESPACE - 1)
+      .mockResolvedValueOnce(THREAD_STORE_MAX_ENTRIES_PER_NAMESPACE + 1);
+    dao.upsertKvEntry.mockResolvedValue(buildEntry());
+
+    await expect(
+      service.putForUser(USER_ID, PROJECT_ID, THREAD_ID, {
+        namespace: 'plan',
+        key: 'new-key',
+        value: 'v',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  // -- emitUpdate --
+
+  it('emitUpdate: notification payload contains externalThreadId (not internal id)', async () => {
+    threadsDao.getOne.mockResolvedValue(buildThread());
+    dao.getByKey.mockResolvedValue(null);
+    dao.countForNamespace.mockResolvedValue(0);
+    dao.upsertKvEntry.mockResolvedValue(buildEntry());
+
+    await service.putForUser(USER_ID, PROJECT_ID, THREAD_ID, {
+      namespace: 'plan',
+      key: 'root',
+      value: 'x',
+    });
+
+    expect(notifications.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          externalThreadId: EXTERNAL_THREAD_ID,
+        }),
       }),
     );
   });

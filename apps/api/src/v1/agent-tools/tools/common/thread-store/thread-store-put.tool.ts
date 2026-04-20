@@ -5,9 +5,9 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import {
-  THREAD_STORE_MAX_KEY_LENGTH,
-  THREAD_STORE_MAX_NAMESPACE_LENGTH,
-} from '../../../../thread-store/thread-store.types';
+  keySchema,
+  namespaceSchema,
+} from '../../../../thread-store/dto/thread-store.dto';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -18,21 +18,13 @@ import {
 } from './thread-store-base.tool';
 
 export const ThreadStorePutToolSchema = z.object({
-  namespace: z
-    .string()
-    .min(1)
-    .max(THREAD_STORE_MAX_NAMESPACE_LENGTH)
-    .describe(
-      'Namespace that groups related entries (e.g. "todo", "plan", "decisions"). ' +
-        'Use conventional names so other agents on this thread can find your entries.',
-    ),
-  key: z
-    .string()
-    .min(1)
-    .max(THREAD_STORE_MAX_KEY_LENGTH)
-    .describe(
-      'Stable key for this entry inside the namespace. Writing the same key again overwrites the previous value.',
-    ),
+  namespace: namespaceSchema.describe(
+    'Namespace that groups related entries (e.g. "todo", "plan", "decisions"). ' +
+      'Use conventional names so other agents on this thread can find your entries.',
+  ),
+  key: keySchema.describe(
+    'Stable key for this entry inside the namespace. Writing the same key again overwrites the previous value.',
+  ),
   value: z
     .unknown()
     .describe(
@@ -112,11 +104,12 @@ export class ThreadStorePutTool extends ThreadStoreBaseTool<
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<ThreadStorePutToolOutput>> {
     this.assertWritable(config);
-    const { userId, internalThreadId, authorAgentId } =
+    const { userId, projectId, internalThreadId, authorAgentId } =
       await this.resolveContext(cfg);
 
     const entry = await this.threadStoreService.putForUser(
       userId,
+      projectId,
       internalThreadId,
       {
         namespace: args.namespace,

@@ -103,7 +103,9 @@ export class SubagentsToolTemplate extends ToolNodeBaseTemplate<
         });
         toolSets.set(SubagentToolId.Shell, [shellBuilt]);
 
-        // Shell tool (read-only — same tool, restrictions enforced via system prompt)
+        // TODO(M12): ShellReadOnly relies on system-prompt enforcement; add structural
+        // readOnly once ShellTool supports command-level rejection (deny/allow-list).
+        // When M12 lands, replace [shellBuilt] with shellTool.build({ runtimeProvider, readOnly: true }).
         toolSets.set(SubagentToolId.ShellReadOnly, [shellBuilt]);
 
         const filesReadOnly = this.filesToolGroup.buildTools({

@@ -5,9 +5,9 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import {
-  THREAD_STORE_MAX_KEY_LENGTH,
-  THREAD_STORE_MAX_NAMESPACE_LENGTH,
-} from '../../../../thread-store/thread-store.types';
+  keySchema,
+  namespaceSchema,
+} from '../../../../thread-store/dto/thread-store.dto';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -18,18 +18,10 @@ import {
 } from './thread-store-base.tool';
 
 export const ThreadStoreDeleteToolSchema = z.object({
-  namespace: z
-    .string()
-    .min(1)
-    .max(THREAD_STORE_MAX_NAMESPACE_LENGTH)
-    .describe('Namespace the entry lives under.'),
-  key: z
-    .string()
-    .min(1)
-    .max(THREAD_STORE_MAX_KEY_LENGTH)
-    .describe(
-      'Key of the KV entry to delete. Append-only entries cannot be deleted.',
-    ),
+  namespace: namespaceSchema.describe('Namespace the entry lives under.'),
+  key: keySchema.describe(
+    'Key of the KV entry to delete. Append-only entries cannot be deleted.',
+  ),
 });
 export type ThreadStoreDeleteToolSchemaType = z.infer<
   typeof ThreadStoreDeleteToolSchema
@@ -81,10 +73,12 @@ export class ThreadStoreDeleteTool extends ThreadStoreBaseTool<
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<ThreadStoreDeleteToolOutput>> {
     this.assertWritable(config);
-    const { userId, internalThreadId } = await this.resolveContext(cfg);
+    const { userId, projectId, internalThreadId } =
+      await this.resolveContext(cfg);
 
     await this.threadStoreService.deleteForUser(
       userId,
+      projectId,
       internalThreadId,
       args.namespace,
       args.key,

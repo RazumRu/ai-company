@@ -8,8 +8,10 @@ import {
   IAgentStateUpdateNotification,
   IGraphNodeUpdateNotification,
   IGraphNotification,
+  IThreadStoreUpdateNotification,
   NotificationEvent,
 } from '../../../notifications/notifications.types';
+import { ThreadStoreEntryMode } from '../../../thread-store/thread-store.types';
 import { NotificationScope } from '../../notification-handlers.types';
 import { SimpleEnrichmentHandler } from './simple-enrichment-handler';
 
@@ -166,6 +168,91 @@ describe('SimpleEnrichmentHandler', () => {
           data: { done: true },
         },
       ]);
+    });
+  });
+
+  describe('ThreadStoreUpdate notification', () => {
+    it('should enrich thread store update notification with ownerId and scope', async () => {
+      const notification: IThreadStoreUpdateNotification = {
+        type: NotificationEvent.ThreadStoreUpdate,
+        graphId: mockGraphId,
+        threadId: 'thread-store-1',
+        data: {
+          externalThreadId: 'ext-thread-abc',
+          namespace: 'results',
+          key: 'output-1',
+          mode: ThreadStoreEntryMode.Kv,
+          action: 'put',
+          authorAgentId: 'agent-node-1',
+        },
+      };
+
+      const result = await handler.handle(notification);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual({
+        type: NotificationEvent.ThreadStoreUpdate,
+        graphId: mockGraphId,
+        projectId: mockProjectId,
+        ownerId: mockOwnerId,
+        nodeId: undefined,
+        threadId: 'thread-store-1',
+        runId: undefined,
+        scope: [NotificationScope.Graph],
+        data: {
+          externalThreadId: 'ext-thread-abc',
+          namespace: 'results',
+          key: 'output-1',
+          mode: ThreadStoreEntryMode.Kv,
+          action: 'put',
+          authorAgentId: 'agent-node-1',
+        },
+      });
+    });
+
+    it('should forward data.externalThreadId verbatim (not data.threadId)', async () => {
+      const notification: IThreadStoreUpdateNotification = {
+        type: NotificationEvent.ThreadStoreUpdate,
+        graphId: mockGraphId,
+        threadId: 'thread-store-2',
+        data: {
+          externalThreadId: 'ext-thread-xyz',
+          namespace: 'logs',
+          key: 'entry-1',
+          mode: ThreadStoreEntryMode.Append,
+          action: 'append',
+        },
+      };
+
+      const result = await handler.handle(notification);
+
+      expect(result).toHaveLength(1);
+      expect(result[0]!.data).toHaveProperty(
+        'externalThreadId',
+        'ext-thread-xyz',
+      );
+      expect(result[0]!.data).not.toHaveProperty('threadId');
+    });
+
+    it('should throw NotFoundException when graph is not found for ThreadStoreUpdate', async () => {
+      vi.mocked(graphDao.getOne).mockResolvedValue(null);
+
+      const notification: IThreadStoreUpdateNotification = {
+        type: NotificationEvent.ThreadStoreUpdate,
+        graphId: mockGraphId,
+        threadId: 'thread-store-3',
+        data: {
+          externalThreadId: 'ext-thread-missing',
+          namespace: 'ns',
+          key: 'k',
+          mode: ThreadStoreEntryMode.Kv,
+          action: 'delete',
+        },
+      };
+
+      await expect(handler.handle(notification)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

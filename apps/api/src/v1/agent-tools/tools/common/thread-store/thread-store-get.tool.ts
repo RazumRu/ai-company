@@ -5,30 +5,25 @@ import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import {
-  THREAD_STORE_MAX_KEY_LENGTH,
-  THREAD_STORE_MAX_NAMESPACE_LENGTH,
-  ThreadStoreEntryMode,
-} from '../../../../thread-store/thread-store.types';
+  keySchema,
+  namespaceSchema,
+} from '../../../../thread-store/dto/thread-store.dto';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
 } from '../../base-tool';
+import { ThreadStoreEntryOutput } from './thread-store.tool-types';
+import { toEntryOutput } from './thread-store.tool-utils';
 import {
   ThreadStoreBaseTool,
   ThreadStoreBaseToolConfig,
 } from './thread-store-base.tool';
 
 export const ThreadStoreGetToolSchema = z.object({
-  namespace: z
-    .string()
-    .min(1)
-    .max(THREAD_STORE_MAX_NAMESPACE_LENGTH)
-    .describe('Namespace the entry lives under.'),
-  key: z
-    .string()
-    .min(1)
-    .max(THREAD_STORE_MAX_KEY_LENGTH)
-    .describe('Exact key to read. Use thread_store_list to discover keys.'),
+  namespace: namespaceSchema.describe('Namespace the entry lives under.'),
+  key: keySchema.describe(
+    'Exact key to read. Use thread_store_list to discover keys.',
+  ),
 });
 export type ThreadStoreGetToolSchemaType = z.infer<
   typeof ThreadStoreGetToolSchema
@@ -36,16 +31,7 @@ export type ThreadStoreGetToolSchemaType = z.infer<
 
 export interface ThreadStoreGetToolOutput {
   found: boolean;
-  entry?: {
-    namespace: string;
-    key: string;
-    value: unknown;
-    mode: ThreadStoreEntryMode;
-    authorAgentId: string | null;
-    tags: string[] | null;
-    createdAt: string;
-    updatedAt: string;
-  };
+  entry?: ThreadStoreEntryOutput;
 }
 
 @Injectable()
@@ -88,10 +74,12 @@ export class ThreadStoreGetTool extends ThreadStoreBaseTool<
     _config: ThreadStoreBaseToolConfig,
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<ThreadStoreGetToolOutput>> {
-    const { userId, internalThreadId } = await this.resolveContext(cfg);
+    const { userId, projectId, internalThreadId } =
+      await this.resolveContext(cfg);
 
     const entry = await this.threadStoreService.getForUser(
       userId,
+      projectId,
       internalThreadId,
       args.namespace,
       args.key,
@@ -101,20 +89,6 @@ export class ThreadStoreGetTool extends ThreadStoreBaseTool<
       return { output: { found: false } };
     }
 
-    return {
-      output: {
-        found: true,
-        entry: {
-          namespace: entry.namespace,
-          key: entry.key,
-          value: entry.value,
-          mode: entry.mode,
-          authorAgentId: entry.authorAgentId,
-          tags: entry.tags,
-          createdAt: entry.createdAt,
-          updatedAt: entry.updatedAt,
-        },
-      },
-    };
+    return { output: { found: true, entry: toEntryOutput(entry) } };
   }
 }

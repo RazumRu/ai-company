@@ -4,7 +4,7 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
-import { THREAD_STORE_MAX_NAMESPACE_LENGTH } from '../../../../thread-store/thread-store.types';
+import { namespaceSchema } from '../../../../thread-store/dto/thread-store.dto';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -15,13 +15,9 @@ import {
 } from './thread-store-base.tool';
 
 export const ThreadStoreAppendToolSchema = z.object({
-  namespace: z
-    .string()
-    .min(1)
-    .max(THREAD_STORE_MAX_NAMESPACE_LENGTH)
-    .describe(
-      'Namespace that groups related log entries (e.g. "learnings", "reports", "progress").',
-    ),
+  namespace: namespaceSchema.describe(
+    'Namespace that groups related log entries (e.g. "learnings", "reports", "progress").',
+  ),
   value: z
     .unknown()
     .describe(
@@ -103,11 +99,12 @@ export class ThreadStoreAppendTool extends ThreadStoreBaseTool<
     cfg: ToolRunnableConfig<BaseAgentConfigurable>,
   ): Promise<ToolInvokeResult<ThreadStoreAppendToolOutput>> {
     this.assertWritable(config);
-    const { userId, internalThreadId, authorAgentId } =
+    const { userId, projectId, internalThreadId, authorAgentId } =
       await this.resolveContext(cfg);
 
     const entry = await this.threadStoreService.appendForUser(
       userId,
+      projectId,
       internalThreadId,
       {
         namespace: args.namespace,

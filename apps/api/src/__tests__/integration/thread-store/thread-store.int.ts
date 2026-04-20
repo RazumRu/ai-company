@@ -1,16 +1,23 @@
+import { randomUUID } from 'node:crypto';
+
 import { MikroORM } from '@mikro-orm/postgresql';
 import { INestApplication } from '@nestjs/common';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
+import { GraphEntity } from '../../../v1/graphs/entity/graph.entity';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { ThreadStoreDao } from '../../../v1/thread-store/dao/thread-store.dao';
 import { ThreadStoreService } from '../../../v1/thread-store/services/thread-store.service';
-import { ThreadStoreEntryMode } from '../../../v1/thread-store/thread-store.types';
+import {
+  THREAD_STORE_MAX_ENTRIES_PER_NAMESPACE,
+  THREAD_STORE_MAX_VALUE_BYTES,
+  ThreadStoreEntryMode,
+} from '../../../v1/thread-store/thread-store.types';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
-import { createTestProject } from '../helpers/test-context';
+import { buildTestContext, createTestProject } from '../helpers/test-context';
 import { createTestModule } from '../setup';
 
 let contextDataStorage: AppContextStorage;
@@ -32,13 +39,6 @@ describe('ThreadStoreService (integration)', () => {
     threadsDao = app.get(ThreadsDao);
     mikroOrm = app.get(MikroORM);
 
-    const schemaGenerator = (
-      mikroOrm as unknown as {
-        getSchemaGenerator(): { updateSchema(): Promise<void> };
-      }
-    ).getSchemaGenerator();
-    await schemaGenerator.updateSchema();
-
     const projectResult = await createTestProject(app);
     testProjectId = projectResult.projectId;
     contextDataStorage = projectResult.ctx;
@@ -50,6 +50,12 @@ describe('ThreadStoreService (integration)', () => {
       await threadsDao.hardDeleteById(id);
     }
     createdThreadIds.length = 0;
+
+    if (createdGraphIds.length > 0) {
+      const em = mikroOrm.em.fork();
+      await em.nativeDelete(GraphEntity, { id: { $in: createdGraphIds } });
+      createdGraphIds.length = 0;
+    }
   });
 
   afterAll(async () => {
@@ -69,10 +75,10 @@ describe('ThreadStoreService (integration)', () => {
     const userId = contextDataStorage.checkSub();
 
     // A minimal graph record so the thread has a graphId to point at.
-    const graphId = `graph-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const graphId = randomUUID();
     await em.getConnection().execute(
-      `insert into "graphs" ("id", "created_by", "project_id", "name", "status", "schema", "created_at", "updated_at")
-       values (?, ?, ?, ?, ?, ?::jsonb, now(), now())`,
+      `insert into "graphs" ("id", "created_by", "project_id", "name", "status", "schema", "version", "target_version", "created_at", "updated_at")
+       values (?, ?, ?, ?, ?, ?::jsonb, ?, ?, now(), now())`,
       [
         graphId,
         userId,
@@ -80,6 +86,8 @@ describe('ThreadStoreService (integration)', () => {
         `Thread Store Test Graph ${Date.now()}`,
         GraphStatus.Created,
         JSON.stringify({ nodes: [], edges: [] }),
+        '1.0.0',
+        '1.0.0',
       ],
     );
     createdGraphIds.push(graphId);
@@ -118,6 +126,7 @@ describe('ThreadStoreService (integration)', () => {
       const userId = contextDataStorage.checkSub();
       const learning = await threadStoreService.appendForUser(
         userId,
+        testProjectId,
         thread.id,
         {
           namespace: 'learnings',
@@ -133,6 +142,7 @@ describe('ThreadStoreService (integration)', () => {
       const resolvedInternalId =
         await threadStoreService.resolveInternalThreadId(
           userId,
+          testProjectId,
           thread.externalThreadId,
         );
       expect(resolvedInternalId).toBe(thread.id);
@@ -261,6 +271,211 @@ describe('ThreadStoreService (integration)', () => {
       );
       expect(entry).not.toBeNull();
       expect(entry!.mode).toBe(ThreadStoreEntryMode.Kv);
+    },
+  );
+
+  it(
+    'rejects appends past THREAD_STORE_MAX_ENTRIES_PER_NAMESPACE',
+    { timeout: 120_000 },
+    async () => {
+      const thread = await createTestThread();
+      const userId = contextDataStorage.checkSub();
+
+      // Fill the namespace to the maximum limit using append (auto-generated keys).
+      for (let i = 0; i < THREAD_STORE_MAX_ENTRIES_PER_NAMESPACE; i++) {
+        await threadStoreService.appendForUser(
+          userId,
+          testProjectId,
+          thread.id,
+          {
+            namespace: 'bulk',
+            value: `entry-${i}`,
+          },
+        );
+      }
+
+      // One more append must be rejected.
+      await expect(
+        threadStoreService.appendForUser(userId, testProjectId, thread.id, {
+          namespace: 'bulk',
+          value: 'one-too-many',
+        }),
+      ).rejects.toMatchObject({ code: 'THREAD_STORE_NAMESPACE_FULL' });
+    },
+  );
+
+  it(
+    'accepts a 32,768-byte value (boundary) and rejects 32,769-byte (boundary+1)',
+    { timeout: 30_000 },
+    async () => {
+      const thread = await createTestThread();
+
+      // assertValueSize serializes the value via JSON.stringify, adding 2 bytes
+      // of quote overhead for a plain string. To hit exactly THREAD_STORE_MAX_VALUE_BYTES
+      // serialized bytes, the raw string must be (THREAD_STORE_MAX_VALUE_BYTES - 2) chars.
+      const SERIALIZED_OVERHEAD = 2; // JSON.stringify(string) wraps in double-quotes
+      const vAtBoundary = 'x'.repeat(
+        THREAD_STORE_MAX_VALUE_BYTES - SERIALIZED_OVERHEAD,
+      );
+      const vOverBoundary = 'x'.repeat(
+        THREAD_STORE_MAX_VALUE_BYTES - SERIALIZED_OVERHEAD + 1,
+      );
+
+      // Boundary value (serializes to exactly THREAD_STORE_MAX_VALUE_BYTES bytes) must succeed.
+      await expect(
+        threadStoreService.put(contextDataStorage, thread.id, {
+          namespace: 'size',
+          key: 'boundary',
+          value: vAtBoundary,
+        }),
+      ).resolves.toBeDefined();
+
+      // One byte over the limit must be rejected.
+      await expect(
+        threadStoreService.put(contextDataStorage, thread.id, {
+          namespace: 'size',
+          key: 'over-boundary',
+          value: vOverBoundary,
+        }),
+      ).rejects.toMatchObject({ code: 'THREAD_STORE_VALUE_TOO_LARGE' });
+    },
+  );
+
+  it('prevents cross-user thread access', { timeout: 30_000 }, async () => {
+    // User A's thread is created by the default test user.
+    const threadA = await createTestThread();
+    await threadStoreService.put(contextDataStorage, threadA.id, {
+      namespace: 'ns',
+      key: 'k1',
+      value: 'secret-a',
+    });
+
+    // User B is a distinct user with their own project.
+    const USER_B_ID = '00000000-0000-0000-0000-000000000002';
+    const { projectId: projectBId } = await createTestProject(app, USER_B_ID);
+    const ctxB = buildTestContext(USER_B_ID, projectBId);
+
+    // User B attempting to read user A's thread must get THREAD_NOT_FOUND.
+    await expect(
+      threadStoreService.get(ctxB, threadA.id, 'ns', 'k1'),
+    ).rejects.toMatchObject({ code: 'THREAD_NOT_FOUND' });
+
+    // Cleanup project B (thread cleanup handled by afterEach via createdThreadIds).
+    await app.get(ProjectsDao).deleteById(projectBId);
+  });
+
+  it(
+    'prevents cross-project access by the same user',
+    { timeout: 30_000 },
+    async () => {
+      // Thread lives in testProjectId (project A).
+      const thread = await createTestThread();
+      await threadStoreService.put(contextDataStorage, thread.id, {
+        namespace: 'ns',
+        key: 'k1',
+        value: 'data',
+      });
+
+      // Build a context with a different project for the same user.
+      const userId = contextDataStorage.checkSub();
+      const { projectId: projectBId } = await createTestProject(app, userId);
+      const ctxB = buildTestContext(userId, projectBId);
+
+      // Reading the thread under a different project must fail.
+      await expect(
+        threadStoreService.get(ctxB, thread.id, 'ns', 'k1'),
+      ).rejects.toMatchObject({ code: 'THREAD_NOT_FOUND' });
+
+      // Cleanup project B.
+      await app.get(ProjectsDao).deleteById(projectBId);
+    },
+  );
+
+  it(
+    'serializes concurrent puts on the same key without unique-violation crash',
+    { timeout: 30_000 },
+    async () => {
+      const thread = await createTestThread();
+      const userId = contextDataStorage.checkSub();
+
+      // Run 10 rounds of two concurrent puts on the same key.
+      for (let i = 0; i < 10; i++) {
+        await Promise.all([
+          threadStoreService.putForUser(userId, testProjectId, thread.id, {
+            namespace: 'ns',
+            key: 'k1',
+            value: 'v1',
+          }),
+          threadStoreService.putForUser(userId, testProjectId, thread.id, {
+            namespace: 'ns',
+            key: 'k1',
+            value: 'v2',
+          }),
+        ]);
+      }
+
+      // Exactly one row must exist for (threadId, 'ns', 'k1').
+      const entries = await threadStoreService.listEntries(
+        contextDataStorage,
+        thread.id,
+        'ns',
+      );
+      expect(entries).toHaveLength(1);
+      expect(['v1', 'v2']).toContain(entries[0]!.value);
+    },
+  );
+
+  it(
+    'resurrects a soft-deleted entry on re-put',
+    { timeout: 30_000 },
+    async () => {
+      const thread = await createTestThread();
+
+      // Initial put.
+      await threadStoreService.put(contextDataStorage, thread.id, {
+        namespace: 'ns',
+        key: 'k1',
+        value: 'v1',
+      });
+
+      // Soft-delete the entry.
+      await threadStoreService.delete(
+        contextDataStorage,
+        thread.id,
+        'ns',
+        'k1',
+      );
+      const afterDelete = await threadStoreService.get(
+        contextDataStorage,
+        thread.id,
+        'ns',
+        'k1',
+      );
+      expect(afterDelete).toBeNull();
+
+      // Re-put must succeed (no unique-violation) and restore the entry.
+      await expect(
+        threadStoreService.put(contextDataStorage, thread.id, {
+          namespace: 'ns',
+          key: 'k1',
+          value: 'v2',
+        }),
+      ).resolves.toBeDefined();
+
+      // The entry is visible again with the new value.
+      const resurrected = await threadStoreService.get(
+        contextDataStorage,
+        thread.id,
+        'ns',
+        'k1',
+      );
+      expect(resurrected).not.toBeNull();
+      expect(resurrected!.value).toBe('v2');
+
+      // Verify deletedAt is null at the raw entity level (soft-delete cleared).
+      const rawEntity = await threadStoreDao.getByKey(thread.id, 'ns', 'k1');
+      expect(rawEntity).not.toBeNull();
+      expect(rawEntity!.deletedAt).toBeNull();
     },
   );
 });

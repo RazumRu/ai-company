@@ -13,6 +13,7 @@ export type ThreadStoreBaseToolConfig = {
 
 export interface ResolvedThreadStoreContext {
   userId: string;
+  projectId: string;
   /** Internal DB thread id used by the service layer. */
   internalThreadId: string;
   /** Identifier stamped onto each entry (`author_agent_id`). */
@@ -40,6 +41,14 @@ export abstract class ThreadStoreBaseTool<
       );
     }
 
+    const projectId = configurable?.graph_project_id;
+    if (!projectId) {
+      throw new BadRequestException(
+        'THREAD_STORE_MISSING_PROJECT',
+        'graph_project_id is required on the agent config to use the thread store.',
+      );
+    }
+
     // `parent_thread_id` carries the root thread's external id when the caller
     // is a subagent; falls back to `thread_id` when the caller is the root
     // agent itself.
@@ -55,12 +64,13 @@ export abstract class ThreadStoreBaseTool<
     const internalThreadId =
       await this.threadStoreService.resolveInternalThreadId(
         userId,
+        projectId,
         externalThreadId,
       );
 
     const authorAgentId = this.deriveAuthorAgentId(cfg);
 
-    return { userId, internalThreadId, authorAgentId };
+    return { userId, projectId, internalThreadId, authorAgentId };
   }
 
   protected assertWritable(config: ThreadStoreBaseToolConfig): void {
@@ -87,6 +97,6 @@ export abstract class ThreadStoreBaseTool<
     if (typeof nodeId === 'string' && nodeId.length > 0) {
       return nodeId;
     }
-    return 'agent';
+    return 'unknown-agent';
   }
 }

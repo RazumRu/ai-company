@@ -14,6 +14,7 @@ import {
   RuntimeInstanceStatus,
   RuntimeStartingPhase,
 } from '../runtime/runtime.types';
+import { ThreadStoreEntryMode } from '../thread-store/thread-store.types';
 import { ThreadSchema } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
@@ -307,10 +308,10 @@ export type IGraphPreviewNotification = z.infer<
 >;
 
 export const ThreadStoreUpdateDataSchema = z.object({
-  threadId: z.string(),
+  externalThreadId: z.string(),
   namespace: z.string(),
   key: z.string(),
-  mode: z.union([z.literal('kv'), z.literal('append')]),
+  mode: z.nativeEnum(ThreadStoreEntryMode),
   action: z.union([z.literal('put'), z.literal('append'), z.literal('delete')]),
   authorAgentId: z.string().nullable().optional(),
 });

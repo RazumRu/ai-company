@@ -1,8 +1,3 @@
-/**
- * WebSocket Event Types and Interfaces
- * Based on the backend socket.io implementation
- */
-
 import type {
   GraphDtoStatusEnum,
   GraphNodeWithStatusDtoStatusEnum,
@@ -188,7 +183,7 @@ export interface ThreadStoreUpdateNotification extends BaseNotification {
   type: 'thread.store.update';
   threadId: string;
   data: {
-    threadId: string;
+    externalThreadId: string;
     namespace: string;
     key: string;
     mode: 'kv' | 'append';
