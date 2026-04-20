@@ -320,7 +320,9 @@ export const ThreadStoreUpdateNotificationSchema = z.object({
   ...EnvelopeShape,
   threadId: z.string(),
 });
-export type IThreadStoreUpdateData = z.infer<typeof ThreadStoreUpdateDataSchema>;
+export type IThreadStoreUpdateData = z.infer<
+  typeof ThreadStoreUpdateDataSchema
+>;
 export type IThreadStoreUpdateNotification = z.infer<
   typeof ThreadStoreUpdateNotificationSchema
 >;

@@ -4,7 +4,11 @@ import dedent from 'dedent';
 import { z } from 'zod';
 
 import { BaseAgentConfigurable } from '../../../../agents/agents.types';
-import { THREAD_STORE_MAX_NAMESPACE_LENGTH } from '../../../../thread-store/thread-store.types';
+import { NamespaceSummary } from '../../../../thread-store/dto/thread-store.dto';
+import {
+  THREAD_STORE_MAX_NAMESPACE_LENGTH,
+  ThreadStoreEntryMode,
+} from '../../../../thread-store/thread-store.types';
 import {
   ExtendedLangGraphRunnableConfig,
   ToolInvokeResult,
@@ -42,21 +46,15 @@ export interface ThreadStoreListEntry {
   namespace: string;
   key: string;
   value: unknown;
-  mode: 'kv' | 'append';
+  mode: ThreadStoreEntryMode;
   authorAgentId: string | null;
   tags: string[] | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface ThreadStoreListSummary {
-  namespace: string;
-  entryCount: number;
-  lastUpdatedAt: string;
-}
-
 export interface ThreadStoreListToolOutput {
-  namespaces?: ThreadStoreListSummary[];
+  namespaces?: NamespaceSummary[];
   entries?: ThreadStoreListEntry[];
 }
 

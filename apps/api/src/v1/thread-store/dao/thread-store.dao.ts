@@ -5,7 +5,7 @@ import { BaseDao } from '@packages/mikroorm';
 
 import { ThreadStoreEntryEntity } from '../entity/thread-store-entry.entity';
 
-export interface NamespaceSummary {
+export interface NamespaceSummaryRow {
   namespace: string;
   entryCount: number;
   lastUpdatedAt: Date;
@@ -54,7 +54,9 @@ export class ThreadStoreDao extends BaseDao<ThreadStoreEntryEntity> {
     return await this.getOne({ threadId, namespace, key });
   }
 
-  async getNamespaceSummaries(threadId: string): Promise<NamespaceSummary[]> {
+  async getNamespaceSummaries(
+    threadId: string,
+  ): Promise<NamespaceSummaryRow[]> {
     const rows = await this.em
       .createQueryBuilder(ThreadStoreEntryEntity, 'e')
       .select([
@@ -86,11 +88,7 @@ export class ThreadStoreDao extends BaseDao<ThreadStoreEntryEntity> {
   ): Promise<ThreadStoreEntryEntity[]> {
     return await this.getAll(
       { threadId, namespace },
-      {
-        orderBy: { createdAt: 'DESC' },
-        limit: options?.limit,
-        offset: options?.offset,
-      },
+      { orderBy: { createdAt: 'DESC' }, ...options },
     );
   }
 }

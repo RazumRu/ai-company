@@ -266,14 +266,14 @@ export class ThreadStoreService {
   private async assertCapacity(
     threadId: string,
     namespace: string,
-    ctx: { mode: ThreadStoreEntryMode; key?: string },
+    opts: { mode: ThreadStoreEntryMode; key?: string },
   ): Promise<void> {
     // KV upsert of an existing key doesn't add an entry -- skip the count.
-    if (ctx.mode === ThreadStoreEntryMode.Kv && ctx.key) {
+    if (opts.mode === ThreadStoreEntryMode.Kv && opts.key) {
       const existing = await this.threadStoreDao.getByKey(
         threadId,
         namespace,
-        ctx.key,
+        opts.key,
       );
       if (existing) {
         return;
@@ -322,8 +322,8 @@ export class ThreadStoreService {
       mode: entity.mode,
       authorAgentId: entity.authorAgentId ?? null,
       tags: entity.tags ?? null,
-      createdAt: new Date(entity.createdAt).toISOString(),
-      updatedAt: new Date(entity.updatedAt).toISOString(),
+      createdAt: entity.createdAt.toISOString(),
+      updatedAt: entity.updatedAt.toISOString(),
     };
   }
 }

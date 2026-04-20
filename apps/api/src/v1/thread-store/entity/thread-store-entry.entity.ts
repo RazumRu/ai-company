@@ -46,8 +46,8 @@ export class ThreadStoreEntryEntity extends AuditEntity {
   mode!: ThreadStoreEntryMode;
 
   @Property({ length: 128, nullable: true })
-  authorAgentId?: string;
+  authorAgentId!: string | null;
 
   @Property({ type: 'array', columnType: 'text[]', nullable: true })
-  tags?: string[];
+  tags!: string[] | null;
 }

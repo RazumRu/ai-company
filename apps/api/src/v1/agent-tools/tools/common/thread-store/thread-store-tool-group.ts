@@ -13,10 +13,8 @@ import { ThreadStoreGetTool } from './thread-store-get.tool';
 import { ThreadStoreListTool } from './thread-store-list.tool';
 import { ThreadStorePutTool } from './thread-store-put.tool';
 
-export type ThreadStoreToolGroupConfig = ThreadStoreBaseToolConfig;
-
 @Injectable()
-export class ThreadStoreToolGroup extends BaseToolGroup<ThreadStoreToolGroupConfig> {
+export class ThreadStoreToolGroup extends BaseToolGroup<ThreadStoreBaseToolConfig> {
   constructor(
     private readonly putTool: ThreadStorePutTool,
     private readonly appendTool: ThreadStoreAppendTool,
@@ -28,7 +26,7 @@ export class ThreadStoreToolGroup extends BaseToolGroup<ThreadStoreToolGroupConf
   }
 
   public getDetailedInstructions(
-    config: ThreadStoreToolGroupConfig,
+    config: ThreadStoreBaseToolConfig,
     _lgConfig?: ExtendedLangGraphRunnableConfig,
   ): string {
     const readOnlyNote = config.readOnly
@@ -78,7 +76,7 @@ export class ThreadStoreToolGroup extends BaseToolGroup<ThreadStoreToolGroupConf
   }
 
   protected buildToolsInternal(
-    config: ThreadStoreToolGroupConfig,
+    config: ThreadStoreBaseToolConfig,
     lgConfig?: ExtendedLangGraphRunnableConfig,
   ): BuiltAgentTool[] {
     const tools: BuiltAgentTool[] = [

@@ -51,8 +51,6 @@ export class SimpleEnrichmentHandler extends BaseNotificationHandler<SimpleEnric
       event.graphId,
     );
 
-    const threadId = this.resolveThreadId(event);
-
     return [
       {
         type: event.type,
@@ -60,7 +58,7 @@ export class SimpleEnrichmentHandler extends BaseNotificationHandler<SimpleEnric
         projectId,
         ownerId,
         nodeId: event.nodeId,
-        threadId,
+        threadId: this.resolveThreadId(event),
         runId: event.runId,
         scope: [NotificationScope.Graph],
         data: event.data,

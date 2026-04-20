@@ -9,7 +9,7 @@ import axios from 'axios';
 
 import { API_URL } from '../config';
 
-export type ThreadStoreEntryMode = 'kv' | 'append';
+type ThreadStoreEntryMode = 'kv' | 'append';
 
 export interface ThreadStoreEntry {
   id: string;
@@ -50,16 +50,6 @@ export const threadStoreApi = {
     const { data } = await axios.get<ThreadStoreEntry[]>(
       `${base(threadId)}/${encodeURIComponent(namespace)}`,
       { params: options },
-    );
-    return data;
-  },
-  async getEntry(
-    threadId: string,
-    namespace: string,
-    key: string,
-  ): Promise<ThreadStoreEntry> {
-    const { data } = await axios.get<ThreadStoreEntry>(
-      `${base(threadId)}/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
     );
     return data;
   },

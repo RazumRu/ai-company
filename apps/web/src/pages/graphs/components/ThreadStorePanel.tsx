@@ -74,15 +74,16 @@ export const ThreadStorePanel: React.FC<ThreadStorePanelProps> = ({
     try {
       const data = await threadStoreApi.listNamespaces(threadId);
       setNamespaces(data);
-      if (
-        data.length > 0 &&
-        !data.some((n) => n.namespace === activeNamespace)
-      ) {
-        setActiveNamespace(data[0]!.namespace);
-      } else if (data.length === 0) {
-        setActiveNamespace(null);
-        setEntries([]);
-      }
+      setActiveNamespace((prev) => {
+        if (data.length > 0 && !data.some((n) => n.namespace === prev)) {
+          return data[0]!.namespace;
+        }
+        if (data.length === 0) {
+          setEntries([]);
+          return null;
+        }
+        return prev;
+      });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Failed to load namespaces',
@@ -90,7 +91,7 @@ export const ThreadStorePanel: React.FC<ThreadStorePanelProps> = ({
     } finally {
       setLoadingNamespaces(false);
     }
-  }, [threadId, activeNamespace]);
+  }, [threadId]);
 
   const fetchEntries = useCallback(
     async (namespace: string) => {
@@ -151,6 +152,13 @@ export const ThreadStorePanel: React.FC<ThreadStorePanelProps> = ({
     [namespaces],
   );
 
+  const handleRefresh = useCallback(() => {
+    void fetchNamespaces();
+    if (activeNamespace) {
+      void fetchEntries(activeNamespace);
+    }
+  }, [fetchNamespaces, fetchEntries, activeNamespace]);
+
   const activeSummary = namespaces.find((n) => n.namespace === activeNamespace);
 
   return (
@@ -162,8 +170,9 @@ export const ThreadStorePanel: React.FC<ThreadStorePanelProps> = ({
         className,
       )}>
       <CollapsibleTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="ghost"
           className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium">
           <span className="flex items-center gap-2">
             <Database className="h-4 w-4" />
@@ -177,7 +186,7 @@ export const ThreadStorePanel: React.FC<ThreadStorePanelProps> = ({
           <span className="text-xs text-muted-foreground">
             {open ? 'Hide' : 'Show'}
           </span>
-        </button>
+        </Button>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t border-border p-3 space-y-3">
@@ -214,12 +223,7 @@ export const ThreadStorePanel: React.FC<ThreadStorePanelProps> = ({
               type="button"
               size="sm"
               variant="ghost"
-              onClick={() => {
-                void fetchNamespaces();
-                if (activeNamespace) {
-                  void fetchEntries(activeNamespace);
-                }
-              }}
+              onClick={handleRefresh}
               title="Refresh">
               <RefreshCw className="h-4 w-4" />
             </Button>

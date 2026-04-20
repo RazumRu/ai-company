@@ -24,7 +24,7 @@ export const ThreadStoreEntryDtoSchema = z.object({
   namespace: z.string(),
   key: z.string(),
   value: z.unknown(),
-  mode: z.enum(ThreadStoreEntryMode),
+  mode: z.nativeEnum(ThreadStoreEntryMode),
   authorAgentId: z.string().nullable(),
   tags: z.array(z.string()).nullable(),
   createdAt: z.string().datetime(),
@@ -54,14 +54,3 @@ export const ListEntriesQuerySchema = z.object({
 
 export class ListEntriesQueryDto extends createZodDto(ListEntriesQuerySchema) {}
 export type ListEntriesQuery = z.infer<typeof ListEntriesQuerySchema>;
-
-export const NamespaceParamSchema = z.object({
-  namespace: NamespaceSchema,
-});
-export class NamespaceParamDto extends createZodDto(NamespaceParamSchema) {}
-
-export const EntryParamSchema = z.object({
-  namespace: NamespaceSchema,
-  key: KeySchema,
-});
-export class EntryParamDto extends createZodDto(EntryParamSchema) {}

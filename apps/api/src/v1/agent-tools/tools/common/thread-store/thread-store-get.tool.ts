@@ -7,6 +7,7 @@ import { BaseAgentConfigurable } from '../../../../agents/agents.types';
 import {
   THREAD_STORE_MAX_KEY_LENGTH,
   THREAD_STORE_MAX_NAMESPACE_LENGTH,
+  ThreadStoreEntryMode,
 } from '../../../../thread-store/thread-store.types';
 import {
   ExtendedLangGraphRunnableConfig,
@@ -39,7 +40,7 @@ export interface ThreadStoreGetToolOutput {
     namespace: string;
     key: string;
     value: unknown;
-    mode: 'kv' | 'append';
+    mode: ThreadStoreEntryMode;
     authorAgentId: string | null;
     tags: string[] | null;
     createdAt: string;
