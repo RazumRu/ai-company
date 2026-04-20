@@ -108,6 +108,7 @@ services:
     image: nginx:alpine
     networks:
       - daytona
+    profiles: ["daytona"]
     depends_on:
       - daytona-runner
     ports:
@@ -130,6 +131,7 @@ services:
     networks:
       - daytona
       - geniro-infra
+    profiles: ["daytona"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3986/api/health"]
       interval: 10s
@@ -210,6 +212,7 @@ services:
     networks:
       - daytona
       - geniro-infra
+    profiles: ["daytona"]
     depends_on:
       - daytona-api
     environment:
@@ -232,7 +235,7 @@ services:
       retries: 5
       start_period: 120s
     ports:
-      - "8080:8080"
+      - "8083:8080"
     volumes:
       - ./.docker/daytona-runner/daemon.json:/etc/docker/daemon.json:ro
       - ./.docker/daytona-runner/entrypoint-wrapper.sh:/opt/entrypoint-wrapper.sh:ro
