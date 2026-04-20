@@ -1604,7 +1604,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               </div>
             </div>
           )}
-          {stopReason === 'cost_limit' && (
+          {shouldShowCostLimitBanner(stopReason, isThreadStopped) && (
             <div className="px-4 pt-2 pb-4">
               <Alert variant="destructive">
                 <AlertTriangle aria-hidden="true" />
@@ -1797,6 +1797,7 @@ function CollapsibleInnerArea({
  */
 export function shouldShowCostLimitBanner(
   stopReason: string | null | undefined,
+  isThreadStopped: boolean,
 ): boolean {
-  return stopReason === 'cost_limit';
+  return stopReason === 'cost_limit' && isThreadStopped;
 }

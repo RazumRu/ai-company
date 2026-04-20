@@ -339,7 +339,10 @@ export class ThreadsService {
             effectiveCostLimitUsd?: number | null;
           }
         | undefined;
-      const stopReason = metadata?.stopReason ?? null;
+      const stopReason =
+        entity.status === ThreadStatus.Running
+          ? null
+          : (metadata?.stopReason ?? null);
       const effectiveCostLimitUsd =
         typeof metadata?.effectiveCostLimitUsd === 'number'
           ? metadata.effectiveCostLimitUsd

@@ -163,6 +163,12 @@ export type BaseAgentConfigurable = {
    * `null` / `undefined` = no limit.
    */
   effective_cost_limit_usd?: number | null;
+  /**
+   * Parent agent's totalPrice at the time of tool invocation. Set by
+   * ToolExecutorNode so sub-agents enforce cost against parent+self scope
+   * rather than self-scope-only.
+   */
+  __parentStateTotalPrice?: number;
   llmRequestContext?: LLMRequestContext;
   // SECURITY: This index signature is required by LangGraph's RunnableConfig
   // constraint. Never spread HTTP request body fields into this type — always

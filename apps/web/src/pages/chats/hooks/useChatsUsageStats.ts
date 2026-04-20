@@ -206,15 +206,55 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
 
     const isRunning =
       'status' in selectedThread && selectedThread.status === 'running';
+    const apiTotal = selectedThreadTokenUsageFromApi;
+    const aggregate = selectedThreadAggregateUsage;
 
-    // While the thread is running, prefer the real-time aggregated per-node
-    // sum so the UI updates live as messages stream in.  Once the thread
-    // stops, prefer the authoritative API total — it includes all agents,
-    // tools, and sub-calls and is the single source of truth.
-    if (isRunning && selectedThreadAggregateUsage) {
-      return selectedThreadAggregateUsage;
+    const limitSource =
+      'effectiveCostLimitUsd' in selectedThread
+        ? ((selectedThread as ThreadDto).effectiveCostLimitUsd ?? null)
+        : null;
+
+    const withLimit = (snap: ThreadTokenUsageSnapshot | undefined) =>
+      snap ? { ...snap, effectiveCostLimitUsd: limitSource } : undefined;
+
+    if (!isRunning) {
+      return withLimit(apiTotal ?? aggregate);
     }
-    return selectedThreadTokenUsageFromApi ?? selectedThreadAggregateUsage;
+    if (!apiTotal) {
+      return withLimit(aggregate);
+    }
+    if (!aggregate) {
+      return withLimit(apiTotal);
+    }
+
+    // While Running: take Math.max per additive token field so the UI never
+    // regresses when real-time events arrive ahead of the API snapshot.
+    // currentContext is a snapshot (not additive) — preserve the aggregate's
+    // latest value while running.
+    return withLimit({
+      ...aggregate,
+      inputTokens: Math.max(
+        aggregate.inputTokens ?? 0,
+        apiTotal.inputTokens ?? 0,
+      ),
+      cachedInputTokens: Math.max(
+        aggregate.cachedInputTokens ?? 0,
+        apiTotal.cachedInputTokens ?? 0,
+      ),
+      outputTokens: Math.max(
+        aggregate.outputTokens ?? 0,
+        apiTotal.outputTokens ?? 0,
+      ),
+      reasoningTokens: Math.max(
+        aggregate.reasoningTokens ?? 0,
+        apiTotal.reasoningTokens ?? 0,
+      ),
+      totalTokens: Math.max(
+        aggregate.totalTokens ?? 0,
+        apiTotal.totalTokens ?? 0,
+      ),
+      totalPrice: Math.max(aggregate.totalPrice ?? 0, apiTotal.totalPrice ?? 0),
+    });
   }, [
     selectedThread,
     selectedThreadAggregateUsage,

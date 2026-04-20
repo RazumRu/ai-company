@@ -159,6 +159,7 @@ export const ThreadUpdateDataSchema = z.object({
   waitReason: z.string().optional(),
   stopReason: z.string().nullable().optional(),
   stopCostUsd: z.number().nullable().optional(),
+  costLimitHit: z.boolean().nullable().optional(),
 });
 export const ThreadUpdateNotificationDataSchema = z.union([
   ThreadSchema, // tried first — full thread DTO

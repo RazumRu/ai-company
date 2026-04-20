@@ -1,10 +1,11 @@
 /**
  * Unit tests for the cost-limit banner logic in ThreadMessagesView.
  *
- * The banner is rendered when stopReason === 'cost_limit'. These tests
- * validate the condition and the USD formatting helper used in the banner.
- * Full component rendering is not covered here because the vitest environment
- * is 'node' (no DOM), matching the project's existing test pattern.
+ * The banner is rendered when stopReason === 'cost_limit' AND the thread is
+ * stopped. These tests validate the condition and the USD formatting helper
+ * used in the banner. Full component rendering is not covered here because the
+ * vitest environment is 'node' (no DOM), matching the project's existing test
+ * pattern.
  *
  * shouldShowCostLimitBanner is imported directly from ThreadMessagesView so
  * these tests exercise the real production code — removing or changing the
@@ -17,32 +18,40 @@ import { formatUsd } from '../../chats/utils/chatsPageUtils';
 import { shouldShowCostLimitBanner } from './ThreadMessagesView';
 
 describe('cost-limit banner visibility', () => {
-  it('shows banner when stopReason is "cost_limit"', () => {
-    expect(shouldShowCostLimitBanner('cost_limit')).toBe(true);
+  it('shows banner when stopReason is "cost_limit" and thread is stopped', () => {
+    expect(shouldShowCostLimitBanner('cost_limit', true)).toBe(true);
   });
 
-  it('does not show banner when stopReason is undefined', () => {
-    expect(shouldShowCostLimitBanner(undefined)).toBe(false);
+  it('does not show banner when stopReason is "cost_limit" but thread is not stopped', () => {
+    expect(shouldShowCostLimitBanner('cost_limit', false)).toBe(false);
   });
 
-  it('does not show banner when stopReason is null', () => {
-    expect(shouldShowCostLimitBanner(null)).toBe(false);
+  it('does not show banner when stopReason is undefined (thread stopped)', () => {
+    expect(shouldShowCostLimitBanner(undefined, true)).toBe(false);
   });
 
-  it('does not show banner when stopReason is an empty string', () => {
-    expect(shouldShowCostLimitBanner('')).toBe(false);
+  it('does not show banner when stopReason is null (thread stopped)', () => {
+    expect(shouldShowCostLimitBanner(null, true)).toBe(false);
   });
 
-  it('does not show banner when stopReason is "user_stop"', () => {
-    expect(shouldShowCostLimitBanner('user_stop')).toBe(false);
+  it('does not show banner when stopReason is an empty string (thread stopped)', () => {
+    expect(shouldShowCostLimitBanner('', true)).toBe(false);
   });
 
-  it('does not show banner when stopReason is "error"', () => {
-    expect(shouldShowCostLimitBanner('error')).toBe(false);
+  it('does not show banner when stopReason is "user_stop" (thread stopped)', () => {
+    expect(shouldShowCostLimitBanner('user_stop', true)).toBe(false);
   });
 
-  it('condition is case-sensitive — does not match "Cost_Limit"', () => {
-    expect(shouldShowCostLimitBanner('Cost_Limit')).toBe(false);
+  it('does not show banner when stopReason is "error" (thread stopped)', () => {
+    expect(shouldShowCostLimitBanner('error', true)).toBe(false);
+  });
+
+  it('condition is case-sensitive — does not match "Cost_Limit" (thread stopped)', () => {
+    expect(shouldShowCostLimitBanner('Cost_Limit', true)).toBe(false);
+  });
+
+  it('stop-flag alone does not trigger banner when stopReason is unrelated', () => {
+    expect(shouldShowCostLimitBanner('user_stop', true)).toBe(false);
   });
 });
 

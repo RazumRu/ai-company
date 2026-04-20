@@ -387,6 +387,7 @@ describe('ThreadsService', () => {
 
     it('returns stopReason as "cost_limit" when metadata carries it', async () => {
       const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Stopped,
         metadata: { stopReason: 'cost_limit' },
       });
 
@@ -459,6 +460,32 @@ describe('ThreadsService', () => {
       expect(result[0]!.effectiveCostLimitUsd).toBe(1);
       expect(result[1]!.effectiveCostLimitUsd).toBe(1);
       expect(result[2]!.effectiveCostLimitUsd).toBe(2);
+    });
+
+    it('returns stopReason=null when entity.status === Running even if metadata.stopReason is set', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        metadata: { stopReason: 'cost_limit' },
+      });
+
+      vi.mocked(graphDao.getAgentsByGraphIds).mockResolvedValue(new Map());
+
+      const result = await service.prepareThreadsResponse([mockThread]);
+
+      expect(result[0]!.stopReason).toBeNull();
+    });
+
+    it('returns metadata.stopReason when entity.status === Stopped', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Stopped,
+        metadata: { stopReason: 'cost_limit' },
+      });
+
+      vi.mocked(graphDao.getAgentsByGraphIds).mockResolvedValue(new Map());
+
+      const result = await service.prepareThreadsResponse([mockThread]);
+
+      expect(result[0]!.stopReason).toBe('cost_limit');
     });
   });
 

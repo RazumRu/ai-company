@@ -150,6 +150,10 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
     graphFilterIdRef.current = graphFilterId;
   }, [graphFilterId]);
 
+  // Tracks the last time invalidateThreadUsageStats was called per thread so
+  // we can debounce rapid agent.state.update bursts to at most once per 1500 ms.
+  const stateUpdateInvalidateLastRef = useRef<Record<string, number>>({});
+
   // Track which thread→nodeId pairs have received agent.state.update events.
   // For nodes with state updates, we skip additive requestTokenUsage from
   // the parent node's own messages (to avoid double-counting with cumulative
@@ -964,6 +968,18 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
         },
       };
     });
+
+    // Debounce invalidation to at most once per 1500 ms per thread so that
+    // rapid state-update bursts don't saturate the usage-stats endpoint while
+    // still keeping the cost display fresh during an active run.
+    const last = stateUpdateInvalidateLastRef.current[internalThreadId] ?? 0;
+    const now = Date.now();
+    if (now - last > 1500) {
+      stateUpdateInvalidateLastRef.current[internalThreadId] = now;
+      if (selectedThreadId === internalThreadId) {
+        invalidateThreadUsageStats(internalThreadId);
+      }
+    }
   });
 
   return {

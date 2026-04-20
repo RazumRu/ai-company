@@ -176,12 +176,10 @@ export class InvokeLlmNode extends BaseNode<
       threadUsage.durationMs = durationMs;
     }
 
-    // Enforcement is opt-in via `enforceCostLimit`. The effective limit is
-    // provided by the caller through `config.configurable.effective_cost_limit_usd`
-    // (resolved once per user message in GraphsService.executeTrigger and
-    // persisted to thread metadata). Subagents skip enforcement by construction:
-    // their costs fold up via tool-executor-node's usage merge and are checked
-    // on the next parent LLM call. Slight overshoot is acceptable.
+    // Enforcement runs against the combined parent+self cost. In sub-agents,
+    // ToolExecutorNode seeds the starting totalPrice from the parent's
+    // state.totalPrice (via `__parentStateTotalPrice` in configurable), so
+    // the `projectedTotal` below already reflects parent context.
     if (this.opts?.enforceCostLimit) {
       const effectiveLimit =
         typeof cfg.configurable?.effective_cost_limit_usd === 'number'

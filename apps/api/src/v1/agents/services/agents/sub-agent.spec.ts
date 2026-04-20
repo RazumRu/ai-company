@@ -994,6 +994,48 @@ describe('SubAgent', () => {
       expect(result.error).toBeUndefined();
       expect(result.result).toBe('done within budget');
     });
+
+    it('seeds finalState.totalPrice from configurable.__parentStateTotalPrice', async () => {
+      // When __parentStateTotalPrice=0.25 and effective_cost_limit_usd=0.25,
+      // the first LLM call's projectedTotal = 0.25 (seed) + 0.01 (this call) = 0.26
+      // which exceeds the limit, so CostLimitExceededError is thrown internally and
+      // the sub-agent returns stopReason='cost_limit'.
+      // Without the seed, projectedTotal = 0 + 0.01 = 0.01 < 0.25, so no stop would occur.
+      vi.mocked(
+        mockLitellmService.extractTokenUsageFromResponse,
+      ).mockResolvedValue({
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        totalPrice: 0.01,
+      });
+
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'answer',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const cfgWithParentSeed: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'thread-123',
+          effective_cost_limit_usd: 0.25,
+          __parentStateTotalPrice: 0.25,
+        },
+      };
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('hi')],
+        cfgWithParentSeed,
+      );
+
+      // The cost limit must have been hit (seeding worked)
+      expect(result.stopReason).toBe('cost_limit');
+      expect(result.error).toBe('Cost limit reached');
+      // stopCostUsd reflects the combined parent+self total (>= 0.25)
+      expect(result.stopCostUsd).toBeGreaterThanOrEqual(0.25);
+    });
   });
 
   describe('reasoning streaming', () => {

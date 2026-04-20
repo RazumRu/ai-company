@@ -160,6 +160,7 @@ export class ToolExecutorNode extends BaseNode<
               ...(cfg.configurable ?? {}),
               ...(toolMetadata !== undefined ? { toolMetadata } : {}),
               __toolCallId: callId,
+              __parentStateTotalPrice: state.totalPrice ?? 0,
             },
             signal: cfg.signal,
           };
@@ -358,10 +359,19 @@ export class ToolExecutorNode extends BaseNode<
     // fires exactly as it would for a direct invoke_llm cost-limit throw.
     // The effective limit comes from the runnable config (resolved once upstream
     // by GraphsService.executeTrigger and stored in configurable).
+    // Aggregate all tool request usages before cost-limit check so we can fold
+    // them into the parent-scope totalSpend on re-throw.
+    const aggregatedToolUsage = this.litellmService.sumTokenUsages(
+      results.map((r) => r.toolRequestUsage).filter(Boolean),
+    );
+
     const costLimitResult = results.find((r) => r.stopReason === 'cost_limit');
     if (costLimitResult) {
       const effectiveLimit = cfg.configurable?.effective_cost_limit_usd ?? 0;
-      const totalSpend = costLimitResult.stopCostUsd ?? 0;
+      const totalSpend = Math.max(
+        costLimitResult.stopCostUsd ?? 0,
+        (state.totalPrice ?? 0) + (aggregatedToolUsage?.totalPrice ?? 0),
+      );
       throw new CostLimitExceededError(effectiveLimit, totalSpend);
     }
 
@@ -379,11 +389,6 @@ export class ToolExecutorNode extends BaseNode<
     const messagesWithMetadata = updateMessagesListWithMetadata(
       interleavedMessages,
       cfg,
-    );
-
-    // Aggregate all tool request usages
-    const aggregatedToolUsage = this.litellmService.sumTokenUsages(
-      results.map((r) => r.toolRequestUsage).filter(Boolean),
     );
 
     return {

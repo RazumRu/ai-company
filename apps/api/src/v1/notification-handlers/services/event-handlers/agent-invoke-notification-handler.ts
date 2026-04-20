@@ -107,6 +107,33 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
         parentThreadId,
         data: threadDto,
       });
+
+      // If the thread previously stopped due to a cost limit, clear the stop
+      // fields so the frontend stops showing the cost-limit banner as soon as
+      // the user's new run begins. The ThreadUpdateNotificationHandler handles
+      // the actual metadata writes when it receives these null values.
+      // Only fire for cost-limit stops — user_stop re-runs should leave
+      // stopReason intact so the record persists.
+      const meta = thread.metadata as
+        | Record<string, unknown>
+        | null
+        | undefined;
+      const hadCostLimitState = Boolean(
+        meta &&
+        (meta.costLimitHit === true ||
+          (typeof meta.stopReason === 'string' &&
+            meta.stopReason === 'cost_limit')),
+      );
+      if (hadCostLimitState) {
+        await this.notificationsService.emit({
+          type: NotificationEvent.ThreadUpdate,
+          graphId,
+          projectId: graph.projectId,
+          threadId: externalThreadKey,
+          parentThreadId,
+          data: { stopReason: null, stopCostUsd: null, costLimitHit: null },
+        });
+      }
     }
 
     // Generate thread name for root thread executions that don't have one yet.

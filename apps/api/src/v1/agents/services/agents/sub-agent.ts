@@ -168,6 +168,11 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       runnableConfig ?? {},
     );
 
+    const parentTotalPrice =
+      typeof runnableConfig?.configurable?.__parentStateTotalPrice === 'number'
+        ? runnableConfig.configurable.__parentStateTotalPrice
+        : 0;
+
     let totalIterations = 0;
     let toolCallsMade = 0;
     let finalState: BaseAgentState = {
@@ -181,7 +186,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       outputTokens: 0,
       reasoningTokens: 0,
       totalTokens: 0,
-      totalPrice: 0,
+      totalPrice: parentTotalPrice,
       currentContext: 0,
     };
 
@@ -329,6 +334,10 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
 
       const initialState: BaseAgentStateChange = {
         messages: { mode: 'append', items: initialMessages },
+        // Seed the LangGraph-internal totalPrice so InvokeLlmNode's cost
+        // enforcement sees the combined parent+self accumulated spend, not just
+        // the sub-agent's own spend starting from zero.
+        ...(parentTotalPrice > 0 ? { totalPrice: parentTotalPrice } : {}),
       };
 
       const stream = await compiled.stream(
