@@ -505,12 +505,71 @@ export class RepoIndexService implements OnModuleInit {
       repoUrl = existing.repoUrl;
     }
 
-    // If indexing is actively running, return immediately
+    // If indexing is actively running, return immediately.
+    // Repair-on-read: if the row has been sitting in Pending/InProgress beyond
+    // the staleness window, the BullMQ job was likely lost (Redis flush,
+    // mid-enqueue crash, worker pod eviction) — reset and re-enqueue so the
+    // next user interaction unblocks the zombie row. `recoverStuckJobs` only
+    // runs on module init, so long-lived pods need this in-path recovery.
     if (
       existing &&
       (existing.status === RepoIndexStatus.InProgress ||
         existing.status === RepoIndexStatus.Pending)
     ) {
+      const ageMs = Date.now() - new Date(existing.updatedAt).getTime();
+      if (ageMs > environment.codebaseIndexStaleMs) {
+        // Stale `updatedAt` alone is not enough to decide the job is lost —
+        // `incrementIndexedTokens` uses a raw update that does not bump
+        // `updatedAt`, so a legitimately-running large-repo job can look
+        // stale. Only repair when BullMQ confirms the job is not actively
+        // being processed, otherwise `addIndexJob` would force-fail the
+        // running worker.
+        const jobState = await this.repoIndexQueueService.getJobState(
+          existing.id,
+        );
+        if (jobState === 'active') {
+          this.logger.debug(
+            'Stale repo index row but BullMQ job is active, skipping repair',
+            { repoIndexId: existing.id, ageMs, jobState },
+          );
+        } else {
+          this.logger.warn(
+            'Stale repo index detected, re-enqueueing background job',
+            {
+              repoIndexId: existing.id,
+              previousStatus: existing.status,
+              ageMs,
+              jobState,
+              indexedTokens: existing.indexedTokens,
+              estimatedTokens: existing.estimatedTokens,
+            },
+          );
+          // Repair is best-effort — if Redis is flaky and `addIndexJob`
+          // throws after `updateById` succeeded, we still return
+          // `in_progress` to the caller. The row remains in Pending and the
+          // next `codebase_search` call will retry the repair once Redis
+          // recovers.
+          try {
+            await this.repoIndexDao.updateById(existing.id, {
+              status: RepoIndexStatus.Pending,
+              errorMessage: null,
+            });
+            await this.repoIndexQueueService.addIndexJob({
+              repoIndexId: existing.id,
+              repoUrl: existing.repoUrl,
+              branch: existing.branch,
+            });
+          } catch (repairErr) {
+            this.logger.warn('Failed to re-enqueue stale repo index job', {
+              repoIndexId: existing.id,
+              error:
+                repairErr instanceof Error
+                  ? repairErr.message
+                  : String(repairErr),
+            });
+          }
+        }
+      }
       return { earlyReturn: { status: 'in_progress', repoIndex: existing } };
     }
 

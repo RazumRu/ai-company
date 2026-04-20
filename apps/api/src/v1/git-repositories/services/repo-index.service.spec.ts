@@ -24,6 +24,7 @@ vi.mock('../../../environments', () => ({
     codebaseIndexTokenThreshold: 30000,
     codebaseUuidNamespace: '6ba7b811-9dad-11d1-80b4-00c04fd430c8',
     codebaseIndexMaxAgeDays: 30,
+    codebaseIndexStaleMs: 15 * 60 * 1000,
     codebaseSearchOverfetchFactor: 6,
     codebaseSearchOverfetchFactorWithVariants: 3,
     llmEmbeddingDimensions: 1536,
@@ -83,6 +84,7 @@ const mockRepoIndexQueueService = {
   addIndexJob: vi.fn().mockResolvedValue(undefined),
   removeJob: vi.fn().mockResolvedValue(undefined),
   cleanStaleActiveJobs: vi.fn().mockResolvedValue(undefined),
+  getJobState: vi.fn().mockResolvedValue(null),
 };
 
 const mockLlmModelsService = {
@@ -160,6 +162,7 @@ describe('RepoIndexService', () => {
     );
     mockRepoIndexQueueService.addIndexJob.mockResolvedValue(undefined);
     mockRepoIndexQueueService.removeJob.mockResolvedValue(undefined);
+    mockRepoIndexQueueService.getJobState.mockResolvedValue(null);
     mockQdrantService.getCollections.mockResolvedValue({ collections: [] });
     mockQdrantService.deleteCollection.mockResolvedValue(undefined);
     mockLlmModelsService.getKnowledgeEmbeddingModel.mockReturnValue(
@@ -215,6 +218,7 @@ describe('RepoIndexService', () => {
       const existingEntity = {
         id: 'index-1',
         status: RepoIndexStatus.InProgress,
+        updatedAt: new Date(),
       } as unknown as RepoIndexEntity;
 
       mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
@@ -229,6 +233,7 @@ describe('RepoIndexService', () => {
       const existingEntity = {
         id: 'index-1',
         status: RepoIndexStatus.Pending,
+        updatedAt: new Date(),
       } as unknown as RepoIndexEntity;
 
       mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
@@ -236,6 +241,7 @@ describe('RepoIndexService', () => {
       const result = await service.getOrInitIndexForRepo(baseParams);
 
       expect(result.status).toBe('in_progress');
+      expect(mockRepoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
     });
 
     it('runs inline indexing when estimated tokens are below threshold', async () => {
@@ -331,6 +337,126 @@ describe('RepoIndexService', () => {
           errorMessage: 'embed failed',
         }),
       );
+    });
+
+    it('re-enqueues when pending row is older than staleness window', async () => {
+      const existingEntity = {
+        id: 'stale-index',
+        status: RepoIndexStatus.Pending,
+        indexedTokens: 0,
+        estimatedTokens: 1444254,
+        updatedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+        repoUrl: baseParams.repoUrl,
+        branch: baseParams.branch,
+      } as unknown as RepoIndexEntity;
+
+      mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
+
+      const result = await service.getOrInitIndexForRepo(baseParams);
+
+      expect(result.status).toBe('in_progress');
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith('stale-index', {
+        status: RepoIndexStatus.Pending,
+        errorMessage: null,
+      });
+      expect(mockRepoIndexQueueService.addIndexJob).toHaveBeenCalledWith({
+        repoIndexId: 'stale-index',
+        repoUrl: baseParams.repoUrl,
+        branch: baseParams.branch,
+      });
+    });
+
+    it('does not re-enqueue when pending row is within staleness window', async () => {
+      const existingEntity = {
+        id: 'fresh-index',
+        status: RepoIndexStatus.Pending,
+        indexedTokens: 0,
+        estimatedTokens: 1000,
+        updatedAt: new Date(Date.now() - 60_000),
+        repoUrl: baseParams.repoUrl,
+        branch: baseParams.branch,
+      } as unknown as RepoIndexEntity;
+
+      mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
+
+      const result = await service.getOrInitIndexForRepo(baseParams);
+
+      expect(result.status).toBe('in_progress');
+      expect(mockRepoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
+    });
+
+    it('does not re-enqueue stale pending row when BullMQ job is still active', async () => {
+      const existingEntity = {
+        id: 'active-stale-index',
+        status: RepoIndexStatus.Pending,
+        indexedTokens: 100_000,
+        estimatedTokens: 1_444_254,
+        updatedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+        repoUrl: baseParams.repoUrl,
+        branch: baseParams.branch,
+      } as unknown as RepoIndexEntity;
+
+      mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
+      mockRepoIndexQueueService.getJobState.mockResolvedValue('active');
+
+      const result = await service.getOrInitIndexForRepo(baseParams);
+
+      expect(result.status).toBe('in_progress');
+      expect(mockRepoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
+      expect(mockRepoIndexDao.updateById).not.toHaveBeenCalledWith(
+        'active-stale-index',
+        expect.objectContaining({ status: RepoIndexStatus.Pending }),
+      );
+    });
+
+    it('re-enqueues when InProgress row is older than staleness window', async () => {
+      const existingEntity = {
+        id: 'stale-inprogress-index',
+        status: RepoIndexStatus.InProgress,
+        indexedTokens: 500_000,
+        estimatedTokens: 1_444_254,
+        updatedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+        repoUrl: baseParams.repoUrl,
+        branch: baseParams.branch,
+      } as unknown as RepoIndexEntity;
+
+      mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
+
+      const result = await service.getOrInitIndexForRepo(baseParams);
+
+      expect(result.status).toBe('in_progress');
+      expect(mockRepoIndexDao.updateById).toHaveBeenCalledWith(
+        'stale-inprogress-index',
+        {
+          status: RepoIndexStatus.Pending,
+          errorMessage: null,
+        },
+      );
+      expect(mockRepoIndexQueueService.addIndexJob).toHaveBeenCalledWith({
+        repoIndexId: 'stale-inprogress-index',
+        repoUrl: baseParams.repoUrl,
+        branch: baseParams.branch,
+      });
+    });
+
+    it('does not re-enqueue stale InProgress row when BullMQ job is still active', async () => {
+      const existingEntity = {
+        id: 'active-stale-inprogress',
+        status: RepoIndexStatus.InProgress,
+        indexedTokens: 500_000,
+        estimatedTokens: 1_444_254,
+        updatedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+        repoUrl: baseParams.repoUrl,
+        branch: baseParams.branch,
+      } as unknown as RepoIndexEntity;
+
+      mockRepoIndexDao.getOne.mockResolvedValue(existingEntity);
+      mockRepoIndexQueueService.getJobState.mockResolvedValue('active');
+
+      const result = await service.getOrInitIndexForRepo(baseParams);
+
+      expect(result.status).toBe('in_progress');
+      expect(mockRepoIndexQueueService.addIndexJob).not.toHaveBeenCalled();
     });
   });
 

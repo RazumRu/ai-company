@@ -135,6 +135,30 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Returns the current BullMQ state of the job associated with `repoIndexId`,
+   * or null if no such job exists. Used by repair-on-read to avoid disrupting
+   * an actively-running worker: an 'active' state means a worker is still
+   * processing the row even if its DB `updatedAt` has gone stale (e.g.
+   * `incrementIndexedTokens` uses a raw update that bypasses MikroORM's
+   * onUpdate hook).
+   */
+  async getJobState(repoIndexId: string): Promise<string | null> {
+    try {
+      const job = await this.queue.getJob(repoIndexId);
+      if (!job) {
+        return null;
+      }
+      return await job.getState();
+    } catch (err) {
+      this.logger.debug('Could not fetch job state', {
+        repoIndexId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Add a job to the queue. If a job with the same ID already exists:
    * - If waiting/delayed: skip (already queued)
    * - If active: try to move to failed (orphaned from previous server), then re-add
