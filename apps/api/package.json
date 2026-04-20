@@ -99,7 +99,6 @@
     "socket.io-client": "^4.8.3",
     "unique-username-generator": "^1.5.1",
     "uuid": "^13.0.0",
-    "xstate": "^5.30.0",
     "yaml": "^2.8.3",
     "zod": "^4.3.6",
     "zod-to-json-schema": "^3.25.1"

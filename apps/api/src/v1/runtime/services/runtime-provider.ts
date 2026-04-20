@@ -8,10 +8,7 @@ import {
 } from 'unique-username-generator';
 
 import { environment } from '../../../environments';
-import {
-  IRuntimeStatusData,
-  NotificationEvent,
-} from '../../notifications/notifications.types';
+import { NotificationEvent } from '../../notifications/notifications.types';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { RuntimeInstanceDao } from '../dao/runtime-instance.dao';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
@@ -36,6 +33,13 @@ export type ProvideRuntimeResult<T extends BaseRuntime> = {
   cached: boolean;
 };
 
+type EmitRuntimeStatusExtras = {
+  message?: string;
+  startingPhase?: RuntimeStartingPhase | null;
+  errorCode?: RuntimeErrorCode | null;
+  lastError?: string | null;
+};
+
 @Injectable()
 export class RuntimeProvider {
   private readonly runtimeInstances = new Map<string, BaseRuntime>();
@@ -53,14 +57,9 @@ export class RuntimeProvider {
     threadId: string,
     nodeId: string,
     runtimeId: string,
-    status: IRuntimeStatusData['status'],
+    status: RuntimeInstanceStatus,
     runtimeType: string,
-    extras: {
-      message?: string;
-      startingPhase?: RuntimeStartingPhase | null;
-      errorCode?: RuntimeErrorCode | null;
-      lastError?: string | null;
-    } = {},
+    extras: EmitRuntimeStatusExtras = {},
   ): void {
     // System operations (e.g. repo indexing) have no graph — skip notifications.
     if (!graphId) {
@@ -97,32 +96,42 @@ export class RuntimeProvider {
   private subscribeRuntimePhaseEvents(
     runtime: BaseRuntime,
     record: RuntimeInstanceEntity,
-  ): () => void {
-    return runtime.subscribe(async (event) => {
+  ): () => Promise<void> {
+    const pending = new Set<Promise<unknown>>();
+    const unsub = runtime.subscribe(async (event) => {
       if (event.type !== 'phase') {
         return;
       }
-      try {
-        await this.runtimeInstanceDao.transitionStatus(
-          record.id,
-          RuntimeInstanceStatus.Starting,
-          { startingPhase: event.data.phase },
-        );
-        this.emitRuntimeStatus(
-          record.graphId,
-          record.threadId,
-          record.nodeId,
-          record.id,
-          'Starting',
-          record.type,
-          { startingPhase: event.data.phase },
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Failed to record runtime phase ${event.data.phase} for ${record.id}: ${extractErrorMessage(error)}`,
-        );
-      }
+      const task = (async () => {
+        try {
+          await this.runtimeInstanceDao.transitionStatus(
+            record.id,
+            RuntimeInstanceStatus.Starting,
+            { startingPhase: event.data.phase },
+          );
+          this.emitRuntimeStatus(
+            record.graphId,
+            record.threadId,
+            record.nodeId,
+            record.id,
+            RuntimeInstanceStatus.Starting,
+            record.type,
+            { startingPhase: event.data.phase },
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Failed to record runtime phase ${event.data.phase} for ${record.id}: ${extractErrorMessage(error)}`,
+          );
+        }
+      })();
+      pending.add(task);
+      task.finally(() => pending.delete(task));
+      await task;
     });
+    return async () => {
+      unsub();
+      await Promise.allSettled([...pending]);
+    };
   }
 
   protected resolveRuntimeConfigByType(
@@ -222,7 +231,7 @@ export class RuntimeProvider {
               threadId,
               runtimeNodeId,
               existing.id,
-              'Starting',
+              RuntimeInstanceStatus.Starting,
               type,
             );
             const runtime = await this.ensureRuntimeForRecord<T>(existing);
@@ -238,7 +247,7 @@ export class RuntimeProvider {
               threadId,
               runtimeNodeId,
               existing.id,
-              'Running',
+              RuntimeInstanceStatus.Running,
               type,
             );
             return { runtime, cached: true };
@@ -256,7 +265,7 @@ export class RuntimeProvider {
               threadId,
               runtimeNodeId,
               existing.id,
-              'Failed',
+              RuntimeInstanceStatus.Failed,
               type,
               { message: lastError, errorCode, lastError },
             );
@@ -286,7 +295,7 @@ export class RuntimeProvider {
       threadId,
       runtimeNodeId,
       created.id,
-      'Starting',
+      RuntimeInstanceStatus.Starting,
       type,
     );
 
@@ -307,7 +316,7 @@ export class RuntimeProvider {
         threadId,
         runtimeNodeId,
         created.id,
-        'Failed',
+        RuntimeInstanceStatus.Failed,
         type,
         { message: lastError, errorCode, lastError },
       );
@@ -318,17 +327,15 @@ export class RuntimeProvider {
     await this.runtimeInstanceDao.transitionStatus(
       created.id,
       RuntimeInstanceStatus.Running,
+      { lastUsedAt: new Date() },
     );
-    await this.runtimeInstanceDao.updateById(created.id, {
-      lastUsedAt: new Date(),
-    });
 
     this.emitRuntimeStatus(
       graphId,
       threadId,
       runtimeNodeId,
       created.id,
-      'Running',
+      RuntimeInstanceStatus.Running,
       type,
     );
     return { runtime, cached: false };
@@ -357,7 +364,7 @@ export class RuntimeProvider {
       instance.threadId,
       instance.nodeId,
       instance.id,
-      'Stopping',
+      RuntimeInstanceStatus.Stopping,
       instance.type,
     );
 
@@ -373,7 +380,7 @@ export class RuntimeProvider {
       instance.threadId,
       instance.nodeId,
       instance.id,
-      'Stopped',
+      RuntimeInstanceStatus.Stopped,
       instance.type,
     );
   }
@@ -550,7 +557,7 @@ export class RuntimeProvider {
         recreate: false,
       });
     } finally {
-      unsubscribe();
+      await unsubscribe();
     }
 
     this.runtimeInstances.set(record.id, runtime);

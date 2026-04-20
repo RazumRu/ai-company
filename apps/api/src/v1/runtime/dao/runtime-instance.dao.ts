@@ -15,6 +15,7 @@ export interface TransitionStatusExtras {
   startingPhase?: RuntimeStartingPhase | null;
   lastError?: string | null;
   errorCode?: RuntimeErrorCode | null;
+  lastUsedAt?: Date;
 }
 
 const POST_STARTING_STATUSES: ReadonlySet<RuntimeInstanceStatus> = new Set([
@@ -61,6 +62,9 @@ export class RuntimeInstanceDao extends BaseDao<RuntimeInstanceEntity> {
     }
     if (extras.errorCode !== undefined) {
       entity.errorCode = extras.errorCode;
+    }
+    if (extras.lastUsedAt !== undefined) {
+      entity.lastUsedAt = extras.lastUsedAt;
     }
 
     if (

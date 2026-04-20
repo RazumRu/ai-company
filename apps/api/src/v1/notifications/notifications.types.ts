@@ -9,7 +9,12 @@ import {
   GraphSchemaType,
   GraphStatus,
 } from '../graphs/graphs.types';
-import { ThreadDto } from '../threads/dto/threads.dto';
+import {
+  RuntimeErrorCode,
+  RuntimeInstanceStatus,
+  RuntimeStartingPhase,
+} from '../runtime/runtime.types';
+import { ThreadSchema } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
 
@@ -156,15 +161,8 @@ export const ThreadUpdateDataSchema = z.object({
   stopCostUsd: z.number().nullable().optional(),
 });
 export const ThreadUpdateNotificationDataSchema = z.union([
-  ThreadUpdateDataSchema,
-  z.custom<ThreadDto>(
-    (v) =>
-      v !== null &&
-      typeof v === 'object' &&
-      'id' in (v as object) &&
-      'externalThreadId' in (v as object),
-    { message: 'expected ThreadDto-shaped object' },
-  ),
+  ThreadSchema, // tried first — full thread DTO
+  ThreadUpdateDataSchema, // fallback for partial updates
 ]);
 export const ThreadUpdateNotificationSchema = z.object({
   type: z.literal(NotificationEvent.ThreadUpdate),
@@ -262,34 +260,11 @@ export const RuntimeStatusDataSchema = z.object({
   runtimeId: z.string(),
   threadId: z.string(),
   nodeId: z.string(),
-  status: z.union([
-    z.literal('Starting'),
-    z.literal('Running'),
-    z.literal('Stopping'),
-    z.literal('Stopped'),
-    z.literal('Failed'),
-  ]),
+  status: z.nativeEnum(RuntimeInstanceStatus),
   runtimeType: z.string(),
   message: z.string().optional(),
-  startingPhase: z
-    .union([
-      z.literal('PullingImage'),
-      z.literal('ContainerCreated'),
-      z.literal('InitScript'),
-      z.literal('Ready'),
-    ])
-    .nullable()
-    .optional(),
-  errorCode: z
-    .union([
-      z.literal('ProviderAuth'),
-      z.literal('RuntimeIo'),
-      z.literal('ImagePull'),
-      z.literal('Timeout'),
-      z.literal('Unknown'),
-    ])
-    .nullable()
-    .optional(),
+  startingPhase: z.nativeEnum(RuntimeStartingPhase).nullable().optional(),
+  errorCode: z.nativeEnum(RuntimeErrorCode).nullable().optional(),
   lastError: z.string().nullable().optional(),
 });
 export const RuntimeStatusNotificationSchema = z.object({

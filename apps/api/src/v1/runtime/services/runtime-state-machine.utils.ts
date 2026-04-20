@@ -1,7 +1,25 @@
 import { BadRequestException } from '@packages/common';
 
 import { RuntimeErrorCode, RuntimeInstanceStatus } from '../runtime.types';
-import { STATUS_TRANSITIONS } from './runtime-state-machine';
+
+export const STATUS_TRANSITIONS: Readonly<
+  Record<RuntimeInstanceStatus, readonly RuntimeInstanceStatus[]>
+> = {
+  [RuntimeInstanceStatus.Starting]: [
+    RuntimeInstanceStatus.Running,
+    RuntimeInstanceStatus.Failed,
+  ],
+  [RuntimeInstanceStatus.Running]: [
+    RuntimeInstanceStatus.Stopping,
+    RuntimeInstanceStatus.Failed,
+  ],
+  [RuntimeInstanceStatus.Stopping]: [
+    RuntimeInstanceStatus.Stopped,
+    RuntimeInstanceStatus.Failed,
+  ],
+  [RuntimeInstanceStatus.Stopped]: [],
+  [RuntimeInstanceStatus.Failed]: [],
+};
 
 function hasErrorCode(error: unknown): error is { code?: string } {
   return typeof error === 'object' && error !== null;
