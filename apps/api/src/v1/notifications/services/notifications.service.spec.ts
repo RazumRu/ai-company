@@ -2,6 +2,7 @@ import { HumanMessage } from '@langchain/core/messages';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DefaultLogger } from '@packages/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mockDeep, MockProxy } from 'vitest-mock-extended';
 
 import { GraphStatus } from '../../graphs/graphs.types';
 import {
@@ -13,14 +14,10 @@ import { NotificationsService } from './notifications.service';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
-  let mockLogger: Record<string, unknown>;
+  let mockLogger: MockProxy<DefaultLogger>;
 
   beforeEach(async () => {
-    mockLogger = {
-      debug: vi.fn(),
-      log: vi.fn(),
-      error: vi.fn(),
-    };
+    mockLogger = mockDeep<DefaultLogger>();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -130,6 +127,83 @@ describe('NotificationsService', () => {
       expect(failingSubscriber).toHaveBeenCalledWith(notification);
       expect(successfulSubscriber).toHaveBeenCalledWith(notification);
       expect(mockLogger.error).toHaveBeenCalled();
+    });
+
+    it('should not call subscribers and should log error when payload is invalid', async () => {
+      const invalidPayload = {
+        type: NotificationEvent.Graph,
+        // missing required graphId
+        data: { status: GraphStatus.Running },
+      } as unknown as IGraphNotification;
+
+      const subscriber = vi.fn().mockResolvedValue(undefined);
+      service.subscribe(subscriber);
+
+      await service.emit(invalidPayload);
+
+      expect(subscriber).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledOnce();
+    });
+
+    it('should not throw when payload is invalid', async () => {
+      const invalidPayload = {
+        type: NotificationEvent.Graph,
+        data: { status: GraphStatus.Running },
+      } as unknown as IGraphNotification;
+
+      await expect(service.emit(invalidPayload)).resolves.toBeUndefined();
+    });
+
+    it('should include eventType, eventKeys, envelope, and issues in error log metadata for invalid payload', async () => {
+      const invalidPayload = {
+        type: NotificationEvent.Graph,
+        data: { status: GraphStatus.Running },
+      } as unknown as IGraphNotification;
+
+      await service.emit(invalidPayload);
+
+      expect(mockLogger.error).toHaveBeenCalledOnce();
+      const [, , meta] = mockLogger.error.mock.calls[0] as [
+        unknown,
+        string,
+        Record<string, unknown>,
+      ];
+      expect(meta).toHaveProperty('eventType', NotificationEvent.Graph);
+      expect(meta).toHaveProperty('eventKeys');
+      expect(Array.isArray(meta.eventKeys)).toBe(true);
+      expect(meta).toHaveProperty('envelope');
+      expect(typeof meta.envelope).toBe('object');
+      expect(meta).toHaveProperty('issues');
+      expect(Array.isArray(meta.issues)).toBe(true);
+      // Must NOT include snippet or the data field
+      expect(meta).not.toHaveProperty('snippet');
+      expect(meta).not.toHaveProperty('data');
+    });
+
+    it('should NOT include the `data` field in the error log metadata for an invalid payload containing sensitive content', async () => {
+      const secretValue = 'supersecret-xyz';
+      const invalidPayload = {
+        type: NotificationEvent.AgentMessage,
+        // missing required graphId — this makes the payload invalid
+        data: {
+          messages: [new HumanMessage('user input')],
+          secretField: secretValue,
+        },
+      } as unknown as IAgentMessageNotification;
+
+      await service.emit(invalidPayload);
+
+      expect(mockLogger.error).toHaveBeenCalledOnce();
+      const [, , meta] = mockLogger.error.mock.calls[0] as [
+        unknown,
+        string,
+        Record<string, unknown>,
+      ];
+      // The sensitive value must not appear anywhere in the logged metadata
+      const serializedMeta = JSON.stringify(meta);
+      expect(serializedMeta).not.toContain(secretValue);
+      // The `data` key itself must not be present
+      expect(meta).not.toHaveProperty('data');
     });
 
     it('should handle empty messages array', async () => {

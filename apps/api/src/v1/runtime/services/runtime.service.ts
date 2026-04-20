@@ -9,6 +9,7 @@ import {
   GetRuntimesQueryDto,
   RuntimeHealthDto,
   RuntimeInstanceDto,
+  RuntimeInstanceStateDto,
 } from '../dto/runtime.dto';
 import { RuntimeInstanceEntity } from '../entity/runtime-instance.entity';
 import { RuntimeType } from '../runtime.types';
@@ -44,6 +45,36 @@ export class RuntimeService {
     });
 
     return instances.map((inst) => this.toDto(inst));
+  }
+
+  async getRuntimeState(
+    ctx: AppContextStorage,
+    runtimeId: string,
+  ): Promise<RuntimeInstanceStateDto> {
+    const userId = ctx.checkSub();
+
+    const instance = await this.runtimeInstanceDao.getOne({ id: runtimeId });
+    if (!instance) {
+      throw new NotFoundException('RUNTIME_INSTANCE_NOT_FOUND');
+    }
+
+    const thread = await this.threadsDao.getOne({
+      externalThreadId: instance.threadId,
+      createdBy: userId,
+    });
+    if (!thread) {
+      throw new NotFoundException('RUNTIME_INSTANCE_NOT_FOUND');
+    }
+
+    return {
+      id: instance.id,
+      status: instance.status,
+      startingPhase: instance.startingPhase,
+      errorCode: instance.errorCode,
+      lastError: instance.lastError,
+      lastUsedAt: instance.lastUsedAt.toISOString(),
+      updatedAt: instance.updatedAt.toISOString(),
+    };
   }
 
   async checkHealth(type: RuntimeType): Promise<RuntimeHealthDto> {

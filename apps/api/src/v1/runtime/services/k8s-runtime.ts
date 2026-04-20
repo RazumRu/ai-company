@@ -7,6 +7,7 @@ import { extractErrorMessage, InternalException } from '@packages/common';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
+  RuntimeStartingPhase,
   RuntimeStartParams,
 } from '../runtime.types';
 import { buildEnvPrefix, shellEscape } from '../runtime.utils';
@@ -326,6 +327,11 @@ export class K8sRuntime extends BaseRuntime {
           podName: claimed,
         });
 
+        this.emit({
+          type: 'phase',
+          data: { phase: RuntimeStartingPhase.ContainerCreated },
+        });
+
         const deadline = Date.now() + this.config.readyTimeoutMs;
         const ready = await this.waitForPodReady(deadline);
         if (!ready) {
@@ -335,6 +341,10 @@ export class K8sRuntime extends BaseRuntime {
           });
         }
 
+        this.emit({
+          type: 'phase',
+          data: { phase: RuntimeStartingPhase.Ready },
+        });
         this.emit({ type: 'start', data: { params } });
         return;
       }
@@ -358,7 +368,17 @@ export class K8sRuntime extends BaseRuntime {
     };
 
     try {
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.PullingImage },
+      });
+
       await this.createPodWithConflictHandling(params, labels);
+
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.ContainerCreated },
+      });
 
       const deadline = Date.now() + this.config.readyTimeoutMs;
       const ready = await this.waitForPodReady(deadline);
@@ -380,6 +400,10 @@ export class K8sRuntime extends BaseRuntime {
       }
 
       if (params.initScript) {
+        this.emit({
+          type: 'phase',
+          data: { phase: RuntimeStartingPhase.InitScript },
+        });
         await this.runInitScript(
           params.initScript,
           params.env,
@@ -387,6 +411,10 @@ export class K8sRuntime extends BaseRuntime {
         );
       }
 
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.Ready },
+      });
       this.emit({ type: 'start', data: { params } });
     } catch (error) {
       this.emit({ type: 'start', data: { params, error } });

@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Duplex, PassThrough } from 'node:stream';
 
-import type { DaytonaConfig } from '@daytonaio/sdk';
 import { Daytona, Sandbox } from '@daytonaio/sdk';
+import { extractErrorMessage } from '@packages/common';
 
 import { environment } from '../../../environments';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
+  RuntimeStartingPhase,
   RuntimeStartParams,
 } from '../runtime.types';
 import { buildEnvPrefix, shellEscape } from '../runtime.utils';
@@ -40,6 +41,18 @@ const HARD_TIMEOUT_MS = 3_600_000;
  * Only used in the streaming (runAsync: true) path for idle-timeout-aware execution.
  */
 const POLL_INTERVAL_MS = 200;
+
+/**
+ * Grace period before the snapshot fallback kicks in (ms).
+ * Only used in the streaming (runAsync: true) path.
+ */
+const SNAPSHOT_GRACE_MS = 1_000;
+
+/**
+ * Number of poll ticks between snapshot fallback checks.
+ * Only used in the streaming (runAsync: true) path.
+ */
+const SNAPSHOT_EVERY_N_TICKS = 10;
 
 /**
  * DaytonaRuntime using the @daytonaio/sdk
@@ -76,14 +89,6 @@ export class DaytonaRuntime extends BaseRuntime {
     this.logger = params?.logger;
   }
 
-  private buildDaytonaConfig(): DaytonaConfig {
-    return {
-      apiKey: this.config.apiKey || undefined,
-      apiUrl: this.config.apiUrl || undefined,
-      target: this.config.target || undefined,
-    };
-  }
-
   /**
    * Checks whether the Daytona API is reachable and responsive.
    * Performs a lightweight sandbox list call to verify connectivity.
@@ -103,7 +108,7 @@ export class DaytonaRuntime extends BaseRuntime {
     } catch (error) {
       return {
         healthy: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: extractErrorMessage(error),
       };
     }
   }
@@ -139,7 +144,11 @@ export class DaytonaRuntime extends BaseRuntime {
       return;
     }
 
-    this.daytona = new Daytona(this.buildDaytonaConfig());
+    this.daytona = new Daytona({
+      apiKey: this.config.apiKey || undefined,
+      apiUrl: this.config.apiUrl || undefined,
+      target: this.config.target || undefined,
+    });
 
     const sandboxName = params?.containerName || `rt-${randomUUID()}`;
     const snapshotOrImage = params?.image || this.snapshot;
@@ -153,6 +162,14 @@ export class DaytonaRuntime extends BaseRuntime {
             await this.daytona.start(existing, SANDBOX_CREATE_TIMEOUT_SECONDS);
           }
           this.sandbox = existing;
+          this.emit({
+            type: 'phase',
+            data: { phase: RuntimeStartingPhase.ContainerCreated },
+          });
+          this.emit({
+            type: 'phase',
+            data: { phase: RuntimeStartingPhase.Ready },
+          });
           this.emit({ type: 'start', data: { params: params || {} } });
           return;
         }
@@ -179,6 +196,11 @@ export class DaytonaRuntime extends BaseRuntime {
       // Disable auto-stop so long-running sandbox stays alive
       autoStopInterval: 0,
     };
+
+    this.emit({
+      type: 'phase',
+      data: { phase: RuntimeStartingPhase.PullingImage },
+    });
 
     try {
       this.sandbox = await this.createSandbox(commonParams, snapshotOrImage);
@@ -214,6 +236,11 @@ export class DaytonaRuntime extends BaseRuntime {
       }
     }
 
+    this.emit({
+      type: 'phase',
+      data: { phase: RuntimeStartingPhase.ContainerCreated },
+    });
+
     try {
       // Daytona overrides the image's ENTRYPOINT with its own agent process,
       // so the image entrypoint (e.g. runtime-entrypoint.sh that starts dockerd)
@@ -221,6 +248,10 @@ export class DaytonaRuntime extends BaseRuntime {
       await this.runImageEntrypoint(params?.env);
 
       if (params?.initScript) {
+        this.emit({
+          type: 'phase',
+          data: { phase: RuntimeStartingPhase.InitScript },
+        });
         await this.runInitScript(
           params.initScript,
           params.env,
@@ -228,6 +259,10 @@ export class DaytonaRuntime extends BaseRuntime {
         );
       }
 
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.Ready },
+      });
       this.emit({ type: 'start', data: { params: params || {} } });
     } catch (error) {
       this.emit({ type: 'start', data: { params: params || {}, error } });
@@ -359,7 +394,7 @@ export class DaytonaRuntime extends BaseRuntime {
         this.sessionRecreatePromise = this.recreateSession(params.sessionId);
         await this.sessionRecreatePromise;
 
-        const err = error instanceof Error ? error.message : String(error);
+        const err = extractErrorMessage(error);
         const result: RuntimeExecResult = {
           exitCode: 124,
           stdout: '',
@@ -668,7 +703,7 @@ export class DaytonaRuntime extends BaseRuntime {
             };
       } catch (error) {
         // SDK error (timeout, network, etc.) — return as failed result
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = extractErrorMessage(error);
         return {
           exitCode: 124,
           stdout: '',
@@ -929,10 +964,6 @@ export class DaytonaRuntime extends BaseRuntime {
           // The guard `stdout === '' && stderr === ''` ensures we only apply the
           // fallback when the WS stream has not delivered any data — avoiding false
           // positives for long-running commands that are actively streaming output.
-          // Snapshot fallback constants (inlined — only used in streaming path)
-          const SNAPSHOT_GRACE_MS = 1_000;
-          const SNAPSHOT_EVERY_N_TICKS = 10;
-
           if (
             !params.signal?.aborted &&
             now - startAt >= SNAPSHOT_GRACE_MS &&
@@ -1071,7 +1102,7 @@ export class DaytonaRuntime extends BaseRuntime {
    * snapshot image in the runner's local Docker registry.
    */
   private isStaleSnapshotError(error: unknown): boolean {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = extractErrorMessage(error);
     return msg.includes('pull access denied');
   }
 
@@ -1083,7 +1114,7 @@ export class DaytonaRuntime extends BaseRuntime {
     if (!error) {
       return null;
     }
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = extractErrorMessage(error);
     const match = msg.match(/pull access denied for (\S+),/);
     return match?.[1] ?? null;
   }
@@ -1134,9 +1165,7 @@ export class DaytonaRuntime extends BaseRuntime {
       }
     } catch (err) {
       this.logger?.warn(
-        `[DaytonaRuntime] Failed to invalidate stale snapshot: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        `[DaytonaRuntime] Failed to invalidate stale snapshot: ${extractErrorMessage(err)}`,
       );
     }
   }
@@ -1153,9 +1182,7 @@ export class DaytonaRuntime extends BaseRuntime {
       this.activeSessions.add(sessionId);
     } catch (error) {
       this.logger?.warn(
-        `[DaytonaRuntime] Failed to recreate session "${sessionId}": ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        `[DaytonaRuntime] Failed to recreate session "${sessionId}": ${extractErrorMessage(error)}`,
       );
     }
   }

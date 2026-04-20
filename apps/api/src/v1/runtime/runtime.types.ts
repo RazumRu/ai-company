@@ -70,6 +70,21 @@ export enum RuntimeInstanceStatus {
   Failed = 'Failed',
 }
 
+export enum RuntimeStartingPhase {
+  PullingImage = 'PullingImage',
+  ContainerCreated = 'ContainerCreated',
+  InitScript = 'InitScript',
+  Ready = 'Ready',
+}
+
+export enum RuntimeErrorCode {
+  ProviderAuth = 'ProviderAuth',
+  RuntimeIo = 'RuntimeIo',
+  ImagePull = 'ImagePull',
+  Timeout = 'Timeout',
+  Unknown = 'Unknown',
+}
+
 export interface ProvideRuntimeInstanceParams {
   graphId?: string | null;
   runtimeNodeId: string;
