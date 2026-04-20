@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Duplex, PassThrough } from 'node:stream';
 
-import { BadRequestException } from '@packages/common';
+import { BadRequestException, extractErrorMessage } from '@packages/common';
 import Docker from 'dockerode';
 
 import { environment } from '../../../environments';
 import {
   RuntimeExecParams,
   RuntimeExecResult,
+  RuntimeStartingPhase,
   RuntimeStartParams,
 } from '../runtime.types';
 import { buildEnvPrefix } from '../runtime.utils';
@@ -590,8 +591,7 @@ export class DockerRuntime extends BaseRuntime {
     try {
       return await createFn();
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : String(error);
+      const errorMessage = extractErrorMessage(error);
       if (
         errorMessage.includes('already in use') ||
         errorMessage.includes('name is already')
@@ -647,6 +647,10 @@ export class DockerRuntime extends BaseRuntime {
       await DockerRuntime.stopByInstance(existingContainer);
     }
 
+    this.emit({
+      type: 'phase',
+      data: { phase: RuntimeStartingPhase.PullingImage },
+    });
     await this.ensureImage(imageName);
     const cmd = ['sh', '-lc', 'while :; do sleep 2147483; done'];
 
@@ -712,7 +716,16 @@ export class DockerRuntime extends BaseRuntime {
       this.container = container;
       this.containerWorkdir = this.getWorkdir(params?.workdir);
 
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.ContainerCreated },
+      });
+
       if (params?.initScript) {
+        this.emit({
+          type: 'phase',
+          data: { phase: RuntimeStartingPhase.InitScript },
+        });
         await this.runInitScript(
           params.initScript,
           params.env,
@@ -720,6 +733,10 @@ export class DockerRuntime extends BaseRuntime {
         );
       }
 
+      this.emit({
+        type: 'phase',
+        data: { phase: RuntimeStartingPhase.Ready },
+      });
       this.emit({ type: 'start', data: { params: params || {} } });
     } catch (error) {
       this.emit({ type: 'start', data: { params: params || {}, error } });
@@ -772,14 +789,12 @@ export class DockerRuntime extends BaseRuntime {
 
     if (params.sessionId) {
       try {
-        const result = await this.execInSession(params, fullWorkdir, env);
-        return result;
+        return await this.execInSession(params, fullWorkdir, env);
       } catch (error) {
-        const err = error instanceof Error ? error.message : String(error);
         return {
           exitCode: 124,
           stdout: '',
-          stderr: err,
+          stderr: extractErrorMessage(error),
           fail: true,
           execPath: fullWorkdir,
         };

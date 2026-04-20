@@ -199,7 +199,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -491,7 +513,29 @@
         }
       ],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -703,7 +747,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -949,7 +1015,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -1232,7 +1320,29 @@
         }
       ],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -1569,7 +1679,29 @@
         }
       ],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -1829,7 +1961,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -2151,7 +2305,29 @@
           "deleteRule": "cascade"
         }
       },
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -2343,7 +2519,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -2678,7 +2876,29 @@
           "deleteRule": "cascade"
         }
       },
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -2902,6 +3122,67 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "boolean"
+        },
+        "starting_phase": {
+          "name": "starting_phase",
+          "type": "runtime_instances_starting_phase_enum",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ],
+          "mappedType": "unknown",
+          "nativeEnumName": "runtime_instances_starting_phase_enum"
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "runtime_instances_error_code_enum",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ],
+          "mappedType": "unknown",
+          "nativeEnumName": "runtime_instances_error_code_enum"
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
         }
       },
       "indexes": [
@@ -2993,7 +3274,29 @@
         }
       ],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -3174,7 +3477,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -3468,7 +3793,29 @@
           "deleteRule": "cascade"
         }
       },
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -3580,7 +3927,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -3692,7 +4061,29 @@
       ],
       "checks": [],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     },
     {
@@ -3829,10 +4220,54 @@
         }
       ],
       "foreignKeys": {},
-      "nativeEnums": {},
+      "nativeEnums": {
+        "runtime_instances_error_code_enum": {
+          "name": "runtime_instances_error_code_enum",
+          "schema": "public",
+          "items": [
+            "ProviderAuth",
+            "RuntimeIo",
+            "ImagePull",
+            "Timeout",
+            "Unknown"
+          ]
+        },
+        "runtime_instances_starting_phase_enum": {
+          "name": "runtime_instances_starting_phase_enum",
+          "schema": "public",
+          "items": [
+            "PullingImage",
+            "ContainerCreated",
+            "InitScript",
+            "Ready"
+          ]
+        }
+      },
       "comment": null
     }
   ],
   "views": [],
-  "nativeEnums": {}
+  "nativeEnums": {
+    "runtime_instances_error_code_enum": {
+      "name": "runtime_instances_error_code_enum",
+      "schema": "public",
+      "items": [
+        "ProviderAuth",
+        "RuntimeIo",
+        "ImagePull",
+        "Timeout",
+        "Unknown"
+      ]
+    },
+    "runtime_instances_starting_phase_enum": {
+      "name": "runtime_instances_starting_phase_enum",
+      "schema": "public",
+      "items": [
+        "PullingImage",
+        "ContainerCreated",
+        "InitScript",
+        "Ready"
+      ]
+    }
+  }
 }

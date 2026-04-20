@@ -1944,6 +1944,63 @@ describe('SimpleAgent', () => {
       expect(activeNames).not.toContain('mcp-shell');
       expect(activeNames).not.toContain('mcp-search');
     });
+
+    describe('per-thread initial state restore', () => {
+      it('loadTool()-moved tool is restored to deferred when a fresh thread starts', async () => {
+        const mockTool = makeMockTool('carryover-tool');
+        agent.addTool(mockTool);
+        await agent.initTools(baseConfig);
+
+        // Thread A: load the deferred tool
+        agent['ensureInitialToolStateForThread']('thread-A');
+        agent.loadTool('carryover-tool');
+        expect(agent.getTools().map((t) => t.name)).toContain('carryover-tool');
+        expect(agent.getDeferredTools().has('carryover-tool')).toBe(false);
+
+        // Thread B: fresh thread — tool must be back in deferred, not active
+        agent['ensureInitialToolStateForThread']('thread-B');
+        expect(agent.getTools().map((t) => t.name)).not.toContain(
+          'carryover-tool',
+        );
+        expect(agent.getDeferredTools().has('carryover-tool')).toBe(true);
+      });
+
+      it('does not reset when the same thread invokes a second time', async () => {
+        const mockTool = makeMockTool('persist-in-thread');
+        agent.addTool(mockTool);
+        await agent.initTools(baseConfig);
+
+        agent['ensureInitialToolStateForThread']('thread-A');
+        agent.loadTool('persist-in-thread');
+        expect(agent.getTools().map((t) => t.name)).toContain(
+          'persist-in-thread',
+        );
+
+        // Same thread again — no reset
+        agent['ensureInitialToolStateForThread']('thread-A');
+        expect(agent.getTools().map((t) => t.name)).toContain(
+          'persist-in-thread',
+        );
+      });
+
+      it('mutates activeTools array in place so node references stay valid', async () => {
+        const mockTool = makeMockTool('shared-ref');
+        agent.addTool(mockTool);
+        await agent.initTools(baseConfig);
+
+        const activeToolsRef = agent.getTools();
+
+        agent['ensureInitialToolStateForThread']('thread-A');
+        agent.loadTool('shared-ref');
+        expect(activeToolsRef).toBe(agent.getTools());
+        expect(activeToolsRef.map((t) => t.name)).toContain('shared-ref');
+
+        agent['ensureInitialToolStateForThread']('thread-B');
+        // Same reference, but contents reset
+        expect(activeToolsRef).toBe(agent.getTools());
+        expect(activeToolsRef.map((t) => t.name)).not.toContain('shared-ref');
+      });
+    });
   });
 
   describe('nodeAdditionalMetadataUpdate events', () => {

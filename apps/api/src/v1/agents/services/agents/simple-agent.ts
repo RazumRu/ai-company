@@ -87,6 +87,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
   private mcpServices: BaseMcp[] = [];
   private deferredTools: Map<string, DeferredToolEntry> = new Map();
   private activeTools: DynamicStructuredTool[] = [];
+  private initialDeferredSnapshot?: Map<string, DeferredToolEntry>;
+  private initialToolsSnapshot?: Map<string, DynamicStructuredTool>;
+  private seenThreads = new Set<string>();
 
   constructor(
     private readonly checkpointer: PgCheckpointSaver,
@@ -152,6 +155,47 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
 
     // ----- build shared mutable activeTools array -----
     this.activeTools = Array.from(this.tools.values());
+
+    // ----- snapshot the post-init state for per-thread reset -----
+    // SimpleAgent instances are shared across all threads for a graph. Without
+    // a reset, a tool auto-loaded in one thread stays in activeTools forever,
+    // but the <available-tools> block in the baked system prompt still lists
+    // it as deferred — so subsequent threads redundantly call tool_search.
+    this.initialDeferredSnapshot = new Map(this.deferredTools);
+    this.initialToolsSnapshot = new Map(this.tools);
+    this.seenThreads.clear();
+  }
+
+  /**
+   * Restore deferredTools and activeTools to the post-initTools snapshot the
+   * first time a given thread invokes the agent. Mutates activeTools in place
+   * so the array reference held by InvokeLlmNode and ToolExecutorNode stays
+   * valid.
+   */
+  private ensureInitialToolStateForThread(threadId: string): void {
+    if (this.seenThreads.has(threadId)) {
+      return;
+    }
+    this.seenThreads.add(threadId);
+
+    if (!this.initialDeferredSnapshot || !this.initialToolsSnapshot) {
+      return;
+    }
+
+    this.deferredTools.clear();
+    for (const [name, entry] of this.initialDeferredSnapshot) {
+      this.deferredTools.set(name, entry);
+    }
+
+    this.tools.clear();
+    for (const [name, tool] of this.initialToolsSnapshot) {
+      this.tools.set(name, tool);
+    }
+
+    this.activeTools.length = 0;
+    for (const tool of this.tools.values()) {
+      this.activeTools.push(tool);
+    }
   }
 
   protected async buildGraph(config: SimpleAgentSchemaType) {
@@ -931,6 +975,8 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       throw new Error('Thread is currently running');
     }
 
+    this.ensureInitialToolStateForThread(threadId);
+
     const configuredIterations = config.maxIterations ?? 25;
     const requestedRecursionLimit = runnableConfig?.recursionLimit;
     const recursionLimit =
@@ -1529,6 +1575,9 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     super.resetTools();
     this.deferredTools.clear();
     this.activeTools = [];
+    this.initialDeferredSnapshot = undefined;
+    this.initialToolsSnapshot = undefined;
+    this.seenThreads.clear();
     this.graph = undefined; // Force graph rebuild so nodes get fresh activeTools reference
   }
 }

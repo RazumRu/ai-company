@@ -1,4 +1,5 @@
-import type { BaseMessage } from '@langchain/core/messages';
+import { BaseMessage } from '@langchain/core/messages';
+import { z } from 'zod';
 
 import type { TriggerNodeInfoType } from '../graphs/dto/graphs.dto';
 import { GraphRevisionEntity } from '../graphs/entity/graph-revision.entity';
@@ -8,7 +9,12 @@ import {
   GraphSchemaType,
   GraphStatus,
 } from '../graphs/graphs.types';
-import { ThreadDto } from '../threads/dto/threads.dto';
+import {
+  RuntimeErrorCode,
+  RuntimeInstanceStatus,
+  RuntimeStartingPhase,
+} from '../runtime/runtime.types';
+import { ThreadSchema } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
 
@@ -31,6 +37,22 @@ export enum NotificationEvent {
   ThreadStoreUpdate = 'thread.store.update',
 }
 
+// ---------------------------------------------------------------------------
+// Shared envelope fields — present on every notification. Payloads that carry
+// entity instances or complex LangChain types are represented via
+// `z.instanceof(...)` / `z.custom(...)` so the validator catches "wrong shape
+// entirely" mistakes without duplicating entity field definitions.
+// ---------------------------------------------------------------------------
+
+const EnvelopeShape = {
+  graphId: z.string(),
+  projectId: z.string().optional(),
+  nodeId: z.string().optional(),
+  threadId: z.string().optional(),
+  parentThreadId: z.string().optional(),
+  runId: z.string().optional(),
+};
+
 export interface INotification<T> {
   type: NotificationEvent;
   data: T;
@@ -42,180 +64,288 @@ export interface INotification<T> {
   runId?: string;
 }
 
-export interface IGraphNotification extends INotification<{
-  status: GraphStatus;
-  schema?: GraphSchemaType;
-}> {
-  type: NotificationEvent.Graph;
-}
+// ---------------------------------------------------------------------------
+// Per-event schemas
+// ---------------------------------------------------------------------------
 
-export interface IAgentMessageData {
-  messages: BaseMessage[];
-}
+export const GraphNotificationDataSchema = z.object({
+  status: z.nativeEnum(GraphStatus),
+  schema: z.custom<GraphSchemaType>().optional(),
+});
+export const GraphNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.Graph),
+  data: GraphNotificationDataSchema,
+  ...EnvelopeShape,
+});
+export type IGraphNotification = z.infer<typeof GraphNotificationSchema>;
 
-export interface IAgentMessageNotification extends INotification<IAgentMessageData> {
-  type: NotificationEvent.AgentMessage;
-  nodeId: string;
-  threadId: string;
-  parentThreadId: string;
-}
+export const AgentMessageDataSchema = z.object({
+  messages: z.array(z.custom<BaseMessage>((v) => v instanceof BaseMessage)),
+});
+export const AgentMessageNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.AgentMessage),
+  data: AgentMessageDataSchema,
+  ...EnvelopeShape,
+  nodeId: z.string(),
+  threadId: z.string(),
+  parentThreadId: z.string(),
+});
+export type IAgentMessageData = z.infer<typeof AgentMessageDataSchema>;
+export type IAgentMessageNotification = z.infer<
+  typeof AgentMessageNotificationSchema
+>;
 
-export interface IAgentInvokeData {
-  messages: BaseMessage[];
-}
+export const AgentInvokeDataSchema = z.object({
+  messages: z.array(z.custom<BaseMessage>((v) => v instanceof BaseMessage)),
+});
+export const AgentInvokeNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.AgentInvoke),
+  data: AgentInvokeDataSchema,
+  ...EnvelopeShape,
+  nodeId: z.string(),
+  threadId: z.string(),
+  parentThreadId: z.string(),
+  source: z.string().optional(),
+  threadMetadata: z.record(z.string(), z.unknown()).optional(),
+});
+export type IAgentInvokeData = z.infer<typeof AgentInvokeDataSchema>;
+export type IAgentInvokeNotification = z.infer<
+  typeof AgentInvokeNotificationSchema
+>;
 
-export interface IAgentInvokeNotification extends INotification<IAgentInvokeData> {
-  type: NotificationEvent.AgentInvoke;
-  nodeId: string;
-  threadId: string;
-  parentThreadId: string;
-  source?: string;
-  threadMetadata?: Record<string, unknown>;
-}
+export const AgentStateUpdateDataSchema = z.object({
+  summary: z.string().optional(),
+  done: z.boolean().optional(),
+  needsMoreInfo: z.boolean().optional(),
+  toolUsageGuardActivated: z.boolean().optional(),
+  toolUsageGuardActivatedCount: z.number().optional(),
+  inputTokens: z.number().optional(),
+  cachedInputTokens: z.number().optional(),
+  outputTokens: z.number().optional(),
+  reasoningTokens: z.number().optional(),
+  totalTokens: z.number().optional(),
+  totalPrice: z.number().optional(),
+  currentContext: z.number().optional(),
+  effectiveCostLimitUsd: z.number().nullable().optional(),
+});
+export const AgentStateUpdateNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.AgentStateUpdate),
+  data: AgentStateUpdateDataSchema,
+  ...EnvelopeShape,
+  nodeId: z.string(),
+  threadId: z.string(),
+  parentThreadId: z.string(),
+});
+export type IAgentStateUpdateData = z.infer<typeof AgentStateUpdateDataSchema>;
+export type IAgentStateUpdateNotification = z.infer<
+  typeof AgentStateUpdateNotificationSchema
+>;
 
-export interface IAgentStateUpdateData {
-  summary?: string;
-  done?: boolean;
-  needsMoreInfo?: boolean;
-  toolUsageGuardActivated?: boolean;
-  toolUsageGuardActivatedCount?: number;
-  inputTokens?: number;
-  cachedInputTokens?: number;
-  outputTokens?: number;
-  reasoningTokens?: number;
-  totalTokens?: number;
-  totalPrice?: number;
-  currentContext?: number;
-  effectiveCostLimitUsd?: number | null;
-}
+export const ThreadCreateNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.ThreadCreate),
+  data: z.instanceof(ThreadEntity),
+  ...EnvelopeShape,
+  threadId: z.string(),
+  parentThreadId: z.string().optional(),
+  internalThreadId: z.string(),
+});
+export type IThreadCreateNotification = z.infer<
+  typeof ThreadCreateNotificationSchema
+>;
 
-export interface IAgentStateUpdateNotification extends INotification<IAgentStateUpdateData> {
-  type: NotificationEvent.AgentStateUpdate;
-  nodeId: string;
-  threadId: string;
-  parentThreadId: string;
-}
+export const ThreadUpdateDataSchema = z.object({
+  status: z.nativeEnum(ThreadStatus).optional(),
+  name: z.string().optional(),
+  scheduledResumeAt: z.string().optional(),
+  waitReason: z.string().optional(),
+  stopReason: z.string().nullable().optional(),
+  stopCostUsd: z.number().nullable().optional(),
+});
+export const ThreadUpdateNotificationDataSchema = z.union([
+  ThreadSchema, // tried first — full thread DTO
+  ThreadUpdateDataSchema, // fallback for partial updates
+]);
+export const ThreadUpdateNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.ThreadUpdate),
+  data: ThreadUpdateNotificationDataSchema,
+  ...EnvelopeShape,
+  nodeId: z.string().optional(),
+  threadId: z.string(),
+  parentThreadId: z.string().optional(),
+});
+export type IThreadUpdateData = z.infer<typeof ThreadUpdateDataSchema>;
+export type ThreadUpdateNotificationData = z.infer<
+  typeof ThreadUpdateNotificationDataSchema
+>;
+export type IThreadUpdateNotification = z.infer<
+  typeof ThreadUpdateNotificationSchema
+>;
 
-export interface IThreadCreateNotification extends INotification<ThreadEntity> {
-  type: NotificationEvent.ThreadCreate;
-  threadId: string;
-  parentThreadId?: string;
-  internalThreadId: string;
-}
+export const ThreadDeleteNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.ThreadDelete),
+  data: z.instanceof(ThreadEntity),
+  ...EnvelopeShape,
+  threadId: z.string(),
+  internalThreadId: z.string(),
+});
+export type IThreadDeleteNotification = z.infer<
+  typeof ThreadDeleteNotificationSchema
+>;
 
-export interface IThreadUpdateData {
-  status?: ThreadStatus;
-  name?: string;
-  scheduledResumeAt?: string;
-  waitReason?: string;
-  stopReason?: string | null;
-  stopCostUsd?: number | null;
-}
+export const GraphNodeUpdateDataSchema = z.object({
+  status: z.nativeEnum(GraphNodeStatus),
+  error: z.string().nullable().optional(),
+  metadata: z.custom<GraphExecutionMetadata>().optional(),
+  additionalNodeMetadata: z.record(z.string(), z.unknown()).optional(),
+});
+export const GraphNodeUpdateNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.GraphNodeUpdate),
+  data: GraphNodeUpdateDataSchema,
+  ...EnvelopeShape,
+  nodeId: z.string(),
+});
+export type IGraphNodeUpdateData = z.infer<typeof GraphNodeUpdateDataSchema>;
+export type IGraphNodeUpdateNotification = z.infer<
+  typeof GraphNodeUpdateNotificationSchema
+>;
 
-export type ThreadUpdateNotificationData = IThreadUpdateData | ThreadDto;
+export const GraphRevisionCreateNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.GraphRevisionCreate),
+  data: z.instanceof(GraphRevisionEntity),
+  ...EnvelopeShape,
+});
+export const GraphRevisionApplyingNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.GraphRevisionApplying),
+  data: z.instanceof(GraphRevisionEntity),
+  ...EnvelopeShape,
+});
+export const GraphRevisionAppliedNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.GraphRevisionApplied),
+  data: z.instanceof(GraphRevisionEntity),
+  ...EnvelopeShape,
+});
+export const GraphRevisionFailedNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.GraphRevisionFailed),
+  data: z.instanceof(GraphRevisionEntity),
+  ...EnvelopeShape,
+});
+export type IGraphRevisionNotification = z.infer<
+  | typeof GraphRevisionCreateNotificationSchema
+  | typeof GraphRevisionApplyingNotificationSchema
+  | typeof GraphRevisionAppliedNotificationSchema
+  | typeof GraphRevisionFailedNotificationSchema
+>;
 
-export interface IThreadUpdateNotification extends INotification<ThreadUpdateNotificationData> {
-  type: NotificationEvent.ThreadUpdate;
-  nodeId?: string;
-  threadId: string;
-  parentThreadId?: string;
-}
+export const GraphRevisionProgressDataSchema = z.object({
+  revisionId: z.string(),
+  graphId: z.string(),
+  toVersion: z.string(),
+  currentNode: z.number(),
+  totalNodes: z.number(),
+  nodeId: z.string(),
+  phase: z.union([z.literal('rebuilding'), z.literal('completed')]),
+});
+export const GraphRevisionProgressNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.GraphRevisionProgress),
+  data: GraphRevisionProgressDataSchema,
+  ...EnvelopeShape,
+});
+export type IGraphRevisionProgressData = z.infer<
+  typeof GraphRevisionProgressDataSchema
+>;
+export type IGraphRevisionProgressNotification = z.infer<
+  typeof GraphRevisionProgressNotificationSchema
+>;
 
-export interface IThreadDeleteNotification extends INotification<ThreadEntity> {
-  type: NotificationEvent.ThreadDelete;
-  threadId: string;
-  internalThreadId: string;
-}
+export const RuntimeStatusDataSchema = z.object({
+  runtimeId: z.string(),
+  threadId: z.string(),
+  nodeId: z.string(),
+  status: z.nativeEnum(RuntimeInstanceStatus),
+  runtimeType: z.string(),
+  message: z.string().optional(),
+  startingPhase: z.nativeEnum(RuntimeStartingPhase).nullable().optional(),
+  errorCode: z.nativeEnum(RuntimeErrorCode).nullable().optional(),
+  lastError: z.string().nullable().optional(),
+});
+export const RuntimeStatusNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.RuntimeStatus),
+  data: RuntimeStatusDataSchema,
+  ...EnvelopeShape,
+});
+export type IRuntimeStatusData = z.infer<typeof RuntimeStatusDataSchema>;
+export type IRuntimeStatusNotification = z.infer<
+  typeof RuntimeStatusNotificationSchema
+>;
 
-export interface IGraphNodeUpdateData {
-  status: GraphNodeStatus;
-  error?: string | null;
-  metadata?: GraphExecutionMetadata;
-  additionalNodeMetadata?: Record<string, unknown>;
-}
+export const GraphPreviewPayloadSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  triggerNodes: z.array(z.custom<TriggerNodeInfoType>()),
+  nodeDisplayNames: z.record(z.string(), z.string()),
+  nodeCount: z.number(),
+  edgeCount: z.number(),
+  agents: z.array(
+    z.object({
+      nodeId: z.string(),
+      name: z.string(),
+      description: z.string().optional(),
+    }),
+  ),
+  version: z.string(),
+  targetVersion: z.string(),
+  error: z.string().nullable().optional(),
+});
+export const GraphPreviewNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.GraphPreview),
+  data: GraphPreviewPayloadSchema,
+  ...EnvelopeShape,
+});
+export type GraphPreviewPayload = z.infer<typeof GraphPreviewPayloadSchema>;
+export type IGraphPreviewNotification = z.infer<
+  typeof GraphPreviewNotificationSchema
+>;
 
-export interface IGraphNodeUpdateNotification extends INotification<IGraphNodeUpdateData> {
-  type: NotificationEvent.GraphNodeUpdate;
-  nodeId: string;
-}
+export const ThreadStoreUpdateDataSchema = z.object({
+  threadId: z.string(),
+  namespace: z.string(),
+  key: z.string(),
+  mode: z.union([z.literal('kv'), z.literal('append')]),
+  action: z.union([z.literal('put'), z.literal('append'), z.literal('delete')]),
+  authorAgentId: z.string().nullable().optional(),
+});
+export const ThreadStoreUpdateNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.ThreadStoreUpdate),
+  data: ThreadStoreUpdateDataSchema,
+  ...EnvelopeShape,
+  threadId: z.string(),
+});
+export type IThreadStoreUpdateData = z.infer<typeof ThreadStoreUpdateDataSchema>;
+export type IThreadStoreUpdateNotification = z.infer<
+  typeof ThreadStoreUpdateNotificationSchema
+>;
 
-export interface IGraphRevisionNotification extends INotification<GraphRevisionEntity> {
-  type:
-    | NotificationEvent.GraphRevisionCreate
-    | NotificationEvent.GraphRevisionApplying
-    | NotificationEvent.GraphRevisionApplied
-    | NotificationEvent.GraphRevisionFailed;
-}
+// ---------------------------------------------------------------------------
+// Top-level union — discriminated by `type` for fast dispatch.
+// ---------------------------------------------------------------------------
 
-export interface IGraphRevisionProgressData {
-  revisionId: string;
-  graphId: string;
-  toVersion: string;
-  currentNode: number;
-  totalNodes: number;
-  nodeId: string;
-  phase: 'rebuilding' | 'completed';
-}
+export const NotificationSchema = z.discriminatedUnion('type', [
+  GraphNotificationSchema,
+  AgentMessageNotificationSchema,
+  AgentInvokeNotificationSchema,
+  AgentStateUpdateNotificationSchema,
+  ThreadCreateNotificationSchema,
+  ThreadUpdateNotificationSchema,
+  ThreadDeleteNotificationSchema,
+  GraphNodeUpdateNotificationSchema,
+  GraphRevisionCreateNotificationSchema,
+  GraphRevisionApplyingNotificationSchema,
+  GraphRevisionAppliedNotificationSchema,
+  GraphRevisionFailedNotificationSchema,
+  GraphRevisionProgressNotificationSchema,
+  RuntimeStatusNotificationSchema,
+  GraphPreviewNotificationSchema,
+  ThreadStoreUpdateNotificationSchema,
+]);
 
-export interface IGraphRevisionProgressNotification extends INotification<IGraphRevisionProgressData> {
-  type: NotificationEvent.GraphRevisionProgress;
-}
-
-export interface IRuntimeStatusData {
-  runtimeId: string;
-  threadId: string;
-  nodeId: string;
-  status: 'Starting' | 'Running' | 'Stopping' | 'Stopped' | 'Failed';
-  runtimeType: string;
-  message?: string;
-}
-
-export interface IRuntimeStatusNotification extends INotification<IRuntimeStatusData> {
-  type: NotificationEvent.RuntimeStatus;
-}
-
-export interface GraphPreviewPayload {
-  id: string;
-  status: string;
-  triggerNodes: TriggerNodeInfoType[];
-  nodeDisplayNames: Record<string, string>;
-  nodeCount: number;
-  edgeCount: number;
-  agents: { nodeId: string; name: string; description?: string }[];
-  version: string;
-  targetVersion: string;
-  error?: string | null;
-}
-
-export interface IGraphPreviewNotification extends INotification<GraphPreviewPayload> {
-  type: NotificationEvent.GraphPreview;
-}
-
-export interface IThreadStoreUpdateData {
-  threadId: string;
-  namespace: string;
-  key: string;
-  mode: 'kv' | 'append';
-  action: 'put' | 'append' | 'delete';
-  authorAgentId?: string | null;
-}
-
-export interface IThreadStoreUpdateNotification extends INotification<IThreadStoreUpdateData> {
-  type: NotificationEvent.ThreadStoreUpdate;
-  threadId: string;
-}
-
-export type Notification =
-  | IGraphNotification
-  | IAgentMessageNotification
-  | IAgentInvokeNotification
-  | IAgentStateUpdateNotification
-  | IThreadCreateNotification
-  | IThreadUpdateNotification
-  | IThreadDeleteNotification
-  | IGraphNodeUpdateNotification
-  | IGraphRevisionNotification
-  | IGraphRevisionProgressNotification
-  | IRuntimeStatusNotification
-  | IGraphPreviewNotification
-  | IThreadStoreUpdateNotification;
+export type Notification = z.infer<typeof NotificationSchema>;

@@ -113,7 +113,10 @@ describe('RuntimeProvider', () => {
   describe('ensureRuntimeForRecord label building', () => {
     function buildProviderWithStubRuntime(startSpy: ReturnType<typeof vi.fn>) {
       const provider = buildProvider(null);
-      const fakeRuntime = { start: startSpy } as unknown as BaseRuntime;
+      const fakeRuntime = {
+        start: startSpy,
+        subscribe: vi.fn().mockReturnValue(() => undefined),
+      } as unknown as BaseRuntime;
       vi.spyOn(
         provider as unknown as {
           resolveRuntimeByType: (type: RuntimeType) => BaseRuntime;
