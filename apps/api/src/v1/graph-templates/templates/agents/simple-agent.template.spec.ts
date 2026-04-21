@@ -56,7 +56,9 @@ describe('SimpleAgentTemplate', () => {
       resetTools: vi.fn(),
       run: vi.fn(),
       setConfig: vi.fn(),
-      initTools: vi.fn().mockResolvedValue(undefined),
+      initTools: vi
+        .fn()
+        .mockResolvedValue({ builtInToolGroupInstructions: [] }),
       setMcpServices: vi.fn(),
       ensureGraphBuilt: vi.fn(),
       updateToolsSnapshot: vi.fn(),

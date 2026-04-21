@@ -14,6 +14,7 @@ import {
   RuntimeInstanceStatus,
   RuntimeStartingPhase,
 } from '../runtime/runtime.types';
+import { ThreadStoreEntryMode } from '../thread-store/thread-store.types';
 import { ThreadSchema } from '../threads/dto/threads.dto';
 import { ThreadEntity } from '../threads/entity/thread.entity';
 import { ThreadStatus } from '../threads/threads.types';
@@ -34,6 +35,7 @@ export enum NotificationEvent {
   GraphRevisionProgress = 'graph.revision.progress',
   RuntimeStatus = 'runtime.status',
   GraphPreview = 'graph.preview',
+  ThreadStoreUpdate = 'thread.store.update',
 }
 
 // ---------------------------------------------------------------------------
@@ -305,6 +307,27 @@ export type IGraphPreviewNotification = z.infer<
   typeof GraphPreviewNotificationSchema
 >;
 
+export const ThreadStoreUpdateDataSchema = z.object({
+  externalThreadId: z.string(),
+  namespace: z.string(),
+  key: z.string(),
+  mode: z.nativeEnum(ThreadStoreEntryMode),
+  action: z.union([z.literal('put'), z.literal('append'), z.literal('delete')]),
+  authorAgentId: z.string().nullable().optional(),
+});
+export const ThreadStoreUpdateNotificationSchema = z.object({
+  type: z.literal(NotificationEvent.ThreadStoreUpdate),
+  data: ThreadStoreUpdateDataSchema,
+  ...EnvelopeShape,
+  threadId: z.string(),
+});
+export type IThreadStoreUpdateData = z.infer<
+  typeof ThreadStoreUpdateDataSchema
+>;
+export type IThreadStoreUpdateNotification = z.infer<
+  typeof ThreadStoreUpdateNotificationSchema
+>;
+
 // ---------------------------------------------------------------------------
 // Top-level union — discriminated by `type` for fast dispatch.
 // ---------------------------------------------------------------------------
@@ -325,6 +348,7 @@ export const NotificationSchema = z.discriminatedUnion('type', [
   GraphRevisionProgressNotificationSchema,
   RuntimeStatusNotificationSchema,
   GraphPreviewNotificationSchema,
+  ThreadStoreUpdateNotificationSchema,
 ]);
 
 export type Notification = z.infer<typeof NotificationSchema>;

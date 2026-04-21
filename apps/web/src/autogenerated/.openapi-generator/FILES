@@ -61,6 +61,7 @@ docs/LiteLlmProvidersResponseDto.md
 docs/LiteLlmProvidersResponseDtoProvidersInner.md
 docs/LitellmApi.md
 docs/ModelDefaultsDto.md
+docs/NamespaceSummaryDto.md
 docs/OAuthLinkRequestDto.md
 docs/ProjectDto.md
 docs/ProjectsApi.md
@@ -68,6 +69,7 @@ docs/RepoIndexDto.md
 docs/ResumeThreadDto.md
 docs/RuntimeHealthDto.md
 docs/RuntimeInstanceDto.md
+docs/RuntimeInstanceStateDto.md
 docs/RuntimesApi.md
 docs/SecretResponseDto.md
 docs/SecretsApi.md
@@ -105,6 +107,8 @@ docs/ThreadMessageDtoMessageOneOf3.md
 docs/ThreadMessageDtoMessageOneOf4.md
 docs/ThreadMessageDtoMessageOneOfContent.md
 docs/ThreadMessageDtoRequestTokenUsage.md
+docs/ThreadStoreApi.md
+docs/ThreadStoreEntryDto.md
 docs/ThreadUsageStatisticsDto.md
 docs/ThreadUsageStatisticsDtoByNodeValue.md
 docs/ThreadUsageStatisticsDtoSchema0.md

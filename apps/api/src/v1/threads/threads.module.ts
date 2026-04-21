@@ -8,18 +8,18 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { OpenaiModule } from '../openai/openai.module';
 import { ThreadsController } from './controllers/threads.controller';
 import { MessagesDao } from './dao/messages.dao';
-import { ThreadsDao } from './dao/threads.dao';
 import { MessageEntity } from './entity/message.entity';
-import { ThreadEntity } from './entity/thread.entity';
 import { ThreadNameGeneratorService } from './services/thread-name-generator.service';
 import { ThreadResumeService } from './services/thread-resume.service';
 import { ThreadResumeQueueService } from './services/thread-resume-queue.service';
 import { ThreadsService } from './services/threads.service';
 import { ThreadsListener } from './threads.listener';
+import { ThreadsDaoModule } from './threads-dao.module';
 
 @Module({
   imports: [
-    registerEntities([ThreadEntity, MessageEntity]),
+    registerEntities([MessageEntity]),
+    ThreadsDaoModule,
     AgentsModule,
     forwardRef(() => GraphsModule),
     NotificationsModule,
@@ -29,7 +29,6 @@ import { ThreadsListener } from './threads.listener';
   controllers: [ThreadsController],
   providers: [
     ThreadsService,
-    ThreadsDao,
     MessagesDao,
     ThreadNameGeneratorService,
     ThreadsListener,
@@ -37,7 +36,7 @@ import { ThreadsListener } from './threads.listener';
     ThreadResumeService,
   ],
   exports: [
-    ThreadsDao,
+    ThreadsDaoModule,
     MessagesDao,
     ThreadsService,
     ThreadNameGeneratorService,
