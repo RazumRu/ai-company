@@ -173,6 +173,8 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         ? runnableConfig.configurable.__parentStateTotalPrice
         : 0;
 
+    const parentSeedTotalPrice = parentTotalPrice;
+
     let totalIterations = 0;
     let toolCallsMade = 0;
     let finalState: BaseAgentState = {
@@ -416,6 +418,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
                 totalIterations,
                 toolCallsMade,
                 config.maxContextTokens,
+                parentSeedTotalPrice,
               );
             }
           }
@@ -450,7 +453,10 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         'Task completed.';
 
       // Aggregate usage
-      const usage = this.extractUsageFromState(finalState);
+      const usage = this.extractOwnUsageFromState(
+        finalState,
+        parentSeedTotalPrice,
+      );
       const exploredFiles = extractExploredFilesFromMessages(
         finalState.messages,
       );
@@ -477,6 +483,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           finalState,
           totalIterations,
           toolCallsMade,
+          parentSeedTotalPrice,
         );
       }
       if (this.isRecursionLimitError(err)) {
@@ -488,7 +495,10 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           statistics: {
             totalIterations,
             toolCallsMade,
-            usage: this.extractUsageFromState(finalState),
+            usage: this.extractOwnUsageFromState(
+              finalState,
+              parentSeedTotalPrice,
+            ),
           },
           exploredFiles: extractExploredFilesFromMessages(finalState.messages),
           error: 'Max iterations reached',
@@ -507,7 +517,10 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         statistics: {
           totalIterations,
           toolCallsMade,
-          usage: this.extractUsageFromState(finalState),
+          usage: this.extractOwnUsageFromState(
+            finalState,
+            parentSeedTotalPrice,
+          ),
         },
         exploredFiles: extractExploredFilesFromMessages(finalState.messages),
         error: errorMessage,
@@ -763,6 +776,22 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     );
   }
 
+  /**
+   * Same as `extractUsageFromState` but subtracts the parent-seed totalPrice
+   * so the returned usage reflects only the sub-agent's own spend. The seed
+   * stays inside the LangGraph state for cost-limit enforcement.
+   */
+  private extractOwnUsageFromState(
+    state: BaseAgentState,
+    parentSeedTotalPrice: number,
+  ): RequestTokenUsage | null {
+    const usage = this.extractUsageFromState(state);
+    if (usage && usage.totalPrice !== undefined) {
+      usage.totalPrice = Math.max(0, usage.totalPrice - parentSeedTotalPrice);
+    }
+    return usage;
+  }
+
   private isAbortError(err: unknown): boolean {
     const name = (err as { name?: string })?.name;
     const msg = (err as { message?: string })?.message ?? '';
@@ -788,13 +817,14 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     state: BaseAgentState,
     totalIterations: number,
     toolCallsMade: number,
+    parentSeedTotalPrice: number,
   ): SubagentRunResult {
     return {
       result: `Subagent stopped: cost limit $${err.effectiveLimitUsd.toFixed(2)} reached (total: $${err.totalPriceUsd.toFixed(4)}).`,
       statistics: {
         totalIterations,
         toolCallsMade,
-        usage: this.extractUsageFromState(state),
+        usage: this.extractOwnUsageFromState(state, parentSeedTotalPrice),
       },
       exploredFiles: extractExploredFilesFromMessages(state.messages),
       error: 'Cost limit reached',
@@ -808,6 +838,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     totalIterations: number,
     toolCallsMade: number,
     maxContextTokens: number,
+    parentSeedTotalPrice: number,
   ): SubagentRunResult {
     const lastAiMessage = [...state.messages]
       .reverse()
@@ -823,7 +854,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       statistics: {
         totalIterations,
         toolCallsMade,
-        usage: this.extractUsageFromState(state),
+        usage: this.extractOwnUsageFromState(state, parentSeedTotalPrice),
       },
       exploredFiles: extractExploredFilesFromMessages(state.messages),
       error: `Context limit reached (${state.currentContext}/${maxContextTokens})`,
