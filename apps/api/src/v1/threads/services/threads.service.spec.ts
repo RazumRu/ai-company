@@ -1446,7 +1446,7 @@ describe('ThreadsService', () => {
       // Message-based total: parent(60+40+100+0.005) + sub1(3000+2000+5000+0.003) + sub2(4000+1500+5500+0.004)
       // = {7060, 3540, 10600, 0.012}
       // Checkpoint total: {60, 40, 100, 0.005}
-      // Math.max per field → message-based wins for all fields
+      // Running status → message-based source wins (single-source policy; no Math.max)
       expect(result.total.inputTokens).toBe(7060);
       expect(result.total.outputTokens).toBe(3540);
       expect(result.total.totalTokens).toBe(10600);
@@ -1526,6 +1526,179 @@ describe('ThreadsService', () => {
         totalPrice: 0.002,
         currentContext: 100,
       });
+    });
+
+    it('3.1 — Running: message-scan source wins; currentContext still from checkpoint', async () => {
+      // status=Running + checkpoint totalUsage lower than messageTotalUsage
+      // → returns messageTotalUsage fields (NOT Math.max); currentContext from checkpoint
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        totalPrice: 0.001,
+        currentContext: 4000,
+        byNode: {},
+      };
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-running-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 500,
+            outputTokens: 300,
+            totalTokens: 800,
+            totalPrice: 0.05,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Message-scan values must win — single-source policy, not Math.max
+      expect(result.total.inputTokens).toBe(500);
+      expect(result.total.outputTokens).toBe(300);
+      expect(result.total.totalTokens).toBe(800);
+      expect(result.total.totalPrice).toBeCloseTo(0.05, 4);
+
+      // currentContext always comes from checkpoint (message-scan has no authoritative context window)
+      expect(result.total.currentContext).toBe(4000);
+    });
+
+    it('3.2 — Done: checkpoint source wins verbatim; message-scan values ignored even if larger', async () => {
+      // status=Done + message-scan has higher values than checkpoint
+      // → returns checkpoint totalUsage verbatim; message values are ignored
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 100,
+        outputTokens: 80,
+        totalTokens: 180,
+        totalPrice: 0.01,
+        currentContext: 2000,
+        byNode: {
+          'node-1': {
+            inputTokens: 100,
+            outputTokens: 80,
+            totalTokens: 180,
+            totalPrice: 0.01,
+          },
+        },
+      };
+
+      // Message-scan aggregate would yield higher values — should be ignored on Done
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-done-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 9999,
+            outputTokens: 9999,
+            totalTokens: 19998,
+            totalPrice: 9.99,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Checkpoint values must win — single-source policy for non-Running threads
+      expect(result.total.inputTokens).toBe(100);
+      expect(result.total.outputTokens).toBe(80);
+      expect(result.total.totalTokens).toBe(180);
+      expect(result.total.totalPrice).toBeCloseTo(0.01, 4);
+      expect(result.total.currentContext).toBe(2000);
+    });
+
+    it('3.3 — Stopped: checkpoint source wins verbatim; message-scan values ignored even if larger', async () => {
+      // status=Stopped + message-scan has higher values than checkpoint
+      // → returns checkpoint totalUsage verbatim; message values are ignored.
+      // Mirrors 3.2 but with ThreadStatus.Stopped to guard against accidental
+      // specialization of the non-running branch (e.g. status === Done only).
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Stopped,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 100,
+        outputTokens: 80,
+        totalTokens: 180,
+        totalPrice: 0.01,
+        currentContext: 2000,
+        byNode: {
+          'node-1': {
+            inputTokens: 100,
+            outputTokens: 80,
+            totalTokens: 180,
+            totalPrice: 0.01,
+          },
+        },
+      };
+
+      // Message-scan aggregate would yield higher values — should be ignored on Stopped
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-stopped-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 9999,
+            outputTokens: 9999,
+            totalTokens: 19998,
+            totalPrice: 9.99,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Checkpoint values must win — single-source policy for non-Running threads
+      expect(result.total.inputTokens).toBe(100);
+      expect(result.total.outputTokens).toBe(80);
+      expect(result.total.totalTokens).toBe(180);
+      expect(result.total.totalPrice).toBeCloseTo(0.01, 4);
+      expect(result.total.currentContext).toBe(2000);
     });
   });
 

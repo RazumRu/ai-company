@@ -1121,7 +1121,7 @@ describe('SubAgent', () => {
       // reported totalPrices would be identical (≈ 0.17 + own) — or all equal
       // to the seed in the "no own spend" edge. With the fix they differ by own.
       const ownCosts = [0.01, 0.05, 0.12];
-      const results: Array<number> = [];
+      const results: number[] = [];
 
       for (const ownCost of ownCosts) {
         vi.mocked(

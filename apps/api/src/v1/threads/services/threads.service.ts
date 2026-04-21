@@ -690,36 +690,19 @@ export class ThreadsService {
     // Finalize price aggregations — always set totalPrice (even when 0) for consistency
     toolsAggregate.totalPrice = toolsPriceDecimal.toNumber();
 
-    // Reconcile checkpoint-based total with message-based total.
-    // Use Math.max per field to capture the most up-to-date value:
-    // - Checkpoint total is authoritative for completed threads (includes all costs)
-    // - Message total captures in-progress subagent costs that haven't been
-    //   folded into the parent checkpoint yet
+    // Explicit source selection — checkpoint state is authoritative on completion;
+    // while running, message-scan aggregate captures in-progress subagent costs
+    // that haven't been folded into the parent checkpoint yet. Disagreement
+    // after completion is a bug and should surface, not be masked.
     const messageTotalPrice = messageTotalUsage.totalPriceDecimal.toNumber();
-    totalUsage = {
-      ...totalUsage,
-      inputTokens: Math.max(
-        totalUsage.inputTokens,
-        messageTotalUsage.inputTokens,
-      ),
-      cachedInputTokens: Math.max(
-        totalUsage.cachedInputTokens || 0,
-        messageTotalUsage.cachedInputTokens,
-      ),
-      outputTokens: Math.max(
-        totalUsage.outputTokens,
-        messageTotalUsage.outputTokens,
-      ),
-      reasoningTokens: Math.max(
-        totalUsage.reasoningTokens || 0,
-        messageTotalUsage.reasoningTokens,
-      ),
-      totalTokens: Math.max(
-        totalUsage.totalTokens,
-        messageTotalUsage.totalTokens,
-      ),
-      totalPrice: Math.max(totalUsage.totalPrice || 0, messageTotalPrice),
-    };
+    const isRunning = thread.status === ThreadStatus.Running;
+    totalUsage = isRunning
+      ? {
+          ...messageTotalUsage,
+          totalPrice: messageTotalPrice,
+          currentContext: totalUsage.currentContext,
+        }
+      : totalUsage;
 
     // Build final byTool array with subCalls and toolTokens/toolPrice
     const byTool: UsageStatisticsByTool[] = Array.from(

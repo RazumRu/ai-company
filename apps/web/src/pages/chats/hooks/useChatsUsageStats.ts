@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { threadsApi } from '../../../api';
 import type {
@@ -227,34 +227,11 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
       return withLimit(apiTotal);
     }
 
-    // While Running: take Math.max per additive token field so the UI never
-    // regresses when real-time events arrive ahead of the API snapshot.
-    // currentContext is a snapshot (not additive) — preserve the aggregate's
-    // latest value while running.
-    return withLimit({
-      ...aggregate,
-      inputTokens: Math.max(
-        aggregate.inputTokens ?? 0,
-        apiTotal.inputTokens ?? 0,
-      ),
-      cachedInputTokens: Math.max(
-        aggregate.cachedInputTokens ?? 0,
-        apiTotal.cachedInputTokens ?? 0,
-      ),
-      outputTokens: Math.max(
-        aggregate.outputTokens ?? 0,
-        apiTotal.outputTokens ?? 0,
-      ),
-      reasoningTokens: Math.max(
-        aggregate.reasoningTokens ?? 0,
-        apiTotal.reasoningTokens ?? 0,
-      ),
-      totalTokens: Math.max(
-        aggregate.totalTokens ?? 0,
-        apiTotal.totalTokens ?? 0,
-      ),
-      totalPrice: Math.max(aggregate.totalPrice ?? 0, apiTotal.totalPrice ?? 0),
-    });
+    // Single-source policy: while running, trust the WS aggregate so the UI
+    // doesn't regress when real-time events arrive ahead of the API snapshot;
+    // once done, trust the authoritative REST snapshot. Existing fallbacks at
+    // lines 220-228 handle the !isRunning / !apiTotal / !aggregate edges.
+    return withLimit(aggregate ?? apiTotal);
   }, [
     selectedThread,
     selectedThreadAggregateUsage,
@@ -546,6 +523,29 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
     hasUsageStatsForSelected,
     fetchUsageStatsWithRetry,
   ]);
+
+  // Re-fetch authoritative REST snapshot on running→done/stopped transition.
+  // Both refs are updated unconditionally so React 18 StrictMode double-invocation
+  // observes prev === curr on the second pass and no-ops.
+  // prevThreadIdRef guards against cross-thread status changes being mistaken for
+  // a single-thread running→done transition (H1 fix).
+  const prevThreadIdRef = useRef<string | undefined>(undefined);
+  const prevStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const prev =
+      prevThreadIdRef.current === selectedThreadId
+        ? prevStatusRef.current
+        : undefined;
+    prevThreadIdRef.current = selectedThreadId;
+    const curr = selectedThread?.status;
+    prevStatusRef.current = curr;
+    if (!selectedThreadId) {
+      return;
+    }
+    if (prev === 'running' && curr !== 'running') {
+      return fetchUsageStatsWithRetry(selectedThreadId); // H2: return cancel fn for cleanup
+    }
+  }, [selectedThread?.status, selectedThreadId, fetchUsageStatsWithRetry]);
 
   const handleOpenUsageStatsModal = useCallback(() => {
     if (!selectedThreadId || selectedThreadIsDraft) {

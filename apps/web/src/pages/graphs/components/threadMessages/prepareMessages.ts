@@ -98,23 +98,16 @@ const accumulatePreparedStatistics = (
         durationMs += s.usage.durationMs;
       }
     } else if (item.type === 'tool') {
-      // Tool messages carry requestTokenUsage directly (no .message wrapper).
-      // Accumulate duration independently — a tool may have durationMs even
-      // when requestTokenUsage is absent.
+      // Tool items share requestTokenUsage with their parent AI chat item;
+      // attributing totalPrice/totalTokens here would double-count. Tool items
+      // contribute only durationMs + count; price/tokens come from the sibling
+      // type:'chat' item.
       const usage = item.requestTokenUsage;
       const hasDuration = typeof item.durationMs === 'number';
       if (!usage && !hasDuration) {
         continue;
       }
       count++;
-      if (usage) {
-        if (typeof usage.totalTokens === 'number') {
-          totalTokens += usage.totalTokens;
-        }
-        if (typeof usage.totalPrice === 'number') {
-          totalPrice += usage.totalPrice;
-        }
-      }
       if (hasDuration) {
         durationMs += item.durationMs!;
       }
@@ -132,7 +125,6 @@ const accumulatePreparedStatistics = (
       if (typeof usage.totalPrice === 'number') {
         totalPrice += usage.totalPrice;
       }
-      // Extract durationMs from the DTO's additionalKwargs.
       const dur = extractDurationMs(item.message.message);
       if (typeof dur === 'number') {
         durationMs += dur;
@@ -178,6 +170,9 @@ const supplementDurationMs = (
     },
   };
 };
+
+/** @internal Exported for unit testing only. */
+export const _accumulatePreparedStatistics = accumulatePreparedStatistics;
 
 export const prepareReadyMessages = (
   msgs: ThreadMessageDto[],

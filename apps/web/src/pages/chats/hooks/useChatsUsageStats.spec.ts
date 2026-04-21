@@ -100,8 +100,8 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
     ).mockResolvedValue(makeUsageStats({ totalPrice: 0, totalTokens: 0 }));
   });
 
-  it('returns Math.max per additive field when Running and apiTotal > aggregate', async () => {
-    // apiTotal has higher totalPrice than aggregate
+  it('returns aggregate fields when Running regardless of apiTotal magnitude (single-source policy)', async () => {
+    // apiTotal has higher totalPrice than aggregate — but single-source policy means aggregate wins
     (
       threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
     ).mockResolvedValue(
@@ -141,22 +141,22 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
       );
     });
 
-    // Wait for API fetch to complete (hook auto-loads on mount)
+    // Wait for API fetch to complete (hook auto-loads on mount), then verify aggregate wins
     await waitFor(() => {
       const usage = result.current.selectedThreadThreadUsage;
-      expect(usage?.totalPrice).toBe(0.3);
+      expect(usage?.totalPrice).toBe(0.1);
     });
 
     const usage = result.current.selectedThreadThreadUsage;
-    expect(usage?.inputTokens).toBe(200);
-    expect(usage?.outputTokens).toBe(100);
-    expect(usage?.totalTokens).toBe(300);
-    expect(usage?.totalPrice).toBe(0.3);
-    // currentContext is a snapshot (not additive) — taken from aggregate, not Math.max-ed
+    expect(usage?.inputTokens).toBe(100);
+    expect(usage?.outputTokens).toBe(50);
+    expect(usage?.totalTokens).toBe(150);
+    expect(usage?.totalPrice).toBe(0.1);
+    // Single-source policy: while running, aggregate wins for all fields including currentContext
     expect(usage?.currentContext).toBe(3000);
   });
 
-  it('returns aggregate fields when Running and aggregate > apiTotal', async () => {
+  it('returns aggregate fields when Running (single-source policy)', async () => {
     // apiTotal has lower totalPrice than aggregate
     (
       threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
@@ -207,7 +207,7 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
     expect(usage?.outputTokens).toBe(200);
     expect(usage?.totalTokens).toBe(500);
     expect(usage?.totalPrice).toBe(0.5);
-    // currentContext is a snapshot (not additive) — taken from aggregate, not Math.max-ed
+    // Single-source policy: while running, aggregate wins for all fields including currentContext
     expect(usage?.currentContext).toBe(8000);
   });
 
@@ -295,5 +295,131 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
 
     const usage = result.current.selectedThreadThreadUsage;
     expect(usage?.effectiveCostLimitUsd).toBe(5);
+  });
+
+  // Scenario 3.3: Running + aggregate.totalPrice > apiTotal.totalPrice → hook returns withLimit(aggregate).
+  // Covered by 'returns aggregate fields when Running (single-source policy)' above — that test
+  // explicitly sets aggregate higher than apiTotal and asserts field-for-field equality with aggregate.
+
+  // Scenario 3.4: running→done transition triggers exactly one fetch; extra re-render without
+  // status change must NOT fire another fetch (StrictMode / redundant render safety).
+  it('fetches once on running→done transition and not again on a redundant re-render (3.4)', async () => {
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(makeUsageStats({ totalPrice: 0.2 }));
+
+    const runningThread = makeThread({ status: 'running' });
+    const doneThread = makeThread({ status: 'done' });
+
+    const { result, rerender } = renderHook(
+      (props: { thread: typeof runningThread }) =>
+        useChatsUsageStats({
+          toastMessage,
+          selectedThread: props.thread,
+          selectedThreadId: 'thread-1',
+          selectedThreadIsDraft: false,
+          selectedAgentNodeId: null,
+          graphCache: {},
+          getFullGraph: () => undefined,
+        }),
+      { initialProps: { thread: runningThread } },
+    );
+
+    // Let the mount-fetch settle so its call is counted.
+    await waitFor(() => {
+      expect(
+        threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>,
+      ).toHaveBeenCalled();
+    });
+
+    // Reset mock call count so we isolate transition-triggered fetches.
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockClear();
+
+    // Transition: running → done — must trigger exactly one fetch.
+    rerender({ thread: doneThread });
+
+    await waitFor(() => {
+      expect(
+        threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    expect(
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>,
+    ).toHaveBeenCalledWith('thread-1');
+
+    // Reset again to verify redundant re-render (same status) does NOT fire another fetch.
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockClear();
+
+    // Re-render with same done status — must NOT fire fetch.
+    // Use fake timers so the assertion is deterministic regardless of CI load (H4 fix).
+    vi.useFakeTimers();
+    rerender({ thread: makeThread({ status: 'done' }) });
+    vi.runAllTimers();
+    await Promise.resolve(); // flush microtasks
+    vi.useRealTimers();
+
+    expect(
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch when switching from a running thread to a different thread that is already done', async () => {
+    // Pre-populate stats for thread B so the mount-effect short-circuits and
+    // does not call getThreadUsageStatistics at all, leaving only the transition
+    // effect to potentially trigger a fetch.
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(makeUsageStats({ totalPrice: 0.1 }));
+
+    const threadA = makeThread({ id: 'a', status: 'running' });
+    const threadB = makeThread({ id: 'b', status: 'done' });
+
+    const { rerender } = renderHook(
+      (props: { thread: typeof threadA; threadId: string }) =>
+        useChatsUsageStats({
+          toastMessage,
+          selectedThread: props.thread,
+          selectedThreadId: props.threadId,
+          selectedThreadIsDraft: false,
+          selectedAgentNodeId: null,
+          graphCache: {},
+          getFullGraph: () => undefined,
+        }),
+      { initialProps: { thread: threadA, threadId: 'a' } },
+    );
+
+    // Let mount-effect for thread A settle.
+    await waitFor(() => {
+      expect(
+        threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>,
+      ).toHaveBeenCalledWith('a');
+    });
+
+    // Reset so we can assert cleanly on thread B calls only.
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockClear();
+
+    // Switch to thread B (different id, already done — never ran→done on its own).
+    // The transition effect must NOT fire a fetch for B because B's identity changed,
+    // not because B transitioned from running.
+    vi.useFakeTimers();
+    rerender({ thread: threadB, threadId: 'b' });
+    vi.runAllTimers();
+    await Promise.resolve(); // flush microtasks
+    vi.useRealTimers();
+
+    // The transition effect must not have fired for thread B.
+    // (The mount effect may call once for B if stats are missing — that is acceptable,
+    // but we assert the count is at most 1, not 2, ruling out a double fetch.)
+    const callsForB = (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mock.calls.filter((args: unknown[]) => args[0] === 'b');
+    expect(callsForB.length).toBeLessThanOrEqual(1);
   });
 });
