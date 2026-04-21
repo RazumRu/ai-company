@@ -1036,6 +1036,123 @@ describe('SubAgent', () => {
       // stopCostUsd reflects the combined parent+self total (>= 0.25)
       expect(result.stopCostUsd).toBeGreaterThanOrEqual(0.25);
     });
+
+    it('does not leak __parentStateTotalPrice into the returned statistics.usage.totalPrice', async () => {
+      // Parent seed = 0.25, sub-agent's own spend = 0.01 → reported totalPrice
+      // must be 0.01, not 0.26. Seeding is preserved internally for cost-limit
+      // enforcement but must not surface in the externally-reported usage.
+      vi.mocked(
+        mockLitellmService.extractTokenUsageFromResponse,
+      ).mockResolvedValue({
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        totalPrice: 0.01,
+      });
+
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'done',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const cfgWithParentSeed: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'thread-123',
+          effective_cost_limit_usd: 100.0,
+          __parentStateTotalPrice: 0.25,
+        },
+      };
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('hi')],
+        cfgWithParentSeed,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.statistics.usage).not.toBeNull();
+      expect(result.statistics.usage!.totalPrice).toBeCloseTo(0.01, 5);
+    });
+
+    it('reports zero totalPrice when parent seed is large but sub-agent made no billed calls', async () => {
+      // No extractTokenUsage response → no own spend accrued. With parentSeed=0.5,
+      // the buggy code would report 0.5 as own cost. Fixed code reports 0.
+      vi.mocked(
+        mockLitellmService.extractTokenUsageFromResponse,
+      ).mockResolvedValue(null as never);
+
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'no billed tokens',
+          response_metadata: {},
+        }),
+      );
+
+      const cfgWithParentSeed: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'thread-123',
+          effective_cost_limit_usd: 10.0,
+          __parentStateTotalPrice: 0.5,
+        },
+      };
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('hi')],
+        cfgWithParentSeed,
+      );
+
+      expect(result.error).toBeUndefined();
+      if (result.statistics.usage) {
+        expect(result.statistics.usage.totalPrice ?? 0).toBeCloseTo(0, 5);
+      }
+    });
+
+    it('three independent sub-agents dispatched with the same parent seed report distinct own costs, not identical seeded totals', async () => {
+      const cfgWithParentSeed: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'thread-123',
+          effective_cost_limit_usd: 100.0,
+          __parentStateTotalPrice: 0.17,
+        },
+      };
+
+      // Three runs with distinct own costs. If the seed leaks, all three
+      // reported totalPrices would be identical (≈ 0.17 + own) — or all equal
+      // to the seed in the "no own spend" edge. With the fix they differ by own.
+      const ownCosts = [0.01, 0.05, 0.12];
+      const results: Array<number> = [];
+
+      for (const ownCost of ownCosts) {
+        vi.mocked(
+          mockLitellmService.extractTokenUsageFromResponse,
+        ).mockResolvedValueOnce({
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 15,
+          totalPrice: ownCost,
+        });
+        mockLlmInvokeRef.mockResolvedValueOnce(
+          new AIMessage({ content: 'ok', response_metadata: { usage: {} } }),
+        );
+
+        const result = await subAgent.runSubagent(
+          [new HumanMessage('hi')],
+          cfgWithParentSeed,
+        );
+
+        expect(result.error).toBeUndefined();
+        expect(result.statistics.usage).not.toBeNull();
+        results.push(result.statistics.usage!.totalPrice ?? 0);
+      }
+
+      // Each reported own-cost is the sub-agent's own spend, not the seed
+      expect(results[0]).toBeCloseTo(0.01, 5);
+      expect(results[1]).toBeCloseTo(0.05, 5);
+      expect(results[2]).toBeCloseTo(0.12, 5);
+      // Distinct — the bug would have produced all equal
+      expect(new Set(results.map((r) => r.toFixed(4))).size).toBe(3);
+    });
   });
 
   describe('reasoning streaming', () => {
