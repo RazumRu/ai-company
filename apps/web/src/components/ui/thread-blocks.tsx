@@ -56,15 +56,15 @@ const buildFooterTokens = (
       }
     | undefined,
 ): TokenInfo | undefined => {
-  if (usageIn) {
-    return toTokenInfo(usageIn, statistics?.usage?.durationMs);
-  }
   if (statistics?.usage?.totalTokens) {
     return {
       total: statistics.usage.totalTokens,
       cost: formatUsd(statistics.usage.totalPrice),
       duration: formatDuration(statistics.usage.durationMs),
     };
+  }
+  if (usageIn) {
+    return toTokenInfo(usageIn, statistics?.usage?.durationMs);
   }
   return undefined;
 };

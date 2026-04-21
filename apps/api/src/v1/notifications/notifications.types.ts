@@ -106,6 +106,7 @@ export const AgentInvokeNotificationSchema = z.object({
   parentThreadId: z.string(),
   source: z.string().optional(),
   threadMetadata: z.record(z.string(), z.unknown()).optional(),
+  effectiveCostLimitUsd: z.number().nullable().optional(),
 });
 export type IAgentInvokeData = z.infer<typeof AgentInvokeDataSchema>;
 export type IAgentInvokeNotification = z.infer<

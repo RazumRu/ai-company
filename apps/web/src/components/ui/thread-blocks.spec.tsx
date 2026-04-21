@@ -47,7 +47,7 @@ vi.mock('dompurify', () => ({
 
 import React from 'react';
 
-import { ReasoningBlock } from './thread-blocks';
+import { ReasoningBlock, SubagentBlock } from './thread-blocks';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -224,5 +224,63 @@ describe('ReasoningBlock — non-streaming branch (smoke test)', () => {
     expect(
       screen.getByRole('button', { name: /show less/i }),
     ).toBeInTheDocument();
+  });
+});
+
+// ── SubagentBlock footer token source tests ────────────────────────────────────
+
+describe('SubagentBlock — footer tokens source', () => {
+  // Test 1: statistics wins over usageIn when both are present
+  it('displays statistics totals in footer when statistics.usage.totalTokens is set, even when usageIn is also passed', () => {
+    const { container } = render(
+      <SubagentBlock
+        status="done"
+        statistics={{
+          usage: { totalTokens: 12345, totalPrice: 0.053, durationMs: 1000 },
+        }}
+        usageIn={{ totalTokens: 99999, totalPrice: 0.999 }}>
+        <div>child</div>
+      </SubagentBlock>,
+    );
+
+    // TokenBadge renders: "{fmtK(total)} ({cost})"
+    // statistics total 12345 → "12.3K"
+    // usageIn total 99999 → "100K"
+    const badge = container.querySelector('[class*="cursor-pointer"]');
+    expect(badge).not.toBeNull();
+    const badgeText = badge?.textContent ?? '';
+    expect(badgeText).toContain('12.3K');
+    expect(badgeText).not.toContain('100K');
+  });
+
+  // Test 2: falls back to usageIn when statistics has no totalTokens
+  it('falls back to usageIn footer when statistics.usage.totalTokens is absent', () => {
+    const { container } = render(
+      <SubagentBlock
+        status="done"
+        statistics={{ usage: { totalTokens: 0, totalPrice: 0 } }}
+        usageIn={{ totalTokens: 42000, totalPrice: 0.042 }}>
+        <div>child</div>
+      </SubagentBlock>,
+    );
+
+    // statistics.totalTokens is 0 (falsy) so usageIn wins: 42000 → "42K"
+    const badge = container.querySelector('[class*="cursor-pointer"]');
+    expect(badge).not.toBeNull();
+    const badgeText = badge?.textContent ?? '';
+    expect(badgeText).toContain('42K');
+  });
+
+  // Test 3: no token badge when both are absent
+  it('renders no token badge when both statistics and usageIn are absent', () => {
+    const { container } = render(
+      <SubagentBlock status="done">
+        <div>child</div>
+      </SubagentBlock>,
+    );
+
+    // StatFooter returns null when tokens is undefined
+    const badge = container.querySelector('[class*="cursor-pointer"]');
+    expect(badge).toBeNull();
   });
 });
