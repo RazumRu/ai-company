@@ -50,7 +50,7 @@ const buildFooterTokens = (
     | {
         usage?: {
           totalTokens?: number;
-          totalPrice?: number | null;
+          totalPrice?: number;
           durationMs?: number;
         };
       }
@@ -1354,7 +1354,7 @@ export interface SubagentBlockProps {
   statistics?: {
     usage?: {
       totalTokens?: number;
-      totalPrice?: number | null;
+      totalPrice?: number;
       durationMs?: number;
     };
     toolCallsMade?: number;
@@ -1650,7 +1650,7 @@ export interface CommunicationBlockProps {
   statistics?: {
     usage?: {
       totalTokens?: number;
-      totalPrice?: number | null;
+      totalPrice?: number;
       durationMs?: number;
     };
     toolCallsMade?: number;

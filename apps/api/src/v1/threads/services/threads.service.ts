@@ -391,15 +391,13 @@ export class ThreadsService {
 
     // totalUsage holds checkpoint state (authoritative for currentContext only).
     // All additive fields are overwritten by the message-scan block below.
-    let totalUsage: Omit<RequestTokenUsage, 'totalPrice'> & {
-      totalPrice?: number | null;
-    } = {
+    let totalUsage: RequestTokenUsage = {
       inputTokens: 0,
       cachedInputTokens: 0,
       outputTokens: 0,
       reasoningTokens: 0,
       totalTokens: 0,
-      totalPrice: null,
+      totalPrice: 0,
       currentContext: 0,
     };
     let byNodeUsage = new Map<string, RequestTokenUsage>();
@@ -407,8 +405,7 @@ export class ThreadsService {
       string,
       {
         totalTokens: number;
-        totalPrice: number | null;
-        hasPricedCall: boolean;
+        totalPrice: number;
         callCount: number;
       }
     >();
@@ -426,8 +423,15 @@ export class ThreadsService {
 
     if (threadUsage) {
       // Only currentContext is used from checkpoint state (see single-source policy below).
-      // Cast is safe: ThreadTokenUsage.totalPrice is number|undefined, our type accepts null too.
-      totalUsage = threadUsage as typeof totalUsage;
+      totalUsage = {
+        inputTokens: threadUsage.inputTokens ?? 0,
+        cachedInputTokens: threadUsage.cachedInputTokens ?? 0,
+        outputTokens: threadUsage.outputTokens ?? 0,
+        reasoningTokens: threadUsage.reasoningTokens ?? 0,
+        totalTokens: threadUsage.totalTokens ?? 0,
+        totalPrice: threadUsage.totalPrice ?? 0,
+        currentContext: threadUsage.currentContext ?? 0,
+      };
 
       if (threadUsage.byNode) {
         byNodeUsage = new Map(
@@ -460,7 +464,6 @@ export class ThreadsService {
 
     // Use Decimal.js for price aggregation to avoid floating-point errors
     let toolsPriceDecimal = new Decimal(0);
-    let toolsHasPricedCall = false;
     let totalRequests = 0;
     let userMessageCount = 0;
     const modelsUsedSet = new Set<string>();
@@ -476,8 +479,6 @@ export class ThreadsService {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPriceDecimal: new Decimal(0),
-      hasPricedCall: false,
-      hasUnpricedCalls: false,
     };
 
     /** Add a single LLM request's usage to the message-based total accumulator. */
@@ -487,19 +488,14 @@ export class ThreadsService {
       messageTotalUsage.outputTokens += usage.outputTokens;
       messageTotalUsage.reasoningTokens += usage.reasoningTokens || 0;
       messageTotalUsage.totalTokens += usage.totalTokens;
-      if (typeof usage.totalPrice === 'number') {
-        messageTotalUsage.totalPriceDecimal =
-          messageTotalUsage.totalPriceDecimal.plus(usage.totalPrice);
-        messageTotalUsage.hasPricedCall = true;
-      } else {
-        messageTotalUsage.hasUnpricedCalls = true;
-      }
+      messageTotalUsage.totalPriceDecimal =
+        messageTotalUsage.totalPriceDecimal.plus(usage.totalPrice ?? 0);
     };
 
     // Map: toolCallId -> parentToolName (for linking subagent internal messages)
     const toolCallIdToToolName = new Map<string, string>();
 
-    // Map: parentToolName -> childToolName -> { callCount, totalTokens, priceDecimal, hasPricedCall }
+    // Map: parentToolName -> childToolName -> { callCount, totalTokens, priceDecimal }
     const subCallsByParent = new Map<
       string,
       Map<
@@ -508,15 +504,14 @@ export class ThreadsService {
           callCount: number;
           totalTokens: number;
           priceDecimal: Decimal;
-          hasPricedCall: boolean;
         }
       >
     >();
 
-    // Map: toolName -> { toolTokens, priceDecimal, hasPricedCall } (from tool result messages)
+    // Map: toolName -> { toolTokens, priceDecimal } (from tool result messages)
     const toolOwnUsage = new Map<
       string,
-      { toolTokens: number; priceDecimal: Decimal; hasPricedCall: boolean }
+      { toolTokens: number; priceDecimal: Decimal }
     >();
 
     for (const messageEntity of messages) {
@@ -573,11 +568,7 @@ export class ThreadsService {
 
         if (parentToolName) {
           const embeddedTokens = embeddedUsage?.totalTokens || 0;
-          const embeddedPriceIsKnown =
-            typeof embeddedUsage?.totalPrice === 'number';
-          const embeddedPrice = embeddedPriceIsKnown
-            ? embeddedUsage!.totalPrice!
-            : 0;
+          const embeddedPrice = embeddedUsage?.totalPrice ?? 0;
 
           // Determine child tool name(s) or use (llm_response) for no-tool responses
           const childToolNames =
@@ -599,8 +590,6 @@ export class ThreadsService {
               priceDecimal: (current?.priceDecimal || new Decimal(0)).plus(
                 embeddedPrice,
               ),
-              hasPricedCall:
-                (current?.hasPricedCall ?? false) || embeddedPriceIsKnown,
             });
           }
         } else if (parentToolCallId) {
@@ -615,12 +604,9 @@ export class ThreadsService {
           totalRequests++;
 
           // Attribute subagent LLM cost to toolsAggregate
-          if (typeof embeddedUsage.totalPrice === 'number') {
-            toolsPriceDecimal = toolsPriceDecimal.plus(
-              embeddedUsage.totalPrice,
-            );
-            toolsHasPricedCall = true;
-          }
+          toolsPriceDecimal = toolsPriceDecimal.plus(
+            embeddedUsage.totalPrice ?? 0,
+          );
           toolsAggregate.inputTokens += embeddedUsage.inputTokens;
           toolsAggregate.outputTokens += embeddedUsage.outputTokens;
           toolsAggregate.totalTokens += embeddedUsage.totalTokens;
@@ -644,8 +630,7 @@ export class ThreadsService {
           const current = byToolUsage.get(toolName);
           byToolUsage.set(toolName, {
             totalTokens: current?.totalTokens || 0,
-            totalPrice: current?.totalPrice ?? null,
-            hasPricedCall: current?.hasPricedCall ?? false,
+            totalPrice: current?.totalPrice ?? 0,
             callCount: (current?.callCount || 0) + 1,
           });
         }
@@ -681,10 +666,9 @@ export class ThreadsService {
         }
 
         if (attributeToTools && attributeToTools.length > 0) {
-          if (typeof requestUsage.totalPrice === 'number') {
-            toolsPriceDecimal = toolsPriceDecimal.plus(requestUsage.totalPrice);
-            toolsHasPricedCall = true;
-          }
+          toolsPriceDecimal = toolsPriceDecimal.plus(
+            requestUsage.totalPrice ?? 0,
+          );
 
           toolsAggregate.inputTokens += requestUsage.inputTokens;
           toolsAggregate.outputTokens += requestUsage.outputTokens;
@@ -693,22 +677,11 @@ export class ThreadsService {
 
           for (const toolName of attributeToTools) {
             const current = byToolUsage.get(toolName);
-            const requestPriceIsKnown =
-              typeof requestUsage.totalPrice === 'number';
-            const prevHasPriced = current?.hasPricedCall ?? false;
-            const newHasPriced = prevHasPriced || requestPriceIsKnown;
-            const prevPrice =
-              prevHasPriced && current?.totalPrice != null
-                ? current.totalPrice
-                : 0;
-            const addedPrice = requestPriceIsKnown
-              ? requestUsage.totalPrice!
-              : 0;
+            const addedPrice = requestUsage.totalPrice ?? 0;
             byToolUsage.set(toolName, {
               totalTokens:
                 (current?.totalTokens || 0) + requestUsage.totalTokens,
-              totalPrice: newHasPriced ? prevPrice + addedPrice : null,
-              hasPricedCall: newHasPriced,
+              totalPrice: (current?.totalPrice ?? 0) + addedPrice,
               callCount: current?.callCount || 0,
             });
           }
@@ -722,22 +695,16 @@ export class ThreadsService {
       if (isToolMessage && messageEntity.name && messageEntity.toolTokenUsage) {
         const toolUsage = messageEntity.toolTokenUsage;
         const existing = toolOwnUsage.get(messageEntity.name);
-        const toolPriceIsKnown = typeof toolUsage.totalPrice === 'number';
         toolOwnUsage.set(messageEntity.name, {
           toolTokens: (existing?.toolTokens || 0) + toolUsage.totalTokens,
           priceDecimal: (existing?.priceDecimal || new Decimal(0)).plus(
-            toolPriceIsKnown ? toolUsage.totalPrice! : 0,
+            toolUsage.totalPrice ?? 0,
           ),
-          hasPricedCall: (existing?.hasPricedCall ?? false) || toolPriceIsKnown,
         });
       }
     }
 
-    // Finalize per-tool price aggregate. Null when no priced call contributed
-    // to tool-attributed LLM requests (Change B: unknown != zero).
-    toolsAggregate.totalPrice = toolsHasPricedCall
-      ? toolsPriceDecimal.toNumber()
-      : null;
+    toolsAggregate.totalPrice = toolsPriceDecimal.toNumber();
 
     /**
      * Single-source policy for thread total usage.
@@ -752,38 +719,25 @@ export class ThreadsService {
      * lags or is never written — e.g. LangGraph checkpoints where
      * invoke-llm-node never incremented the accumulator for a model path,
      * or where subagent costs were not folded into the parent checkpoint.
-     * Reproduction: thread 499192e0-e2fe-4ec8-810a-cba28a8e86fc returned
-     * empty checkpoint totalUsage while messages summed to $0.4021.
      *
      * Checkpoint remains authoritative ONLY for currentContext — it is a
      * point-in-time context-window reading that cannot be reconstructed from
      * messages.
-     *
-     * This replaces Round 2's isRunning ? messageScan : checkpoint branch
-     * and Round 1's Math.max reconciliation. Do not reintroduce either —
-     * both silently masked the "checkpoint empty" cohort.
-     *
-     * Null preservation (Change B): if zero priced calls contributed to the
-     * scan, totalPrice is null (not 0). hasUnpricedCalls flags partial
-     * unpriced contributors so UI can warn "pricing incomplete".
      */
-    const messageTotalPrice = messageTotalUsage.hasPricedCall
-      ? messageTotalUsage.totalPriceDecimal.toNumber()
-      : null;
     totalUsage = {
       inputTokens: messageTotalUsage.inputTokens,
       cachedInputTokens: messageTotalUsage.cachedInputTokens,
       outputTokens: messageTotalUsage.outputTokens,
       reasoningTokens: messageTotalUsage.reasoningTokens,
       totalTokens: messageTotalUsage.totalTokens,
-      totalPrice: messageTotalPrice,
+      totalPrice: messageTotalUsage.totalPriceDecimal.toNumber(),
       currentContext: totalUsage.currentContext,
     };
 
     // Build final byTool array with subCalls and toolTokens/toolPrice
     const byTool: UsageStatisticsByTool[] = Array.from(
       byToolUsage.entries(),
-    ).map(([toolName, { hasPricedCall: _byToolHasPriced, ...usage }]) => {
+    ).map(([toolName, usage]) => {
       const entry: UsageStatisticsByTool = {
         toolName,
         ...usage,
@@ -793,22 +747,17 @@ export class ThreadsService {
       const ownUsage = toolOwnUsage.get(toolName);
       if (ownUsage) {
         entry.toolTokens = ownUsage.toolTokens;
-        entry.toolPrice = ownUsage.hasPricedCall
-          ? ownUsage.priceDecimal.toNumber()
-          : null;
+        entry.toolPrice = ownUsage.priceDecimal.toNumber();
       }
 
       // Attach subCalls from subagent internal messages
       const subCalls = subCallsByParent.get(toolName);
       if (subCalls && subCalls.size > 0) {
         entry.subCalls = Array.from(subCalls.entries()).map(
-          ([
-            childToolName,
-            { priceDecimal, hasPricedCall, ...childUsage },
-          ]) => ({
+          ([childToolName, { priceDecimal, ...childUsage }]) => ({
             toolName: childToolName,
             ...childUsage,
-            totalPrice: hasPricedCall ? priceDecimal.toNumber() : null,
+            totalPrice: priceDecimal.toNumber(),
           }),
         );
       }
@@ -817,10 +766,7 @@ export class ThreadsService {
     });
 
     return {
-      total: {
-        ...totalUsage,
-        hasUnpricedCalls: messageTotalUsage.hasUnpricedCalls,
-      },
+      total: totalUsage,
       requests: totalRequests,
       byNode: Object.fromEntries(byNodeUsage),
       byTool,

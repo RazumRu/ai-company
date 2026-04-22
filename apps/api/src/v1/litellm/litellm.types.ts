@@ -10,7 +10,7 @@ export type RequestTokenUsage = {
   outputTokens: number;
   reasoningTokens?: number;
   totalTokens: number;
-  totalPrice: number | null;
+  totalPrice?: number;
   /**
    * Current context size (in tokens) for this thread/node snapshot.
    * This is not additive; it's a point-in-time measurement.
@@ -62,7 +62,10 @@ export type UsageMetadata = Partial<ResponseUsage> & {
  */
 export type MessageTokenUsage = {
   totalTokens: number;
-  totalPrice?: number;
+  /**
+   * `null` = pricing unknown. See `RequestTokenUsage.totalPrice`.
+   */
+  totalPrice?: number | null;
 };
 
 export type LLMTokenCostRates = {

@@ -115,13 +115,6 @@ export interface BaseAgentState {
   totalTokens: number;
   totalPrice: number;
   /**
-   * True once at least one LLM call in this run returned a priced response
-   * (i.e. LiteLLM returned a non-null totalPrice). Drives null-emission in
-   * extractUsageFromState: if no priced call occurred, totalPrice is reported
-   * as null rather than 0 to distinguish "unpriced" from "zero cost".
-   */
-  hasPricedCall: boolean;
-  /**
    * Current context size (tokens) for this thread/run snapshot.
    * Not additive; overwritten with latest measurement.
    */
@@ -129,15 +122,9 @@ export interface BaseAgentState {
 }
 
 export interface BaseAgentStateChange extends Partial<
-  Omit<BaseAgentState, 'messages' | 'totalPrice'>
+  Omit<BaseAgentState, 'messages'>
 > {
   messages?: BaseAgentStateMessagesUpdateValue;
-  /**
-   * Override to allow null — a null totalPrice in a change means this step
-   * had no priced contribution (treated as 0 in applyChange accumulation).
-   * This lets nodes spread RequestTokenUsage directly without stripping null.
-   */
-  totalPrice?: number | null;
 }
 
 export enum NewMessageMode {
@@ -176,12 +163,6 @@ export type BaseAgentConfigurable = {
    * `null` / `undefined` = no limit.
    */
   effective_cost_limit_usd?: number | null;
-  /**
-   * Parent agent's totalPrice at the time of tool invocation. Set by
-   * ToolExecutorNode so sub-agents enforce cost against parent+self scope
-   * rather than self-scope-only.
-   */
-  __parentStateTotalPrice?: number;
   llmRequestContext?: LLMRequestContext;
   // SECURITY: This index signature is required by LangGraph's RunnableConfig
   // constraint. Never spread HTTP request body fields into this type — always

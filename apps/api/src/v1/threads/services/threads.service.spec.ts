@@ -903,7 +903,6 @@ describe('ThreadsService', () => {
         outputTokens: 55, // 25 + 30 (ai calling + ai processing)
         totalTokens: 120, // 40 + 80 (ai calling + ai processing)
         totalPrice: 0.006, // 0.002 + 0.004 (ai calling + ai processing)
-        hasUnpricedCalls: false,
       });
 
       // Check byNode (only from requestTokenUsage)
@@ -1649,8 +1648,6 @@ describe('ThreadsService', () => {
       expect(result.total.totalPrice).toBeCloseTo(9.99, 4);
       // currentContext still comes from checkpoint
       expect(result.total.currentContext).toBe(2000);
-      // All contributors priced → flag stays false
-      expect(result.total.hasUnpricedCalls).toBe(false);
     });
 
     it('3.3 — Stopped: message-scan wins for additive fields; currentContext still from checkpoint (single-source policy)', async () => {
@@ -1715,13 +1712,11 @@ describe('ThreadsService', () => {
       expect(result.total.totalPrice).toBeCloseTo(9.99, 4);
       // currentContext still comes from checkpoint
       expect(result.total.currentContext).toBe(2000);
-      // All contributors priced → flag stays false
-      expect(result.total.hasUnpricedCalls).toBe(false);
     });
 
-    it('matrix row 1 — all priced, running: message-scan sum returned with hasUnpricedCalls=false', async () => {
+    it('matrix row 1 — all priced, running: message-scan sum returned', async () => {
       // All 3 messages have known pricing. Thread is Running.
-      // Asserts: totalPrice = sum of message prices, hasUnpricedCalls = false.
+      // Asserts: totalPrice = sum of message prices.
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Running,
         externalThreadId: 'external-thread-123',
@@ -1787,7 +1782,6 @@ describe('ThreadsService', () => {
       );
 
       expect(result.total.totalPrice).toBeCloseTo(0.07, 4);
-      expect(result.total.hasUnpricedCalls).toBe(false);
     });
 
     it('matrix row 2 — all priced, done: message-scan wins for additive fields; currentContext from checkpoint', async () => {
@@ -1849,132 +1843,6 @@ describe('ThreadsService', () => {
       expect(result.total.totalPrice).toBeCloseTo(0.08, 4);
       // currentContext comes from checkpoint, not messages
       expect(result.total.currentContext).toBe(3500);
-    });
-
-    it('matrix row 3 — mixed priced + unpriced: priced portion summed, hasUnpricedCalls=true', async () => {
-      // 2 messages with known price, 1 with null price.
-      // Asserts: totalPrice = sum of priced only (0.10), hasUnpricedCalls = true.
-      const mockThread = createMockThreadEntity({
-        status: ThreadStatus.Done,
-        externalThreadId: 'external-thread-123',
-      });
-
-      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
-        null,
-      );
-
-      const mockMessages = [
-        createMockMessageEntity({
-          id: 'msg-row3-1',
-          nodeId: 'node-1',
-          role: MessageRole.AI,
-          name: undefined,
-          requestTokenUsage: {
-            inputTokens: 200,
-            outputTokens: 100,
-            totalTokens: 300,
-            totalPrice: 0.05,
-          },
-        }),
-        createMockMessageEntity({
-          id: 'msg-row3-2',
-          nodeId: 'node-1',
-          role: MessageRole.AI,
-          name: undefined,
-          requestTokenUsage: {
-            inputTokens: 200,
-            outputTokens: 100,
-            totalTokens: 300,
-            totalPrice: 0.05,
-          },
-        }),
-        createMockMessageEntity({
-          id: 'msg-row3-3',
-          nodeId: 'node-1',
-          role: MessageRole.AI,
-          name: undefined,
-          requestTokenUsage: {
-            inputTokens: 150,
-            outputTokens: 75,
-            totalTokens: 225,
-            totalPrice: null,
-          },
-        }),
-      ];
-
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
-
-      const result = await service.getThreadUsageStatistics(
-        mockCtx,
-        mockThreadId,
-      );
-
-      expect(result.total.totalPrice).toBeCloseTo(0.1, 4);
-      expect(result.total.hasUnpricedCalls).toBe(true);
-    });
-
-    it('matrix row 4 — all unpriced: totalPrice=null, hasUnpricedCalls=true', async () => {
-      // All 3 messages have null totalPrice (no pricing data from LLM).
-      // Asserts: totalPrice = null, hasUnpricedCalls = true.
-      const mockThread = createMockThreadEntity({
-        status: ThreadStatus.Done,
-        externalThreadId: 'external-thread-123',
-      });
-
-      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
-        null,
-      );
-
-      const mockMessages = [
-        createMockMessageEntity({
-          id: 'msg-row4-1',
-          nodeId: 'node-1',
-          role: MessageRole.AI,
-          name: undefined,
-          requestTokenUsage: {
-            inputTokens: 100,
-            outputTokens: 50,
-            totalTokens: 150,
-            totalPrice: null,
-          },
-        }),
-        createMockMessageEntity({
-          id: 'msg-row4-2',
-          nodeId: 'node-1',
-          role: MessageRole.AI,
-          name: undefined,
-          requestTokenUsage: {
-            inputTokens: 200,
-            outputTokens: 100,
-            totalTokens: 300,
-            totalPrice: null,
-          },
-        }),
-        createMockMessageEntity({
-          id: 'msg-row4-3',
-          nodeId: 'node-1',
-          role: MessageRole.AI,
-          name: undefined,
-          requestTokenUsage: {
-            inputTokens: 300,
-            outputTokens: 150,
-            totalTokens: 450,
-            totalPrice: null,
-          },
-        }),
-      ];
-
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
-      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
-
-      const result = await service.getThreadUsageStatistics(
-        mockCtx,
-        mockThreadId,
-      );
-
-      expect(result.total.totalPrice).toBeNull();
-      expect(result.total.hasUnpricedCalls).toBe(true);
     });
 
     it('matrix row 5 — checkpoint empty, messages populated (499192e0 repro): message-scan used as fallback', async () => {
@@ -2041,8 +1909,6 @@ describe('ThreadsService', () => {
       // Message-scan sum: 0.1021 + 0.2 + 0.1 = 0.4021
       expect(result.total.totalPrice).toBeCloseTo(0.4021, 4);
       expect(result.total.totalTokens).toBeGreaterThan(0);
-      // All messages are priced — hasUnpricedCalls must be false
-      expect(result.total.hasUnpricedCalls).toBe(false);
     });
   });
 

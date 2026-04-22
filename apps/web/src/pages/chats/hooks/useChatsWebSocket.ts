@@ -55,17 +55,10 @@ const addUsageField = (
   return (existing ?? 0) + incoming;
 };
 
-/**
- * Additive price merge — null-aware version for totalPrice.
- * Returns null when at least one operand is explicitly null (unpriced sentinel).
- */
 const addPriceField = (
-  existing: number | null | undefined,
-  incoming: number | null | undefined,
-): number | null | undefined => {
-  if (existing === null || incoming === null) {
-    return null;
-  }
+  existing: number | undefined,
+  incoming: number | undefined,
+): number | undefined => {
   if (typeof incoming !== 'number' || !Number.isFinite(incoming)) {
     return existing;
   }

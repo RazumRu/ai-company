@@ -140,17 +140,9 @@ export const compactUsageUpdate = (
     next.totalTokens = totalTokens;
   }
 
-  if (source?.totalPrice === null) {
-    next.totalPrice = null;
-  } else {
-    const totalPrice = safeNumber(source?.totalPrice);
-    if (totalPrice !== undefined) {
-      next.totalPrice = totalPrice;
-    }
-  }
-
-  if (source?.hasUnpricedCalls === true) {
-    next.hasUnpricedCalls = true;
+  const totalPrice = safeNumber(source?.totalPrice);
+  if (totalPrice !== undefined) {
+    next.totalPrice = totalPrice;
   }
 
   const currentContext = safeNumber(source?.currentContext);
@@ -176,7 +168,7 @@ export const sumUsage = (
   const sumField = (
     key: Exclude<
       keyof ThreadTokenUsageSnapshot,
-      'totalPrice' | 'effectiveCostLimitUsd' | 'hasUnpricedCalls'
+      'totalPrice' | 'effectiveCostLimitUsd'
     >,
   ): number | undefined => {
     let hasAny = false;
@@ -194,7 +186,7 @@ export const sumUsage = (
   const maxField = (
     key: Exclude<
       keyof ThreadTokenUsageSnapshot,
-      'totalPrice' | 'effectiveCostLimitUsd' | 'hasUnpricedCalls'
+      'totalPrice' | 'effectiveCostLimitUsd'
     >,
   ): number | undefined => {
     let hasAny = false;
@@ -212,10 +204,7 @@ export const sumUsage = (
     return hasAny ? max : undefined;
   };
 
-  // Sum totalPrice separately to handle null (unpriced) contributors.
-  const anyUnpriced = usages.some(
-    (u) => u?.totalPrice === null || u?.hasUnpricedCalls === true,
-  );
+  // Sum totalPrice — skip undefined contributors.
   let hasNumericPrice = false;
   const priceSum = usages.reduce((acc, usage) => {
     const value = usage.totalPrice;
@@ -232,9 +221,8 @@ export const sumUsage = (
     outputTokens: sumField('outputTokens'),
     reasoningTokens: sumField('reasoningTokens'),
     totalTokens: sumField('totalTokens'),
-    totalPrice: hasNumericPrice ? priceSum : anyUnpriced ? null : undefined,
+    totalPrice: hasNumericPrice ? priceSum : undefined,
     currentContext: maxField('currentContext'),
-    hasUnpricedCalls: anyUnpriced,
   };
 };
 

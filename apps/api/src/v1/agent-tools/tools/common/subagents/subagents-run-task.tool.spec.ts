@@ -92,7 +92,7 @@ describe('SubagentsRunTaskTool', () => {
         inputTokens: 200,
         outputTokens: 50,
         totalTokens: 250,
-        totalPrice: null,
+        totalPrice: 0,
       },
     },
     exploredFiles: [],
@@ -377,7 +377,7 @@ describe('SubagentsRunTaskTool', () => {
         inputTokens: 200,
         outputTokens: 50,
         totalTokens: 250,
-        totalPrice: null,
+        totalPrice: 0,
       });
     });
 
@@ -628,7 +628,7 @@ describe('SubagentsRunTaskTool', () => {
         inputTokens: 200,
         outputTokens: 50,
         totalTokens: 250,
-        totalPrice: null,
+        totalPrice: 0,
       });
     });
 

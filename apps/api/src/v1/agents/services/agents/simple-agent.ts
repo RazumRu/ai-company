@@ -264,7 +264,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       const toolExecutorNode = new ToolExecutorNode(
         toolsArray,
         this.litellmService,
-        undefined,
+        { enforceCostLimit: true },
         this.logger,
         (name: string) => this.loadTool(name),
       );
@@ -465,7 +465,7 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       outputTokens: s.outputTokens,
       ...(s.reasoningTokens ? { reasoningTokens: s.reasoningTokens } : {}),
       totalTokens: s.totalTokens,
-      totalPrice: s.hasPricedCall ? s.totalPrice : null,
+      totalPrice: s.totalPrice,
       ...(s.currentContext ? { currentContext: s.currentContext } : {}),
     };
   }
@@ -482,7 +482,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       prev.reasoningTokens === state.reasoningTokens &&
       prev.totalTokens === state.totalTokens &&
       prev.totalPrice === state.totalPrice &&
-      prev.hasPricedCall === state.hasPricedCall &&
       prev.currentContext === state.currentContext
     ) {
       return;
@@ -494,7 +493,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       reasoningTokens: state.reasoningTokens,
       totalTokens: state.totalTokens,
       totalPrice: state.totalPrice,
-      hasPricedCall: state.hasPricedCall,
       currentContext: state.currentContext,
     });
   }
@@ -993,7 +991,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
-      hasPricedCall: false,
       currentContext: 0,
     };
 

@@ -56,9 +56,6 @@ export class CheckpointStateService {
       let reasoningTokens = 0;
       let totalTokens = 0;
       let totalPriceDecimal = new Decimal(0);
-      // hasPricedCall tracks whether any checkpoint had a priced LLM call.
-      // If none did, totalPrice must be null (unknown, not zero).
-      let hasPricedCall = false;
       // currentContext is a point-in-time measurement, not additive — take max
       let maxCurrentContext = 0;
 
@@ -70,45 +67,32 @@ export class CheckpointStateService {
           continue;
         }
 
-        // Extract usage from this checkpoint.
-        // totalPrice is null when the checkpoint has no priced call (hasPricedCall=false),
-        // preserving the distinction between "zero cost" and "unknown cost".
         const usage: RequestTokenUsage = {
           inputTokens: state.inputTokens || 0,
           cachedInputTokens: state.cachedInputTokens || 0,
           outputTokens: state.outputTokens || 0,
           reasoningTokens: state.reasoningTokens || 0,
           totalTokens: state.totalTokens || 0,
-          totalPrice: state.hasPricedCall ? state.totalPrice || 0 : null,
+          totalPrice: state.totalPrice || 0,
           currentContext: state.currentContext || 0,
         };
 
-        if (state.hasPricedCall) {
-          hasPricedCall = true;
-        }
-
-        // Aggregate totals
         inputTokens += usage.inputTokens;
         cachedInputTokens += usage.cachedInputTokens || 0;
         outputTokens += usage.outputTokens;
         reasoningTokens += usage.reasoningTokens || 0;
         totalTokens += usage.totalTokens;
-        // Only add to price sum when the value is actually a number (priced call).
-        if (typeof usage.totalPrice === 'number') {
-          totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice);
-        }
+        totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice ?? 0);
         maxCurrentContext = Math.max(
           maxCurrentContext,
           usage.currentContext || 0,
         );
 
-        // Add to byNode map if we have a nodeId
         if (tuple.nodeId) {
           byNode.set(tuple.nodeId, usage);
         }
       }
 
-      // Return null if no valid usage data was found
       if (totalTokens === 0 && byNode.size === 0) {
         return null;
       }
@@ -119,9 +103,7 @@ export class CheckpointStateService {
         outputTokens,
         reasoningTokens,
         totalTokens,
-        // totalPrice is null when no checkpoint in this thread had a priced LLM call,
-        // so callers can distinguish "unknown pricing" from a genuine $0.00 cost.
-        totalPrice: hasPricedCall ? totalPriceDecimal.toNumber() : null,
+        totalPrice: totalPriceDecimal.toNumber(),
         currentContext: maxCurrentContext,
         byNode: byNode.size > 0 ? Object.fromEntries(byNode) : undefined,
       };

@@ -75,8 +75,6 @@ const accumulatePreparedStatistics = (
 ): SubagentStatistics | undefined => {
   let totalTokens = 0;
   let totalPrice = 0;
-  let hasPricedCall = false;
-  let hasUnpricedCalls = false;
   let durationMs = 0;
   let count = 0;
 
@@ -92,12 +90,6 @@ const accumulatePreparedStatistics = (
       const price = s.usage?.totalPrice ?? s.totalPrice;
       if (typeof price === 'number') {
         totalPrice += price;
-        hasPricedCall = true;
-      } else if (price === null) {
-        hasUnpricedCalls = true;
-      }
-      if (s.usage?.hasUnpricedCalls) {
-        hasUnpricedCalls = true;
       }
       if (typeof s.usage?.totalTokens === 'number') {
         totalTokens += s.usage.totalTokens;
@@ -132,9 +124,6 @@ const accumulatePreparedStatistics = (
       }
       if (typeof usage.totalPrice === 'number') {
         totalPrice += usage.totalPrice;
-        hasPricedCall = true;
-      } else if (usage.totalPrice === null) {
-        hasUnpricedCalls = true;
       }
       const dur = extractDurationMs(item.message.message);
       if (typeof dur === 'number') {
@@ -150,12 +139,7 @@ const accumulatePreparedStatistics = (
   return {
     usage: {
       totalTokens: totalTokens || undefined,
-      totalPrice: hasPricedCall
-        ? totalPrice
-        : hasUnpricedCalls
-          ? null
-          : undefined,
-      hasUnpricedCalls,
+      totalPrice: totalPrice || undefined,
       durationMs: durationMs || undefined,
     },
   };

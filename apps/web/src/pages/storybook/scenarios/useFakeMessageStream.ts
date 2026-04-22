@@ -94,28 +94,13 @@ export function useFakeMessageStream(
  * Import as: `import { testInternals } from './useFakeMessageStream'`.
  */
 export const testInternals = {
-  /** Compute expected total known price from a fixture array (null contributors excluded). */
+  /** Compute expected total price from a fixture array. */
   sumKnownPrice: (
     fixtures: {
-      requestTokenUsage?: { totalPrice: number | null } | null;
+      requestTokenUsage?: { totalPrice?: number } | null;
     }[],
   ): number =>
     fixtures.reduce<number>((acc, msg) => {
-      const price = msg.requestTokenUsage?.totalPrice;
-      if (typeof price === 'number') {
-        return acc + price;
-      }
-      return acc;
+      return acc + (msg.requestTokenUsage?.totalPrice ?? 0);
     }, 0),
-
-  /** Whether a fixture array contains at least one null-priced message. */
-  hasUnpricedCalls: (
-    fixtures: {
-      requestTokenUsage?: { totalPrice: number | null } | null;
-    }[],
-  ): boolean =>
-    fixtures.some((msg) => {
-      const usage = msg.requestTokenUsage;
-      return usage !== null && usage !== undefined && usage.totalPrice === null;
-    }),
 };

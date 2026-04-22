@@ -24,7 +24,7 @@ export interface RawTokenUsage {
   cachedInputTokens?: number;
   reasoningTokens?: number;
   totalTokens?: number;
-  totalPrice?: number | null;
+  totalPrice?: number;
   currentContext?: number;
 }
 

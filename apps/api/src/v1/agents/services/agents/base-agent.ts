@@ -209,15 +209,9 @@ export abstract class BaseAgent<
         reducer: (left, right) => left + (right ?? 0),
         default: () => 0,
       }),
-      totalPrice: Annotation<number, number | null>({
-        // Reducer accepts null updates: null means "no priced contribution
-        // this step" and is treated as 0. State value stays numeric.
+      totalPrice: Annotation<number, number>({
         reducer: (left, right) => left + (right ?? 0),
         default: () => 0,
-      }),
-      hasPricedCall: Annotation<boolean, boolean>({
-        reducer: (a, b) => a || b,
-        default: () => false,
       }),
       currentContext: Annotation<number, number>({
         reducer: (left, right) => right ?? left,
@@ -261,7 +255,6 @@ export abstract class BaseAgent<
       reasoningTokens: prev.reasoningTokens + (change.reasoningTokens ?? 0),
       totalTokens: prev.totalTokens + (change.totalTokens ?? 0),
       totalPrice: prev.totalPrice + (change.totalPrice ?? 0),
-      hasPricedCall: prev.hasPricedCall || change.hasPricedCall === true,
       currentContext: change.currentContext ?? prev.currentContext,
     };
   }
@@ -286,13 +279,15 @@ export abstract class BaseAgent<
       return null;
     }
 
+    const totalPrice = state.totalPrice;
+
     return {
       inputTokens: state.inputTokens,
       cachedInputTokens: state.cachedInputTokens,
       outputTokens: state.outputTokens,
       reasoningTokens: state.reasoningTokens,
       totalTokens: state.totalTokens,
-      totalPrice: state.hasPricedCall ? state.totalPrice : null,
+      totalPrice,
       currentContext: state.currentContext,
     };
   }

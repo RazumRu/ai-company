@@ -5,10 +5,9 @@ export type ThreadTokenUsageSnapshot = {
   outputTokens?: number;
   reasoningTokens?: number;
   totalTokens?: number;
-  totalPrice?: number | null;
+  totalPrice?: number;
   currentContext?: number;
   effectiveCostLimitUsd?: number | null;
-  hasUnpricedCalls?: boolean;
 };
 
 export type ThreadSocketEventEntry = {

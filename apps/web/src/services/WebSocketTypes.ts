@@ -105,10 +105,9 @@ export interface AgentStateUpdateNotification extends BaseNotification {
     outputTokens?: number;
     reasoningTokens?: number;
     totalTokens?: number;
-    totalPrice?: number | null;
+    totalPrice?: number;
     currentContext?: number;
     effectiveCostLimitUsd?: number | null;
-    hasUnpricedCalls?: boolean;
   };
 }
 

@@ -3433,23 +3433,17 @@ export interface ThreadMessageDtoRequestTokenUsage {
    */
   'totalTokens': number;
   /**
-   *
+   * Total price in USD
    * @type {number}
    * @memberof ThreadMessageDtoRequestTokenUsage
    */
-  'totalPrice'?: number | null;
+  'totalPrice'?: number;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadMessageDtoRequestTokenUsage
    */
   'currentContext'?: number;
-  /**
-   * True if any contributing LLM call returned unknown pricing. Optional in Wave 1 (RED spec compile); tightened to required-with-default on ThreadTotalUsageSchema in Wave 2 Step 15.
-   * @type {boolean}
-   * @memberof ThreadMessageDtoRequestTokenUsage
-   */
-  'hasUnpricedCalls'?: boolean;
 }
 /**
  *
@@ -3537,23 +3531,17 @@ export interface ThreadUsageStatisticsDtoByNodeValue {
    */
   'totalTokens': number;
   /**
-   *
+   * Total price in USD
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoByNodeValue
    */
-  'totalPrice'?: number | null;
+  'totalPrice'?: number;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoByNodeValue
    */
   'currentContext'?: number;
-  /**
-   * True if any contributing LLM call returned unknown pricing. Optional in Wave 1 (RED spec compile); tightened to required-with-default on ThreadTotalUsageSchema in Wave 2 Step 15.
-   * @type {boolean}
-   * @memberof ThreadUsageStatisticsDtoByNodeValue
-   */
-  'hasUnpricedCalls'?: boolean;
 }
 /**
  *
@@ -3574,11 +3562,11 @@ export interface ThreadUsageStatisticsDtoSchema0 {
    */
   'totalTokens': number;
   /**
-   *
+   * Total price from LLM requests related to this tool in USD
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoSchema0
    */
-  'totalPrice'?: number | null;
+  'totalPrice'?: number;
   /**
    * Number of times this tool was called
    * @type {number}
@@ -3592,11 +3580,11 @@ export interface ThreadUsageStatisticsDtoSchema0 {
    */
   'toolTokens'?: number;
   /**
-   *
+   * Tool\'s own execution price in USD
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoSchema0
    */
-  'toolPrice'?: number | null;
+  'toolPrice'?: number;
   /**
    * Sub-tool calls made within this tool (e.g. tools called by a subagent)
    * @type {Array<ThreadUsageStatisticsDtoSchema0>}
@@ -3641,23 +3629,17 @@ export interface ThreadUsageStatisticsDtoToolsAggregate {
    */
   'totalTokens': number;
   /**
-   *
+   * Total price in USD
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoToolsAggregate
    */
-  'totalPrice'?: number | null;
+  'totalPrice'?: number;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoToolsAggregate
    */
   'currentContext'?: number;
-  /**
-   * True if any contributing LLM call returned unknown pricing. Optional in Wave 1 (RED spec compile); tightened to required-with-default on ThreadTotalUsageSchema in Wave 2 Step 15.
-   * @type {boolean}
-   * @memberof ThreadUsageStatisticsDtoToolsAggregate
-   */
-  'hasUnpricedCalls'?: boolean;
   /**
    * Number of requests (messages with requestTokenUsage)
    * @type {number}
@@ -3702,23 +3684,17 @@ export interface ThreadUsageStatisticsDtoTotal {
    */
   'totalTokens': number;
   /**
-   *
+   * Total price in USD
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoTotal
    */
-  'totalPrice'?: number | null;
+  'totalPrice'?: number;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoTotal
    */
   'currentContext'?: number;
-  /**
-   * True if any contributing LLM call returned unknown pricing
-   * @type {boolean}
-   * @memberof ThreadUsageStatisticsDtoTotal
-   */
-  'hasUnpricedCalls'?: boolean;
 }
 /**
  *

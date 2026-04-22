@@ -21,7 +21,6 @@ describe('InjectPendingNode', () => {
     reasoningTokens: 0,
     totalTokens: 0,
     totalPrice: 0,
-    hasPricedCall: false,
     currentContext: 0,
   };
 

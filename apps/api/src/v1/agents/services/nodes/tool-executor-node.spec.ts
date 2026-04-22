@@ -84,7 +84,6 @@ describe('ToolExecutorNode', () => {
         reasoningTokens: 0,
         totalTokens: 0,
         totalPrice: 0,
-        hasPricedCall: false,
         currentContext: 0,
       };
 
@@ -118,7 +117,6 @@ describe('ToolExecutorNode', () => {
           configurable: {
             ...(mockConfig.configurable as Record<string, unknown>),
             __toolCallId: 'call-1',
-            __parentStateTotalPrice: 0,
           },
           signal: undefined,
         },
@@ -162,7 +160,6 @@ describe('ToolExecutorNode', () => {
           configurable: {
             ...(mockConfig.configurable as Record<string, unknown>),
             __toolCallId: 'call-1',
-            __parentStateTotalPrice: 0,
           },
           signal: undefined,
         },
@@ -173,7 +170,6 @@ describe('ToolExecutorNode', () => {
           configurable: {
             ...(mockConfig.configurable as Record<string, unknown>),
             __toolCallId: 'call-2',
-            __parentStateTotalPrice: 0,
           },
           signal: undefined,
         },
@@ -474,7 +470,6 @@ describe('ToolExecutorNode', () => {
           configurable: {
             ...customConfig.configurable,
             __toolCallId: 'call-1',
-            __parentStateTotalPrice: 0,
           },
           signal: undefined,
         },
@@ -966,7 +961,6 @@ describe('ToolExecutorNode', () => {
         reasoningTokens: 0,
         totalTokens: 0,
         totalPrice: 0,
-        hasPricedCall: false,
         currentContext: 0,
       };
 
@@ -1264,7 +1258,6 @@ describe('ToolExecutorNode', () => {
         reasoningTokens: 0,
         totalTokens: 0,
         totalPrice: 0,
-        hasPricedCall: false,
         currentContext: 0,
       };
 
@@ -1495,7 +1488,6 @@ describe('ToolExecutorNode', () => {
         reasoningTokens: 0,
         totalTokens: 0,
         totalPrice: 0,
-        hasPricedCall: false,
         currentContext: 0,
       };
 

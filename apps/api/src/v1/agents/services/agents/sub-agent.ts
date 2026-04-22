@@ -168,13 +168,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       runnableConfig ?? {},
     );
 
-    const parentSeedTotalPrice =
-      typeof runnableConfig?.configurable?.__parentStateTotalPrice === 'number'
-        ? runnableConfig.configurable.__parentStateTotalPrice
-        : 0;
-
-    const parentTotalPrice = parentSeedTotalPrice;
-
     let totalIterations = 0;
     let toolCallsMade = 0;
     let finalState: BaseAgentState = {
@@ -188,8 +181,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       outputTokens: 0,
       reasoningTokens: 0,
       totalTokens: 0,
-      totalPrice: parentTotalPrice,
-      hasPricedCall: false, // never inherited from parent seed (Blocker B3 Option A)
+      totalPrice: 0,
       currentContext: 0,
     };
 
@@ -244,12 +236,9 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         streaming: supportsStreaming,
       });
 
-      // Subagent enforces the cost limit so the parent is notified mid-execution
-      // rather than only on the parent's next LLM call.  When the limit fires,
-      // CostLimitExceededError propagates up through the graph stream and is
-      // caught below, which converts it to a graceful SubagentRunResult with
-      // stopReason='cost_limit'.  The tool wrapper then surfaces that field so
-      // the parent SimpleAgent can re-throw and trigger its own stop path.
+      // Cost limit is enforced at the parent's tool-executor, not here —
+      // subagent runs unbounded once invoked; overshoot is capped at one
+      // subagent-cost.
       const invokeLlmNode = new InvokeLlmNode(
         this.litellmService,
         llm,
@@ -258,7 +247,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           systemPrompt: config.instructions,
           toolChoice: toolsArray.length > 0 ? 'auto' : undefined,
           parallelToolCalls: useParallelToolCall,
-          enforceCostLimit: true,
+          enforceCostLimit: false,
         },
         this.logger,
       );
@@ -337,10 +326,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
 
       const initialState: BaseAgentStateChange = {
         messages: { mode: 'append', items: initialMessages },
-        // Seed the LangGraph-internal totalPrice so InvokeLlmNode's cost
-        // enforcement sees the combined parent+self accumulated spend, not just
-        // the sub-agent's own spend starting from zero.
-        ...(parentTotalPrice > 0 ? { totalPrice: parentTotalPrice } : {}),
       };
 
       const stream = await compiled.stream(
@@ -419,7 +404,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
                 totalIterations,
                 toolCallsMade,
                 config.maxContextTokens,
-                parentSeedTotalPrice,
               );
             }
           }
@@ -453,11 +437,8 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         extractTextFromResponseContent(lastAiMessage?.content) ||
         'Task completed.';
 
-      // Aggregate usage
-      const usage = this.extractOwnUsageFromState(
-        finalState,
-        parentSeedTotalPrice,
-      );
+      // Aggregate usage — subagent reports only its own spend
+      const usage = this.extractUsageFromState(finalState);
       const exploredFiles = extractExploredFilesFromMessages(
         finalState.messages,
       );
@@ -484,7 +465,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           finalState,
           totalIterations,
           toolCallsMade,
-          parentSeedTotalPrice,
         );
       }
       if (this.isRecursionLimitError(err)) {
@@ -496,10 +476,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
           statistics: {
             totalIterations,
             toolCallsMade,
-            usage: this.extractOwnUsageFromState(
-              finalState,
-              parentSeedTotalPrice,
-            ),
+            usage: this.extractUsageFromState(finalState),
           },
           exploredFiles: extractExploredFilesFromMessages(finalState.messages),
           error: 'Max iterations reached',
@@ -518,10 +495,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
         statistics: {
           totalIterations,
           toolCallsMade,
-          usage: this.extractOwnUsageFromState(
-            finalState,
-            parentSeedTotalPrice,
-          ),
+          usage: this.extractUsageFromState(finalState),
         },
         exploredFiles: extractExploredFilesFromMessages(finalState.messages),
         error: errorMessage,
@@ -738,22 +712,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     );
   }
 
-  /**
-   * Same as `extractUsageFromState` but subtracts the parent-seed totalPrice
-   * so the returned usage reflects only the sub-agent's own spend. The seed
-   * stays inside the LangGraph state for cost-limit enforcement.
-   */
-  private extractOwnUsageFromState(
-    state: BaseAgentState,
-    parentSeedTotalPrice: number,
-  ): RequestTokenUsage | null {
-    const usage = this.extractUsageFromState(state);
-    if (usage && typeof usage.totalPrice === 'number') {
-      usage.totalPrice = Math.max(0, usage.totalPrice - parentSeedTotalPrice);
-    }
-    return usage;
-  }
-
   private isAbortError(err: unknown): boolean {
     const name = (err as { name?: string })?.name;
     const msg = (err as { message?: string })?.message ?? '';
@@ -779,14 +737,13 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     state: BaseAgentState,
     totalIterations: number,
     toolCallsMade: number,
-    parentSeedTotalPrice: number,
   ): SubagentRunResult {
     return {
       result: `Subagent stopped: cost limit $${err.effectiveLimitUsd.toFixed(2)} reached (total: $${err.totalPriceUsd.toFixed(4)}).`,
       statistics: {
         totalIterations,
         toolCallsMade,
-        usage: this.extractOwnUsageFromState(state, parentSeedTotalPrice),
+        usage: this.extractUsageFromState(state),
       },
       exploredFiles: extractExploredFilesFromMessages(state.messages),
       error: 'Cost limit reached',
@@ -800,7 +757,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     totalIterations: number,
     toolCallsMade: number,
     maxContextTokens: number,
-    parentSeedTotalPrice: number,
   ): SubagentRunResult {
     const lastAiMessage = [...state.messages]
       .reverse()
@@ -816,7 +772,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       statistics: {
         totalIterations,
         toolCallsMade,
-        usage: this.extractOwnUsageFromState(state, parentSeedTotalPrice),
+        usage: this.extractUsageFromState(state),
       },
       exploredFiles: extractExploredFilesFromMessages(state.messages),
       error: `Context limit reached (${state.currentContext}/${maxContextTokens})`,

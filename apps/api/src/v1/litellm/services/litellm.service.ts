@@ -87,7 +87,6 @@ export class LitellmService {
     let totalPriceDecimal = new Decimal(0);
     let currentContext = 0;
     let sawAny = false;
-    let sawPrice = false;
     let sawContext = false;
 
     for (const usage of usages) {
@@ -100,10 +99,7 @@ export class LitellmService {
       outputTokens += usage.outputTokens;
       reasoningTokens += usage.reasoningTokens ?? 0;
       totalTokens += usage.totalTokens;
-      if (typeof usage.totalPrice === 'number') {
-        totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice);
-        sawPrice = true;
-      }
+      totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice ?? 0);
       if (typeof usage.currentContext === 'number') {
         currentContext = Math.max(currentContext, usage.currentContext);
         sawContext = true;
@@ -120,7 +116,7 @@ export class LitellmService {
       outputTokens,
       ...(reasoningTokens ? { reasoningTokens } : {}),
       totalTokens,
-      totalPrice: sawPrice ? totalPriceDecimal.toNumber() : null,
+      totalPrice: totalPriceDecimal.toNumber(),
       ...(sawContext ? { currentContext } : {}),
     };
   }
@@ -178,12 +174,7 @@ export class LitellmService {
       reasoningTokens,
     });
 
-    const totalPrice =
-      providerCost !== null
-        ? providerCost
-        : calculatedPrice !== null
-          ? calculatedPrice
-          : null;
+    const totalPrice = providerCost ?? calculatedPrice ?? 0;
 
     return {
       inputTokens,

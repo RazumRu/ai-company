@@ -833,7 +833,7 @@ describe('ShellTool', () => {
           inputTokens: 50,
           outputTokens: 10,
           totalTokens: 60,
-          totalPrice: null,
+          totalPrice: 0,
         },
       });
 
@@ -859,7 +859,7 @@ describe('ShellTool', () => {
         inputTokens: 50,
         outputTokens: 10,
         totalTokens: 60,
-        totalPrice: null,
+        totalPrice: 0,
       });
       expect(mockOpenaiService.response).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -907,7 +907,7 @@ describe('ShellTool', () => {
           inputTokens: 30,
           outputTokens: 5,
           totalTokens: 35,
-          totalPrice: null,
+          totalPrice: 0,
         },
       });
 
@@ -982,7 +982,7 @@ describe('ShellTool', () => {
           inputTokens: 40,
           outputTokens: 8,
           totalTokens: 48,
-          totalPrice: null,
+          totalPrice: 0,
         },
       });
 
@@ -1128,7 +1128,7 @@ describe('ShellTool', () => {
           inputTokens: 50,
           outputTokens: 10,
           totalTokens: 60,
-          totalPrice: null,
+          totalPrice: 0,
         },
       });
 

@@ -470,7 +470,7 @@ describe('SimpleAgent', () => {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
-      hasPricedCall: false,
+
       currentContext: 0,
     });
 
@@ -855,7 +855,7 @@ describe('SimpleAgent', () => {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
-      hasPricedCall: false,
+
       currentContext: 0,
     });
 
@@ -1510,7 +1510,7 @@ describe('SimpleAgent', () => {
           reasoningTokens: 0,
           totalTokens: 0,
           totalPrice: 0,
-          hasPricedCall: false,
+
           currentContext: 0,
         },
       });
@@ -1616,7 +1616,7 @@ describe('SimpleAgent', () => {
           reasoningTokens: 0,
           totalTokens: 0,
           totalPrice: 0,
-          hasPricedCall: false,
+
           currentContext: 0,
         },
       });
@@ -2195,7 +2195,7 @@ describe('SimpleAgent', () => {
           reasoningTokens: 0,
           totalTokens: 0,
           totalPrice: 0,
-          hasPricedCall: false,
+
           currentContext: 0,
         },
       });

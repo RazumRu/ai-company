@@ -176,19 +176,15 @@ export class InvokeLlmNode extends BaseNode<
       threadUsage.durationMs = durationMs;
     }
 
-    // Enforcement runs against the combined parent+self cost. In sub-agents,
-    // ToolExecutorNode seeds the starting totalPrice from the parent's
-    // state.totalPrice (via `__parentStateTotalPrice` in configurable), so
-    // the `projectedTotal` below already reflects parent context.
+    // Enforcement runs against the agent's own accumulated spend combined
+    // with the current LLM call's contribution. The parent-level tool-executor
+    // is responsible for enforcement at sub-agent boundaries.
     if (this.opts?.enforceCostLimit) {
       const effectiveLimit =
         typeof cfg.configurable?.effective_cost_limit_usd === 'number'
           ? cfg.configurable.effective_cost_limit_usd
           : null;
-      // Cost-limit budget guard: null totalPrice (unknown pricing) does not
-      // consume the budget cap. Matches the policy at tool-executor-node.ts:373.
-      const projectedTotal =
-        (state.totalPrice ?? 0) + (threadUsage?.totalPrice ?? 0);
+      const projectedTotal = state.totalPrice + (threadUsage?.totalPrice ?? 0);
       if (effectiveLimit !== null && projectedTotal >= effectiveLimit) {
         throw new CostLimitExceededError(effectiveLimit, projectedTotal);
       }
@@ -226,27 +222,23 @@ export class InvokeLlmNode extends BaseNode<
       cfg,
     );
 
-    // Destructure durationMs and totalPrice out of threadUsage.
-    // durationMs is per-message metadata stored in __requestUsage on the AI message kwargs.
-    // totalPrice is handled separately: only numeric (non-null) values accumulate into
-    // BaseAgentStateChange (which expects number | undefined, not number | null).
-    const {
-      durationMs: _dur,
-      totalPrice: rawTotalPrice,
-      ...stateUsageWithoutPrice
-    } = threadUsage || {};
-
-    const isPriced =
-      threadUsage !== null &&
-      threadUsage !== undefined &&
-      typeof rawTotalPrice === 'number';
+    // Destructure durationMs out of threadUsage — it is per-message metadata
+    // stored in __requestUsage on the AI message kwargs, not accumulated state.
+    // Cumulative `state.totalPrice` is `number` (the reducer accumulates).
+    // Unknown pricing (null) is preserved on the per-message `__requestUsage`
+    // kwargs, but the accumulator skips it by coercing to 0 here.
+    let stateUsage: Record<string, number> = {};
+    if (threadUsage) {
+      const { durationMs: _dur, ...rest } = threadUsage;
+      stateUsage = {
+        ...rest,
+        totalPrice: typeof rest.totalPrice === 'number' ? rest.totalPrice : 0,
+      };
+    }
 
     return {
       messages: { mode: 'append', items: [...reasoningMessages, ...out] },
-      ...stateUsageWithoutPrice,
-      ...(isPriced
-        ? { totalPrice: rawTotalPrice as number, hasPricedCall: true }
-        : {}),
+      ...stateUsage,
       ...(shouldResetNeedsMoreInfo
         ? {
             toolsMetadata: FinishTool.clearState(),

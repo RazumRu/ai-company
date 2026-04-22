@@ -42,6 +42,7 @@ export class ToolExecutorNode extends BaseNode<
   BaseAgentStateChange
 > {
   private maxOutputChars: number;
+  private readonly enforceCostLimit: boolean;
 
   /** Tracks consecutive identical tool-error batches for circuit breaking. */
   private consecutiveErrorMessage: string | null = null;
@@ -52,6 +53,13 @@ export class ToolExecutorNode extends BaseNode<
     private readonly litellmService: LitellmService,
     opts?: {
       maxOutputChars?: number;
+      /**
+       * When true, the node enforces the effective cost limit read from
+       * `config.configurable.effective_cost_limit_usd` BEFORE invoking any
+       * tools in a batch. Subagents pass false (parent ToolExecutorNode
+       * enforces after the subagent-tool returns).
+       */
+      enforceCostLimit?: boolean;
     },
     private readonly logger?: DefaultLogger,
     private readonly deferredToolResolver?: (name: string) => {
@@ -61,6 +69,7 @@ export class ToolExecutorNode extends BaseNode<
   ) {
     super();
     this.maxOutputChars = opts?.maxOutputChars ?? 500_000;
+    this.enforceCostLimit = opts?.enforceCostLimit ?? false;
   }
 
   async invoke(
@@ -88,6 +97,22 @@ export class ToolExecutorNode extends BaseNode<
     for (const tc of calls) {
       if (!tc.id) {
         tc.id = `generated_id_${Math.random().toString(36).slice(2)}`;
+      }
+    }
+
+    // Pre-invocation cost-limit check. If the agent's cumulative spend has
+    // already met or exceeded the configured budget, refuse to spawn more
+    // tool invocations (which may in turn spawn more LLM calls). Mirrors
+    // InvokeLlmNode's pre-LLM check — same state field, same comparison.
+    // Parents enforce; subagents pass enforceCostLimit=false because the
+    // parent's ToolExecutorNode enforces after the subagent-tool returns.
+    if (this.enforceCostLimit) {
+      const effectiveLimit =
+        typeof cfg.configurable?.effective_cost_limit_usd === 'number'
+          ? cfg.configurable.effective_cost_limit_usd
+          : null;
+      if (effectiveLimit !== null && state.totalPrice >= effectiveLimit) {
+        throw new CostLimitExceededError(effectiveLimit, state.totalPrice);
       }
     }
 
@@ -160,13 +185,6 @@ export class ToolExecutorNode extends BaseNode<
               ...(cfg.configurable ?? {}),
               ...(toolMetadata !== undefined ? { toolMetadata } : {}),
               __toolCallId: callId,
-              // Cost-limit baseline seed: null totalPrice means "no priced calls yet
-              // on parent". Coerce to 0 so the subagent's own-spend calculation
-              // (own = observed - parentSeed) starts from a numeric baseline.
-              // Unknown-pricing still surfaces as null in the reported statistics
-              // (via extractOwnUsageFromState); this coercion is scoped to the
-              // internal cost-limit math only.
-              __parentStateTotalPrice: state.totalPrice ?? 0,
             },
             signal: cfg.signal,
           };
@@ -376,12 +394,14 @@ export class ToolExecutorNode extends BaseNode<
       const effectiveLimit = cfg.configurable?.effective_cost_limit_usd ?? 0;
       const totalSpend = Math.max(
         costLimitResult.stopCostUsd ?? 0,
-        // Cost-limit budget guard: null totalPrice means the contributor's
-        // pricing is unknown. We coerce to 0 so unpriced calls do not consume
-        // the user's budget cap — a conservative default. The user-facing
-        // cost report (via threads.service aggregation) still surfaces null
-        // as $— so the unknown-pricing case is visible, not masked.
-        (state.totalPrice ?? 0) + (aggregatedToolUsage?.totalPrice ?? 0),
+        // Cost-limit budget guard: unknown pricing on the tool-aggregate
+        // (totalPrice?: number) is coerced to 0 so unpriced calls do not
+        // consume the user's budget cap — a conservative default. The
+        // user-facing cost report (via threads.service aggregation) still
+        // surfaces null as $— so the unknown-pricing case is visible, not
+        // masked. state.totalPrice is always a number (the state reducer
+        // seeds it to 0 and accumulates in-place).
+        state.totalPrice + (aggregatedToolUsage?.totalPrice ?? 0),
       );
       throw new CostLimitExceededError(effectiveLimit, totalSpend);
     }
@@ -402,6 +422,18 @@ export class ToolExecutorNode extends BaseNode<
       cfg,
     );
 
+    // Cumulative state.totalPrice is number; unknown pricing (null) is coerced
+    // to 0 when accumulating. See matching handling in invoke-llm-node.
+    const aggregatedUsageForState = aggregatedToolUsage
+      ? {
+          ...aggregatedToolUsage,
+          totalPrice:
+            typeof aggregatedToolUsage.totalPrice === 'number'
+              ? aggregatedToolUsage.totalPrice
+              : 0,
+        }
+      : {};
+
     return {
       messages: {
         mode: 'append',
@@ -409,7 +441,7 @@ export class ToolExecutorNode extends BaseNode<
       },
       toolsMetadata: toolsMetadataUpdate,
       // Spread aggregated tool usage into state (will be added by reducers)
-      ...(aggregatedToolUsage ?? {}),
+      ...aggregatedUsageForState,
     };
   }
 

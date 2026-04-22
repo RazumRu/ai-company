@@ -163,6 +163,18 @@ export class SummarizeNode extends BaseNode<
       ...messagesForKeep,
     ];
 
+    // Cumulative state.totalPrice is number; unknown pricing (null) is coerced
+    // to 0 when accumulating. See matching handling in invoke-llm-node.
+    const usageForState = summaryData.usage
+      ? {
+          ...summaryData.usage,
+          totalPrice:
+            typeof summaryData.usage.totalPrice === 'number'
+              ? summaryData.usage.totalPrice
+              : 0,
+        }
+      : {};
+
     return {
       messages: {
         mode: 'replace',
@@ -172,7 +184,7 @@ export class SummarizeNode extends BaseNode<
       summary: summaryData.summary,
       toolUsageGuardActivated: false,
       toolUsageGuardActivatedCount: 0,
-      ...(summaryData.usage || {}),
+      ...usageForState,
     };
   }
 

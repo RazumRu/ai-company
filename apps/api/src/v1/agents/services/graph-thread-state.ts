@@ -13,7 +13,6 @@ export interface IGraphThreadStateData {
   reasoningTokens: number;
   totalTokens: number;
   totalPrice: number;
-  hasPricedCall: boolean;
   currentContext: number;
 }
 
@@ -43,7 +42,6 @@ export class GraphThreadState {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
-      hasPricedCall: false,
       currentContext: 0,
     };
   }
@@ -76,7 +74,6 @@ export class GraphThreadState {
       reasoningTokens: patch.reasoningTokens ?? prevState.reasoningTokens,
       totalTokens: patch.totalTokens ?? prevState.totalTokens,
       totalPrice: patch.totalPrice ?? prevState.totalPrice,
-      hasPricedCall: patch.hasPricedCall === true || prevState.hasPricedCall,
       currentContext: patch.currentContext ?? prevState.currentContext,
     };
 
@@ -105,7 +102,6 @@ export class GraphThreadState {
       prev.reasoningTokens === next.reasoningTokens &&
       prev.totalTokens === next.totalTokens &&
       prev.totalPrice === next.totalPrice &&
-      prev.hasPricedCall === next.hasPricedCall &&
       prev.currentContext === next.currentContext
     );
   }

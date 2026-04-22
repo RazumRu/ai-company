@@ -154,10 +154,6 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
     expect(usage?.totalPrice).toBe(0.1);
     // Single-source policy: while running, aggregate wins for all fields including currentContext
     expect(usage?.currentContext).toBe(3000);
-    // Scenario 1 (matrix row 1 — all priced, running): hasUnpricedCalls must be false.
-    expect(result.current.selectedThreadThreadUsage?.hasUnpricedCalls).toBe(
-      false,
-    );
   });
 
   it('returns aggregate fields when Running (single-source policy)', async () => {
@@ -262,10 +258,6 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
     expect(usage?.outputTokens).toBe(250);
     expect(usage?.totalTokens).toBe(650);
     expect(usage?.totalPrice).toBe(0.42);
-    // Scenario 2 (matrix row 2 — all priced, done): hasUnpricedCalls must be false.
-    expect(result.current.selectedThreadThreadUsage?.hasUnpricedCalls).toBe(
-      false,
-    );
   });
 
   it('includes effectiveCostLimitUsd from selectedThread', async () => {
@@ -311,9 +303,8 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
 
   // Scenario 3.4: running→done transition triggers exactly one fetch; extra re-render without
   // status change must NOT fire another fetch (StrictMode / redundant render safety).
-  // Scenario 6 (matrix row 6 — running→done with fresh REST fetch returning hasUnpricedCalls: true):
-  // The transition fetch mock carries hasUnpricedCalls: true. After transition the hook must expose it.
-  // RED until Wave 4: apiTotal shape does not include hasUnpricedCalls, so the hook cannot propagate it.
+  // Scenario 3.4: running→done transition triggers exactly one fetch; extra re-render without
+  // status change must NOT fire another fetch (StrictMode / redundant render safety).
   it('fetches once on running→done transition and not again on a redundant re-render (3.4)', async () => {
     (
       threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
@@ -322,7 +313,7 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
     const runningThread = makeThread({ status: 'running' });
     const doneThread = makeThread({ status: 'done' });
 
-    const { result, rerender } = renderHook(
+    const { rerender } = renderHook(
       (props: { thread: typeof runningThread }) =>
         useChatsUsageStats({
           toastMessage,
@@ -360,43 +351,6 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
     expect(
       threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>,
     ).toHaveBeenCalledWith('thread-1');
-
-    // Scenario 6: re-mock with hasUnpricedCalls: true, then do a fresh running→done
-    // transition so the transition effect fires with the new mock. The hook must expose
-    // hasUnpricedCalls: true directly from the REST response — no secondary fetch needed.
-    (
-      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
-      data: {
-        total: {
-          inputTokens: 200,
-          cachedInputTokens: 0,
-          outputTokens: 100,
-          reasoningTokens: 0,
-          totalTokens: 300,
-          totalPrice: null,
-          currentContext: 0,
-          hasUnpricedCalls: true,
-        },
-        byNode: {},
-      },
-    });
-
-    // Go back to running so the next rerender produces a clean running→done transition.
-    rerender({ thread: runningThread });
-    // Now transition to done — this fires the transition effect with the new mock.
-    rerender({ thread: doneThread });
-
-    await waitFor(() => {
-      expect(result.current.selectedThreadThreadUsage?.hasUnpricedCalls).toBe(
-        true,
-      );
-    });
-
-    // totalPrice null must survive — not coerced to 0.
-    // RED: current hook reads usageStats.total.totalPrice which is typed as number|undefined;
-    // null passes through JS but the type does not reflect it yet.
-    expect(result.current.selectedThreadThreadUsage?.totalPrice).toBeNull();
 
     // Reset again to verify redundant re-render (same status) does NOT fire another fetch.
     (
@@ -482,58 +436,5 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
         5,
       );
     });
-  });
-
-  // Scenario 4-web (matrix row 4 — all calls unpriced, thread done):
-  // REST snapshot returns totalPrice: null + hasUnpricedCalls: true.
-  // Hook must propagate totalPrice === null (not coerce to 0) and surface hasUnpricedCalls: true.
-  // RED: ThreadTokenUsageSnapshot.totalPrice is typed as number | undefined; null is not handled.
-  // Also RED: hasUnpricedCalls is not on the snapshot type or hook output until Wave 4.
-  it('Scenario 4-web: exposes totalPrice===null and hasUnpricedCalls===true when all calls unpriced (RED until Wave 4)', async () => {
-    (
-      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
-    ).mockResolvedValue({
-      data: {
-        total: {
-          inputTokens: 500,
-          cachedInputTokens: 0,
-          outputTokens: 250,
-          reasoningTokens: 0,
-          totalTokens: 750,
-          totalPrice: null,
-          currentContext: 0,
-          hasUnpricedCalls: true,
-        },
-        byNode: {},
-      },
-    });
-
-    const selectedThread = makeThread({ status: 'done' });
-
-    const { result } = renderHook(() =>
-      useChatsUsageStats({
-        toastMessage,
-        selectedThread,
-        selectedThreadId: 'thread-1',
-        selectedThreadIsDraft: false,
-        selectedAgentNodeId: null,
-        graphCache: {},
-        getFullGraph: () => undefined,
-      }),
-    );
-
-    await waitFor(() => {
-      expect(result.current.selectedThreadThreadUsage).toBeDefined();
-    });
-
-    const usage = result.current.selectedThreadThreadUsage;
-
-    // totalPrice must be null — not coerced to 0 or undefined.
-    // RED: hook currently reads `usageStats.total.totalPrice` typed as number|undefined;
-    // null passes through JS but will appear as null here, which fails toBeNull when
-    // the hook coerces via `?? 0` or similar pattern.
-    expect(usage?.totalPrice).toBeNull();
-
-    expect(usage?.hasUnpricedCalls).toBe(true);
   });
 });

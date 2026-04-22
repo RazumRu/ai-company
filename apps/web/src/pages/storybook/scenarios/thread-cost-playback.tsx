@@ -3,13 +3,13 @@
  *
  * Streams synthetic fixture messages through the real `sumUsage` aggregation
  * path (the same function used by `useChatsUsageStats` > `selectedThreadAggregateUsage`).
- * This makes "jumping numbers" and "$0.000 after done" symptoms reproducible in
- * isolation without a live backend or Keycloak context.
+ * This makes "jumping numbers" symptoms reproducible in isolation without a
+ * live backend or Keycloak context.
  *
  * Scenarios:
  *   A — all priced, running→done (monotonic accumulation to $0.125)
- *   B — mixed priced + unpriced (known partial + hasUnpricedCalls flag)
- *   C — all unpriced (renders $— throughout)
+ *   B — mixed priced + unpriced (priced outer + $0.000 unpriced subagent calls)
+ *   C — all unpriced (renders $0.000 throughout — unpriced model)
  */
 
 import { useState } from 'react';
@@ -80,7 +80,6 @@ function CostHeader({
   running: boolean;
 }) {
   const totalPrice = usage?.totalPrice;
-  const hasUnpricedCalls = usage?.hasUnpricedCalls === true;
   const totalTokens = usage?.totalTokens ?? 0;
   const inputTokens = usage?.inputTokens ?? 0;
   const outputTokens = usage?.outputTokens ?? 0;
@@ -91,16 +90,6 @@ function CostHeader({
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted/40 px-4 py-3 font-mono text-sm">
       <span className="text-lg font-semibold tabular-nums">{priceLabel}</span>
-      {hasUnpricedCalls && totalPrice === null && (
-        <Badge variant="secondary" className="text-xs">
-          unpriced model
-        </Badge>
-      )}
-      {hasUnpricedCalls && totalPrice !== null && (
-        <Badge variant="secondary" className="text-xs">
-          + unpriced calls
-        </Badge>
-      )}
       <span className="text-muted-foreground">
         {totalTokens.toLocaleString()} tokens ({inputTokens.toLocaleString()} in
         / {outputTokens.toLocaleString()} out)
@@ -183,7 +172,7 @@ function ScenarioPlayer({ scenario }: { scenario: ScenarioKey }) {
                 inputTokens?: number;
                 outputTokens?: number;
                 totalTokens?: number;
-                totalPrice?: number | null;
+                totalPrice?: number;
               }
             | null
             | undefined;
@@ -194,8 +183,8 @@ function ScenarioPlayer({ scenario }: { scenario: ScenarioKey }) {
             inputTokens: ru.inputTokens,
             outputTokens: ru.outputTokens,
             totalTokens: ru.totalTokens,
-            totalPrice: ru.totalPrice === undefined ? undefined : ru.totalPrice,
-            hasUnpricedCalls: ru.totalPrice === null,
+            totalPrice:
+              typeof ru.totalPrice === 'number' ? ru.totalPrice : undefined,
           };
           return snap;
         }),
@@ -246,10 +235,10 @@ export function ThreadCostPlaybackSection() {
       <Row label="Scenario A — all priced, running→done (expected: monotonic accumulation to $0.13)">
         <ScenarioPlayer scenario="A" />
       </Row>
-      <Row label="Scenario B — mixed priced + unpriced (expected: known partial sum + '+ unpriced calls' badge)">
+      <Row label="Scenario B — mixed priced + unpriced (expected: known partial sum, unpriced calls show as $0.000)">
         <ScenarioPlayer scenario="B" />
       </Row>
-      <Row label="Scenario C — all unpriced (expected: $— throughout, 'unpriced model' badge)">
+      <Row label="Scenario C — all unpriced (expected: $0.000 throughout — unpriced model)">
         <ScenarioPlayer scenario="C" />
       </Row>
     </Section>

@@ -1,39 +1,38 @@
 # Cost Accounting & Numeric Aggregation
 
-Rules for any code that tracks, aggregates, or displays LLM usage costs, token counts, durations, or other measurements that may legitimately be zero OR legitimately unknown.
+Rules for any code that tracks, aggregates, or displays LLM usage costs, token counts, durations, or other measurements.
 
-## Preserve null through the pipeline
+## Isolated-leaf agent model
 
-- At ingestion boundaries (e.g. `LitellmService.extractTokenUsageFromResponse`), never coerce unknown pricing/measurement to `0` via `?? 0`. If the upstream returned `null`, propagate `null`.
-- `RequestTokenUsage.totalPrice`, any DTO that carries a derived cost, and any schema field for a measurement that can legitimately be unknown MUST be declared nullable (`z.number().nullable()` or equivalent). TypeScript then drives every consumer to handle the null branch.
-- Aggregators must skip null contributors AND track a `hasUnpricedCalls: boolean` (or `hasUnknownContributors`) companion flag. Sum-of-known + flag is strictly more informative than coerced-to-zero sum.
-- **Every aggregator is in scope — primary and secondary.** A single service method often has a primary accumulator (the returned `total`) PLUS secondary breakdown maps (e.g. `byTool`, `byNode`, `subCalls`, `toolOwnUsage`). Each of these is an aggregator and must apply the same null-skip + companion-flag discipline. A single reviewer pass that audits only the primary path misses the secondary paths, and `|| 0` in a breakdown map silently undoes the null-preservation at the primary level.
-- **Test helpers must not coerce null → 0.** Fixture builder functions used by specs that verify null propagation (e.g. `makeUsageStats({ total })`) must pass `totalPrice` through as-is. A `totalPrice: total.totalPrice ?? 0` inside a helper is a false-negative trap: the test can pass even when the production code under test fails to preserve null.
-- UI formatters for these fields MUST render null as a visually distinct glyph (`$—`, `N/A`, `unknown`) — never the same visual as a legitimate zero (`$0.0000`).
+- Every agent computes ONLY its own cost. An agent's own cost INCLUDES calls it makes to subagents and communication tools — from the parent's point of view, a subagent is just another tool.
+- Subagent accumulators start at `0` on every invocation. Do NOT seed a subagent's `totalPrice` from the parent's state. Do NOT subtract a parent seed from the subagent's reported own-spend.
+- The parent's `ToolExecutorNode` spreads the returned `statistics.usage` (including `totalPrice`) into parent state via the standard reducer. That's how the parent's `totalPrice` naturally accumulates subagent costs.
+- Cost-limit enforcement is the parent's responsibility. The parent's tool-executor checks `(state.totalPrice + threadUsage.totalPrice >= effectiveLimit)` before invoking the next tool. Subagents run unbounded once invoked; the worst-case overshoot is one subagent's total cost.
+
+## Type shape
+
+- `totalPrice` is `number | undefined` everywhere — DTO, WebSocket event, state, accumulator. Never `number | null`.
+- At ingestion (`LitellmService.extractTokenUsageFromResponse`), coerce unknown pricing to `0`: `providerCost ?? calculatedPrice ?? 0`. Unpriced-model handling is operational (register the model via `litellm.yaml` alias + restart LiteLLM) — not a type-system problem.
+- Do NOT introduce `hasPricedCall` / `hasUnpricedCalls` / `hasUnknownContributors` companion flags. They clutter the pipeline without adding signal; if a cost reads `$0.000`, that is either genuine `$0` spend (unlikely for a real call) OR an unregistered model — both are fixable at the LiteLLM YAML layer.
 
 ## Dual-source aggregation — document the policy
 
-- When two pipelines (e.g. checkpoint snapshot vs message-scan, WS aggregate vs REST snapshot, cache vs source-of-truth) compute the same aggregate, the service MUST have a docstring-level policy specifying which source is authoritative FOR WHICH FIELDS IN WHICH STATE.
+- When two pipelines compute the same aggregate (checkpoint snapshot vs message-scan, WS aggregate vs REST snapshot, cache vs source-of-truth), the service MUST have a docstring-level policy specifying which source is authoritative FOR WHICH FIELDS IN WHICH STATE.
+- The current policy in `ThreadsService.getThreadUsageStatistics`: message-scan is authoritative for all additive fields; checkpoint is authoritative only for `currentContext` (point-in-time, can't be reconstructed from messages).
 - Removing a `Math.max` / `Math.min` / `value ?? fallback` reconciliation requires a replacement policy. The reconciliation may have been silently fixing the "authoritative source empty, secondary populated" case — removing it without a `primary ?? secondary` fallback regresses that cohort.
 - Tests MUST cover the "authoritative source empty" case explicitly. Fixtures that only populate both sources pass regardless of the fallback being present.
 
 ## Test matrix requirements
 
-Every change to cost-aggregation or display flow MUST present a test matrix covering at minimum:
+Every change to cost-aggregation or display flow MUST cover at minimum:
 
 | Scenario | Backend test | Frontend test |
 |---|---|---|
 | All calls priced, running | ✓ | ✓ |
 | All calls priced, done | ✓ | ✓ |
-| Mixed priced + unpriced calls | ✓ | ✓ |
-| All calls unpriced | ✓ | ✓ |
 | Checkpoint empty, messages populated | ✓ | — (consequence visible) |
 | Running→done transition with fresh REST fetch | — | ✓ |
 | Thread-switch during running state | — | ✓ |
-
-If any row is missing, the PR is incomplete.
-
-**Avoid vacuous assertions.** A test like `if (x !== null) expect(x).toBe(expectedValue)` passes silently when `x` is null — the wrong regression completely slips through. Assert unconditionally: `expect(x).toBeDefined(); expect(x).toBe(expectedValue);`
 
 ## Storybook harness
 

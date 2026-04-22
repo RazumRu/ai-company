@@ -14,17 +14,11 @@ export const TokenUsageSchema = z.object({
   outputTokens: z.number().describe('Output tokens'),
   reasoningTokens: z.number().optional().describe('Reasoning tokens'),
   totalTokens: z.number().describe('Total tokens'),
-  totalPrice: z.number().nullable().optional().describe('Total price in USD'),
+  totalPrice: z.number().optional().describe('Total price in USD'),
   currentContext: z
     .number()
     .optional()
     .describe('Current context size in tokens (snapshot, not additive)'),
-  hasUnpricedCalls: z
-    .boolean()
-    .optional()
-    .describe(
-      'True if any contributing LLM call returned unknown pricing. Optional in Wave 1 (RED spec compile); tightened to required-with-default on ThreadTotalUsageSchema in Wave 2 Step 15.',
-    ),
 });
 
 export const ThreadTokenUsageSchema = TokenUsageSchema.extend({
@@ -40,10 +34,10 @@ export const ThreadTokenUsageSchema = TokenUsageSchema.extend({
 export type UsageStatisticsByTool = {
   toolName: string;
   totalTokens: number;
-  totalPrice?: number | null;
+  totalPrice?: number;
   callCount: number;
   toolTokens?: number;
-  toolPrice?: number | null;
+  toolPrice?: number;
   subCalls?: UsageStatisticsByTool[];
 };
 
@@ -55,7 +49,6 @@ export const UsageStatisticsByToolSchema: z.ZodType<UsageStatisticsByTool> =
       .describe('Total tokens from LLM requests related to this tool'),
     totalPrice: z
       .number()
-      .nullable()
       .optional()
       .describe('Total price from LLM requests related to this tool in USD'),
     callCount: z.number().describe('Number of times this tool was called'),
@@ -67,7 +60,6 @@ export const UsageStatisticsByToolSchema: z.ZodType<UsageStatisticsByTool> =
       ),
     toolPrice: z
       .number()
-      .nullable()
       .optional()
       .describe("Tool's own execution price in USD"),
     subCalls: z
@@ -84,20 +76,8 @@ export const UsageStatisticsAggregateSchema = TokenUsageSchema.extend({
     .describe('Number of requests (messages with requestTokenUsage)'),
 });
 
-/**
- * Extends TokenUsageSchema with a required hasUnpricedCalls flag.
- * Used as the `total` field of ThreadUsageStatisticsSchema so consumers
- * always know whether the sum includes LLM calls with unknown pricing.
- */
-export const ThreadTotalUsageSchema = TokenUsageSchema.extend({
-  hasUnpricedCalls: z
-    .boolean()
-    .describe('True if any contributing LLM call returned unknown pricing')
-    .default(false),
-});
-
 export const ThreadUsageStatisticsSchema = z.object({
-  total: ThreadTotalUsageSchema.describe(
+  total: TokenUsageSchema.describe(
     'Total usage statistics for the entire thread',
   ),
   requests: z
@@ -253,7 +233,6 @@ export type ThreadTokenUsage = z.infer<typeof ThreadTokenUsageSchema>;
 export type UsageStatisticsAggregate = z.infer<
   typeof UsageStatisticsAggregateSchema
 >;
-export type ThreadTotalUsage = z.infer<typeof ThreadTotalUsageSchema>;
 export type ThreadUsageStatistics = z.infer<typeof ThreadUsageStatisticsSchema>;
 
 // Graph snapshot for export (excludes volatile runtime fields like runningThreads)
