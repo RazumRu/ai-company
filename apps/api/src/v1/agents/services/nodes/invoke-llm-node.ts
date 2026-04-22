@@ -160,8 +160,27 @@ export class InvokeLlmNode extends BaseNode<
     const rawUsage = res.response_metadata?.usage as
       | Record<string, unknown>
       | undefined;
+    const normalisedTokens = res.usage_metadata?.total_tokens;
+    const rawTokens =
+      typeof rawUsage?.total_tokens === 'number'
+        ? rawUsage.total_tokens
+        : undefined;
+    // LangChain@1.3.1 streaming aggregation yields the usage-bearing chunk twice;
+    // AIMessageChunk.concat() sums response_metadata.usage.*, so raw cost/total_tokens
+    // arrive 2× (or Nx) relative to LangChain's normalised usage_metadata. Divide by
+    // the detected multiple to recover the real per-request figure.
+    const chunkMultiple =
+      typeof normalisedTokens === 'number' &&
+      typeof rawTokens === 'number' &&
+      normalisedTokens > 0 &&
+      rawTokens >= normalisedTokens &&
+      rawTokens % normalisedTokens === 0
+        ? rawTokens / normalisedTokens
+        : 1;
     const providerCost =
-      typeof rawUsage?.cost === 'number' ? rawUsage.cost : undefined;
+      typeof rawUsage?.cost === 'number'
+        ? rawUsage.cost / chunkMultiple
+        : undefined;
     const usageMetadata = {
       ...(res.usage_metadata ?? rawUsage ?? {}),
       // Preserve provider-reported cost (e.g. OpenRouter `usage.cost`) which

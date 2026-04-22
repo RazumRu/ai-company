@@ -107,11 +107,17 @@ export class OpenaiService {
 
     const content = response.choices?.[0]?.message?.content ?? undefined;
 
+    const rawUsage = response.usage as unknown as
+      | Record<string, unknown>
+      | undefined;
+    const providerCost =
+      typeof rawUsage?.cost === 'number' ? rawUsage.cost : undefined;
     const usage = response.usage
       ? (await this.litellmService.extractTokenUsageFromResponse(data.model, {
           input_tokens: response.usage.prompt_tokens ?? 0,
           output_tokens: response.usage.completion_tokens ?? 0,
           total_tokens: response.usage.total_tokens ?? 0,
+          ...(providerCost !== undefined ? { cost: providerCost } : {}),
         })) || undefined
       : undefined;
 
@@ -171,10 +177,25 @@ export class OpenaiService {
 
     const extractedContent = outputText ?? this.extractFromOutput(response);
 
+    const rawResponseUsage = response.usage as unknown as
+      | Record<string, unknown>
+      | undefined;
+    const providerResponseCost =
+      typeof rawResponseUsage?.cost === 'number'
+        ? rawResponseUsage.cost
+        : undefined;
+    const responseUsagePayload = {
+      ...(response.usage as unknown as Record<string, unknown>),
+      ...(providerResponseCost !== undefined
+        ? { cost: providerResponseCost }
+        : {}),
+    };
     const usage =
       (await this.litellmService.extractTokenUsageFromResponse(
         data.model,
-        response.usage,
+        responseUsagePayload as Parameters<
+          typeof this.litellmService.extractTokenUsageFromResponse
+        >[1],
       )) || undefined;
 
     if ('jsonSchema' in data) {
@@ -234,11 +255,19 @@ export class OpenaiService {
       input: wellFormedInput,
       ...(args.dimensions !== undefined ? { dimensions: args.dimensions } : {}),
     });
+    const rawEmbedUsage = response.usage as unknown as
+      | Record<string, unknown>
+      | undefined;
+    const providerEmbedCost =
+      typeof rawEmbedUsage?.cost === 'number' ? rawEmbedUsage.cost : undefined;
     const usage = response.usage
       ? (await this.litellmService.extractTokenUsageFromResponse(args.model, {
           input_tokens: response.usage.prompt_tokens ?? 0,
           output_tokens: 0,
           total_tokens: response.usage.total_tokens ?? 0,
+          ...(providerEmbedCost !== undefined
+            ? { cost: providerEmbedCost }
+            : {}),
         })) || undefined
       : undefined;
 

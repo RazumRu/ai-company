@@ -536,7 +536,18 @@ export class SummarizeNode extends BaseNode<
     );
     const res = (await llm.invoke([sys, human])) as AIMessage;
     const model = String(llm.model);
-    const usageMetadata = res.usage_metadata || res.response_metadata?.usage;
+    const rawUsage = res.response_metadata?.usage as
+      | Record<string, unknown>
+      | undefined;
+    // llm.invoke() here is non-streaming — LangChain's streaming-aggregation
+    // 2× doubling bug (see invoke-llm-node.ts) does not apply. Forward any
+    // provider-reported cost as-is without compensation.
+    const providerCost =
+      typeof rawUsage?.cost === 'number' ? rawUsage.cost : undefined;
+    const usageMetadata = {
+      ...(res.usage_metadata ?? rawUsage ?? {}),
+      ...(providerCost !== undefined ? { cost: providerCost } : {}),
+    };
 
     const usage = await this.litellmService.extractTokenUsageFromResponse(
       model,
