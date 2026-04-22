@@ -164,15 +164,6 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
   // we can debounce rapid agent.state.update bursts to at most once per 1500 ms.
   const stateUpdateInvalidateLastRef = useRef<Record<string, number>>({});
 
-  // Track which thread→nodeId pairs have received agent.state.update events.
-  // For nodes with state updates, we skip additive requestTokenUsage from
-  // the parent node's own messages (to avoid double-counting with cumulative
-  // state totals) but still accumulate toolTokenUsage and subagent/comm
-  // requestTokenUsage additively (subagent costs aren't in state updates
-  // until the subagent completes).
-  // Keyed by threadId so entries can be cleared when a thread restarts.
-  const nodesWithStateUpdateRef = useRef<Map<string, Set<string>>>(new Map());
-
   const agentMessageBufferRef = useRef<
     Map<
       string,
@@ -505,15 +496,13 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
         pendingThreadSelectionRef.current = null;
       }
 
-      // Invalidate cached usage stats and clear the state-update tracking
-      // when a thread finishes so the auto-load effect refetches fresh totals
-      // from the API and future re-runs start with a clean slate.
+      // Invalidate cached usage stats when a thread finishes so the auto-load
+      // effect refetches fresh totals from the API.
       if (
         updatedThread.status === ThreadDtoStatusEnum.Done ||
         updatedThread.status === ThreadDtoStatusEnum.Stopped
       ) {
         invalidateThreadUsageStats(updatedThread.id);
-        nodesWithStateUpdateRef.current.delete(updatedThread.id);
       }
     },
     [
@@ -791,30 +780,8 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
         const incomingMessage = msg.data;
         const reqUsage = incomingMessage.requestTokenUsage;
         const toolUsage = incomingMessage.toolTokenUsage;
-        const threadNodeSet = nodesWithStateUpdateRef.current.get(threadId);
-        const nodeHasStateUpdates = threadNodeSet?.has(nodeId) ?? false;
 
-        const msgRecord = incomingMessage.message as unknown as
-          | Record<string, unknown>
-          | undefined;
-        const msgKwargs =
-          msgRecord?.additionalKwargs ?? msgRecord?.additional_kwargs;
-        const isSubagentOrCommMessage =
-          typeof msgKwargs === 'object' &&
-          msgKwargs !== null &&
-          (Boolean(
-            (msgKwargs as Record<string, unknown>).__subagentCommunication,
-          ) ||
-            Boolean(
-              (msgKwargs as Record<string, unknown>).__interAgentCommunication,
-            ));
-
-        const usageToAccumulate =
-          isSubagentOrCommMessage && reqUsage
-            ? reqUsage
-            : !nodeHasStateUpdates && reqUsage
-              ? reqUsage
-              : toolUsage;
+        const usageToAccumulate = reqUsage ?? toolUsage;
 
         if (usageToAccumulate && nodeId) {
           tokenUsageUpdates.push({
@@ -949,15 +916,6 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
     if (!data.nodeId) {
       return;
     }
-
-    // Mark this node as receiving cumulative state updates so we skip
-    // additive requestTokenUsage from agent.message for the same node.
-    let threadNodeSet = nodesWithStateUpdateRef.current.get(internalThreadId);
-    if (!threadNodeSet) {
-      threadNodeSet = new Set();
-      nodesWithStateUpdateRef.current.set(internalThreadId, threadNodeSet);
-    }
-    threadNodeSet.add(data.nodeId);
 
     const usageUpdate = compactUsageUpdate(data.data ?? {});
     if (Object.keys(usageUpdate).length === 0) {

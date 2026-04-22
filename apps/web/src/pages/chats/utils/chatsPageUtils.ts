@@ -110,40 +110,26 @@ const safeNumber = (value: unknown): number | undefined => {
     : undefined;
 };
 
+/**
+ * Extracts fields from an `agent.state.update` checkpoint that should flow
+ * into `threadTokenUsageByNode`.
+ *
+ * Single-source policy (mirrors ThreadsService.getThreadUsageStatistics:709-735):
+ * - `agent.message` events are authoritative for all additive fields
+ *   (inputTokens, cachedInputTokens, outputTokens, reasoningTokens,
+ *   totalTokens, totalPrice).
+ * - `agent.state.update` is authoritative ONLY for `currentContext` — a
+ *   point-in-time context-window reading that cannot be reconstructed
+ *   from messages — and for `effectiveCostLimitUsd` (configured limit).
+ *
+ * Previously this function also emitted the additive fields, which collided
+ * with `agent.message` accumulation and caused visible downward jumps when
+ * a checkpoint snapshot arrived before the additive path caught up.
+ */
 export const compactUsageUpdate = (
   source: AgentStateUpdateNotification['data'],
 ): Partial<ThreadTokenUsageSnapshot> => {
   const next: Partial<ThreadTokenUsageSnapshot> = {};
-
-  const inputTokens = safeNumber(source?.inputTokens);
-  if (inputTokens !== undefined) {
-    next.inputTokens = inputTokens;
-  }
-
-  const cachedInputTokens = safeNumber(source?.cachedInputTokens);
-  if (cachedInputTokens !== undefined) {
-    next.cachedInputTokens = cachedInputTokens;
-  }
-
-  const outputTokens = safeNumber(source?.outputTokens);
-  if (outputTokens !== undefined) {
-    next.outputTokens = outputTokens;
-  }
-
-  const reasoningTokens = safeNumber(source?.reasoningTokens);
-  if (reasoningTokens !== undefined) {
-    next.reasoningTokens = reasoningTokens;
-  }
-
-  const totalTokens = safeNumber(source?.totalTokens);
-  if (totalTokens !== undefined) {
-    next.totalTokens = totalTokens;
-  }
-
-  const totalPrice = safeNumber(source?.totalPrice);
-  if (totalPrice !== undefined) {
-    next.totalPrice = totalPrice;
-  }
 
   const currentContext = safeNumber(source?.currentContext);
   if (currentContext !== undefined) {
