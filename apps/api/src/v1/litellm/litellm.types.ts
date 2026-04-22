@@ -10,7 +10,7 @@ export type RequestTokenUsage = {
   outputTokens: number;
   reasoningTokens?: number;
   totalTokens: number;
-  totalPrice?: number;
+  totalPrice: number | null;
   /**
    * Current context size (in tokens) for this thread/node snapshot.
    * This is not additive; it's a point-in-time measurement.

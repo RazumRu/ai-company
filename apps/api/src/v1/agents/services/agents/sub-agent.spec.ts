@@ -372,6 +372,7 @@ describe('SubAgent', () => {
         inputTokens: 200,
         outputTokens: 50,
         totalTokens: 250,
+        totalPrice: null,
       });
 
       mockLlmInvokeRef.mockResolvedValueOnce(
@@ -447,6 +448,7 @@ describe('SubAgent', () => {
         inputTokens: 100,
         outputTokens: 30,
         totalTokens: 130,
+        totalPrice: null,
       });
 
       const toolCallMsg = new AIMessage({
@@ -481,6 +483,7 @@ describe('SubAgent', () => {
         outputTokens: 30,
         totalTokens: 630,
         currentContext: 600,
+        totalPrice: null,
       });
 
       mockLlmInvokeRef.mockResolvedValueOnce(
@@ -516,6 +519,7 @@ describe('SubAgent', () => {
         outputTokens: 30,
         totalTokens: 230,
         currentContext: 200,
+        totalPrice: null,
       });
 
       mockLlmInvokeRef.mockResolvedValueOnce(
@@ -1075,9 +1079,12 @@ describe('SubAgent', () => {
       expect(result.statistics.usage!.totalPrice).toBeCloseTo(0.01, 5);
     });
 
-    it('reports zero totalPrice when parent seed is large but sub-agent made no billed calls', async () => {
-      // No extractTokenUsage response → no own spend accrued. With parentSeed=0.5,
-      // the buggy code would report 0.5 as own cost. Fixed code reports 0.
+    it('reports null totalPrice when parent seed is large but sub-agent made no priced calls', async () => {
+      // No extractTokenUsage response → no own priced calls accrued. With parentSeed=0.5,
+      // the buggy code would report 0.5 as own cost. Under Change B, "no priced calls
+      // of our own" surfaces as null (unknown), NOT numeric 0 (misleading zero).
+      // hasPricedCall is NOT inherited from the parent seed — a sub-agent marks
+      // itself as having priced calls based ONLY on its OWN LLM invocations.
       vi.mocked(
         mockLitellmService.extractTokenUsageFromResponse,
       ).mockResolvedValue(null as never);
@@ -1103,9 +1110,47 @@ describe('SubAgent', () => {
       );
 
       expect(result.error).toBeUndefined();
-      if (result.statistics.usage) {
-        expect(result.statistics.usage.totalPrice ?? 0).toBeCloseTo(0, 5);
-      }
+      expect(result.statistics.usage).not.toBeNull();
+      expect(result.statistics.usage!.totalPrice).toBe(null);
+    });
+
+    it('reports null totalPrice across extractOwnUsageFromState when internal calls are all unpriced', async () => {
+      // Scenario 4b: extractTokenUsageFromResponse returns { totalPrice: null, ...tokens }
+      // simulating an unpriced model. After Wave 2, extractOwnUsageFromState will
+      // propagate null rather than subtracting the parent seed. Currently (pre-Wave-2)
+      // this test fails RED because the subtraction path treats null price as numeric 0.
+      vi.mocked(
+        mockLitellmService.extractTokenUsageFromResponse,
+      ).mockResolvedValue({
+        inputTokens: 20,
+        outputTokens: 10,
+        totalTokens: 30,
+        totalPrice: null,
+      });
+
+      mockLlmInvokeRef.mockResolvedValueOnce(
+        new AIMessage({
+          content: 'unpriced response',
+          response_metadata: { usage: {} },
+        }),
+      );
+
+      const cfgWithParentSeed: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'thread-123',
+          effective_cost_limit_usd: 10.0,
+          __parentStateTotalPrice: 0.0,
+        },
+      };
+
+      const result = await subAgent.runSubagent(
+        [new HumanMessage('hi')],
+        cfgWithParentSeed,
+      );
+
+      expect(result.error).toBeUndefined();
+      expect(result.statistics.usage).not.toBeNull();
+      expect(result.statistics.usage!.totalPrice).toBe(null);
     });
 
     it('three independent sub-agents dispatched with the same parent seed report distinct own costs, not identical seeded totals', async () => {

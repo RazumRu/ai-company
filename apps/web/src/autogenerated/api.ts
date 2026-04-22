@@ -233,12 +233,6 @@ export interface CreateGraphDto {
    */
   'temporary'?: boolean | null;
   /**
-   * Arbitrary per-graph settings stored as JSONB
-   * @type {{ [key: string]: any; }}
-   * @memberof CreateGraphDto
-   */
-  'settings'?: { [key: string]: any };
-  /**
    *
    * @type {number}
    * @memberof CreateGraphDto
@@ -2230,6 +2224,86 @@ export type RuntimeInstanceDtoStatusEnum =
 /**
  *
  * @export
+ * @interface RuntimeInstanceStateDto
+ */
+export interface RuntimeInstanceStateDto {
+  /**
+   * Runtime instance ID
+   * @type {string}
+   * @memberof RuntimeInstanceStateDto
+   */
+  'id': string;
+  /**
+   * Current runtime lifecycle status
+   * @type {string}
+   * @memberof RuntimeInstanceStateDto
+   */
+  'status': RuntimeInstanceStateDtoStatusEnum;
+  /**
+   *
+   * @type {string}
+   * @memberof RuntimeInstanceStateDto
+   */
+  'startingPhase': RuntimeInstanceStateDtoStartingPhaseEnum | null;
+  /**
+   *
+   * @type {string}
+   * @memberof RuntimeInstanceStateDto
+   */
+  'errorCode': RuntimeInstanceStateDtoErrorCodeEnum | null;
+  /**
+   *
+   * @type {string}
+   * @memberof RuntimeInstanceStateDto
+   */
+  'lastError': string | null;
+  /**
+   * Last used timestamp
+   * @type {string}
+   * @memberof RuntimeInstanceStateDto
+   */
+  'lastUsedAt': string;
+  /**
+   * Last update timestamp
+   * @type {string}
+   * @memberof RuntimeInstanceStateDto
+   */
+  'updatedAt': string;
+}
+
+export const RuntimeInstanceStateDtoStatusEnum = {
+  Starting: 'Starting',
+  Running: 'Running',
+  Stopping: 'Stopping',
+  Stopped: 'Stopped',
+  Failed: 'Failed',
+} as const;
+
+export type RuntimeInstanceStateDtoStatusEnum =
+  (typeof RuntimeInstanceStateDtoStatusEnum)[keyof typeof RuntimeInstanceStateDtoStatusEnum];
+export const RuntimeInstanceStateDtoStartingPhaseEnum = {
+  PullingImage: 'PullingImage',
+  ContainerCreated: 'ContainerCreated',
+  InitScript: 'InitScript',
+  Ready: 'Ready',
+} as const;
+
+export type RuntimeInstanceStateDtoStartingPhaseEnum =
+  (typeof RuntimeInstanceStateDtoStartingPhaseEnum)[keyof typeof RuntimeInstanceStateDtoStartingPhaseEnum];
+export const RuntimeInstanceStateDtoErrorCodeEnum = {
+  ProviderAuth: 'ProviderAuth',
+  RuntimeIo: 'RuntimeIo',
+  ImagePull: 'ImagePull',
+  Timeout: 'Timeout',
+  Unknown: 'Unknown',
+} as const;
+
+export type RuntimeInstanceStateDtoErrorCodeEnum =
+  (typeof RuntimeInstanceStateDtoErrorCodeEnum)[keyof typeof RuntimeInstanceStateDtoErrorCodeEnum];
+
+/**
+ *
+ * @export
  * @interface SecretResponseDto
  */
 export interface SecretResponseDto {
@@ -3359,17 +3433,23 @@ export interface ThreadMessageDtoRequestTokenUsage {
    */
   'totalTokens': number;
   /**
-   * Total price in USD
+   *
    * @type {number}
    * @memberof ThreadMessageDtoRequestTokenUsage
    */
-  'totalPrice'?: number;
+  'totalPrice'?: number | null;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadMessageDtoRequestTokenUsage
    */
   'currentContext'?: number;
+  /**
+   * True if any contributing LLM call returned unknown pricing. Optional in Wave 1 (RED spec compile); tightened to required-with-default on ThreadTotalUsageSchema in Wave 2 Step 15.
+   * @type {boolean}
+   * @memberof ThreadMessageDtoRequestTokenUsage
+   */
+  'hasUnpricedCalls'?: boolean;
 }
 /**
  *
@@ -3457,17 +3537,23 @@ export interface ThreadUsageStatisticsDtoByNodeValue {
    */
   'totalTokens': number;
   /**
-   * Total price in USD
+   *
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoByNodeValue
    */
-  'totalPrice'?: number;
+  'totalPrice'?: number | null;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoByNodeValue
    */
   'currentContext'?: number;
+  /**
+   * True if any contributing LLM call returned unknown pricing. Optional in Wave 1 (RED spec compile); tightened to required-with-default on ThreadTotalUsageSchema in Wave 2 Step 15.
+   * @type {boolean}
+   * @memberof ThreadUsageStatisticsDtoByNodeValue
+   */
+  'hasUnpricedCalls'?: boolean;
 }
 /**
  *
@@ -3488,11 +3574,11 @@ export interface ThreadUsageStatisticsDtoSchema0 {
    */
   'totalTokens': number;
   /**
-   * Total price from LLM requests related to this tool in USD
+   *
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoSchema0
    */
-  'totalPrice'?: number;
+  'totalPrice'?: number | null;
   /**
    * Number of times this tool was called
    * @type {number}
@@ -3506,11 +3592,11 @@ export interface ThreadUsageStatisticsDtoSchema0 {
    */
   'toolTokens'?: number;
   /**
-   * Tool\'s own execution price in USD
+   *
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoSchema0
    */
-  'toolPrice'?: number;
+  'toolPrice'?: number | null;
   /**
    * Sub-tool calls made within this tool (e.g. tools called by a subagent)
    * @type {Array<ThreadUsageStatisticsDtoSchema0>}
@@ -3555,17 +3641,23 @@ export interface ThreadUsageStatisticsDtoToolsAggregate {
    */
   'totalTokens': number;
   /**
-   * Total price in USD
+   *
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoToolsAggregate
    */
-  'totalPrice'?: number;
+  'totalPrice'?: number | null;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoToolsAggregate
    */
   'currentContext'?: number;
+  /**
+   * True if any contributing LLM call returned unknown pricing. Optional in Wave 1 (RED spec compile); tightened to required-with-default on ThreadTotalUsageSchema in Wave 2 Step 15.
+   * @type {boolean}
+   * @memberof ThreadUsageStatisticsDtoToolsAggregate
+   */
+  'hasUnpricedCalls'?: boolean;
   /**
    * Number of requests (messages with requestTokenUsage)
    * @type {number}
@@ -3610,17 +3702,23 @@ export interface ThreadUsageStatisticsDtoTotal {
    */
   'totalTokens': number;
   /**
-   * Total price in USD
+   *
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoTotal
    */
-  'totalPrice'?: number;
+  'totalPrice'?: number | null;
   /**
    * Current context size in tokens (snapshot, not additive)
    * @type {number}
    * @memberof ThreadUsageStatisticsDtoTotal
    */
   'currentContext'?: number;
+  /**
+   * True if any contributing LLM call returned unknown pricing
+   * @type {boolean}
+   * @memberof ThreadUsageStatisticsDtoTotal
+   */
+  'hasUnpricedCalls'?: boolean;
 }
 /**
  *
@@ -3819,12 +3917,6 @@ export interface UpdateGraphDto {
    * @memberof UpdateGraphDto
    */
   'temporary'?: UpdateGraphDtoTemporary;
-  /**
-   * Arbitrary per-graph settings stored as JSONB
-   * @type {{ [key: string]: any; }}
-   * @memberof UpdateGraphDto
-   */
-  'settings'?: { [key: string]: any };
   /**
    *
    * @type {UpdateGraphDtoCostLimitUsd}
@@ -12367,6 +12459,55 @@ export const RuntimesApiAxiosParamCreator = function (
     },
     /**
      *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getRuntimeState: async (
+      id: string,
+      options: RawAxiosRequestConfig = {},
+    ): Promise<RequestArgs> => {
+      // verify required parameter 'id' is not null or undefined
+      assertParamExists('getRuntimeState', 'id', id);
+      const localVarPath = `/api/v1/runtimes/{id}/state`.replace(
+        `{${'id'}}`,
+        encodeURIComponent(String(id)),
+      );
+      // use dummy base URL string because the URL constructor only accepts absolute URLs.
+      const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+      let baseOptions;
+      if (configuration) {
+        baseOptions = configuration.baseOptions;
+      }
+
+      const localVarRequestOptions = {
+        method: 'GET',
+        ...baseOptions,
+        ...options,
+      };
+      const localVarHeaderParameter = {} as any;
+      const localVarQueryParameter = {} as any;
+
+      // authentication bearer required
+      // http bearer authentication required
+      await setBearerAuthToObject(localVarHeaderParameter, configuration);
+
+      setSearchParams(localVarUrlObj, localVarQueryParameter);
+      let headersFromBaseOptions =
+        baseOptions && baseOptions.headers ? baseOptions.headers : {};
+      localVarRequestOptions.headers = {
+        ...localVarHeaderParameter,
+        ...headersFromBaseOptions,
+        ...options.headers,
+      };
+
+      return {
+        url: toPathString(localVarUrlObj),
+        options: localVarRequestOptions,
+      };
+    },
+    /**
+     *
      * @param {string} threadId Filter by thread ID
      * @param {GetRuntimesStatusEnum} [status] Filter by runtime instance status
      * @param {*} [options] Override http request option.
@@ -12461,6 +12602,38 @@ export const RuntimesApiFp = function (configuration?: Configuration) {
     },
     /**
      *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    async getRuntimeState(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): Promise<
+      (
+        axios?: AxiosInstance,
+        basePath?: string,
+      ) => AxiosPromise<RuntimeInstanceStateDto>
+    > {
+      const localVarAxiosArgs = await localVarAxiosParamCreator.getRuntimeState(
+        id,
+        options,
+      );
+      const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+      const localVarOperationServerBasePath =
+        operationServerMap['RuntimesApi.getRuntimeState']?.[
+          localVarOperationServerIndex
+        ]?.url;
+      return (axios, basePath) =>
+        createRequestFunction(
+          localVarAxiosArgs,
+          globalAxios,
+          BASE_PATH,
+          configuration,
+        )(axios, localVarOperationServerBasePath || basePath);
+    },
+    /**
+     *
      * @param {string} threadId Filter by thread ID
      * @param {GetRuntimesStatusEnum} [status] Filter by runtime instance status
      * @param {*} [options] Override http request option.
@@ -12522,6 +12695,20 @@ export const RuntimesApiFactory = function (
     },
     /**
      *
+     * @param {string} id
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    getRuntimeState(
+      id: string,
+      options?: RawAxiosRequestConfig,
+    ): AxiosPromise<RuntimeInstanceStateDto> {
+      return localVarFp
+        .getRuntimeState(id, options)
+        .then((request) => request(axios, basePath));
+    },
+    /**
+     *
      * @param {string} threadId Filter by thread ID
      * @param {GetRuntimesStatusEnum} [status] Filter by runtime instance status
      * @param {*} [options] Override http request option.
@@ -12555,6 +12742,19 @@ export class RuntimesApi extends BaseAPI {
   public checkHealth(options?: RawAxiosRequestConfig) {
     return RuntimesApiFp(this.configuration)
       .checkHealth(options)
+      .then((request) => request(this.axios, this.basePath));
+  }
+
+  /**
+   *
+   * @param {string} id
+   * @param {*} [options] Override http request option.
+   * @throws {RequiredError}
+   * @memberof RuntimesApi
+   */
+  public getRuntimeState(id: string, options?: RawAxiosRequestConfig) {
+    return RuntimesApiFp(this.configuration)
+      .getRuntimeState(id, options)
       .then((request) => request(this.axios, this.basePath));
   }
 

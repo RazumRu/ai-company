@@ -62,6 +62,7 @@ describe('InvokeLlmNode', () => {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: 0,
+      hasPricedCall: false,
       currentContext: 0,
       ...overrides,
     }) as BaseAgentState;
@@ -72,6 +73,7 @@ describe('InvokeLlmNode', () => {
       outputTokens: 7,
       totalTokens: 130,
       currentContext: 123,
+      totalPrice: null,
     };
 
     (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
@@ -111,6 +113,7 @@ describe('InvokeLlmNode', () => {
       inputTokens: 50,
       outputTokens: 10,
       totalTokens: 60,
+      totalPrice: null,
     };
 
     (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
@@ -150,6 +153,7 @@ describe('InvokeLlmNode', () => {
       inputTokens: 50,
       outputTokens: 10,
       totalTokens: 60,
+      totalPrice: null,
     };
 
     (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
@@ -197,6 +201,7 @@ describe('InvokeLlmNode', () => {
       inputTokens: 50,
       outputTokens: 10,
       totalTokens: 60,
+      totalPrice: null,
     };
 
     (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);
@@ -639,6 +644,7 @@ describe('InvokeLlmNode', () => {
       inputTokens: 10,
       outputTokens: 1,
       totalTokens: 11,
+      totalPrice: null,
     };
 
     (mockLitellm.extractTokenUsageFromResponse as any).mockResolvedValue(usage);

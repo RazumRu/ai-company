@@ -1165,6 +1165,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               output: number;
               total: number;
               cost: number;
+              hasUnpricedCalls: boolean;
               durationMs: number;
             }
           | undefined;
@@ -1177,13 +1178,18 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
                 output: 0,
                 total: 0,
                 cost: 0,
+                hasUnpricedCalls: false,
                 durationMs: 0,
               };
             }
             workingTokens.input += raw.inputTokens ?? 0;
             workingTokens.output += raw.outputTokens ?? 0;
             workingTokens.total += raw.totalTokens ?? 0;
-            workingTokens.cost += raw.totalPrice ?? 0;
+            if (typeof raw.totalPrice === 'number') {
+              workingTokens.cost += raw.totalPrice;
+            } else if (raw.totalPrice === null) {
+              workingTokens.hasUnpricedCalls = true;
+            }
             workingTokens.durationMs += it.durationMs ?? 0;
           }
         }
@@ -1194,7 +1200,13 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
                 inputTokens: workingTokens.input,
                 outputTokens: workingTokens.output,
                 totalTokens: workingTokens.total,
-                totalPrice: workingTokens.cost,
+                // Preserve null when all priced calls returned unknown pricing
+                // and no known cost was accumulated; pass the partial sum when
+                // at least one call was priced (mixed case).
+                totalPrice:
+                  workingTokens.hasUnpricedCalls && workingTokens.cost === 0
+                    ? null
+                    : workingTokens.cost,
               } as RawTokenUsage,
               workingTokens.durationMs || undefined,
             )

@@ -70,8 +70,11 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
       outputTokens: usageStats.total.outputTokens,
       reasoningTokens: usageStats.total.reasoningTokens,
       totalTokens: usageStats.total.totalTokens,
-      totalPrice: usageStats.total.totalPrice,
+      totalPrice: usageStats.total.totalPrice ?? null,
       currentContext: usageStats.total.currentContext,
+      hasUnpricedCalls:
+        usageStats.total.hasUnpricedCalls === true ||
+        usageStats.total.totalPrice === null,
     };
 
     if (usageStats.byNode) {
@@ -335,7 +338,11 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
       // The backend may not distribute totalPrice to individual nodes.
       // When only one node exists, all cost belongs to it — use the API total.
       // When multiple nodes exist, try proportional distribution by totalTokens.
-      if (!nodeUsage.totalPrice || nodeUsage.totalPrice === 0) {
+      if (
+        nodeUsage.totalPrice === null ||
+        !nodeUsage.totalPrice ||
+        nodeUsage.totalPrice === 0
+      ) {
         const apiPrice = selectedThreadTokenUsageFromApi?.totalPrice;
         if (apiPrice && apiPrice > 0) {
           const nodeEntries = Object.values(selectedThreadUsageByNode);
@@ -532,17 +539,17 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
   const prevThreadIdRef = useRef<string | undefined>(undefined);
   const prevStatusRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    const prevThreadId = prevThreadIdRef.current;
+    const currThreadId = selectedThreadId;
     const prev =
-      prevThreadIdRef.current === selectedThreadId
-        ? prevStatusRef.current
-        : undefined;
-    prevThreadIdRef.current = selectedThreadId;
+      prevThreadId === currThreadId ? prevStatusRef.current : undefined;
     const curr = selectedThread?.status;
+    prevThreadIdRef.current = currThreadId;
     prevStatusRef.current = curr;
     if (!selectedThreadId) {
       return;
     }
-    if (prev === 'running' && curr !== 'running') {
+    if (prev === 'running' && (curr === 'done' || curr === 'stopped')) {
       return fetchUsageStatsWithRetry(selectedThreadId); // H2: return cancel fn for cleanup
     }
   }, [selectedThread?.status, selectedThreadId, fetchUsageStatsWithRetry]);

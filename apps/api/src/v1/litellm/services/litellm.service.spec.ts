@@ -40,7 +40,7 @@ describe('LitellmService', () => {
   });
 
   describe('extractTokenUsageFromResponse', () => {
-    it('returns a zeroed usage object when usage_metadata is missing', async () => {
+    it('returns a zeroed usage object with null totalPrice when usage_metadata is missing', async () => {
       const svc = createSvc(null);
       await expect(svc.extractTokenUsageFromResponse('gpt-4')).resolves.toEqual(
         {
@@ -50,7 +50,7 @@ describe('LitellmService', () => {
           currentContext: 0,
           cachedInputTokens: 0,
           reasoningTokens: 0,
-          totalPrice: 0,
+          totalPrice: null,
         },
       );
     });
@@ -214,6 +214,95 @@ describe('LitellmService', () => {
       expect(result!.cachedInputTokens).toBe(3493);
       expect(result!.reasoningTokens).toBe(106);
       expect(result!.totalPrice).toBe(0.00046689);
+    });
+
+    // Scenario 4.4 (regression guard): priced happy-path — provider-reported cost wins
+    // This scenario must remain GREEN at all times.
+    it('4.4 (regression guard): provider-reported cost is returned as-is when present', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse(
+        'openrouter/minimax-m2.5',
+        {
+          prompt_tokens: 3612,
+          completion_tokens: 272,
+          total_tokens: 3884,
+          prompt_tokens_details: { cached_tokens: 3493 },
+          completion_tokens_details: { reasoning_tokens: 106 },
+          cost: 0.00046689,
+        },
+      );
+
+      expect(result).toBeDefined();
+      expect(result!.totalPrice).toBe(0.00046689);
+    });
+
+    // Scenario 4.1 (unpriced): no registered rates + no provider cost
+    // RED: current code coerces null → 0 via `?? 0` at litellm.service.ts:181.
+    // Expected fix: propagate null when both providerCost and calculatedPrice are null.
+    it('4.1 (unpriced): returns null totalPrice when model has no rates and provider reports no cost', async () => {
+      // createSvc(null) → getModelInfo returns null → estimateThreadTotalPriceFromModelRates returns null
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse(
+        'unregistered/model',
+        {
+          input_tokens: 10,
+          output_tokens: 5,
+          total_tokens: 15,
+          input_tokens_details: { cached_tokens: 0 },
+          output_tokens_details: { reasoning_tokens: 0 },
+          // No cost field — provider did not report a cost
+        },
+      );
+
+      expect(result).toBeDefined();
+      // Must be null (unknown pricing), NOT 0 (which implies a free or zero-cost call)
+      expect(result!.totalPrice).toBe(null);
+    });
+
+    // Scenario 4.2 (providerCost=0 explicit): provider explicitly reports zero cost
+    // Zero is a legitimate value (e.g. free-tier model); it must be preserved as 0, not null.
+    it('4.2 (providerCost=0 explicit): preserves zero when provider explicitly reports cost=0', async () => {
+      // Model has rates so calculatedPrice would be non-zero, but provider overrides with 0
+      const svc = createSvc(buildModelInfo());
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+        cost: 0, // Explicit zero from provider — must be preserved
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.totalPrice).toBe(0);
+    });
+
+    // Scenario 4.3 (calculatedPrice=0, providerCost=null): model rates are zero (free model)
+    // calculatedPrice resolves to 0 (not null) because rates exist but are zero-valued.
+    // Result must be 0, not null — the pricing is known (zero), just cheap.
+    it('4.3 (calculatedPrice=0, providerCost=null): returns 0 when model rates are zero and no provider cost', async () => {
+      const svc = createSvc(
+        buildModelInfo({
+          input_cost_per_token: 0,
+          output_cost_per_token: 0,
+        }),
+      );
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 5,
+        total_tokens: 15,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens_details: { reasoning_tokens: 0 },
+        // No cost field — calculated price is 0 because rates are 0
+      });
+
+      expect(result).toBeDefined();
+      // Pricing is known (zero-rate model): result must be 0, not null
+      expect(result!.totalPrice).toBe(0);
     });
   });
 
@@ -494,12 +583,14 @@ describe('LitellmService', () => {
           inputTokens: 10,
           outputTokens: 5,
           totalTokens: 15,
+          totalPrice: null,
           durationMs: 1500,
         },
         {
           inputTokens: 20,
           outputTokens: 10,
           totalTokens: 30,
+          totalPrice: null,
           durationMs: 2300,
         },
       ]);
@@ -509,6 +600,7 @@ describe('LitellmService', () => {
         inputTokens: 30,
         outputTokens: 15,
         totalTokens: 45,
+        totalPrice: null,
       });
     });
   });

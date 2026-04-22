@@ -115,6 +115,13 @@ export interface BaseAgentState {
   totalTokens: number;
   totalPrice: number;
   /**
+   * True once at least one LLM call in this run returned a priced response
+   * (i.e. LiteLLM returned a non-null totalPrice). Drives null-emission in
+   * extractUsageFromState: if no priced call occurred, totalPrice is reported
+   * as null rather than 0 to distinguish "unpriced" from "zero cost".
+   */
+  hasPricedCall: boolean;
+  /**
    * Current context size (tokens) for this thread/run snapshot.
    * Not additive; overwritten with latest measurement.
    */
@@ -122,9 +129,15 @@ export interface BaseAgentState {
 }
 
 export interface BaseAgentStateChange extends Partial<
-  Omit<BaseAgentState, 'messages'>
+  Omit<BaseAgentState, 'messages' | 'totalPrice'>
 > {
   messages?: BaseAgentStateMessagesUpdateValue;
+  /**
+   * Override to allow null — a null totalPrice in a change means this step
+   * had no priced contribution (treated as 0 in applyChange accumulation).
+   * This lets nodes spread RequestTokenUsage directly without stripping null.
+   */
+  totalPrice?: number | null;
 }
 
 export enum NewMessageMode {

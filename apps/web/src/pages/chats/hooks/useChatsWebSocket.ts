@@ -55,6 +55,23 @@ const addUsageField = (
   return (existing ?? 0) + incoming;
 };
 
+/**
+ * Additive price merge — null-aware version for totalPrice.
+ * Returns null when at least one operand is explicitly null (unpriced sentinel).
+ */
+const addPriceField = (
+  existing: number | null | undefined,
+  incoming: number | null | undefined,
+): number | null | undefined => {
+  if (existing === null || incoming === null) {
+    return null;
+  }
+  if (typeof incoming !== 'number' || !Number.isFinite(incoming)) {
+    return existing;
+  }
+  return (existing ?? 0) + incoming;
+};
+
 interface UseChatsWebSocketDeps {
   graphFilterId: string | undefined;
   selectedThreadId: string | undefined;
@@ -867,7 +884,7 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
                   existingNode.totalTokens,
                   usageToAccumulate.totalTokens,
                 ),
-                totalPrice: addUsageField(
+                totalPrice: addPriceField(
                   existingNode.totalPrice,
                   usageToAccumulate.totalPrice,
                 ),

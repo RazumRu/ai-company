@@ -168,12 +168,12 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       runnableConfig ?? {},
     );
 
-    const parentTotalPrice =
+    const parentSeedTotalPrice =
       typeof runnableConfig?.configurable?.__parentStateTotalPrice === 'number'
         ? runnableConfig.configurable.__parentStateTotalPrice
         : 0;
 
-    const parentSeedTotalPrice = parentTotalPrice;
+    const parentTotalPrice = parentSeedTotalPrice;
 
     let totalIterations = 0;
     let toolCallsMade = 0;
@@ -189,6 +189,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       reasoningTokens: 0,
       totalTokens: 0,
       totalPrice: parentTotalPrice,
+      hasPricedCall: false, // never inherited from parent seed (Blocker B3 Option A)
       currentContext: 0,
     };
 
@@ -535,45 +536,6 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
   }
 
   /**
-   * Extracts per-block reasoning entries from a streaming AIMessageChunk.
-   * Returns one entry per reasoning content block found in the chunk, using
-   * the block's own stable id (b.id) as the key for accumulation. Falls back
-   * to chunk.id when the block carries no id of its own (older providers).
-   */
-  private extractReasoningFromChunk(
-    chunk: AIMessageChunk,
-  ): { text: string; blockId: string }[] | null {
-    const blocks =
-      chunk?.contentBlocks ?? chunk?.response_metadata?.output ?? [];
-
-    if (!Array.isArray(blocks)) {
-      return null;
-    }
-
-    const entries: { text: string; blockId: string }[] = [];
-    for (const b of blocks as {
-      type?: unknown;
-      reasoning?: unknown;
-      id?: unknown;
-    }[]) {
-      if (!b || b.type !== 'reasoning') {
-        continue;
-      }
-      if (typeof b.reasoning !== 'string' || b.reasoning.length === 0) {
-        continue;
-      }
-      const blockId =
-        typeof b.id === 'string' && b.id.length > 0 ? b.id : (chunk.id ?? '');
-      if (!blockId) {
-        continue;
-      }
-      entries.push({ text: b.reasoning, blockId });
-    }
-
-    return entries.length > 0 ? entries : null;
-  }
-
-  /**
    * Accumulates reasoning text from a streaming chunk into the provided map,
    * keyed by "reasoning:<blockId>" where blockId is the stable per-block id
    * from the content block (not the chunk's own streaming id, which changes
@@ -786,7 +748,7 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
     parentSeedTotalPrice: number,
   ): RequestTokenUsage | null {
     const usage = this.extractUsageFromState(state);
-    if (usage && usage.totalPrice !== undefined) {
+    if (usage && typeof usage.totalPrice === 'number') {
       usage.totalPrice = Math.max(0, usage.totalPrice - parentSeedTotalPrice);
     }
     return usage;

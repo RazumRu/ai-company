@@ -40,7 +40,8 @@ export interface SubagentStatistics {
     totalTokens?: number;
     outputTokens?: number;
     currentContext?: number;
-    totalPrice?: number;
+    totalPrice?: number | null;
+    hasUnpricedCalls?: boolean;
     durationMs?: number;
   };
   toolCallsMade?: number;

@@ -140,9 +140,17 @@ export const compactUsageUpdate = (
     next.totalTokens = totalTokens;
   }
 
-  const totalPrice = safeNumber(source?.totalPrice);
-  if (totalPrice !== undefined) {
-    next.totalPrice = totalPrice;
+  if (source?.totalPrice === null) {
+    next.totalPrice = null;
+  } else {
+    const totalPrice = safeNumber(source?.totalPrice);
+    if (totalPrice !== undefined) {
+      next.totalPrice = totalPrice;
+    }
+  }
+
+  if (source?.hasUnpricedCalls === true) {
+    next.hasUnpricedCalls = true;
   }
 
   const currentContext = safeNumber(source?.currentContext);
@@ -166,7 +174,10 @@ export const sumUsage = (
   usages: ThreadTokenUsageSnapshot[],
 ): ThreadTokenUsageSnapshot => {
   const sumField = (
-    key: keyof ThreadTokenUsageSnapshot,
+    key: Exclude<
+      keyof ThreadTokenUsageSnapshot,
+      'totalPrice' | 'effectiveCostLimitUsd' | 'hasUnpricedCalls'
+    >,
   ): number | undefined => {
     let hasAny = false;
     const total = usages.reduce((acc, usage) => {
@@ -181,7 +192,10 @@ export const sumUsage = (
   };
 
   const maxField = (
-    key: keyof ThreadTokenUsageSnapshot,
+    key: Exclude<
+      keyof ThreadTokenUsageSnapshot,
+      'totalPrice' | 'effectiveCostLimitUsd' | 'hasUnpricedCalls'
+    >,
   ): number | undefined => {
     let hasAny = false;
     const max = usages.reduce(
@@ -198,14 +212,29 @@ export const sumUsage = (
     return hasAny ? max : undefined;
   };
 
+  // Sum totalPrice separately to handle null (unpriced) contributors.
+  const anyUnpriced = usages.some(
+    (u) => u?.totalPrice === null || u?.hasUnpricedCalls === true,
+  );
+  let hasNumericPrice = false;
+  const priceSum = usages.reduce((acc, usage) => {
+    const value = usage.totalPrice;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      hasNumericPrice = true;
+      return acc + value;
+    }
+    return acc;
+  }, 0);
+
   return {
     inputTokens: sumField('inputTokens'),
     cachedInputTokens: sumField('cachedInputTokens'),
     outputTokens: sumField('outputTokens'),
     reasoningTokens: sumField('reasoningTokens'),
     totalTokens: sumField('totalTokens'),
-    totalPrice: sumField('totalPrice'),
+    totalPrice: hasNumericPrice ? priceSum : anyUnpriced ? null : undefined,
     currentContext: maxField('currentContext'),
+    hasUnpricedCalls: anyUnpriced,
   };
 };
 

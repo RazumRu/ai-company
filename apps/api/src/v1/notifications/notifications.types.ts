@@ -124,7 +124,7 @@ export const AgentStateUpdateDataSchema = z.object({
   outputTokens: z.number().optional(),
   reasoningTokens: z.number().optional(),
   totalTokens: z.number().optional(),
-  totalPrice: z.number().optional(),
+  totalPrice: z.number().nullable().optional(),
   currentContext: z.number().optional(),
   effectiveCostLimitUsd: z.number().nullable().optional(),
 });

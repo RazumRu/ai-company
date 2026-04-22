@@ -185,6 +185,8 @@ export class InvokeLlmNode extends BaseNode<
         typeof cfg.configurable?.effective_cost_limit_usd === 'number'
           ? cfg.configurable.effective_cost_limit_usd
           : null;
+      // Cost-limit budget guard: null totalPrice (unknown pricing) does not
+      // consume the budget cap. Matches the policy at tool-executor-node.ts:373.
       const projectedTotal =
         (state.totalPrice ?? 0) + (threadUsage?.totalPrice ?? 0);
       if (effectiveLimit !== null && projectedTotal >= effectiveLimit) {
@@ -224,13 +226,27 @@ export class InvokeLlmNode extends BaseNode<
       cfg,
     );
 
-    // Destructure durationMs out — it is per-message metadata stored in
-    // __requestUsage on the AI message kwargs, not an aggregatable state counter.
-    const { durationMs: _dur, ...stateUsage } = threadUsage || {};
+    // Destructure durationMs and totalPrice out of threadUsage.
+    // durationMs is per-message metadata stored in __requestUsage on the AI message kwargs.
+    // totalPrice is handled separately: only numeric (non-null) values accumulate into
+    // BaseAgentStateChange (which expects number | undefined, not number | null).
+    const {
+      durationMs: _dur,
+      totalPrice: rawTotalPrice,
+      ...stateUsageWithoutPrice
+    } = threadUsage || {};
+
+    const isPriced =
+      threadUsage !== null &&
+      threadUsage !== undefined &&
+      typeof rawTotalPrice === 'number';
 
     return {
       messages: { mode: 'append', items: [...reasoningMessages, ...out] },
-      ...stateUsage,
+      ...stateUsageWithoutPrice,
+      ...(isPriced
+        ? { totalPrice: rawTotalPrice as number, hasPricedCall: true }
+        : {}),
       ...(shouldResetNeedsMoreInfo
         ? {
             toolsMetadata: FinishTool.clearState(),

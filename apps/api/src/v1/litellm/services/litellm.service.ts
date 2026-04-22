@@ -120,7 +120,7 @@ export class LitellmService {
       outputTokens,
       ...(reasoningTokens ? { reasoningTokens } : {}),
       totalTokens,
-      ...(sawPrice ? { totalPrice: totalPriceDecimal.toNumber() } : {}),
+      totalPrice: sawPrice ? totalPriceDecimal.toNumber() : null,
       ...(sawContext ? { currentContext } : {}),
     };
   }
@@ -178,7 +178,12 @@ export class LitellmService {
       reasoningTokens,
     });
 
-    const totalPrice = providerCost ?? calculatedPrice ?? 0;
+    const totalPrice =
+      providerCost !== null
+        ? providerCost
+        : calculatedPrice !== null
+          ? calculatedPrice
+          : null;
 
     return {
       inputTokens,

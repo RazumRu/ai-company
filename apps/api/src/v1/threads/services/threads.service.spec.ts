@@ -894,12 +894,16 @@ describe('ThreadsService', () => {
         },
       );
 
-      // Check total (only from requestTokenUsage)
+      // Check total (message-scan is single authoritative source per Change A policy).
+      // Only AI messages with requestTokenUsage contribute (msg-2 + msg-5).
+      // Human message (msg-1) has no requestTokenUsage — not accumulated.
+      // Checkpoint values (inputTokens: 75, totalPrice: 0.007) are NOT used for totals.
       expect(result.total).toMatchObject({
-        inputTokens: 75, // 10 + 15 + 50 (human + ai calling + ai processing)
-        outputTokens: 75, // 20 + 25 + 30 (human + ai calling + ai processing)
-        totalTokens: 150, // 30 + 40 + 80 (human + ai calling + ai processing)
-        totalPrice: 0.007, // 0.001 + 0.002 + 0.004 (human + ai calling + ai processing)
+        inputTokens: 65, // 15 + 50 (ai calling + ai processing)
+        outputTokens: 55, // 25 + 30 (ai calling + ai processing)
+        totalTokens: 120, // 40 + 80 (ai calling + ai processing)
+        totalPrice: 0.006, // 0.002 + 0.004 (ai calling + ai processing)
+        hasUnpricedCalls: false,
       });
 
       // Check byNode (only from requestTokenUsage)
@@ -1581,14 +1585,20 @@ describe('ThreadsService', () => {
       expect(result.total.currentContext).toBe(4000);
     });
 
-    it('3.2 — Done: checkpoint source wins verbatim; message-scan values ignored even if larger', async () => {
-      // status=Done + message-scan has higher values than checkpoint
-      // → returns checkpoint totalUsage verbatim; message values are ignored
+    it('3.2 — Done: message-scan wins for additive fields; currentContext still from checkpoint (single-source policy)', async () => {
+      // Change A: message-scan is the authoritative source for ALL additive fields
+      // (input/output/cached/reasoning/totalTokens + totalPrice) regardless of
+      // thread.status. Checkpoint remains authoritative ONLY for currentContext
+      // (a point-in-time context-window reading, not reconstructable from messages).
+      // This replaces the pre-Change-A behavior where checkpoint won verbatim on Done.
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Done,
         externalThreadId: 'external-thread-123',
       });
 
+      // Checkpoint is populated but DISAGREES with message-scan on additive fields.
+      // Under Change A, only currentContext (2000) wins from checkpoint; the rest
+      // is overridden by the message-scan aggregate below.
       const mockTokenUsageFromCheckpoint = {
         inputTokens: 100,
         outputTokens: 80,
@@ -1605,7 +1615,7 @@ describe('ThreadsService', () => {
         },
       };
 
-      // Message-scan aggregate would yield higher values — should be ignored on Done
+      // Message-scan aggregate — this is now the source of truth for additive fields.
       const mockMessages = [
         createMockMessageEntity({
           id: 'msg-done-1',
@@ -1632,24 +1642,29 @@ describe('ThreadsService', () => {
         mockThreadId,
       );
 
-      // Checkpoint values must win — single-source policy for non-Running threads
-      expect(result.total.inputTokens).toBe(100);
-      expect(result.total.outputTokens).toBe(80);
-      expect(result.total.totalTokens).toBe(180);
-      expect(result.total.totalPrice).toBeCloseTo(0.01, 4);
+      // Message-scan wins for additive fields; checkpoint is authoritative only for currentContext
+      expect(result.total.inputTokens).toBe(9999);
+      expect(result.total.outputTokens).toBe(9999);
+      expect(result.total.totalTokens).toBe(19998);
+      expect(result.total.totalPrice).toBeCloseTo(9.99, 4);
+      // currentContext still comes from checkpoint
       expect(result.total.currentContext).toBe(2000);
+      // All contributors priced → flag stays false
+      expect(result.total.hasUnpricedCalls).toBe(false);
     });
 
-    it('3.3 — Stopped: checkpoint source wins verbatim; message-scan values ignored even if larger', async () => {
-      // status=Stopped + message-scan has higher values than checkpoint
-      // → returns checkpoint totalUsage verbatim; message values are ignored.
-      // Mirrors 3.2 but with ThreadStatus.Stopped to guard against accidental
-      // specialization of the non-running branch (e.g. status === Done only).
+    it('3.3 — Stopped: message-scan wins for additive fields; currentContext still from checkpoint (single-source policy)', async () => {
+      // Change A: message-scan is authoritative for ALL additive fields regardless of
+      // thread.status. Mirrors 3.2 but with ThreadStatus.Stopped to guard against
+      // accidental specialization of the non-running branch (e.g. status === Done only).
+      // Checkpoint remains authoritative ONLY for currentContext.
       const mockThread = createMockThreadEntity({
         status: ThreadStatus.Stopped,
         externalThreadId: 'external-thread-123',
       });
 
+      // Checkpoint is populated but DISAGREES with message-scan on additive fields.
+      // Under Change A, only currentContext (2000) wins from checkpoint.
       const mockTokenUsageFromCheckpoint = {
         inputTokens: 100,
         outputTokens: 80,
@@ -1666,7 +1681,7 @@ describe('ThreadsService', () => {
         },
       };
 
-      // Message-scan aggregate would yield higher values — should be ignored on Stopped
+      // Message-scan aggregate — this is now the source of truth for additive fields.
       const mockMessages = [
         createMockMessageEntity({
           id: 'msg-stopped-1',
@@ -1693,12 +1708,341 @@ describe('ThreadsService', () => {
         mockThreadId,
       );
 
-      // Checkpoint values must win — single-source policy for non-Running threads
-      expect(result.total.inputTokens).toBe(100);
-      expect(result.total.outputTokens).toBe(80);
-      expect(result.total.totalTokens).toBe(180);
-      expect(result.total.totalPrice).toBeCloseTo(0.01, 4);
+      // Message-scan wins for additive fields; checkpoint is authoritative only for currentContext
+      expect(result.total.inputTokens).toBe(9999);
+      expect(result.total.outputTokens).toBe(9999);
+      expect(result.total.totalTokens).toBe(19998);
+      expect(result.total.totalPrice).toBeCloseTo(9.99, 4);
+      // currentContext still comes from checkpoint
       expect(result.total.currentContext).toBe(2000);
+      // All contributors priced → flag stays false
+      expect(result.total.hasUnpricedCalls).toBe(false);
+    });
+
+    it('matrix row 1 — all priced, running: message-scan sum returned with hasUnpricedCalls=false', async () => {
+      // All 3 messages have known pricing. Thread is Running.
+      // Asserts: totalPrice = sum of message prices, hasUnpricedCalls = false.
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+        totalPrice: 0.0001,
+        currentContext: 500,
+        byNode: {},
+      };
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-row1-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.01,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row1-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            totalPrice: 0.02,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row1-3',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 400,
+            outputTokens: 200,
+            totalTokens: 600,
+            totalPrice: 0.04,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      expect(result.total.totalPrice).toBeCloseTo(0.07, 4);
+      expect(result.total.hasUnpricedCalls).toBe(false);
+    });
+
+    it('matrix row 2 — all priced, done: message-scan wins for additive fields; currentContext from checkpoint', async () => {
+      // Thread is Done. Checkpoint has DIFFERENT values than message-scan.
+      // Asserts: totalPrice = message-scan sum (NOT checkpoint); currentContext from checkpoint.
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockTokenUsageFromCheckpoint = {
+        inputTokens: 50,
+        outputTokens: 30,
+        totalTokens: 80,
+        totalPrice: 0.005,
+        currentContext: 3500,
+        byNode: {},
+      };
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-row2-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 300,
+            outputTokens: 150,
+            totalTokens: 450,
+            totalPrice: 0.03,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row2-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 400,
+            outputTokens: 200,
+            totalTokens: 600,
+            totalPrice: 0.05,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        mockTokenUsageFromCheckpoint,
+      );
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Message-scan sum is 0.08 — NOT checkpoint 0.005
+      expect(result.total.totalPrice).toBeCloseTo(0.08, 4);
+      // currentContext comes from checkpoint, not messages
+      expect(result.total.currentContext).toBe(3500);
+    });
+
+    it('matrix row 3 — mixed priced + unpriced: priced portion summed, hasUnpricedCalls=true', async () => {
+      // 2 messages with known price, 1 with null price.
+      // Asserts: totalPrice = sum of priced only (0.10), hasUnpricedCalls = true.
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-row3-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            totalPrice: 0.05,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row3-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            totalPrice: 0.05,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row3-3',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 150,
+            outputTokens: 75,
+            totalTokens: 225,
+            totalPrice: null,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      expect(result.total.totalPrice).toBeCloseTo(0.1, 4);
+      expect(result.total.hasUnpricedCalls).toBe(true);
+    });
+
+    it('matrix row 4 — all unpriced: totalPrice=null, hasUnpricedCalls=true', async () => {
+      // All 3 messages have null totalPrice (no pricing data from LLM).
+      // Asserts: totalPrice = null, hasUnpricedCalls = true.
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-row4-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: null,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row4-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            totalPrice: null,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row4-3',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 300,
+            outputTokens: 150,
+            totalTokens: 450,
+            totalPrice: null,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      expect(result.total.totalPrice).toBeNull();
+      expect(result.total.hasUnpricedCalls).toBe(true);
+    });
+
+    it('matrix row 5 — checkpoint empty, messages populated (499192e0 repro): message-scan used as fallback', async () => {
+      // Reproduces the live bug on thread 499192e0 where checkpointStateService returns
+      // null but the thread has messages with usage data. Pre-fix: returned {totalPrice:0,
+      // totalTokens:0}. Post-fix: returns message-scan aggregate.
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      // Checkpoint is absent — this is the 499192e0 scenario
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-row5-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 1000,
+            outputTokens: 500,
+            totalTokens: 1500,
+            totalPrice: 0.1021,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row5-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 2000,
+            outputTokens: 1000,
+            totalTokens: 3000,
+            totalPrice: 0.2,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-row5-3',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 500,
+            outputTokens: 250,
+            totalTokens: 750,
+            totalPrice: 0.1,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Message-scan sum: 0.1021 + 0.2 + 0.1 = 0.4021
+      expect(result.total.totalPrice).toBeCloseTo(0.4021, 4);
+      expect(result.total.totalTokens).toBeGreaterThan(0);
+      // All messages are priced — hasUnpricedCalls must be false
+      expect(result.total.hasUnpricedCalls).toBe(false);
     });
   });
 

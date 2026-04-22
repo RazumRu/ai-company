@@ -160,6 +160,12 @@ export class ToolExecutorNode extends BaseNode<
               ...(cfg.configurable ?? {}),
               ...(toolMetadata !== undefined ? { toolMetadata } : {}),
               __toolCallId: callId,
+              // Cost-limit baseline seed: null totalPrice means "no priced calls yet
+              // on parent". Coerce to 0 so the subagent's own-spend calculation
+              // (own = observed - parentSeed) starts from a numeric baseline.
+              // Unknown-pricing still surfaces as null in the reported statistics
+              // (via extractOwnUsageFromState); this coercion is scoped to the
+              // internal cost-limit math only.
               __parentStateTotalPrice: state.totalPrice ?? 0,
             },
             signal: cfg.signal,
@@ -370,6 +376,11 @@ export class ToolExecutorNode extends BaseNode<
       const effectiveLimit = cfg.configurable?.effective_cost_limit_usd ?? 0;
       const totalSpend = Math.max(
         costLimitResult.stopCostUsd ?? 0,
+        // Cost-limit budget guard: null totalPrice means the contributor's
+        // pricing is unknown. We coerce to 0 so unpriced calls do not consume
+        // the user's budget cap — a conservative default. The user-facing
+        // cost report (via threads.service aggregation) still surfaces null
+        // as $— so the unknown-pricing case is visible, not masked.
         (state.totalPrice ?? 0) + (aggregatedToolUsage?.totalPrice ?? 0),
       );
       throw new CostLimitExceededError(effectiveLimit, totalSpend);
