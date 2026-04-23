@@ -401,6 +401,8 @@ export class ThreadsService {
       currentContext: 0,
     };
     let byNodeUsage = new Map<string, RequestTokenUsage>();
+    const byNodePriceDecimal = new Map<string, Decimal>();
+    const nodeIdsSeenInMessages = new Set<string>();
     const byToolUsage = new Map<
       string,
       {
@@ -437,6 +439,12 @@ export class ThreadsService {
         byNodeUsage = new Map(
           Object.entries(threadUsage.byNode) as [string, RequestTokenUsage][],
         );
+        for (const [nodeId, nodeUsage] of byNodeUsage) {
+          byNodePriceDecimal.set(
+            nodeId,
+            new Decimal(nodeUsage.totalPrice ?? 0),
+          );
+        }
       }
     }
 
@@ -490,6 +498,46 @@ export class ThreadsService {
       messageTotalUsage.totalTokens += usage.totalTokens;
       messageTotalUsage.totalPriceDecimal =
         messageTotalUsage.totalPriceDecimal.plus(usage.totalPrice ?? 0);
+    };
+
+    /**
+     * Add a single LLM request's usage to the per-node accumulator.
+     * Mirrors `accumulateUsage` but keyed by nodeId. Integer fields go
+     * into `byNodeUsage` directly; price uses `Decimal` via
+     * `byNodePriceDecimal` for precision, resolved to a number at return
+     * time to avoid floating-point drift across many subagent rows.
+     */
+    const accumulateByNode = (
+      nodeId: string | null | undefined,
+      usage: RequestTokenUsage,
+    ): void => {
+      if (!nodeId) {
+        return;
+      }
+      // On first message-scan hit for this nodeId, discard the checkpoint
+      // seed (message-scan is authoritative per single-source policy).
+      if (!nodeIdsSeenInMessages.has(nodeId)) {
+        nodeIdsSeenInMessages.add(nodeId);
+        byNodeUsage.delete(nodeId);
+        byNodePriceDecimal.delete(nodeId);
+      }
+      const prev = byNodeUsage.get(nodeId);
+      byNodeUsage.set(nodeId, {
+        inputTokens: (prev?.inputTokens ?? 0) + usage.inputTokens,
+        cachedInputTokens:
+          (prev?.cachedInputTokens ?? 0) + (usage.cachedInputTokens ?? 0),
+        outputTokens: (prev?.outputTokens ?? 0) + usage.outputTokens,
+        reasoningTokens:
+          (prev?.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0),
+        totalTokens: (prev?.totalTokens ?? 0) + usage.totalTokens,
+        totalPrice: prev?.totalPrice ?? 0,
+        currentContext: usage.currentContext ?? prev?.currentContext ?? 0,
+      });
+      const prevPriceDecimal = byNodePriceDecimal.get(nodeId) ?? new Decimal(0);
+      byNodePriceDecimal.set(
+        nodeId,
+        prevPriceDecimal.plus(usage.totalPrice ?? 0),
+      );
     };
 
     // Map: toolCallId -> parentToolName (for linking subagent internal messages)
@@ -614,6 +662,7 @@ export class ThreadsService {
 
           // Accumulate into message-based total (captures in-progress subagent costs)
           accumulateUsage(embeddedUsage);
+          accumulateByNode(messageEntity.nodeId, embeddedUsage);
         }
 
         // Subagent internal messages don't contribute to top-level byTool
@@ -650,6 +699,7 @@ export class ThreadsService {
 
         // Accumulate into message-based total
         accumulateUsage(requestUsage);
+        accumulateByNode(messageEntity.nodeId, requestUsage);
 
         let attributeToTools: string[] | undefined;
 
@@ -706,19 +756,34 @@ export class ThreadsService {
 
     toolsAggregate.totalPrice = toolsPriceDecimal.toNumber();
 
+    // Finalize per-node prices from Decimal map to preserve precision
+    // across many rows (same pattern as toolsPriceDecimal above).
+    for (const [nodeId, priceDecimal] of byNodePriceDecimal) {
+      const entry = byNodeUsage.get(nodeId);
+      if (entry) {
+        entry.totalPrice = priceDecimal.toNumber();
+      }
+    }
+
     /**
      * Single-source policy for thread total usage.
      *
      * Message-scan is authoritative for ALL additive fields (inputTokens,
      * outputTokens, cachedInputTokens, reasoningTokens, totalTokens,
-     * totalPrice) regardless of thread.status. Each messages.request_token_usage
-     * row is one recorded LLM call with Decimal-precision price; summing them
-     * is the most-truthful possible aggregation.
+     * totalPrice) regardless of thread.status — both for the top-level
+     * `total` AND for `byNode` (per-node projection of the same additive
+     * fields, keyed by messages.node_id). Each messages.request_token_usage
+     * row is one recorded LLM call with Decimal-precision price; summing
+     * them is the most-truthful possible aggregation.
      *
      * Checkpoint state.totalPrice is a derived running total that sometimes
      * lags or is never written — e.g. LangGraph checkpoints where
      * invoke-llm-node never incremented the accumulator for a model path,
      * or where subagent costs were not folded into the parent checkpoint.
+     * Checkpoint byNode has the same lag (and is often empty for
+     * subagent/multi-persona graphs whose tuples lack nodeId), so it is
+     * seeded as a fallback only — message-scan entries overwrite it for
+     * any nodeId that appears in messages.
      *
      * Checkpoint remains authoritative ONLY for currentContext — it is a
      * point-in-time context-window reading that cannot be reconstructed from

@@ -905,15 +905,17 @@ describe('ThreadsService', () => {
         totalPrice: 0.006, // 0.002 + 0.004 (ai calling + ai processing)
       });
 
-      // Check byNode (only from requestTokenUsage)
+      // Check byNode — message-scan is authoritative (overwrites checkpoint seed).
+      // Only AI messages with requestTokenUsage contribute: msg-2 (node-1) + msg-5 (node-2).
+      // Human msg-1 has no requestTokenUsage so it does not feed byNode.
       expect(result.byNode['node-1']).toMatchObject({
-        inputTokens: 25, // 10 + 15 (human + ai calling)
-        outputTokens: 45, // 20 + 25 (human + ai calling)
-        totalTokens: 70, // 30 + 40 (human + ai calling)
+        inputTokens: 15, // ai calling (msg-2)
+        outputTokens: 25, // ai calling (msg-2)
+        totalTokens: 40, // ai calling (msg-2)
       });
-      expect(result.byNode['node-1']!.totalPrice).toBeCloseTo(0.003, 4);
+      expect(result.byNode['node-1']!.totalPrice).toBeCloseTo(0.002, 4);
       expect(result.byNode['node-2']).toMatchObject({
-        inputTokens: 50, // ai processing
+        inputTokens: 50, // ai processing (msg-5)
         outputTokens: 30,
         totalTokens: 80,
       });
@@ -1909,6 +1911,351 @@ describe('ThreadsService', () => {
       // Message-scan sum: 0.1021 + 0.2 + 0.1 = 0.4021
       expect(result.total.totalPrice).toBeCloseTo(0.4021, 4);
       expect(result.total.totalTokens).toBeGreaterThan(0);
+    });
+
+    it('populates byNode from message-scan when checkpoint byNode is empty', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      // Checkpoint returns no byNode — message-scan must populate it
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          totalPrice: 0,
+        },
+      );
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-supervisor-1',
+          nodeId: 'supervisor',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.01,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-researcher-1',
+          nodeId: 'researcher',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280,
+            totalPrice: 0.02,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-supervisor-2',
+          nodeId: 'supervisor',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 50,
+            outputTokens: 30,
+            totalTokens: 80,
+            totalPrice: 0.005,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // byNode must be populated from message-scan (not empty)
+      expect(result.byNode).toHaveProperty('supervisor');
+      expect(result.byNode).toHaveProperty('researcher');
+
+      // supervisor: msg-supervisor-1 + msg-supervisor-2
+      expect(result.byNode['supervisor']).toMatchObject({
+        inputTokens: 150, // 100 + 50
+        outputTokens: 80, // 50 + 30
+        totalTokens: 230, // 150 + 80
+      });
+      expect(result.byNode['supervisor']!.totalPrice).toBeCloseTo(0.015, 6);
+
+      // researcher: msg-researcher-1 only
+      expect(result.byNode['researcher']).toMatchObject({
+        inputTokens: 200,
+        outputTokens: 80,
+        totalTokens: 280,
+      });
+      expect(result.byNode['researcher']!.totalPrice).toBeCloseTo(0.02, 6);
+
+      // sum of byNode prices == total price
+      const byNodePriceSum =
+        (result.byNode['supervisor']!.totalPrice ?? 0) +
+        (result.byNode['researcher']!.totalPrice ?? 0);
+      expect(byNodePriceSum).toBeCloseTo(result.total.totalPrice ?? 0, 6);
+    });
+
+    it('attributes subagent internal messages to byNode under messageEntity.nodeId', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        externalThreadId: 'external-thread-123',
+      });
+
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const parentToolCallId = 'call_subagent_abc';
+
+      const mockMessages = [
+        // Parent AI message that spawns the subagent
+        createMockMessageEntity({
+          id: 'msg-parent',
+          nodeId: 'supervisor_node',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: ['run_subagent'],
+          toolCallIds: [parentToolCallId],
+          additionalKwargs: {},
+          requestTokenUsage: {
+            inputTokens: 50,
+            outputTokens: 20,
+            totalTokens: 70,
+            totalPrice: 0.005,
+          },
+        }),
+        // Subagent internal AI message — should be attributed to 'subagent_node'
+        createMockMessageEntity({
+          id: 'msg-subagent-internal',
+          nodeId: 'subagent_node',
+          role: MessageRole.AI,
+          name: undefined,
+          toolCallNames: ['some_tool'],
+          requestTokenUsage: undefined,
+          additionalKwargs: {
+            __hideForLlm: true,
+            __toolCallId: parentToolCallId,
+            __requestUsage: {
+              inputTokens: 10,
+              outputTokens: 20,
+              totalTokens: 30,
+              totalPrice: 0.001,
+            },
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Subagent internal message attributed to 'subagent_node' in byNode
+      expect(result.byNode).toHaveProperty('subagent_node');
+      expect(result.byNode['subagent_node']).toMatchObject({
+        inputTokens: 10,
+        outputTokens: 20,
+        totalTokens: 30,
+      });
+      expect(result.byNode['subagent_node']!.totalPrice).toBeCloseTo(0.001, 6);
+
+      // Parent message attributed to 'supervisor_node'
+      expect(result.byNode).toHaveProperty('supervisor_node');
+      expect(result.byNode['supervisor_node']).toMatchObject({
+        inputTokens: 50,
+        outputTokens: 20,
+        totalTokens: 70,
+      });
+    });
+
+    it('skips messages with null or undefined nodeId when populating byNode', async () => {
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const mockMessages = [
+        // Message with null nodeId — must not create a byNode entry
+        createMockMessageEntity({
+          id: 'msg-null-node',
+          nodeId: null as unknown as string,
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.01,
+          },
+        }),
+        // Message with undefined nodeId — must not create a byNode entry
+        createMockMessageEntity({
+          id: 'msg-undef-node',
+          nodeId: undefined as unknown as string,
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            totalPrice: 0.02,
+          },
+        }),
+        // Valid message — should appear in byNode
+        createMockMessageEntity({
+          id: 'msg-valid-node',
+          nodeId: 'supervisor',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 300,
+            outputTokens: 150,
+            totalTokens: 450,
+            totalPrice: 0.03,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // No spurious keys from null/undefined nodeId
+      const byNodeKeys = Object.keys(result.byNode);
+      expect(byNodeKeys).not.toContain('');
+      expect(byNodeKeys).not.toContain('null');
+      expect(byNodeKeys).not.toContain('undefined');
+
+      // Valid nodeId present and correct
+      expect(result.byNode).toHaveProperty('supervisor');
+      expect(result.byNode['supervisor']).toMatchObject({
+        inputTokens: 300,
+        outputTokens: 150,
+        totalTokens: 450,
+      });
+      expect(typeof result.byNode['supervisor']!.totalPrice).toBe('number');
+      expect(Number.isFinite(result.byNode['supervisor']!.totalPrice)).toBe(
+        true,
+      );
+      expect(result.byNode['supervisor']!.totalPrice).toBeCloseTo(0.03, 6);
+    });
+
+    it('produces non-empty byNode from messages regardless of thread.status (Running vs Done)', async () => {
+      const sharedMessages = [
+        createMockMessageEntity({
+          id: 'msg-node-a-1',
+          nodeId: 'node_alpha',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.01,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-node-b-1',
+          nodeId: 'node_beta',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 100,
+            totalTokens: 300,
+            totalPrice: 0.02,
+          },
+        }),
+      ];
+
+      const checkpointEmpty = {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        totalPrice: 0,
+      };
+
+      // Run with Running status
+      const runningThread = createMockThreadEntity({
+        status: ThreadStatus.Running,
+        externalThreadId: 'external-thread-123',
+      });
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(runningThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(sharedMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        checkpointEmpty,
+      );
+
+      const runningResult = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Run with Done status
+      const doneThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(doneThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(sharedMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        checkpointEmpty,
+      );
+
+      const doneResult = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Both results must have same byNode keys
+      expect(Object.keys(runningResult.byNode).sort()).toEqual(
+        Object.keys(doneResult.byNode).sort(),
+      );
+
+      // Both must have node_alpha and node_beta
+      for (const result of [runningResult, doneResult]) {
+        expect(result.byNode).toHaveProperty('node_alpha');
+        expect(result.byNode).toHaveProperty('node_beta');
+        expect(result.byNode['node_alpha']).toMatchObject({
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+        });
+        expect(result.byNode['node_alpha']!.totalPrice).toBeCloseTo(0.01, 6);
+        expect(result.byNode['node_beta']).toMatchObject({
+          inputTokens: 200,
+          outputTokens: 100,
+          totalTokens: 300,
+        });
+        expect(result.byNode['node_beta']!.totalPrice).toBeCloseTo(0.02, 6);
+      }
+
+      // Values must be identical between Running and Done
+      expect(runningResult.byNode['node_alpha']).toEqual(
+        doneResult.byNode['node_alpha'],
+      );
+      expect(runningResult.byNode['node_beta']).toEqual(
+        doneResult.byNode['node_beta'],
+      );
     });
   });
 
