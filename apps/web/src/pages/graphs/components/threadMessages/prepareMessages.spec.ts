@@ -463,10 +463,13 @@ describe('accumulatePreparedStatistics', () => {
     expect(stats!.usage!.totalTokens).toBe(1000);
   });
 
-  it('1.2 — 3 tool items with durationMs and no sibling chat: totalPrice=0, totalTokens=0, durationMs=sum', () => {
+  it('1.2 — 3 tool items with durationMs and no sibling chat: totalPrice=0 (genuine zero), totalTokens=undefined, durationMs=sum', () => {
     // When tool items have durationMs but no sibling chat, they must not
-    // contribute any price or tokens. durationMs is accumulated normally, and
-    // count equals the number of tool items (each one is a contributing signal).
+    // contribute any tokens (which are attributed to the sibling chat item to
+    // avoid double-counting). durationMs is accumulated normally. totalPrice
+    // is preserved as genuine `0` — `formatUsd(0) === "$0.000"` distinguishes
+    // genuine-zero from unknown (`formatUsd(undefined) === "$—"`), so the
+    // accumulator MUST NOT coerce `0 → undefined`.
     const toolA: PreparedMessage = {
       type: 'tool',
       id: 'tool-a',
@@ -494,8 +497,8 @@ describe('accumulatePreparedStatistics', () => {
     const stats = _accumulatePreparedStatistics([toolA, toolB, toolC]);
 
     expect(stats).toBeDefined();
-    // No chat item → no price or tokens.
-    expect(stats!.usage!.totalPrice).toBeUndefined();
+    // No chat item → no tokens (double-count avoidance), but price is genuine 0.
+    expect(stats!.usage!.totalPrice).toBe(0);
     expect(stats!.usage!.totalTokens).toBeUndefined();
     // durationMs is the sum across all three tool items.
     expect(stats!.usage!.durationMs).toBe(600);
@@ -556,5 +559,44 @@ describe('accumulatePreparedStatistics', () => {
     // outer chat 1 ($0.02) + communication block ($0.10) + outer chat 2 ($0.02) = $0.14
     expect(stats!.usage!.totalPrice).toBeCloseTo(0.14, 10);
     expect(stats!.usage!.totalTokens).toBe(900); // 200 + 500 + 200
+  });
+
+  it('1.4 — unpriced subagent (totalTokens > 0, totalPrice sums to exactly 0): preserves 0 so formatUsd renders "$0.000"', () => {
+    // Primary H2 scenario: subagent ran against an unpriced model, so each
+    // request's totalPrice is 0 but totalTokens are populated. The accumulator
+    // must preserve `totalPrice === 0` (not coerce to undefined), because the
+    // downstream `formatUsd` distinguishes `0 → "$0.000"` from `undefined → "$—"`.
+    const chatItem1: PreparedMessage = {
+      type: 'chat',
+      id: 'chat-unpriced-1',
+      message: makeMinimalDto('chat-unpriced-1', {
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150,
+        totalPrice: 0,
+      }),
+    };
+
+    const chatItem2: PreparedMessage = {
+      type: 'chat',
+      id: 'chat-unpriced-2',
+      message: makeMinimalDto('chat-unpriced-2', {
+        inputTokens: 200,
+        outputTokens: 100,
+        totalTokens: 300,
+        totalPrice: 0,
+      }),
+    };
+
+    const stats = _accumulatePreparedStatistics([chatItem1, chatItem2]);
+
+    expect(stats).toBeDefined();
+    // Tokens are summed normally.
+    expect(stats!.usage!.totalTokens).toBe(450);
+    // Price is genuine 0 — must NOT be coerced to undefined.
+    expect(stats!.usage!.totalPrice).toBe(0);
+    // Safety: confirm it's a number, not undefined. `formatUsd(0) === "$0.000"`,
+    // `formatUsd(undefined) === "$—"` — we want the "$0.000" path.
+    expect(typeof stats!.usage!.totalPrice).toBe('number');
   });
 });

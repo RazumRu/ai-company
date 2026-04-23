@@ -139,7 +139,11 @@ const accumulatePreparedStatistics = (
   return {
     usage: {
       totalTokens: totalTokens || undefined,
-      totalPrice: totalPrice || undefined,
+      // Preserve legitimate 0 — `formatUsd(0)` renders `$0.000`, `formatUsd(undefined)`
+      // renders `$—`. Collapsing `0 → undefined` masks genuine-zero (e.g., subagents
+      // against an unpriced model) as "unknown". `totalTokens` and `durationMs` keep
+      // the `|| undefined` coercion because `0 tokens` / `0ms` means nothing to display.
+      totalPrice: totalPrice,
       durationMs: durationMs || undefined,
     },
   };
