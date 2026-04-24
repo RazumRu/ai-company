@@ -130,6 +130,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -177,6 +178,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -225,6 +227,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -243,6 +246,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -291,6 +295,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -308,6 +313,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -325,6 +331,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -373,6 +380,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
@@ -389,6 +397,7 @@
       "event": {
         "type": "agent.state.update",
         "threadId": "storybook-thread-tc-001",
+        "internalThreadId": "storybook-thread-tc-001",
         "nodeId": "supervisor",
         "graphId": "storybook-graph-tc-001",
         "data": {
