@@ -190,6 +190,76 @@ class WebSocketService {
   }
 
   /**
+   * Test-only injection point for the local event bus — used by the Storybook replay harness. Does not touch socket.io. No runtime guard — convention-enforced.
+   */
+  emitForTest(eventType: string, data: SocketNotification): void {
+    this.emitToHandlers(eventType, data);
+  }
+
+  /**
+   * Guarded variant of emitForTest. The isCancelled callback is evaluated
+   * inside each handler's setTimeout(fn, 0) wrapper immediately before the
+   * handler is invoked. If it returns true the handler call is skipped.
+   *
+   * This allows callers (e.g. WSEventPlayer) to capture a generation counter
+   * at dispatch time and suppress handler delivery when dispose() or reset()
+   * increments that counter before the queued setTimeout fires.
+   *
+   * Test-only — no runtime guard beyond convention.
+   */
+  emitForTestGuarded(
+    eventType: string,
+    data: SocketNotification,
+    isCancelled: () => boolean,
+  ): void {
+    this.emitToHandlersGuarded(eventType, data, isCancelled);
+  }
+
+  /**
+   * Internal variant of emitToHandlers that evaluates isCancelled inside each
+   * handler's setTimeout(fn, 0) callback so that post-schedule cancellations
+   * (dispose/reset) suppress delivery without requiring an additional timing layer.
+   */
+  private emitToHandlersGuarded(
+    eventType: string,
+    data: SocketNotification,
+    isCancelled: () => boolean,
+  ): void {
+    const handlers = this.eventHandlers.get(eventType);
+    if (handlers) {
+      handlers.forEach((handler) => {
+        setTimeout(() => {
+          if (isCancelled()) {
+            return;
+          }
+          try {
+            handler(data);
+          } catch (error) {
+            console.error('[WebSocket] Error in event handler:', error);
+          }
+        }, 0);
+      });
+    }
+
+    // Also emit to wildcard handlers
+    const wildcardHandlers = this.eventHandlers.get('*');
+    if (wildcardHandlers) {
+      wildcardHandlers.forEach((handler) => {
+        setTimeout(() => {
+          if (isCancelled()) {
+            return;
+          }
+          try {
+            handler(data);
+          } catch (error) {
+            console.error('[WebSocket] Error in wildcard handler:', error);
+          }
+        }, 0);
+      });
+    }
+  }
+
+  /**
    * Subscribe to a specific graph for updates
    * @param graphId The ID of the graph to subscribe to
    */
