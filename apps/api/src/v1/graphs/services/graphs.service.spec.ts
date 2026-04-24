@@ -19,6 +19,7 @@ import { NotificationsService } from '../../notifications/services/notifications
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadResumeQueueService } from '../../threads/services/thread-resume-queue.service';
+import { ThreadStatusTransitionService } from '../../threads/services/thread-status-transition.service';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import {
@@ -63,6 +64,7 @@ describe('GraphsService', () => {
   let projectsDao: ProjectsDao;
   let costLimitResolver: CostLimitResolverService;
   let checkpointStateService: CheckpointStateService;
+  let transitionService: ThreadStatusTransitionService;
 
   const mockUserId = 'user-123';
   const mockProjectId = '11111111-1111-1111-1111-111111111111';
@@ -218,6 +220,7 @@ describe('GraphsService', () => {
             getAll: vi.fn(),
             create: vi.fn(),
             updateById: vi.fn(),
+            updateStatusWithAccumulator: vi.fn(),
             deleteById: vi.fn(),
             hardDelete: vi.fn(),
             countByGraphIds: vi.fn(),
@@ -318,6 +321,16 @@ describe('GraphsService', () => {
             getThreadTokenUsage: vi.fn().mockResolvedValue(null),
           },
         },
+        {
+          provide: ThreadStatusTransitionService,
+          useValue: {
+            computeTransition: vi.fn().mockReturnValue({
+              status: ThreadStatus.Stopped,
+              runningStartedAt: null,
+              totalRunningMs: 0,
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -345,10 +358,16 @@ describe('GraphsService', () => {
     checkpointStateService = module.get<CheckpointStateService>(
       CheckpointStateService,
     );
+    transitionService = module.get<ThreadStatusTransitionService>(
+      ThreadStatusTransitionService,
+    );
     vi.mocked(threadsDao.getOne).mockResolvedValue(null);
     vi.mocked(threadsDao.create).mockResolvedValue({} as any);
     vi.mocked(threadsDao.getAll).mockResolvedValue([]);
     vi.mocked(threadsDao.updateById).mockResolvedValue(0 as never);
+    vi.mocked(threadsDao.updateStatusWithAccumulator).mockResolvedValue(
+      {} as any,
+    );
     vi.mocked(threadsDao.deleteById).mockResolvedValue(undefined);
     vi.mocked(threadsDao.hardDelete).mockResolvedValue(undefined);
     vi.mocked(threadsDao.countByGraphIds).mockResolvedValue(new Map());
@@ -1650,7 +1669,9 @@ describe('GraphsService', () => {
         externalThreadId: 'external-1',
       } as any;
       vi.mocked(threadsDao.getAll).mockResolvedValue([runningThread]);
-      vi.mocked(threadsDao.updateById).mockResolvedValue(1);
+      vi.mocked(threadsDao.updateStatusWithAccumulator).mockResolvedValue(
+        {} as any,
+      );
 
       await expect(service.run(mockCtx, mockGraphId)).rejects.toThrow(
         'Compilation failed',
@@ -1660,9 +1681,11 @@ describe('GraphsService', () => {
         graphId: mockGraphId,
         status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
       });
-      expect(threadsDao.updateById).toHaveBeenCalledWith(runningThread.id, {
-        status: ThreadStatus.Stopped,
-      });
+      expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        runningThread,
+        ThreadStatus.Stopped,
+        expect.any(Object),
+      );
       // ThreadUpdate(Stooped) is emitted by GraphStateManager, not GraphsService.
     });
 
@@ -1836,7 +1859,9 @@ describe('GraphsService', () => {
       vi.mocked(graphRegistry.get).mockReturnValue(compiledGraph);
       vi.mocked(graphRegistry.destroy).mockResolvedValue(undefined);
       vi.mocked(threadsDao.getAll).mockResolvedValue([runningThread as never]);
-      vi.mocked(threadsDao.updateById).mockResolvedValue(undefined as never);
+      vi.mocked(threadsDao.updateStatusWithAccumulator).mockResolvedValue(
+        undefined as never,
+      );
       vi.mocked(graphDao.updateById).mockResolvedValue(undefined as never);
 
       await service.destroy(mockCtx, mockGraphId);
@@ -1845,9 +1870,11 @@ describe('GraphsService', () => {
         graphId: mockGraphId,
         status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
       });
-      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-1', {
-        status: ThreadStatus.Stopped,
-      });
+      expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        runningThread,
+        ThreadStatus.Stopped,
+        expect.any(Object),
+      );
     });
 
     it('should continue destroy even when thread cleanup fails', async () => {
@@ -2411,6 +2438,8 @@ describe('GraphsService', () => {
             projectId: 'project-123',
             externalThreadId: expectedThreadId,
             status: ThreadStatus.Running,
+            runningStartedAt: expect.any(Date),
+            totalRunningMs: 0,
             metadata: { key: 'value', effectiveCostLimitUsd: null },
           },
           expect.anything(),
@@ -2493,10 +2522,16 @@ describe('GraphsService', () => {
           'waiting-thread-id',
         );
 
-        // Should clear wait metadata, set to Running, and persist the resolved
-        // effective cost limit (null when no limit is configured).
-        // H1: updateById now receives a 3rd arg (transactional em) — use
-        // mock.calls to check the first two args without strict arity matching.
+        // Waiting→Running must go through updateStatusWithAccumulator so that
+        // runningStartedAt is set atomically — no stale-drift window.
+        expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+          waitingThread,
+          ThreadStatus.Running,
+          transitionService,
+          expect.anything(), // transactional em
+        );
+
+        // A separate updateById for metadata only (no status field).
         const updateCall = vi
           .mocked(threadsDao.updateById)
           .mock.calls.find(([id]) => id === 'waiting-thread-id') as [
@@ -2506,7 +2541,7 @@ describe('GraphsService', () => {
         ];
         expect(updateCall).toBeDefined();
         const [, update] = updateCall;
-        expect(update.status).toBe(ThreadStatus.Running);
+        expect(update.status).toBeUndefined();
         expect(update.metadata).toMatchObject({
           customField: 'preserved',
           effectiveCostLimitUsd: null,

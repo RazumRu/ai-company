@@ -6,6 +6,7 @@ import { GraphCheckpointsDao } from '../../agents/dao/graph-checkpoints.dao';
 import { RuntimeInstanceDao } from '../../runtime/dao/runtime-instance.dao';
 import { RuntimeProvider } from '../../runtime/services/runtime-provider';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
+import { ThreadStatusTransitionService } from '../../threads/services/thread-status-transition.service';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
@@ -111,6 +112,7 @@ describe('GraphRestorationService', () => {
     const mockThreadsDao = {
       getAll: vi.fn(),
       updateById: vi.fn(),
+      updateStatusWithAccumulator: vi.fn(),
     };
 
     const mockGraphCheckpointsDao = {
@@ -175,6 +177,16 @@ describe('GraphRestorationService', () => {
         {
           provide: DefaultLogger,
           useValue: mockLogger,
+        },
+        {
+          provide: ThreadStatusTransitionService,
+          useValue: {
+            computeTransition: vi.fn().mockReturnValue({
+              status: ThreadStatus.Stopped,
+              runningStartedAt: null,
+              totalRunningMs: 0,
+            }),
+          },
         },
       ],
     }).compile();
@@ -421,7 +433,9 @@ describe('GraphRestorationService', () => {
         status: GraphStatus.Running,
       } as any);
       vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
-      vi.mocked(threadsDao.updateById).mockResolvedValue(mockThread as any);
+      vi.mocked(threadsDao.updateStatusWithAccumulator).mockResolvedValue(
+        mockThread as any,
+      );
 
       // Act
       await service.restoreRunningGraphs();
@@ -435,9 +449,11 @@ describe('GraphRestorationService', () => {
         graphId: 'test-graph-id',
         status: ThreadStatus.Running,
       });
-      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-1', {
-        status: ThreadStatus.Stopped,
-      });
+      expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        mockThread,
+        ThreadStatus.Stopped,
+        expect.any(Object),
+      );
     });
 
     it('should handle no interrupted threads gracefully', async () => {
@@ -464,7 +480,7 @@ describe('GraphRestorationService', () => {
         graphId: 'test-graph-id',
         status: ThreadStatus.Running,
       });
-      expect(threadsDao.updateById).not.toHaveBeenCalled();
+      expect(threadsDao.updateStatusWithAccumulator).not.toHaveBeenCalled();
     });
 
     it('should stop multiple interrupted threads', async () => {
@@ -501,19 +517,25 @@ describe('GraphRestorationService', () => {
         mockThread1,
         mockThread2,
       ]);
-      vi.mocked(threadsDao.updateById).mockResolvedValue(mockThread1 as any);
+      vi.mocked(threadsDao.updateStatusWithAccumulator).mockResolvedValue(
+        mockThread1 as any,
+      );
 
       // Act
       await service.restoreRunningGraphs();
 
       // Assert
-      expect(threadsDao.updateById).toHaveBeenCalledTimes(2);
-      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-1', {
-        status: ThreadStatus.Stopped,
-      });
-      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-2', {
-        status: ThreadStatus.Stopped,
-      });
+      expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledTimes(2);
+      expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        mockThread1,
+        ThreadStatus.Stopped,
+        expect.any(Object),
+      );
+      expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        mockThread2,
+        ThreadStatus.Stopped,
+        expect.any(Object),
+      );
     });
 
     it('should handle thread stopping errors gracefully', async () => {
@@ -537,15 +559,17 @@ describe('GraphRestorationService', () => {
         status: GraphStatus.Running,
       } as any);
       vi.mocked(threadsDao.getAll).mockResolvedValue([mockThread]);
-      vi.mocked(threadsDao.updateById).mockRejectedValue(
+      vi.mocked(threadsDao.updateStatusWithAccumulator).mockRejectedValue(
         new Error('Database error'),
       );
 
       // Act & Assert - should not throw, but handle error gracefully
       await expect(service.restoreRunningGraphs()).resolves.not.toThrow();
-      expect(threadsDao.updateById).toHaveBeenCalledWith('thread-uuid-1', {
-        status: ThreadStatus.Stopped,
-      });
+      expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        mockThread,
+        ThreadStatus.Stopped,
+        expect.any(Object),
+      );
     });
   });
 });

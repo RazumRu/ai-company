@@ -15,6 +15,7 @@ import {
   ThreadResumeJobData,
   ThreadResumeQueueService,
 } from './thread-resume-queue.service';
+import { ThreadStatusTransitionService } from './thread-status-transition.service';
 
 /** How often to check for overdue waiting threads (ms). */
 const OVERDUE_CHECK_INTERVAL_MS = 60_000;
@@ -32,6 +33,7 @@ export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
     private readonly graphRegistry: GraphRegistry,
     private readonly notificationsService: NotificationsService,
     private readonly logger: DefaultLogger,
+    private readonly transitionService: ThreadStatusTransitionService,
   ) {}
 
   onModuleInit(): void {
@@ -155,8 +157,12 @@ export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
     }
     const agent = agentNode.instance;
 
+    await this.threadsDao.updateStatusWithAccumulator(
+      thread,
+      ThreadStatus.Running,
+      this.transitionService,
+    );
     await this.threadsDao.updateById(data.threadId, {
-      status: ThreadStatus.Running,
       metadata: clearWaitMetadata(thread.metadata),
     });
 
@@ -256,8 +262,14 @@ export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
 
     const thread = await this.threadsDao.getById(data.threadId);
 
+    if (thread) {
+      await this.threadsDao.updateStatusWithAccumulator(
+        thread,
+        ThreadStatus.Stopped,
+        this.transitionService,
+      );
+    }
     await this.threadsDao.updateById(data.threadId, {
-      status: ThreadStatus.Stopped,
       metadata: {
         ...clearWaitMetadata(thread?.metadata),
         resumeError: error.message,
@@ -318,8 +330,12 @@ export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
 
     await this.queueService.cancelResumeJob(threadId);
 
+    await this.threadsDao.updateStatusWithAccumulator(
+      thread,
+      ThreadStatus.Stopped,
+      this.transitionService,
+    );
     await this.threadsDao.updateById(threadId, {
-      status: ThreadStatus.Stopped,
       metadata: clearWaitMetadata(thread.metadata),
     });
 

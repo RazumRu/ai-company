@@ -20,6 +20,7 @@ import { NotificationsService } from '../../notifications/services/notifications
 import { ProjectsDao } from '../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
 import { ThreadResumeQueueService } from '../../threads/services/thread-resume-queue.service';
+import { ThreadStatusTransitionService } from '../../threads/services/thread-status-transition.service';
 import { ThreadStatus } from '../../threads/threads.types';
 import { clearWaitMetadata } from '../../threads/threads.utils';
 import { GraphDao } from '../dao/graph.dao';
@@ -67,6 +68,7 @@ export class GraphsService {
     private readonly threadResumeQueueService: ThreadResumeQueueService,
     private readonly costLimitResolver: CostLimitResolverService,
     private readonly checkpointStateService: CheckpointStateService,
+    private readonly transitionService: ThreadStatusTransitionService,
   ) {}
 
   private extractGraphCostLimitUsd(entity: GraphEntity): number | null {
@@ -558,9 +560,11 @@ export class GraphsService {
 
     await Promise.allSettled(
       runningThreads.map((thread) =>
-        this.threadsDao.updateById(thread.id, {
-          status: ThreadStatus.Stopped,
-        }),
+        this.threadsDao.updateStatusWithAccumulator(
+          thread,
+          ThreadStatus.Stopped,
+          this.transitionService,
+        ),
       ),
     );
   }
@@ -840,14 +844,29 @@ export class GraphsService {
           nextMetadata as { effectiveCostLimitUsd?: number | null }
         ).effectiveCostLimitUsd = effectiveCostLimitUsd;
 
-        await this.threadsDao.updateById(
-          existingThread.id,
-          {
-            metadata: nextMetadata,
-            ...(nextStatus ? { status: nextStatus } : {}),
-          },
-          em,
-        );
+        if (nextStatus === ThreadStatus.Running) {
+          // Go through the accumulator helper so runningStartedAt is set
+          // atomically alongside status — avoids the stale-drift window where
+          // status=Running but runningStartedAt=null.
+          await this.threadsDao.updateStatusWithAccumulator(
+            existingThread,
+            ThreadStatus.Running,
+            this.transitionService,
+            em,
+          );
+          await this.threadsDao.updateById(
+            existingThread.id,
+            { metadata: nextMetadata },
+            em,
+          );
+        } else {
+          // No status transition — only refresh metadata (e.g. cost-limit fields).
+          await this.threadsDao.updateById(
+            existingThread.id,
+            { metadata: nextMetadata },
+            em,
+          );
+        }
       });
     }
 
@@ -894,6 +913,8 @@ export class GraphsService {
             projectId: graph.projectId,
             externalThreadId,
             status: ThreadStatus.Running,
+            runningStartedAt: new Date(),
+            totalRunningMs: 0,
             metadata: initialMetadata,
           },
           forkedEm,

@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { BaseDao } from '@packages/mikroorm';
 
 import { ThreadEntity } from '../entity/thread.entity';
+import type { ThreadStatusTransitionService } from '../services/thread-status-transition.service';
 import { ThreadStatus } from '../threads.types';
 
 @Injectable()
@@ -12,10 +13,6 @@ export class ThreadsDao extends BaseDao<ThreadEntity> {
     super(em, ThreadEntity);
   }
 
-  /**
-   * Returns thread counts grouped by graphId.
-   * Each entry contains the total count and the running count.
-   */
   async countByGraphIds(
     graphIds: string[],
   ): Promise<Map<string, { total: number; running: number }>> {
@@ -55,13 +52,43 @@ export class ThreadsDao extends BaseDao<ThreadEntity> {
       ThreadEntity,
       'graphId' | 'createdBy' | 'projectId' | 'externalThreadId' | 'status'
     > &
-      Partial<Pick<ThreadEntity, 'source' | 'lastRunId' | 'metadata'>>,
+      Partial<
+        Pick<
+          ThreadEntity,
+          | 'source'
+          | 'lastRunId'
+          | 'metadata'
+          | 'runningStartedAt'
+          | 'totalRunningMs'
+        >
+      >,
   ): Promise<ThreadEntity> {
     return await this.getRepo().upsert(data, {
       onConflictFields: ['externalThreadId'],
       onConflictAction: 'merge',
-      onConflictMergeFields: ['status', 'lastRunId', 'updatedAt'],
+      onConflictMergeFields: [
+        'status',
+        'lastRunId',
+        'updatedAt',
+        'runningStartedAt',
+        'totalRunningMs',
+        'metadata',
+      ],
     });
+  }
+
+  /**
+   * Updates the thread's status and running-time accumulator fields atomically.
+   * The caller must supply an already-loaded ThreadEntity — this method does NOT re-fetch inside a transaction.
+   */
+  async updateStatusWithAccumulator(
+    thread: ThreadEntity,
+    nextStatus: ThreadStatus,
+    transitionService: ThreadStatusTransitionService,
+    txEm?: EntityManager,
+  ): Promise<number> {
+    const patch = transitionService.computeTransition(thread, nextStatus);
+    return this.updateById(thread.id, patch, txEm);
   }
 
   async touchById(id: string): Promise<void> {

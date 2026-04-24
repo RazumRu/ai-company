@@ -31,13 +31,11 @@ import { SyntaxHighlighter } from './syntax-highlighter';
 import {
   CopyButton,
   fmtK,
-  formatDuration,
   formatUsd,
   type RawTokenUsage,
   StatRow,
   TokenBadge,
   type TokenInfo,
-  TokenUsageDetail,
   toTokenInfo,
 } from './token-display';
 export type { TokenInfo } from './token-display';
@@ -51,19 +49,17 @@ const buildFooterTokens = (
         usage?: {
           totalTokens?: number;
           totalPrice?: number;
-          durationMs?: number;
         };
       }
     | undefined,
 ): TokenInfo | undefined => {
   if (usageIn) {
-    return toTokenInfo(usageIn, statistics?.usage?.durationMs);
+    return toTokenInfo(usageIn);
   }
   if (statistics?.usage?.totalTokens) {
     return {
       total: statistics.usage.totalTokens,
       cost: formatUsd(statistics.usage.totalPrice),
-      duration: formatDuration(statistics.usage.durationMs),
     };
   }
   return undefined;
@@ -1355,7 +1351,6 @@ export interface SubagentBlockProps {
     usage?: {
       totalTokens?: number;
       totalPrice?: number;
-      durationMs?: number;
     };
     toolCallsMade?: number;
     totalPrice?: number;
@@ -1651,7 +1646,6 @@ export interface CommunicationBlockProps {
     usage?: {
       totalTokens?: number;
       totalPrice?: number;
-      durationMs?: number;
     };
     toolCallsMade?: number;
     totalPrice?: number;

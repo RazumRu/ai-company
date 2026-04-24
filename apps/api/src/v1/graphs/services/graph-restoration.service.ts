@@ -4,6 +4,7 @@ import type { FastifyRequest } from 'fastify';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ThreadsDao } from '../../threads/dao/threads.dao';
+import { ThreadStatusTransitionService } from '../../threads/services/thread-status-transition.service';
 import { ThreadStatus } from '../../threads/threads.types';
 import { GraphDao } from '../dao/graph.dao';
 import { GraphEntity } from '../entity/graph.entity';
@@ -19,14 +20,9 @@ export class GraphRestorationService {
     private readonly threadsDao: ThreadsDao,
     private readonly graphsService: GraphsService,
     private readonly logger: DefaultLogger,
+    private readonly transitionService: ThreadStatusTransitionService,
   ) {}
 
-  /**
-   * Restores all graphs that were running before server restart
-   * Process order:
-   * 1. First: Destroy temporary graphs (run destroy pipeline)
-   * 2. Finally: Restore permanent graphs
-   */
   async restoreRunningGraphs(): Promise<void> {
     this.logger.log('Starting graph restoration process...');
 
@@ -85,14 +81,8 @@ export class GraphRestorationService {
     }
   }
 
-  /**
-   * Stops all interrupted threads for a restored graph
-   * Threads that were running before server restart are marked as stopped
-   * Users can manually restart them if needed
-   */
   private async stopInterruptedThreads(graphId: string): Promise<void> {
     try {
-      // Get all running threads for this graph
       const runningThreads = await this.threadsDao.getAll({
         graphId,
         status: ThreadStatus.Running,
@@ -102,14 +92,16 @@ export class GraphRestorationService {
         return;
       }
 
-      // Update thread status (token usage is in checkpoint state only)
-      const updatePromises = runningThreads.map(async (thread) => {
-        return this.threadsDao.updateById(thread.id, {
-          status: ThreadStatus.Stopped,
-        });
-      });
-
-      await Promise.allSettled(updatePromises);
+      // token usage is in checkpoint state only — no need to read it here
+      await Promise.allSettled(
+        runningThreads.map((thread) =>
+          this.threadsDao.updateStatusWithAccumulator(
+            thread,
+            ThreadStatus.Stopped,
+            this.transitionService,
+          ),
+        ),
+      );
     } catch (error) {
       this.logger.error(
         error instanceof Error ? error : new Error(String(error)),

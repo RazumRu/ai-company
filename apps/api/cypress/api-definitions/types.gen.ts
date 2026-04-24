@@ -66,6 +66,48 @@ export type RuntimeInstanceDto = {
   updatedAt: string;
 };
 
+export type RuntimeInstanceStateDto = {
+  /**
+   * Runtime instance ID
+   */
+  id: string;
+  /**
+   * Current runtime lifecycle status
+   */
+  status: 'Starting' | 'Running' | 'Stopping' | 'Stopped' | 'Failed';
+  /**
+   * Sub-phase while status=Starting; null otherwise
+   */
+  startingPhase:
+    | 'PullingImage'
+    | 'ContainerCreated'
+    | 'InitScript'
+    | 'Ready'
+    | null;
+  /**
+   * Classified failure reason when status=Failed
+   */
+  errorCode:
+    | 'ProviderAuth'
+    | 'RuntimeIo'
+    | 'ImagePull'
+    | 'Timeout'
+    | 'Unknown'
+    | null;
+  /**
+   * Raw error message captured on the last failure
+   */
+  lastError: string | null;
+  /**
+   * Last used timestamp
+   */
+  lastUsedAt: string;
+  /**
+   * Last update timestamp
+   */
+  updatedAt: string;
+};
+
 export type CreateRepositoryDto = {
   /**
    * Repository owner
@@ -891,12 +933,6 @@ export type CreateGraphDto = {
    */
   temporary?: boolean | null;
   /**
-   * Arbitrary per-graph settings stored as JSONB
-   */
-  settings?: {
-    [key: string]: unknown;
-  };
-  /**
    * Optional cost limit in USD projected from settings.costLimitUsd
    */
   costLimitUsd?: number | null;
@@ -1191,12 +1227,6 @@ export type UpdateGraphDto = {
    * If true, graph will be deleted instead of restored after server restart
    */
   temporary?: boolean | null;
-  /**
-   * Arbitrary per-graph settings stored as JSONB
-   */
-  settings?: {
-    [key: string]: unknown;
-  };
   /**
    * Optional cost limit in USD projected from settings.costLimitUsd
    */
@@ -1724,6 +1754,14 @@ export type ThreadDto = {
    * Last LangGraph run_id observed for this thread
    */
   lastRunId?: string | null;
+  /**
+   * Timestamp when the thread entered Running status; null when not Running
+   */
+  runningStartedAt: string | null;
+  /**
+   * Cumulative milliseconds the thread has spent in Running status
+   */
+  totalRunningMs: number;
   createdAt: string;
   updatedAt: string;
   /**
@@ -2381,6 +2419,22 @@ export type GetRuntimesResponses = {
 
 export type GetRuntimesResponse =
   GetRuntimesResponses[keyof GetRuntimesResponses];
+
+export type GetRuntimeStateData = {
+  body?: never;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/api/v1/runtimes/{id}/state';
+};
+
+export type GetRuntimeStateResponses = {
+  200: RuntimeInstanceStateDto;
+};
+
+export type GetRuntimeStateResponse =
+  GetRuntimeStateResponses[keyof GetRuntimeStateResponses];
 
 export type GetRepositoriesData = {
   body?: never;

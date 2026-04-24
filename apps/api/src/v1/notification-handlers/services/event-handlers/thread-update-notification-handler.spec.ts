@@ -92,6 +92,8 @@ describe('ThreadUpdateNotificationHandler', () => {
       metadata: thread.metadata ?? {},
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
+      runningStartedAt: null,
+      totalRunningMs: 0,
     });
 
     threadsServiceMock = {
