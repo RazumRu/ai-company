@@ -188,6 +188,15 @@ describe('WSEventPlayer', () => {
 
   it('onProgress fires on every emission', () => {
     const player = new WSEventPlayer(testFixture, progressSpy);
+    // constructor emits 1 initial progress call.
+    // play() → scheduleNext (no emit here).
+    // Each event fires: emitProgress after index advance → 3 calls.
+    // After last event: scheduleNext exits early with isRunning=false → 1 extra emitProgress.
+    // Total: 1 (constructor) + 3 (events) + 1 (post-exhaustion) = 5.
+    const expectedCount =
+      1 /* constructor */ +
+      testFixture.events.length /* per event */ +
+      1; /* post-exhaustion */
     player.play();
 
     // Complete the full fixture.
@@ -195,11 +204,72 @@ describe('WSEventPlayer', () => {
     vi.advanceTimersByTime(200 + 1);
     vi.advanceTimersByTime(300 + 1);
 
-    // Progress is called at least once per emitted event.
-    expect(progressSpy.mock.calls.length).toBeGreaterThanOrEqual(
-      testFixture.events.length,
+    // Exact call count is deterministic.
+    expect(progressSpy).toHaveBeenCalledTimes(expectedCount);
+
+    // Argument spot-checks: first call (constructor) shows index=0, isRunning=false.
+    expect(progressSpy).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ index: 0, isRunning: false }),
+    );
+    // After all events, the post-exhaustion call shows index=3, isRunning=false.
+    expect(progressSpy).toHaveBeenNthCalledWith(
+      expectedCount,
+      expect.objectContaining({
+        index: testFixture.events.length,
+        isRunning: false,
+      }),
     );
 
+    player.dispose();
+  });
+
+  it('setSpeed() mid-run reschedules without double-advance', () => {
+    // Two-event fixture: first at 1000 ms (1×), second at 1000 ms (1×).
+    const midRunFixture: LoadedFixture = {
+      name: 'mid-run-speed',
+      description: 'speed mid-run fixture',
+      threadId: 'thread-mr',
+      graphId: 'graph-mr',
+      events: [
+        {
+          delayMs: 1000,
+          event: makeAgentMessage('mr1', 'first', 'thread-mr', 'graph-mr'),
+        },
+        {
+          delayMs: 1000,
+          event: makeAgentMessage('mr2', 'second', 'thread-mr', 'graph-mr'),
+        },
+      ],
+    };
+
+    const midRunSpy = vi.fn<SocketEventHandler>();
+    webSocketService.on('agent.message', midRunSpy);
+
+    const player = new WSEventPlayer(midRunFixture, progressSpy);
+    player.play();
+
+    // At 1×, first event fires at 1000 ms. Advance to just past it.
+    vi.advanceTimersByTime(1001);
+    expect(midRunSpy).toHaveBeenCalledTimes(1);
+
+    // Second event is now scheduled at 1000 ms from now (at 1×).
+    // Change speed to 2×: effective delay becomes 500 ms.
+    // clearTimer() is called and scheduleNext() re-queues with 500 ms.
+    player.setSpeed(2);
+
+    // Advance 499 ms — second event should NOT yet have fired.
+    vi.advanceTimersByTime(499);
+    expect(midRunSpy).toHaveBeenCalledTimes(1);
+
+    // Advance the remaining 1 ms + flush inner setTimeout(fn, 0).
+    vi.advanceTimersByTime(1 + 1);
+    expect(midRunSpy).toHaveBeenCalledTimes(2);
+
+    // Confirm the second event did not fire twice (no double-advance).
+    expect(midRunSpy.mock.calls[1][0]).toBeDefined();
+
+    webSocketService.off('agent.message', midRunSpy);
     player.dispose();
   });
 

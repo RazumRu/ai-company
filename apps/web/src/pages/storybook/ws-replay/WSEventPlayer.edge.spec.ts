@@ -2,7 +2,7 @@
 //
 // Adversarial edge-case tests for WSEventPlayer — authored by the F->P
 // adversarial loop. These tests target real bugs in WSEventPlayer.ts and
-// WebSocketService.emitForTest; they MUST fail on current code.
+// WebSocketService._unsafeInjectEventForHarness; they MUST fail on current code.
 //
 // F->P invariant: each test was verified to fail 3x on today's code before
 // inclusion here. Tests that passed on current code were deleted.

@@ -4,7 +4,7 @@ import type { ProgressCallback, SpeedMultiplier } from './ws-replay.types';
 
 /**
  * Plays back a WS event fixture through the local WebSocketService event bus.
- * Uses emitForTest so no real socket connection is required.
+ * Uses _unsafeInjectEventForHarness so no real socket connection is required.
  *
  * Consumers must call dispose() before unmounting to prevent timer leaks.
  */
@@ -22,6 +22,7 @@ export class WSEventPlayer {
   // setTimeout(fn, 0) inside emitCurrentEvent) can detect stale captures
   // and bail out without emitting.
   private generation: number = 0;
+  private disposed: boolean = false;
 
   constructor(fixture: LoadedFixture, onProgress: ProgressCallback) {
     this.fixture = fixture;
@@ -33,9 +34,12 @@ export class WSEventPlayer {
 
   /**
    * Start playback from the current index.
-   * Idempotent: noop if already running.
+   * Idempotent: noop if already running or disposed.
    */
   play(): void {
+    if (this.disposed) {
+      return;
+    }
     if (this.isRunning) {
       return;
     }
@@ -51,6 +55,9 @@ export class WSEventPlayer {
    * Clears the pending timer; index is preserved for resume.
    */
   pause(): void {
+    if (this.disposed) {
+      return;
+    }
     this.clearTimer();
     this.isRunning = false;
     this.emitProgress();
@@ -59,16 +66,23 @@ export class WSEventPlayer {
   /**
    * Emit exactly one event at the current index, ignoring its delay.
    * Advances the index regardless of running/paused state.
-   * If already running, the next scheduled tick is NOT cancelled —
-   * the step and the scheduled tick are independent advances.
+   * If already running, the active timer is cancelled and re-scheduled from
+   * the new index to prevent a double-advance on the next tick.
    */
   step(): void {
+    if (this.disposed) {
+      return;
+    }
     if (this.index >= this.fixture.events.length) {
       return;
     }
     this.emitCurrentEvent();
     this.index += 1;
     this.emitProgress();
+    if (this.isRunning) {
+      this.clearTimer();
+      this.scheduleNext();
+    }
   }
 
   /**
@@ -76,6 +90,9 @@ export class WSEventPlayer {
    * isRunning. Does NOT emit a clear event to the bus.
    */
   reset(): void {
+    if (this.disposed) {
+      return;
+    }
     this.generation += 1;
     this.clearTimer();
     this.index = 0;
@@ -95,6 +112,9 @@ export class WSEventPlayer {
    * @param multiplier New speed multiplier.
    */
   setSpeed(multiplier: SpeedMultiplier): void {
+    if (this.disposed) {
+      return;
+    }
     this.speedMultiplier = multiplier;
     if (this.isRunning) {
       this.clearTimer();
@@ -105,10 +125,11 @@ export class WSEventPlayer {
 
   /**
    * Tear down this player. Clears any pending timer.
-   * After dispose(), no further events will be emitted.
-   * Consumers must dispose before unmount.
+   * After dispose(), no further events will be emitted and all public methods
+   * become no-ops. Consumers must dispose before unmount.
    */
   dispose(): void {
+    this.disposed = true;
     this.generation += 1;
     this.clearTimer();
     this.isRunning = false;
@@ -133,6 +154,9 @@ export class WSEventPlayer {
 
     this.timerHandle = setTimeout(() => {
       this.timerHandle = null;
+      if (this.disposed) {
+        return;
+      }
       this.emitCurrentEvent();
       this.index += 1;
       this.emitProgress();
@@ -154,7 +178,7 @@ export class WSEventPlayer {
     // dispose() or reset() increments this.generation between emitCurrentEvent
     // and handler execution, the check fires and the handler is skipped.
     const capturedGen = this.generation;
-    webSocketService.emitForTestGuarded(
+    webSocketService._unsafeInjectEventForHarnessGuarded(
       fixtureEvent.event.type,
       fixtureEvent.event,
       () => capturedGen !== this.generation,

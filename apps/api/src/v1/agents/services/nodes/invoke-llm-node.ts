@@ -169,6 +169,7 @@ export class InvokeLlmNode extends BaseNode<
     // AIMessageChunk.concat() sums response_metadata.usage.*, so raw cost/total_tokens
     // arrive 2× (or Nx) relative to LangChain's normalised usage_metadata. Divide by
     // the detected multiple to recover the real per-request figure.
+    // Non-exact-multiple ratios intentionally pass through uncompensated (conservative fallback).
     const chunkMultiple =
       typeof normalisedTokens === 'number' &&
       typeof rawTokens === 'number' &&
@@ -612,19 +613,13 @@ export class InvokeLlmNode extends BaseNode<
       (error as { status?: unknown })?.status ??
       (error as { statusCode?: unknown })?.statusCode;
 
-    if (typeof message === 'string') {
-      const lower = message.toLowerCase();
-      if (
-        lower.includes('prompt is too long') ||
-        lower.includes('maximum context length') ||
-        lower.includes('context_length_exceeded') ||
-        (lower.includes('too many tokens') && status === 400)
-      ) {
-        return true;
-      }
-    }
-
-    return false;
+    const lower = message.toLowerCase();
+    return (
+      lower.includes('prompt is too long') ||
+      lower.includes('maximum context length') ||
+      lower.includes('context_length_exceeded') ||
+      (lower.includes('too many tokens') && status === 400)
+    );
   }
 
   /**

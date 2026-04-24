@@ -190,24 +190,37 @@ class WebSocketService {
   }
 
   /**
-   * Test-only injection point for the local event bus — used by the Storybook replay harness. Does not touch socket.io. No runtime guard — convention-enforced.
+   * TEST-HARNESS ONLY. Injects an event directly into the local handler bus,
+   * bypassing socket.io. Named with leading underscore + "_unsafe" so
+   * autocomplete, linters, and code review flag any accidental production use.
+   *
+   * Used exclusively by the Storybook replay harness
+   * (apps/web/src/pages/storybook/ws-replay/). Never call from application code.
    */
-  emitForTest(eventType: string, data: SocketNotification): void {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- intentional: leading underscore signals test-harness-only API to autocomplete, linters, and code review
+  _unsafeInjectEventForHarness(
+    eventType: string,
+    data: SocketNotification,
+  ): void {
     this.emitToHandlers(eventType, data);
   }
 
   /**
-   * Guarded variant of emitForTest. The isCancelled callback is evaluated
-   * inside each handler's setTimeout(fn, 0) wrapper immediately before the
-   * handler is invoked. If it returns true the handler call is skipped.
+   * TEST-HARNESS ONLY. Guarded variant of _unsafeInjectEventForHarness. Named
+   * with leading underscore + "_unsafe" so autocomplete, linters, and code review
+   * flag any accidental production use.
    *
-   * This allows callers (e.g. WSEventPlayer) to capture a generation counter
-   * at dispatch time and suppress handler delivery when dispose() or reset()
-   * increments that counter before the queued setTimeout fires.
+   * The isCancelled callback is evaluated inside each handler's setTimeout(fn, 0)
+   * wrapper immediately before the handler is invoked. If it returns true the
+   * handler call is skipped. This allows callers (e.g. WSEventPlayer) to capture
+   * a generation counter at dispatch time and suppress handler delivery when
+   * dispose() or reset() increments that counter before the queued setTimeout fires.
    *
-   * Test-only — no runtime guard beyond convention.
+   * Used exclusively by the Storybook replay harness
+   * (apps/web/src/pages/storybook/ws-replay/). Never call from application code.
    */
-  emitForTestGuarded(
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- intentional: leading underscore signals test-harness-only API to autocomplete, linters, and code review
+  _unsafeInjectEventForHarnessGuarded(
     eventType: string,
     data: SocketNotification,
     isCancelled: () => boolean,

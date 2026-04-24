@@ -34,7 +34,7 @@ const makeTestData = (): AgentMessageNotification => {
   };
 };
 
-describe('WebSocketService.emitForTest', () => {
+describe('WebSocketService._unsafeInjectEventForHarness', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -48,7 +48,7 @@ describe('WebSocketService.emitForTest', () => {
     webSocketService.on('agent.message', spy);
 
     const testData = makeTestData();
-    webSocketService.emitForTest('agent.message', testData);
+    webSocketService._unsafeInjectEventForHarness('agent.message', testData);
     vi.advanceTimersByTime(1);
 
     expect(spy).toHaveBeenCalledTimes(1);
@@ -62,7 +62,7 @@ describe('WebSocketService.emitForTest', () => {
     webSocketService.on('*', spy);
 
     const testData = makeTestData();
-    webSocketService.emitForTest('agent.message', testData);
+    webSocketService._unsafeInjectEventForHarness('agent.message', testData);
     vi.advanceTimersByTime(1);
 
     expect(spy).toHaveBeenCalledTimes(1);
@@ -79,7 +79,7 @@ describe('WebSocketService.emitForTest', () => {
     webSocketService.on('agent.message', spy);
 
     const testData = makeTestData();
-    webSocketService.emitForTest('agent.message', testData);
+    webSocketService._unsafeInjectEventForHarness('agent.message', testData);
     vi.advanceTimersByTime(1);
 
     expect(spy).toHaveBeenCalledTimes(1);

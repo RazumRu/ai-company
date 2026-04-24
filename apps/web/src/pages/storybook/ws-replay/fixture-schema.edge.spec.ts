@@ -67,7 +67,7 @@ it('parseFixture rejects agent.message event with requestTokenUsage.totalPrice a
       ...minimalValidEvent.data,
       requestTokenUsage: {
         ...minimalValidEvent.data.requestTokenUsage,
-        totalPrice: '0.001',  // string instead of number — schema-invalid
+        totalPrice: '0.001', // string instead of number — schema-invalid
       },
     },
   });
@@ -99,7 +99,7 @@ it('parseFixture rejects agent.message event with requestTokenUsage.totalPrice =
         inputTokens: 10,
         outputTokens: 5,
         totalTokens: 15,
-        totalPrice: Infinity,  // non-finite — should fail schema
+        totalPrice: Infinity, // non-finite — should fail schema
       },
     },
   });
@@ -108,4 +108,3 @@ it('parseFixture rejects agent.message event with requestTokenUsage.totalPrice =
   // Actual (current bug): parseFixture succeeds — z.unknown() accepts Infinity.
   expect(() => parseFixture(fixture, 'infinity-price.json')).toThrow();
 });
-

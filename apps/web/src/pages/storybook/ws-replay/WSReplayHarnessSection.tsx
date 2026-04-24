@@ -160,7 +160,11 @@ export function WSReplayHarnessSection() {
         <Button size="sm" variant="outline" onClick={handlePause}>
           Pause
         </Button>
-        <Button size="sm" variant="outline" onClick={handleStep}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleStep}
+          disabled={progress.isRunning}>
           Step
         </Button>
         <Button size="sm" variant="destructive" onClick={handleReset}>

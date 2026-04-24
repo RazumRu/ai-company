@@ -245,6 +245,10 @@ describe('WSReplayHarnessSection — integration', () => {
     const afterPausePrice =
       (container.textContent ?? '').match(/\$(\d+\.\d+)/)?.[1] ?? '0';
 
+    // Guard: midPrice must be non-zero so the equality check below is meaningful.
+    // If price is $0 at the midpoint, pause is not actually being tested.
+    expect(parseFloat(midPrice)).toBeGreaterThan(0);
+
     // The price must not have advanced after Pause.
     expect(afterPausePrice).toBe(midPrice);
   });
