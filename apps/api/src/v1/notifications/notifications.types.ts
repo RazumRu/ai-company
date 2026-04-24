@@ -127,6 +127,7 @@ export const AgentStateUpdateDataSchema = z.object({
   totalPrice: z.number().optional(),
   currentContext: z.number().optional(),
   effectiveCostLimitUsd: z.number().nullable().optional(),
+  inFlightSubagentPrice: z.record(z.string(), z.number()).optional(),
 });
 export const AgentStateUpdateNotificationSchema = z.object({
   type: z.literal(NotificationEvent.AgentStateUpdate),

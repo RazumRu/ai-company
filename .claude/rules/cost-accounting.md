@@ -34,6 +34,10 @@ Every change to cost-aggregation or display flow MUST cover at minimum:
 | Running→done transition with fresh REST fetch | — | ✓ |
 | Thread-switch during running state | — | ✓ |
 
+## Live subagent streaming (Change 2, 2026-04-24)
+
+Parent threads receive `inFlightSubagentPrice: Record<toolCallId, USD>` via `agent.state.update` events during subagent streaming. Frontend folds the sum into `totalPrice` ONLY when `isRunning`; `!isRunning` → ignore (REST is authoritative). WS accumulates `requestTokenUsage` unconditionally on AI messages but MUST NOT accumulate `toolTokenUsage` when the parent tool is a subagent invocation (mirrors REST single-source policy at `apps/api/src/v1/threads/services/threads.service.ts` line ~744). Clear via sentinel-0 per-toolCallId emitted by `ToolExecutorNode` on the subagent `ToolMessage` arrival.
+
 ## Storybook harness
 
 Cost-display components SHOULD have a storybook fixture that replays a recorded sequence of thread messages with configurable delays, running through the same `ThreadMessagesView` + `useChatsUsageStats` path used in production. This is how intermittent "numbers jumping" bugs become visible in isolation.

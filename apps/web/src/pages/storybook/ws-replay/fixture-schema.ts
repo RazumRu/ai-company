@@ -52,6 +52,11 @@ const AgentStateUpdateEventSchema = z
       .object({
         currentContext: z.number().optional(),
         effectiveCostLimitUsd: z.number().nullish(),
+        // Keyed by toolCallId; value is cumulative in-flight spend for that
+        // subagent invocation. A value of 0 acts as a sentinel to clear the
+        // live suffix from the thread header once the subagent tool result
+        // lands. Present only on the __subagentCommunication: true path.
+        inFlightSubagentPrice: z.record(z.string(), z.number()).optional(),
       })
       .passthrough(),
   })

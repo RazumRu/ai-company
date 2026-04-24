@@ -369,6 +369,17 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
               // emitted as its own persisted message (mirrors SimpleAgent's
               // clearReasoningState({ persist: true }) at the invoke_llm boundary).
               this.flushReasoningEntries(reasoningEntries, emitContext);
+
+              // Emit live cost progress to the parent thread's subscriber so the
+              // UI can update the in-flight subagent price header while this
+              // subagent is still running.  Skipped for direct SubAgent runs
+              // (no parent tool call).
+              this.emitInFlightSubagentPrice(
+                reasoningToolCallId,
+                finalState.totalPrice,
+                parentConfigurable.thread_id,
+                emitContext.runnableConfig,
+              );
             }
 
             if (nodeName === 'tools') {
@@ -750,6 +761,41 @@ export class SubAgent extends BaseAgent<SubAgentSchemaType> {
       stopReason: 'cost_limit',
       stopCostUsd: err.totalPriceUsd,
     };
+  }
+
+  /**
+   * Emits a stateUpdate event carrying the subagent's current cumulative price
+   * keyed by the parent's toolCallId, so the parent's subscriber can show live
+   * cost progress in the UI.
+   *
+   * No-op when `reasoningToolCallId` is undefined (direct SubAgent invocation
+   * without a parent tool call, i.e. no UI entry to key into).
+   * `this.emit()` delegates to Node.js EventEmitter which is a no-op when
+   * there are zero listeners — safe to call unconditionally.
+   */
+  private emitInFlightSubagentPrice(
+    reasoningToolCallId: string | undefined,
+    totalPrice: number,
+    parentThreadIdUnknown: unknown,
+    config: RunnableConfig<BaseAgentConfigurable>,
+  ): void {
+    if (reasoningToolCallId === undefined) {
+      return;
+    }
+    const parentThreadId =
+      typeof parentThreadIdUnknown === 'string' ? parentThreadIdUnknown : '';
+    this.emit({
+      type: 'stateUpdate',
+      data: {
+        threadId: parentThreadId,
+        stateChange: {
+          inFlightSubagentPrice: {
+            [reasoningToolCallId]: totalPrice,
+          },
+        },
+        config,
+      },
+    });
   }
 
   private contextLimitResult(

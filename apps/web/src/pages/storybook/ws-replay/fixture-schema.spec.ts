@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { LoadedFixture } from './fixture-schema';
 import { parseFixture } from './fixture-schema';
+import threeSubagentBatchRaw from './fixtures/three-subagent-batch.json';
+import threeToolCallSubagentsRaw from './fixtures/three-tool-call-subagents.json';
 
 const validFixture = {
   name: 'minimal',
@@ -39,6 +41,30 @@ describe('parseFixture', () => {
   it('happy path: parses a minimal valid fixture and returns the correct event type', () => {
     const result: LoadedFixture = parseFixture(validFixture, 'minimal.json');
     expect(result.events[0].event.type).toBe('agent.message');
+  });
+
+  it('three-subagent-batch.json: full fixture parses without errors', () => {
+    const result: LoadedFixture = parseFixture(
+      threeSubagentBatchRaw,
+      'three-subagent-batch.json',
+    );
+    expect(result.events.length).toBeGreaterThan(0);
+  });
+
+  it('three-tool-call-subagents.json: full fixture parses without errors and contains inFlightSubagentPrice events', () => {
+    const result: LoadedFixture = parseFixture(
+      threeToolCallSubagentsRaw,
+      'three-tool-call-subagents.json',
+    );
+    expect(result.events.length).toBeGreaterThan(0);
+    // Verify at least one agent.state.update event carries inFlightSubagentPrice.
+    const stateUpdatesWithInFlight = result.events.filter(
+      (e) =>
+        e.event.type === 'agent.state.update' &&
+        (e.event as { data?: { inFlightSubagentPrice?: unknown } }).data
+          ?.inFlightSubagentPrice !== undefined,
+    );
+    expect(stateUpdatesWithInFlight.length).toBeGreaterThan(0);
   });
 
   it('missing `events` field: throws with filename and path in message', () => {

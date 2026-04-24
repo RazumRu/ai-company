@@ -115,6 +115,60 @@ const agentStateUpdate = (totalPrice: number, totalTokens: number) => ({
   },
 });
 
+// Helper: build an agent.message notification with role: 'tool' (for toolTokenUsage tests).
+// The production code detects subagent tool messages via additionalKwargs.__subagentCommunication
+// or toolName === 'subagents_run_task' and skips toolUsage accumulation for those.
+const toolMessage = (
+  toolPrice: number,
+  toolName: string,
+  extraKwargs: Record<string, unknown> = {},
+  threadId: string = THREAD_ID,
+  nodeId: string = NODE_ID,
+) => ({
+  type: 'agent.message',
+  internalThreadId: threadId,
+  threadId: threadId,
+  graphId: GRAPH_ID,
+  nodeId,
+  data: {
+    id: `tool-msg-${Math.random()}`,
+    threadId,
+    externalThreadId: threadId,
+    createdAt: new Date().toISOString(),
+    nodeId,
+    message: {
+      role: 'tool',
+      content: 'tool result',
+      name: toolName,
+      additionalKwargs:
+        Object.keys(extraKwargs).length > 0 ? extraKwargs : undefined,
+    },
+    // No requestTokenUsage on a tool message — only toolTokenUsage
+    toolTokenUsage: {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      totalPrice: toolPrice,
+    },
+  },
+});
+
+// Helper: build an agent.state.update notification scoped to a specific thread/node.
+const stateUpdateForThread = (
+  inFlightSubagentPrice: Record<string, number>,
+  threadId: string = THREAD_ID,
+  nodeId: string = NODE_ID,
+) => ({
+  type: 'agent.state.update',
+  internalThreadId: threadId,
+  threadId,
+  graphId: GRAPH_ID,
+  nodeId,
+  data: {
+    inFlightSubagentPrice,
+  },
+});
+
 describe('useChatsWebSocket — additive vs state.update reducer interaction', () => {
   beforeEach(() => {
     wsHandlers.clear();
@@ -188,5 +242,152 @@ describe('useChatsWebSocket — additive vs state.update reducer interaction', (
     // running thread. state.update should be informational for currentContext
     // only and must not overwrite additive totals.
     expect(totalPriceFor(result.current)).toBeGreaterThanOrEqual(0.12 - 1e-9);
+  });
+
+  it('Change 1: does not double-count priced subagent tokens (toolUsage skipped for subagent tool messages)', async () => {
+    const { result } = renderHook(() => useHarness());
+
+    // Step 1: AI message for a subagent communication — reqUsage ALWAYS accumulates.
+    // This represents the subagent's own LLM call cost flowing up to the parent.
+    act(() => {
+      dispatch(
+        'agent.message',
+        agentMessage(0.1, {
+          kwargs: { __subagentCommunication: true },
+        }),
+      );
+    });
+    await flushAgentMessageBatch();
+    expect(totalPriceFor(result.current)).toBeCloseTo(0.1, 10);
+
+    // Step 2: Corresponding TOOL message for the same subagent tool call.
+    // toolTokenUsage.totalPrice === 0.10 — this is an aggregate that already
+    // covers the same cost as step 1's reqUsage. Must NOT be accumulated.
+    act(() => {
+      dispatch(
+        'agent.message',
+        toolMessage(0.1, 'subagents_run_task', {
+          __subagentCommunication: true,
+        }),
+      );
+    });
+    await flushAgentMessageBatch();
+
+    // Total must still be 0.10 — subagent toolUsage is deliberately skipped.
+    expect(totalPriceFor(result.current)).toBeCloseTo(0.1, 10);
+
+    // Control: a non-subagent tool (shell) — its toolUsage MUST accumulate normally.
+    act(() => {
+      dispatch('agent.message', toolMessage(0.03, 'shell'));
+    });
+    await flushAgentMessageBatch();
+
+    // 0.10 (subagent AI req) + 0.03 (shell tool) = 0.13 — shell tool is counted.
+    expect(totalPriceFor(result.current)).toBeCloseTo(0.13, 10);
+  });
+
+  it('Change 2: parallel subagents — inFlightSubagentPrice map merges with replace semantics and sentinel-0 clear', async () => {
+    const { result } = renderHook(() => useHarness());
+
+    // Step 1: two parallel subagents emit separate inFlightSubagentPrice updates.
+    // Each update must be merged into the same per-node map (no key loss).
+    act(() => {
+      dispatch('agent.state.update', stateUpdateForThread({ 'tc-A': 0.05 }));
+    });
+    act(() => {
+      dispatch('agent.state.update', stateUpdateForThread({ 'tc-B': 0.07 }));
+    });
+
+    // Both keys must be present after merge.
+    const mapAfterBoth =
+      result.current[THREAD_ID]?.[NODE_ID]?.inFlightSubagentPrice;
+    expect(mapAfterBoth?.['tc-A']).toBeCloseTo(0.05, 10);
+    expect(mapAfterBoth?.['tc-B']).toBeCloseTo(0.07, 10);
+    expect(Object.keys(mapAfterBoth ?? {})).toHaveLength(2);
+
+    // Step 2: sentinel-0 clear for tc-A — key must be removed, tc-B must survive.
+    act(() => {
+      dispatch('agent.state.update', stateUpdateForThread({ 'tc-A': 0 }));
+    });
+
+    const mapAfterClear =
+      result.current[THREAD_ID]?.[NODE_ID]?.inFlightSubagentPrice;
+    expect(mapAfterClear?.['tc-A']).toBeUndefined();
+    expect(mapAfterClear?.['tc-B']).toBeCloseTo(0.07, 10);
+    expect(Object.keys(mapAfterClear ?? {})).toHaveLength(1);
+  });
+
+  it('Change 2 isolation: thread-switch — inFlightSubagentPrice state is independent per thread', async () => {
+    const THREAD_ID_B = 'thread-2';
+
+    const { result } = renderHook(() => useHarness());
+
+    // Step 1: dispatch inFlightSubagentPrice for threadA.
+    act(() => {
+      dispatch(
+        'agent.state.update',
+        stateUpdateForThread({ 'tc-A': 0.05 }, THREAD_ID),
+      );
+    });
+
+    // Step 2: dispatch inFlightSubagentPrice for threadB (same toolCallId key).
+    act(() => {
+      dispatch(
+        'agent.state.update',
+        stateUpdateForThread({ 'tc-A': 0.05 }, THREAD_ID_B),
+      );
+    });
+
+    // threadA's map must be untouched by threadB's event.
+    const mapA = result.current[THREAD_ID]?.[NODE_ID]?.inFlightSubagentPrice;
+    expect(mapA?.['tc-A']).toBeCloseTo(0.05, 10);
+
+    // threadB has its own independent map.
+    const mapB = result.current[THREAD_ID_B]?.[NODE_ID]?.inFlightSubagentPrice;
+    expect(mapB?.['tc-A']).toBeCloseTo(0.05, 10);
+
+    // Step 3: sentinel-0 clear only for threadB — must NOT affect threadA's map.
+    act(() => {
+      dispatch(
+        'agent.state.update',
+        stateUpdateForThread({ 'tc-A': 0 }, THREAD_ID_B),
+      );
+    });
+
+    const mapAAfterClear =
+      result.current[THREAD_ID]?.[NODE_ID]?.inFlightSubagentPrice;
+    expect(mapAAfterClear?.['tc-A']).toBeCloseTo(0.05, 10);
+
+    const mapBAfterClear =
+      result.current[THREAD_ID_B]?.[NODE_ID]?.inFlightSubagentPrice;
+    // tc-A sentinel-cleared on threadB — key must be gone.
+    expect(mapBAfterClear?.['tc-A']).toBeUndefined();
+
+    // The reducer must NOT auto-clear inFlightSubagentPrice on thread.update done.
+    // Per-node map cleanup is intentionally delegated to the usage-stats selector
+    // (which ignores inFlight when !isRunning), NOT the reducer. Verify by
+    // dispatching a thread.update with status 'done' for threadA — map must remain.
+    act(() => {
+      dispatch('thread.update', {
+        type: 'thread.update',
+        internalThreadId: THREAD_ID,
+        threadId: THREAD_ID,
+        graphId: GRAPH_ID,
+        data: {
+          id: THREAD_ID,
+          graphId: GRAPH_ID,
+          status: 'done',
+          name: 'thread-1',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          externalThreadId: THREAD_ID,
+        },
+      });
+    });
+
+    const mapAAfterDone =
+      result.current[THREAD_ID]?.[NODE_ID]?.inFlightSubagentPrice;
+    // Per-node map must not be cleared by a thread.update reducer — still 0.05.
+    expect(mapAAfterDone?.['tc-A']).toBeCloseTo(0.05, 10);
   });
 });

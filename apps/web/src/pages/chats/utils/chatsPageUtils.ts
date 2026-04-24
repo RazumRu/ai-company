@@ -121,6 +121,9 @@ const safeNumber = (value: unknown): number | undefined => {
  * - `agent.state.update` is authoritative ONLY for `currentContext` — a
  *   point-in-time context-window reading that cannot be reconstructed
  *   from messages — and for `effectiveCostLimitUsd` (configured limit).
+ * - `inFlightSubagentPrice` is a live delta map emitted per subagent iteration.
+ *   It is passed through here so the `agent.state.update` handler can merge it
+ *   into node state using delete-on-zero + replace semantics (see handler below).
  *
  * Previously this function also emitted the additive fields, which collided
  * with `agent.message` accumulation and caused visible downward jumps when
@@ -143,6 +146,16 @@ export const compactUsageUpdate = (
     if (effectiveCostLimitUsd !== undefined) {
       next.effectiveCostLimitUsd = effectiveCostLimitUsd;
     }
+  }
+
+  // Pass through inFlightSubagentPrice when present. The handler merges this
+  // with delete-on-zero + replace semantics rather than spreading it directly.
+  if (
+    source?.inFlightSubagentPrice !== undefined &&
+    source.inFlightSubagentPrice !== null &&
+    typeof source.inFlightSubagentPrice === 'object'
+  ) {
+    next.inFlightSubagentPrice = source.inFlightSubagentPrice;
   }
 
   return next;

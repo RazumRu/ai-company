@@ -300,6 +300,36 @@ export class SubagentsRunTaskTool extends BaseTool<
           resolveWaiting();
           resolveWaiting = null;
         }
+      } else if (event.type === 'stateUpdate') {
+        // Forward live cost progress to the parent agent so the parent's
+        // graph-state.manager.handleAgentStateUpdate can update the UI.
+        // Re-key inFlightSubagentPrice with the parent's own __toolCallId
+        // (the id for this subagents_run_task call) rather than any internal key.
+        const rawToolCallId = runnableConfig.configurable?.__toolCallId;
+        const parentToolCallId: string | undefined =
+          typeof rawToolCallId === 'string' ? rawToolCallId : undefined;
+        if (!parentToolCallId) {
+          return Promise.resolve();
+        }
+        const callId: string = parentToolCallId;
+        const subagentPrice = (
+          event.data.stateChange as Record<string, unknown>
+        ).inFlightSubagentPrice as Record<string, number> | undefined;
+        const priceValues = subagentPrice ? Object.values(subagentPrice) : [];
+        const totalPrice = priceValues.length > 0 ? priceValues[0] : undefined;
+        if (totalPrice === undefined) {
+          return Promise.resolve();
+        }
+        runnableConfig.configurable?.caller_agent?.emit({
+          type: 'stateUpdate',
+          data: {
+            ...event.data,
+            stateChange: {
+              ...event.data.stateChange,
+              inFlightSubagentPrice: { [callId]: totalPrice },
+            },
+          },
+        });
       }
       return Promise.resolve();
     });

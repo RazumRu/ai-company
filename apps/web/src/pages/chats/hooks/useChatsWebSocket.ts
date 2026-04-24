@@ -65,6 +65,42 @@ const addPriceField = (
   return (existing ?? 0) + incoming;
 };
 
+/**
+ * Merges an inFlightSubagentPrice delta into the existing map.
+ *
+ * Semantics:
+ * - Entries with value 0 in `delta` DELETE the corresponding key (sentinel-clear
+ *   emitted by the backend when a subagent ToolMessage arrives).
+ * - Non-finite values (NaN, Infinity) are also treated as sentinel-clear: they
+ *   cannot contribute to a cost sum and should not persist in the map. Rejecting
+ *   them at ingestion prevents permanent key leaks that sentinel-0 cannot fix.
+ * - All other keys overwrite (last-write-wins per toolCallId).
+ *
+ * This handles both orderings safely:
+ * - clear arrives after final update: key is deleted from the merged map.
+ * - clear arrives before final update: the final update re-inserts the key.
+ *   Socket.io FIFO within a connection guarantees the former in practice, but
+ *   the delete-on-zero approach is safe regardless of arrival order.
+ */
+const mergeInFlightMap = (
+  prev: Record<string, number> | undefined,
+  delta: Record<string, number>,
+): Record<string, number> | undefined => {
+  const base = prev ?? {};
+  const next: Record<string, number> = { ...base };
+  for (const [key, value] of Object.entries(delta)) {
+    // Treat 0 and non-finite (NaN, ±Infinity) as sentinel-clear. NaN cannot
+    // be summed meaningfully and once stored it could never be cleared by a
+    // sentinel-0 emitted for a different toolCallId.
+    if (value === 0 || !Number.isFinite(value)) {
+      delete next[key];
+      continue;
+    }
+    next[key] = value;
+  }
+  return Object.keys(next).length === 0 ? undefined : next;
+};
+
 interface UseChatsWebSocketDeps {
   graphFilterId: string | undefined;
   selectedThreadId: string | undefined;
@@ -774,21 +810,79 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
         }
       }
 
-      // Accumulate token usage for all messages in this thread
+      // Accumulate token usage for all messages in this thread.
+      //
+      // Single-source policy mirrors threads.service.ts:744 ("Adding it here
+      // would double-count those tokens"):
+      // - reqUsage (requestTokenUsage): always accumulate — present on AI
+      //   messages including subagent-internal LLM calls.
+      // - toolUsage (toolTokenUsage): accumulate ONLY for non-subagent tool
+      //   messages (shell, files_read, etc.). For subagent tool messages,
+      //   toolUsage is an aggregate of the subagent's internal LLM calls which
+      //   are already individually accumulated via reqUsage above — adding
+      //   toolUsage here would double-count those tokens.
+      //
+      // Dedup by message ID within each flush batch: Socket.io at-least-once
+      // delivery can replay events before the microtask flush fires, producing
+      // duplicate entries in the buffer for the same message ID. The message
+      // list dedup (mergeMessagesReplacingStreaming) guards the display list but
+      // the token accumulation must also guard separately to avoid double-count.
+      const seenMsgIds = new Set<string>();
       for (const msg of messages) {
+        const msgId = msg.data.id;
+        if (seenMsgIds.has(msgId)) {
+          // Duplicate message ID in this flush batch — skip token accumulation.
+          // The message-list dedup (mergeMessagesReplacingStreaming) guards the
+          // display list; this guard prevents double-count in cost aggregation
+          // when Socket.io at-least-once replay delivers the same event twice
+          // before the microtask flush fires.
+          continue;
+        }
+        seenMsgIds.add(msgId);
+
         const nodeId = msg.nodeId;
         const incomingMessage = msg.data;
         const reqUsage = incomingMessage.requestTokenUsage;
         const toolUsage = incomingMessage.toolTokenUsage;
+        const msgRole = incomingMessage.message?.role as string | undefined;
 
-        const usageToAccumulate = reqUsage ?? toolUsage;
-
-        if (usageToAccumulate && nodeId) {
+        if (reqUsage && nodeId) {
           tokenUsageUpdates.push({
             threadId,
             nodeId,
-            usageToAccumulate,
+            usageToAccumulate: reqUsage,
           });
+        } else if (toolUsage && nodeId && msgRole === 'tool') {
+          // Detect subagent tool messages by additionalKwargs flag or tool name.
+          // name and additionalKwargs are on the tool role variant (ThreadMessageDtoMessageOneOf4).
+          // Cast through unknown because the union type has no index signature.
+          const msgAsRecord = incomingMessage.message as unknown as
+            | Record<string, unknown>
+            | undefined;
+          const additionalKwargs = msgAsRecord?.additionalKwargs as
+            | Record<string, unknown>
+            | undefined;
+          const toolName = msgAsRecord?.name as string | undefined;
+          // Detect subagent-tool messages by tool name ONLY.
+          // The __subagentCommunication kwarg is a context-propagation flag
+          // applied by emitClonedMessages (sub-agent.ts) to ALL messages emitted
+          // during a subagent stream — including nested ToolMessages from tools
+          // like 'shell' that ran inside the subagent. Using the kwarg as a
+          // detector is over-broad: it would silently drop toolUsage for those
+          // nested tools. Only 'subagents_run_task' represents the subagent
+          // invocation itself whose toolUsage is already counted via reqUsage.
+          const isSubagentToolMessage = toolName === 'subagents_run_task';
+
+          if (!isSubagentToolMessage) {
+            // Non-subagent tool (shell, files_read, etc.) — accumulate toolUsage.
+            tokenUsageUpdates.push({
+              threadId,
+              nodeId,
+              usageToAccumulate: toolUsage,
+            });
+          }
+          // Subagent tool message: skip toolUsage — already counted via reqUsage
+          // on the subagent's AI messages (see threads.service.ts:744).
         }
       }
     });
@@ -925,14 +1019,37 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
     setThreadTokenUsageByNode((prev) => {
       const existingThread = prev[internalThreadId] ?? {};
       const existingNode = existingThread[data.nodeId] ?? {};
+
+      // Spread scalar fields from usageUpdate (currentContext, effectiveCostLimitUsd).
+      // inFlightSubagentPrice requires special merge: value-0 entries are
+      // sentinel-clears that DELETE the key; non-zero entries overwrite (last-write-wins
+      // per toolCallId). See mergeInFlightMap for the invariant rationale.
+      const { inFlightSubagentPrice: incomingInFlight, ...scalarUpdate } =
+        usageUpdate;
+      const mergedNode: ThreadTokenUsageSnapshot = {
+        ...existingNode,
+        ...scalarUpdate,
+      };
+      if (incomingInFlight !== undefined) {
+        mergedNode.inFlightSubagentPrice = mergeInFlightMap(
+          existingNode.inFlightSubagentPrice,
+          incomingInFlight,
+        );
+        // Seed totalTokens to 0 when the first inFlightSubagentPrice arrives
+        // and no AI messages have populated totalTokens yet. Without this seed
+        // the node snapshot has inFlightSubagentPrice but undefined totalTokens,
+        // which causes ThreadTokenUsageLine's guard (typeof totalTokens !== 'number')
+        // to suppress the cost line even though a real cost signal is present.
+        if (typeof mergedNode.totalTokens !== 'number') {
+          mergedNode.totalTokens = 0;
+        }
+      }
+
       return {
         ...prev,
         [internalThreadId]: {
           ...existingThread,
-          [data.nodeId]: {
-            ...existingNode,
-            ...usageUpdate,
-          },
+          [data.nodeId]: mergedNode,
         },
       };
     });

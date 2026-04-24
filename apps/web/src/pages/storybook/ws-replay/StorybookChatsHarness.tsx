@@ -240,6 +240,7 @@ export const StorybookChatsHarness: React.FC<StorybookChatsHarnessProps> = ({
     <div className="flex flex-col gap-3">
       <ThreadTokenUsageLine
         usage={usageStats.selectedThreadHeaderUsage}
+        inFlightSum={usageStats.selectedThreadHeaderInFlightSum}
         contextPercent={usageStats.selectedThreadHeaderContextPercent}
         contextMaxTokens={usageStats.selectedThreadHeaderContextMaxTokens}
       />

@@ -191,13 +191,47 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
     threadTokenUsageByNode,
   ]);
 
+  // Compute the sum of all in-flight subagent prices across all nodes.
+  // Only meaningful while the thread is running; callers are responsible for
+  // ignoring this value when !isRunning (REST becomes authoritative then).
+  const selectedThreadInFlightSum = useMemo(() => {
+    let sum = 0;
+    let hasAny = false;
+    for (const nodeSnap of Object.values(selectedThreadUsageByNode)) {
+      if (!nodeSnap.inFlightSubagentPrice) {
+        continue;
+      }
+      for (const price of Object.values(nodeSnap.inFlightSubagentPrice)) {
+        if (typeof price === 'number' && Number.isFinite(price) && price > 0) {
+          sum += price;
+          hasAny = true;
+        }
+      }
+    }
+    return hasAny ? sum : 0;
+  }, [selectedThreadUsageByNode]);
+
   const selectedThreadAggregateUsage = useMemo(() => {
     const nodeUsages = Object.values(selectedThreadUsageByNode);
     if (!nodeUsages.length) {
       return undefined;
     }
-    return sumUsage(nodeUsages);
-  }, [selectedThreadUsageByNode]);
+    const base = sumUsage(nodeUsages);
+    const isRunning =
+      selectedThread &&
+      'status' in selectedThread &&
+      selectedThread.status === 'running';
+    // Fold in-flight subagent prices into totalPrice ONLY while running, so the
+    // header total reflects costs accumulating in child subagents. When !isRunning,
+    // inflight is excluded — REST is authoritative, and this aggregate may serve as
+    // the fallback when the REST snapshot has not yet arrived (running→done race window).
+    if (isRunning && selectedThreadInFlightSum > 0) {
+      const basePrice =
+        typeof base.totalPrice === 'number' ? base.totalPrice : 0;
+      return { ...base, totalPrice: basePrice + selectedThreadInFlightSum };
+    }
+    return base;
+  }, [selectedThread, selectedThreadUsageByNode, selectedThreadInFlightSum]);
 
   const selectedThreadThreadUsage = useMemo(() => {
     if (!selectedThread || selectedThreadIsDraft) {
@@ -218,6 +252,7 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
       snap ? { ...snap, effectiveCostLimitUsd: limitSource } : undefined;
 
     if (!isRunning) {
+      // REST is authoritative once done/stopped. inFlightSubagentPrice is ignored.
       return withLimit(apiTotal ?? aggregate);
     }
     if (!apiTotal) {
@@ -229,9 +264,9 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
 
     // Single-source policy: while running, trust the WS aggregate so the UI
     // doesn't regress when real-time events arrive ahead of the API snapshot;
-    // once done, trust the authoritative REST snapshot. Existing fallbacks at
-    // lines 220-228 handle the !isRunning / !apiTotal / !aggregate edges.
-    return withLimit(aggregate ?? apiTotal);
+    // once done, trust the authoritative REST snapshot. Reaching here means
+    // both apiTotal and aggregate are non-null (the guards above returned early).
+    return withLimit(aggregate);
   }, [
     selectedThread,
     selectedThreadAggregateUsage,
@@ -362,6 +397,21 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
     selectedThreadThreadUsage,
     selectedThreadTokenUsageFromApi,
   ]);
+
+  // Expose the in-flight sum for the header cost display. The component uses
+  // this to render "$X.XX + $Y.YY in-flight" when subagents are accumulating
+  // costs mid-run. When !isRunning the value is always 0 (aggregate is replaced
+  // by REST snapshot and selectedThreadInFlightSum stays 0 after stop/done).
+  const selectedThreadHeaderInFlightSum = useMemo(() => {
+    const isRunning =
+      selectedThread &&
+      'status' in selectedThread &&
+      selectedThread.status === 'running';
+    if (!isRunning) {
+      return 0;
+    }
+    return selectedThreadInFlightSum;
+  }, [selectedThread, selectedThreadInFlightSum]);
 
   const selectedThreadHeaderContextPercent = useMemo(() => {
     if (selectedAgentNodeId) {
@@ -602,6 +652,7 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
     selectedThreadContextPercent,
     selectedThreadContextMaxTokens,
     selectedThreadHeaderUsage,
+    selectedThreadHeaderInFlightSum,
     selectedThreadHeaderContextPercent,
     selectedThreadHeaderContextMaxTokens,
     selectedThreadNodeDisplayNames,

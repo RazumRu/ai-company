@@ -13,6 +13,7 @@ import {
 import { formatUsd } from '../../chats/utils/chatsPageUtils';
 import { parseFixture } from './fixture-schema';
 import threeSubagentBatchRaw from './fixtures/three-subagent-batch.json';
+import threeToolCallSubagentsRaw from './fixtures/three-tool-call-subagents.json';
 import { StorybookChatsHarness } from './StorybookChatsHarness';
 import type {
   LoadedFixture,
@@ -30,8 +31,14 @@ const THREE_SUBAGENT_BATCH = parseFixture(
   'three-subagent-batch.json',
 );
 
+const THREE_TOOL_CALL_SUBAGENTS = parseFixture(
+  threeToolCallSubagentsRaw,
+  'three-tool-call-subagents.json',
+);
+
 const FIXTURE_MAP: Record<string, LoadedFixture> = {
   'three-subagent-batch': THREE_SUBAGENT_BATCH,
+  'three-tool-call-subagents': THREE_TOOL_CALL_SUBAGENTS,
 };
 
 const SPEED_OPTIONS: SpeedMultiplier[] = [0.25, 0.5, 1, 2, 4];
@@ -189,6 +196,9 @@ export function WSReplayHarnessSection() {
           <SelectContent>
             <SelectItem value="three-subagent-batch">
               three-subagent-batch
+            </SelectItem>
+            <SelectItem value="three-tool-call-subagents">
+              Three tool-call subagents (live in-flight)
             </SelectItem>
           </SelectContent>
         </Select>

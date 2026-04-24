@@ -370,6 +370,184 @@ describe('useChatsUsageStats — selectedThreadThreadUsage', () => {
     ).not.toHaveBeenCalled();
   });
 
+  it('Change 2: running thread — inFlightSubagentPrice folds into aggregate totalPrice and is exposed as selectedThreadHeaderInFlightSum', async () => {
+    // API returns a baseline so the running→done logic has something to fetch.
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(makeUsageStats({ totalPrice: 0.05, totalTokens: 10 }));
+
+    const selectedThread = makeThread({ status: 'running' });
+
+    const { result } = renderHook(() =>
+      useChatsUsageStats({
+        toastMessage,
+        selectedThread,
+        selectedThreadId: 'thread-1',
+        selectedThreadIsDraft: false,
+        selectedAgentNodeId: null,
+        graphCache: {},
+        getFullGraph: () => undefined,
+      }),
+    );
+
+    // Seed a node snapshot that carries both a scalar totalPrice and an
+    // inFlightSubagentPrice map with a live subagent accumulating cost.
+    act(() => {
+      result.current.setThreadTokenUsageByNode({
+        'thread-1': {
+          'node-1': {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.05,
+            currentContext: 1000,
+            inFlightSubagentPrice: { 'tc-A': 0.15 },
+          },
+        },
+      });
+    });
+
+    // While running, the hook folds inFlightSubagentPrice into totalPrice.
+    await waitFor(() => {
+      expect(result.current.selectedThreadHeaderUsage?.totalPrice).toBeCloseTo(
+        0.2,
+        10,
+      );
+    });
+
+    // selectedThreadHeaderInFlightSum exposes the raw in-flight portion so the
+    // UI can render "$0.05 + $0.15 in-flight".
+    expect(result.current.selectedThreadHeaderInFlightSum).toBeCloseTo(
+      0.15,
+      10,
+    );
+
+    // Aggregate total = scalar (0.05) + in-flight (0.15) = 0.20.
+    expect(result.current.selectedThreadHeaderUsage?.totalPrice).toBeCloseTo(
+      0.2,
+      10,
+    );
+  });
+
+  it('Change 2: not-running thread — inFlightSubagentPrice is ignored; suffix sum is 0', async () => {
+    // REST is authoritative once done/stopped; API returns the final settled total.
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(makeUsageStats({ totalPrice: 0.05, totalTokens: 10 }));
+
+    const selectedThread = makeThread({ status: 'done' });
+
+    const { result } = renderHook(() =>
+      useChatsUsageStats({
+        toastMessage,
+        selectedThread,
+        selectedThreadId: 'thread-1',
+        selectedThreadIsDraft: false,
+        selectedAgentNodeId: null,
+        graphCache: {},
+        getFullGraph: () => undefined,
+      }),
+    );
+
+    // Same node snapshot as the running test — totalPrice: 0.05 scalar plus
+    // an inFlightSubagentPrice entry that must be ignored when done.
+    act(() => {
+      result.current.setThreadTokenUsageByNode({
+        'thread-1': {
+          'node-1': {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.05,
+            currentContext: 1000,
+            inFlightSubagentPrice: { 'tc-A': 0.15 },
+          },
+        },
+      });
+    });
+
+    // Wait for the API fetch that a done-status mount triggers.
+    await waitFor(() => {
+      expect(
+        threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>,
+      ).toHaveBeenCalledWith('thread-1');
+    });
+
+    // selectedThreadHeaderInFlightSum must be 0 — suffix must not render.
+    await waitFor(() => {
+      expect(result.current.selectedThreadHeaderInFlightSum).toBe(0);
+    });
+
+    // totalPrice must reflect the authoritative REST snapshot (0.05), not the
+    // sum with in-flight (which would be 0.20). The in-flight portion is ignored.
+    await waitFor(() => {
+      expect(result.current.selectedThreadHeaderUsage?.totalPrice).toBeCloseTo(
+        0.05,
+        10,
+      );
+    });
+  });
+
+  it('Change 2: not-running + apiTotal absent (race window) — totalPrice equals scalar-only aggregate, not inflated 0.20', async () => {
+    // Simulate the running→done race window: the API fetch has not completed yet
+    // (apiTotal is undefined). The aggregate must NOT fold inFlightSubagentPrice
+    // into totalPrice so the fallback path (apiTotal ?? aggregate) returns the
+    // scalar-only value (0.05) rather than the inflated value (0.20).
+    (
+      threadsApi.getThreadUsageStatistics as ReturnType<typeof vi.fn>
+    ).mockImplementation(
+      () => new Promise(() => {}), // never resolves — keeps apiTotal undefined
+    );
+
+    const selectedThread = makeThread({ status: 'done' });
+
+    const { result } = renderHook(() =>
+      useChatsUsageStats({
+        toastMessage,
+        selectedThread,
+        selectedThreadId: 'thread-1',
+        selectedThreadIsDraft: false,
+        selectedAgentNodeId: null,
+        graphCache: {},
+        getFullGraph: () => undefined,
+      }),
+    );
+
+    // Seed the same node snapshot used in the running test — scalar 0.05 plus
+    // an inFlightSubagentPrice entry worth 0.15 that must be excluded when done.
+    act(() => {
+      result.current.setThreadTokenUsageByNode({
+        'thread-1': {
+          'node-1': {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.05,
+            currentContext: 1000,
+            inFlightSubagentPrice: { 'tc-A': 0.15 },
+          },
+        },
+      });
+    });
+
+    // apiTotal stays undefined (API call is pending). The !isRunning fallback
+    // must use the aggregate WITHOUT the inflight fold, so totalPrice === 0.05.
+    await waitFor(() => {
+      expect(result.current.selectedThreadHeaderUsage?.totalPrice).toBeCloseTo(
+        0.05,
+        10,
+      );
+    });
+
+    // The inflated value (scalar + inflight = 0.20) must NOT appear.
+    expect(
+      result.current.selectedThreadHeaderUsage?.totalPrice,
+    ).not.toBeCloseTo(0.2, 5);
+
+    // selectedThreadHeaderInFlightSum must still be 0 when done.
+    expect(result.current.selectedThreadHeaderInFlightSum).toBe(0);
+  });
+
   it('does not fetch when switching from a running thread to a different thread that is already done', async () => {
     // Pre-populate stats for thread B so the mount-effect short-circuits and
     // does not call getThreadUsageStatistics at all, leaving only the transition

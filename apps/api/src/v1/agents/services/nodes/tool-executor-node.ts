@@ -354,6 +354,33 @@ export class ToolExecutorNode extends BaseNode<
 
       interleavedMessages.push(toolMsg);
 
+      // Clear the inFlight slot for this subagent tool call on the frontend.
+      // Sentinel 0 clears the inFlightSubagentPrice entry for this toolCallId on
+      // the frontend reducer — value 0 signals DELETE, not "$0 spent". Using a
+      // sentinel rather than omitting the key keeps the reducer commutative: the
+      // clear arrives atomically alongside (or just after) the final in-flight
+      // value emitted by the subagent, and the frontend merges them safely in
+      // FIFO order without needing a tombstone protocol. Cannot signal "absent"
+      // vs "zero" over plain JSON, so sentinel 0 is the cleanest contract.
+      const isSubagentTool =
+        result.toolName === 'subagents_run_task' ||
+        result.toolMessage.additional_kwargs?.__subagentCommunication === true;
+
+      if (isSubagentTool) {
+        const callIdForClear = toolMsg.tool_call_id;
+        const parentThreadId = String(cfg.configurable?.thread_id ?? '');
+        cfg.configurable?.caller_agent?.emit({
+          type: 'stateUpdate',
+          data: {
+            threadId: parentThreadId,
+            stateChange: {
+              inFlightSubagentPrice: { [callIdForClear]: 0 },
+            },
+            config: cfg,
+          },
+        });
+      }
+
       // Append any additional messages immediately after the tool result
       if (result.additionalMessages && result.additionalMessages.length > 0) {
         interleavedMessages.push(...result.additionalMessages);
