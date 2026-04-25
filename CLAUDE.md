@@ -170,6 +170,16 @@ All UI must be built exclusively from the shared component library in `src/compo
 - **Adding real-time event handling**: Define handler in `WebSocketService` -> create hook in `useWebSocket.ts` -> subscribe in component with `useEffect` -> clean up on unmount.
 - **Modifying canvas behavior**: Edit `GraphCanvas.tsx` for layout/interaction -> update `GraphStorageService` for persistence -> ensure viewport syncs with backend.
 
+#### Testing
+
+Component tests use Vitest + Testing Library + jsdom. Two repo-specific gotchas every component test must follow:
+
+1. **`// @vitest-environment jsdom` pragma on line 1** — Vitest 4 removed `environmentMatchGlobs`, so the per-file pragma is the only mechanism. The default project environment is `node` (fast for utility tests under `*.spec.ts`); component tests under `*.spec.tsx` must opt into jsdom explicitly. Exemplar: `apps/web/src/components/ui/thread-blocks.spec.tsx:1`.
+
+2. **`vi.mock` + module-scope spies → wrap in `vi.hoisted()`** — `vi.mock(...)` factories hoist above all module-scope `const` declarations, so a factory that closes over a bare `const navigate = vi.fn()` throws `ReferenceError: Cannot access 'navigate' before initialization`. Wrap shared mock spies in `vi.hoisted(() => ({ navigate: vi.fn(), ... }))` and destructure. Exemplars: `apps/web/src/pages/projects/list.spec.tsx`, `apps/web/src/contexts/ProjectContext.spec.tsx`.
+
+Test files are co-located as `*.spec.{ts,tsx}` next to the source. Run `pnpm --filter @geniro/web test:unit <relative-path>` to target a single file (or no path for the whole web suite). The web `test:unit` script is wired into `pnpm full-check` and CI (`.github/workflows/test-unit.yaml`) automatically.
+
 #### Configuration
 
 Edit `src/config/development.ts` or `src/config/production.ts`:
