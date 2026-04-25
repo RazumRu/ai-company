@@ -594,6 +594,119 @@ describe('accumulatePreparedStatistics', () => {
     // `formatUsd(undefined) === "$—"` — we want the "$0.000" path.
     expect(typeof stats!.usage!.totalPrice).toBe('number');
   });
+
+  it('1.5 — in-flight subagent: inner AI msg with tool_calls only credits requestTokenUsage to live SubagentBlock statistics', () => {
+    // Regression guard for "live cost shows $0.000" bug: an inner subagent AI
+    // message that emits ONLY tool_calls (blank text content) used to lose its
+    // requestTokenUsage entirely.  prepareReadyMessages does not push a 'chat'
+    // prepared item for blank-content AI messages, and the old one-pass
+    // accumulator skipped price/tokens on tool items "because the sibling chat
+    // carries it" — but with no sibling, the cost was dropped.  The two-pass
+    // walk now credits via the tool branch when no chat/reasoning sibling has
+    // already credited the same requestTokenUsage object.
+    const parentToolCallId = 'tc-running-sub-15';
+    const innerToolCallId = 'inner-tc-shell-15';
+
+    const parentAiCall = makeSubagentCallMsg('parent-ai-15', parentToolCallId);
+
+    // Inner AI message: blank content + tool_calls, with usage info.
+    // Using cast to ThreadMessageDto['message'] to satisfy the auto-generated type.
+    const innerAi = (() => {
+      const msg = makeMsg('inner-ai-15', 'ai', '', {
+        __toolCallId: parentToolCallId,
+        __subagentCommunication: true,
+      });
+      msg.requestTokenUsage = {
+        inputTokens: 200,
+        outputTokens: 50,
+        totalTokens: 250,
+        totalPrice: 0.01,
+      };
+      // Manually add toolCalls to the message object.
+      (msg.message as unknown as Record<string, unknown>).toolCalls = [
+        { id: innerToolCallId, name: 'shell' },
+      ];
+      return msg;
+    })();
+
+    // Inner tool result message.
+    const innerToolResult = (() => {
+      const msg = makeMsg('inner-tool-15', 'tool', 'ok', {
+        __toolCallId: parentToolCallId,
+        __subagentCommunication: true,
+      });
+      (msg.message as unknown as Record<string, unknown>).name = 'shell';
+      (msg.message as unknown as Record<string, unknown>).toolCallId =
+        innerToolCallId;
+      return msg;
+    })();
+
+    const prepared = prepareReadyMessages(
+      [parentAiCall, innerAi, innerToolResult],
+      { ...defaultOptions, isNodeRunning: true },
+    );
+
+    const block = findSubagentBlock(prepared, parentToolCallId);
+    expect(block).toBeDefined();
+    expect(block!.type).toBe('subagent');
+    expect(block!.status).toBe('calling');
+    expect(block!.statistics?.usage?.totalTokens).toBe(250);
+    expect(block!.statistics?.usage?.totalPrice).toBeCloseTo(0.01, 10);
+  });
+
+  it('1.6 — tool-only AI msg with multiple sibling tool_calls credits requestTokenUsage exactly once via reference dedup', () => {
+    // Companion to 1.5: when an AI message has 2+ tool calls (still no chat
+    // content), all sibling tool prepared items share the SAME
+    // requestTokenUsage object by reference.  The WeakSet dedup must credit
+    // only once — not N times.  The total price/tokens reported equal the
+    // original AI message's usage, never multiplied by the tool count.
+    const sharedUsage: ThreadMessageDto['requestTokenUsage'] = {
+      inputTokens: 400,
+      outputTokens: 100,
+      totalTokens: 500,
+      totalPrice: 0.02,
+    };
+
+    const toolItem1: PreparedMessage = {
+      type: 'tool',
+      id: 'tool-only-a',
+      name: 'shell',
+      status: 'executed',
+      requestTokenUsage: sharedUsage,
+      durationMs: 100,
+    };
+
+    const toolItem2: PreparedMessage = {
+      type: 'tool',
+      id: 'tool-only-b',
+      name: 'files_read',
+      status: 'executed',
+      requestTokenUsage: sharedUsage,
+      durationMs: 200,
+    };
+
+    const toolItem3: PreparedMessage = {
+      type: 'tool',
+      id: 'tool-only-c',
+      name: 'shell',
+      status: 'executed',
+      requestTokenUsage: sharedUsage,
+      durationMs: 300,
+    };
+
+    const stats = _accumulatePreparedStatistics([
+      toolItem1,
+      toolItem2,
+      toolItem3,
+    ]);
+
+    expect(stats).toBeDefined();
+    // Credited exactly once via reference dedup — not 3×.
+    expect(stats!.usage!.totalPrice).toBeCloseTo(0.02, 10);
+    expect(stats!.usage!.totalTokens).toBe(500);
+    // durationMs sums across all tool items normally.
+    expect(stats!.usage!.durationMs).toBe(600);
+  });
 });
 
 // ── Stopped subagent surfaces a synthetic errorText ──────────────────────────
