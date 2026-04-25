@@ -106,6 +106,7 @@ services:
 
   daytona-proxy:
     image: nginx:alpine
+    profiles: ["daytona"]
     networks:
       - daytona
     depends_on:
@@ -127,6 +128,7 @@ services:
   daytona-api:
     image: daytonaio/daytona-api:v0.160.0
     restart: on-failure
+    profiles: ["daytona"]
     networks:
       - daytona
       - geniro-infra
@@ -207,6 +209,7 @@ services:
     image: daytonaio/daytona-runner:v0.160.0
     restart: on-failure
     privileged: true
+    profiles: ["daytona"]
     networks:
       - daytona
       - geniro-infra
