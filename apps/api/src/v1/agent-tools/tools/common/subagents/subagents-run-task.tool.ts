@@ -344,6 +344,15 @@ export class SubagentsRunTaskTool extends BaseTool<
             resolveWaiting = null;
           }
           return result;
+        })
+        .catch((err) => {
+          // Mirror runDone for the queue waiter so the yield loop unblocks.
+          runDone = true;
+          if (resolveWaiting) {
+            resolveWaiting();
+            resolveWaiting = null;
+          }
+          throw err;
         });
 
       // Yield messages as they arrive until the run completes
@@ -365,6 +374,33 @@ export class SubagentsRunTaskTool extends BaseTool<
       const loopResult = await runPromise;
 
       return this.buildResult(loopResult, title);
+    } catch (err) {
+      // SubAgent.runSubagent has its own catch that returns a SubagentRunResult
+      // with `error: <message>` for known failure modes (cost limit, recursion,
+      // generic LLM/provider errors). If we still reach here, the throw escaped
+      // that catch (e.g. graph-level abort, runtime cancellation, unhandled
+      // rejection inside the LangGraph stream). Without this branch the
+      // generator would unwind without a return value, leaving the upstream
+      // tool message empty so the UI shows status=stopped with no errorText.
+      const message = err instanceof Error ? err.message : String(err);
+      const isAbort =
+        (err instanceof Error && err.name === 'AbortError') ||
+        message.toLowerCase().includes('abort');
+      if (!isAbort) {
+        this.logger.error(
+          err instanceof Error ? err : new Error(message),
+          `SubagentsRunTaskTool.streamingInvoke: ${message}`,
+        );
+      }
+      return {
+        output: isAbort
+          ? { result: 'Subagent was aborted.' }
+          : {
+              result: `Subagent execution failed: ${message}`,
+              error: message,
+            },
+        messageMetadata: { __title: title },
+      };
     } finally {
       unsubscribe();
     }

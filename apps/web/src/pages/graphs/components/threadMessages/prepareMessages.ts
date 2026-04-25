@@ -790,6 +790,22 @@ export const prepareReadyMessages = (
           const model = extractSubagentModel(innerRawMessages);
 
           const subBlockId = `subagent-${tc.id || `${m.id || m.createdAt}-${idx}`}`;
+          const status: 'executed' | 'calling' | 'stopped' = matched
+            ? 'executed'
+            : allowCallingIndicators && isLatestRun(toolCallRunId)
+              ? 'calling'
+              : 'stopped';
+          // Stopped subagents have no tool result message — leaving errorText
+          // empty would put the badge in error state with no explanation.
+          // Only surface the synthetic message when the thread itself wasn't
+          // user-stopped: a manual thread stop is expected to leave in-flight
+          // tool calls without results, so showing an error there would be
+          // misleading.
+          const finalErrorText =
+            errorText ??
+            (status === 'stopped' && !isThreadStopped
+              ? 'Subagent run ended without producing a result.'
+              : undefined);
           prepared.push({
             type: 'subagent',
             toolCallId: tc.id!,
@@ -799,17 +815,13 @@ export const prepareReadyMessages = (
             innerMessages: innerPrepared,
             statistics,
             resultText,
-            errorText,
+            errorText: finalErrorText,
             model,
             rawToolArgs: parsedArgs ?? toolArgs,
             rawToolResult: resultContent,
             requestTokenUsageIn: m.requestTokenUsage,
             requestTokenUsageOut: matched?.requestTokenUsage,
-            status: matched
-              ? 'executed'
-              : allowCallingIndicators && isLatestRun(toolCallRunId)
-                ? 'calling'
-                : 'stopped',
+            status,
             id: subBlockId,
             nodeId: matched?.nodeId ?? m.nodeId,
             createdAt: m.createdAt,
@@ -893,6 +905,16 @@ export const prepareReadyMessages = (
             continue;
           }
 
+          const commStatus: 'executed' | 'calling' | 'stopped' = matched
+            ? 'executed'
+            : allowCallingIndicators && isLatestRun(toolCallRunId)
+              ? 'calling'
+              : 'stopped';
+          const finalCommErrorText =
+            commErrorText ??
+            (commStatus === 'stopped' && !isThreadStopped
+              ? 'Inter-agent communication ended without producing a result.'
+              : undefined);
           prepared.push({
             type: 'communication',
             toolCallId: tc.id!,
@@ -903,18 +925,14 @@ export const prepareReadyMessages = (
             innerMessages: innerPrepared,
             statistics: commStatistics,
             resultText: commResultText,
-            errorText: commErrorText,
+            errorText: finalCommErrorText,
             needsMoreInfo: commNeedsMoreInfo || undefined,
             model: commModel,
             rawToolArgs: parsedArgs ?? toolArgs,
             rawToolResult: resultContent,
             requestTokenUsageIn: m.requestTokenUsage,
             requestTokenUsageOut: matched?.requestTokenUsage,
-            status: matched
-              ? 'executed'
-              : allowCallingIndicators && isLatestRun(toolCallRunId)
-                ? 'calling'
-                : 'stopped',
+            status: commStatus,
             id: `comm-${tc.id || `${m.id || m.createdAt}-${idx}`}`,
             nodeId: matched?.nodeId ?? m.nodeId,
             createdAt: m.createdAt,

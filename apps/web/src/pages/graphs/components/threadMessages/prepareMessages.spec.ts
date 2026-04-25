@@ -595,3 +595,69 @@ describe('accumulatePreparedStatistics', () => {
     expect(typeof stats!.usage!.totalPrice).toBe('number');
   });
 });
+
+// ── Stopped subagent surfaces a synthetic errorText ──────────────────────────
+
+describe('SubagentBlock — stopped status surfaces synthetic errorText', () => {
+  it('a subagents_run_task tool_call without a matching tool result becomes status=stopped with a non-empty errorText', () => {
+    const aiCall = makeSubagentCallMsg('ai-1', 'tc-stopped');
+
+    const prepared = prepareReadyMessages([aiCall], defaultOptions);
+
+    const block = findSubagentBlock(prepared, 'tc-stopped');
+    expect(block).toBeDefined();
+    expect(block!.status).toBe('stopped');
+    expect(typeof block!.errorText).toBe('string');
+    expect(block!.errorText!.length).toBeGreaterThan(0);
+  });
+
+  it('a subagent that has an explicit error in its tool result keeps that text', () => {
+    const aiCall = makeSubagentCallMsg('ai-2', 'tc-with-error');
+    const toolResult = makeSubagentResultMsg('tool-2', 'tc-with-error');
+    (toolResult.message as { content: unknown }).content = {
+      result: 'Subagent execution failed: provider-error 503',
+      error: 'provider-error 503',
+      statistics: { usage: null, totalIterations: 0, toolCallsMade: 0 },
+    };
+
+    const prepared = prepareReadyMessages([aiCall, toolResult], defaultOptions);
+
+    const block = findSubagentBlock(prepared, 'tc-with-error');
+    expect(block).toBeDefined();
+    expect(block!.status).toBe('executed');
+    expect(block!.errorText).toBe('provider-error 503');
+  });
+
+  it('an executed subagent without an error keeps errorText undefined', () => {
+    const aiCall = makeSubagentCallMsg('ai-3', 'tc-success');
+    const toolResult = makeSubagentResultMsg('tool-3', 'tc-success');
+    (toolResult.message as { content: unknown }).content = {
+      result: 'Task completed.',
+      statistics: { usage: null, totalIterations: 1, toolCallsMade: 0 },
+    };
+
+    const prepared = prepareReadyMessages([aiCall, toolResult], defaultOptions);
+
+    const block = findSubagentBlock(prepared, 'tc-success');
+    expect(block).toBeDefined();
+    expect(block!.status).toBe('executed');
+    expect(block!.errorText).toBeUndefined();
+  });
+
+  it('a stopped subagent gets NO synthetic errorText when the thread itself was user-stopped', () => {
+    // When the user manually stops a thread, in-flight tool calls naturally
+    // end up status=stopped without a tool result. Showing a "no result"
+    // error there would be misleading — the user knows they stopped it.
+    const aiCall = makeSubagentCallMsg('ai-stop', 'tc-userstop');
+
+    const prepared = prepareReadyMessages([aiCall], {
+      ...defaultOptions,
+      isThreadStopped: true,
+    });
+
+    const block = findSubagentBlock(prepared, 'tc-userstop');
+    expect(block).toBeDefined();
+    expect(block!.status).toBe('stopped');
+    expect(block!.errorText).toBeUndefined();
+  });
+});
