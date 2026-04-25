@@ -7,6 +7,13 @@ litellm_settings:
   proxy_logging: false
   success_logging: true
   drop_params: true
+  # Inject cost into usage.cost on streaming chunks so clients reading the JSON
+  # body (not just the x-litellm-response-cost header) get per-request pricing.
+  # Without this flag, models like openai/gpt-5.4-mini that LiteLLM auto-routes
+  # via DB-stored deployment groups still get a computed cost (visible in the
+  # x-litellm-response-cost header) but no usage.cost field on streaming chunks,
+  # so downstream consumers that only parse the JSON body see $0.
+  include_cost_in_streaming_usage: true
 
 model_list:
   # OpenRouter provider — OpenAI
