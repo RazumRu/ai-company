@@ -913,12 +913,12 @@ describe('Live subagent cost streaming (integration)', () => {
       };
 
       // Mirror SubagentsRunTaskTool.streamingInvoke + ToolExecutorNode tagging.
-      const broadcastEvents: Array<{
+      const broadcastEvents: {
         msgId?: string;
         role?: string;
         toolCallId?: string;
         requestTokenUsage: unknown;
-      }> = [];
+      }[] = [];
 
       const messageQueue: BaseMessage[][] = [];
       let resolveWaiting: (() => void) | null = null;
@@ -979,7 +979,11 @@ describe('Live subagent cost streaming (integration)', () => {
                   ?.message?.role,
                 toolCallId: (
                   e as {
-                    data?: { message?: { additionalKwargs?: { __toolCallId?: string } } };
+                    data?: {
+                      message?: {
+                        additionalKwargs?: { __toolCallId?: string };
+                      };
+                    };
                   }
                 ).data?.message?.additionalKwargs?.__toolCallId,
                 requestTokenUsage: (
@@ -1019,7 +1023,9 @@ describe('Live subagent cost streaming (integration)', () => {
                 ?.message?.role,
               toolCallId: (
                 e as {
-                  data?: { message?: { additionalKwargs?: { __toolCallId?: string } } };
+                  data?: {
+                    message?: { additionalKwargs?: { __toolCallId?: string } };
+                  };
                 }
               ).data?.message?.additionalKwargs?.__toolCallId,
               requestTokenUsage: (

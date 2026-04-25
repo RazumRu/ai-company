@@ -1019,8 +1019,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               resultText={it.resultText}
               statistics={it.statistics}
               popoverContent={subPopover}
-              usageIn={it.requestTokenUsageIn as RawTokenUsage | undefined}
-              usageOut={it.requestTokenUsageOut as RawTokenUsage | undefined}
               showThinkingIndicator={isCalling && filteredInner.length > 0}>
               {(filteredInner.length > 0 || isCalling) && (
                 <CollapsibleInnerArea
@@ -1103,8 +1101,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               model={it.model}
               statistics={it.statistics}
               popoverContent={commPopover}
-              usageIn={it.requestTokenUsageIn as RawTokenUsage | undefined}
-              usageOut={it.requestTokenUsageOut as RawTokenUsage | undefined}
               showThinkingIndicator={isCalling && filteredInner.length > 0}
               thinkingText={
                 commTargetName
@@ -1312,8 +1308,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               resultText={item.resultText}
               statistics={item.statistics}
               popoverContent={topSubPopover}
-              usageIn={item.requestTokenUsageIn as RawTokenUsage | undefined}
-              usageOut={item.requestTokenUsageOut as RawTokenUsage | undefined}
               showThinkingIndicator={isCalling && filteredInner.length > 0}>
               {(filteredInner.length > 0 || isCalling) && (
                 <CollapsibleInnerArea
@@ -1402,8 +1396,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               model={item.model}
               statistics={item.statistics}
               popoverContent={topCommPopover}
-              usageIn={item.requestTokenUsageIn as RawTokenUsage | undefined}
-              usageOut={item.requestTokenUsageOut as RawTokenUsage | undefined}
               showThinkingIndicator={isCalling && filteredInner.length > 0}
               thinkingText={
                 commTargetName

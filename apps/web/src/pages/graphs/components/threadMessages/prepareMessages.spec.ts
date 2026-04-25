@@ -463,13 +463,12 @@ describe('accumulatePreparedStatistics', () => {
     expect(stats!.usage!.totalTokens).toBe(1000);
   });
 
-  it('1.2 — 3 tool items with durationMs and no sibling chat: totalPrice=0 (genuine zero), totalTokens=undefined, durationMs=sum', () => {
+  it('1.2 — 3 tool items with durationMs and no sibling chat: all aggregates preserved as genuine 0/sum', () => {
     // When tool items have durationMs but no sibling chat, they must not
     // contribute any tokens (which are attributed to the sibling chat item to
-    // avoid double-counting). durationMs is accumulated normally. totalPrice
-    // is preserved as genuine `0` — `formatUsd(0) === "$0.000"` distinguishes
-    // genuine-zero from unknown (`formatUsd(undefined) === "$—"`), so the
-    // accumulator MUST NOT coerce `0 → undefined`.
+    // avoid double-counting). durationMs is accumulated normally. All aggregates
+    // are preserved as their genuine values — `0` is meaningful (formatUsd/fmtK
+    // render it as "$0.000" / "0") and must not be coerced to undefined.
     const toolA: PreparedMessage = {
       type: 'tool',
       id: 'tool-a',
@@ -497,15 +496,11 @@ describe('accumulatePreparedStatistics', () => {
     const stats = _accumulatePreparedStatistics([toolA, toolB, toolC]);
 
     expect(stats).toBeDefined();
-    // No chat item → no tokens (double-count avoidance), but price is genuine 0.
+    // No chat item → no tokens (double-count avoidance) — preserved as 0.
     expect(stats!.usage!.totalPrice).toBe(0);
-    expect(stats!.usage!.totalTokens).toBeUndefined();
+    expect(stats!.usage!.totalTokens).toBe(0);
     // durationMs is the sum across all three tool items.
     expect(stats!.usage!.durationMs).toBe(600);
-    // All three tool items contribute to count (hasDuration=true for each);
-    // count is exposed indirectly — a non-undefined return implies count >= 1,
-    // and each tool item with durationMs fires count++. We assert the full
-    // durationMs sum as the proxy for count===3 (each item contributed once).
   });
 
   it('1.3 — communication child block + 2 outer chat items: totalPrice accumulates from both sources', () => {
