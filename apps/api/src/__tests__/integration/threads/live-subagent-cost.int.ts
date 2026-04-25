@@ -48,9 +48,17 @@ import {
   BaseAgent,
 } from '../../../v1/agents/services/agents/base-agent';
 import { SubAgent } from '../../../v1/agents/services/agents/sub-agent';
+import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
+import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphRestorationService } from '../../../v1/graphs/services/graph-restoration.service';
 import { LitellmService } from '../../../v1/litellm/services/litellm.service';
-import { createTestModule } from '../setup';
+import { AgentMessageNotificationHandler } from '../../../v1/notification-handlers/services/event-handlers/agent-message-notification-handler';
+import { NotificationEvent } from '../../../v1/notifications/notifications.types';
+import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
+import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
+import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
+import { ThreadStatus } from '../../../v1/threads/threads.types';
+import { createTestModule, TEST_USER_ID } from '../setup';
 
 // ---------------------------------------------------------------------------
 // Fixed stub usage returned by the mocked extractTokenUsageFromResponse.
@@ -604,6 +612,455 @@ describe('Live subagent cost streaming (integration)', () => {
         expect(positiveValues.length).toBeGreaterThanOrEqual(1);
       } finally {
         unsubscribe();
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Reproduces the SubagentBlock cost-display bug: inner AI messages emitted
+  // by the subagent during iteration ≥ 2 must carry __requestUsage in
+  // additional_kwargs so the frontend's accumulatePreparedStatistics can
+  // sum per-iteration tokens/price.
+  //
+  // Confirmed via Playwright + storybook ws-replay-harness that injecting a
+  // 2nd inner AI message with requestTokenUsage=null leaves the SubagentBlock
+  // footer frozen at iteration 1's value (matches user-reported screenshot).
+  // ---------------------------------------------------------------------------
+  it(
+    'every inner AI message emitted by a multi-iteration subagent carries additional_kwargs.__requestUsage',
+    { timeout: 60_000 },
+    async () => {
+      vi.spyOn(
+        litellmService,
+        'extractTokenUsageFromResponse',
+      ).mockResolvedValue(STUB_USAGE);
+      vi.spyOn(litellmService, 'supportsResponsesApi').mockResolvedValue(false);
+      vi.spyOn(litellmService, 'supportsReasoning').mockResolvedValue(false);
+      vi.spyOn(litellmService, 'supportsParallelToolCall').mockResolvedValue(
+        false,
+      );
+      vi.spyOn(litellmService, 'supportsStreaming').mockResolvedValue(false);
+      vi.spyOn(litellmService, 'supportsAssistantPrefill').mockResolvedValue(
+        true,
+      );
+
+      const TOOL_NAME = 'echo_test';
+      const TOOL_CALL_ID = 'iter1-tool-call';
+
+      let llmCallCount = 0;
+      const mockBindToolsInvoke = vi.fn().mockImplementation(() => {
+        llmCallCount++;
+        if (llmCallCount === 1) {
+          return Promise.resolve(
+            new AIMessage({
+              content: 'Iter 1: invoking echo tool.',
+              tool_calls: [
+                {
+                  id: TOOL_CALL_ID,
+                  name: TOOL_NAME,
+                  args: { message: 'hello' },
+                  type: 'tool_call',
+                },
+              ],
+              response_metadata: { usage: { total_tokens: 15 } },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new AIMessage({
+            content: 'Iter 2: synthesised result.',
+            response_metadata: { usage: { total_tokens: 15 } },
+          }),
+        );
+      });
+
+      vi.spyOn(ChatOpenAI.prototype, 'bindTools').mockReturnValue({
+        invoke: mockBindToolsInvoke,
+      } as unknown as ReturnType<ChatOpenAI['bindTools']>);
+
+      const moduleRef = app.get(ModuleRef);
+      const subAgent = await moduleRef.resolve(SubAgent, undefined, {
+        strict: false,
+      });
+
+      const echoTool = langchainTool(
+        async (args: { message: string }) =>
+          ({ output: args.message }) as unknown as string,
+        {
+          name: TOOL_NAME,
+          description: 'Echo the message back',
+          schema: z.object({ message: z.string() }),
+        },
+      );
+
+      subAgent.setConfig({
+        instructions: 'You are a test subagent.',
+        invokeModelName: 'test-model',
+        maxIterations: 10,
+      });
+      subAgent.addTool(echoTool);
+
+      // Capture every BaseMessage emitted by the subagent over its run.
+      const capturedMessages: BaseMessage[] = [];
+      const unsubscribe = subAgent.subscribe((event) => {
+        if (event.type === 'message') {
+          capturedMessages.push(...event.data.messages);
+        }
+        return Promise.resolve();
+      });
+
+      const runnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: 'parent-thread-test-rtu',
+          caller_agent: new MinimalParentAgent(),
+          __toolCallId: 'parent-tc-rtu',
+          graph_id: 'test-graph-rtu',
+          run_id: 'test-run-rtu',
+        },
+      };
+
+      try {
+        const result = await subAgent.runSubagent(
+          [new HumanMessage('Run two iterations please.')],
+          runnableConfig,
+        );
+
+        // Sanity: 2 iterations actually ran.
+        expect(result.statistics.totalIterations).toBe(2);
+
+        // Filter the captured messages down to AI messages produced by
+        // invoke_llm (these are the ones whose __requestUsage drives the
+        // SubagentBlock footer in the frontend).
+        const aiMessagesFromInvokeLlm = capturedMessages.filter(
+          (m): m is AIMessage =>
+            m instanceof AIMessage &&
+            // Exclude any post-summary/recovered messages — we only care about
+            // direct invoke_llm outputs which carry our content strings.
+            (typeof m.content === 'string'
+              ? m.content.startsWith('Iter ')
+              : false),
+        );
+
+        // We expect exactly TWO AI messages — one per invoke_llm iteration.
+        expect(aiMessagesFromInvokeLlm.length).toBe(2);
+
+        // The bug: iteration ≥ 2's AI message must carry __requestUsage.
+        // Asserting on EACH gives a precise failure message identifying
+        // the exact iteration whose kwarg leaks.
+        for (let i = 0; i < aiMessagesFromInvokeLlm.length; i++) {
+          const msg = aiMessagesFromInvokeLlm[i]!;
+          const kwargs = msg.additional_kwargs as Record<string, unknown>;
+          const requestUsage = kwargs.__requestUsage as
+            | Record<string, number>
+            | undefined
+            | null;
+
+          expect(requestUsage, `iter ${i + 1} missing __requestUsage`).not.toBe(
+            undefined,
+          );
+          expect(requestUsage, `iter ${i + 1} __requestUsage is null`).not.toBe(
+            null,
+          );
+          expect(
+            typeof requestUsage!.totalTokens,
+            `iter ${i + 1} totalTokens not a number`,
+          ).toBe('number');
+          expect(
+            requestUsage!.totalTokens,
+            `iter ${i + 1} totalTokens not > 0`,
+          ).toBeGreaterThan(0);
+          expect(
+            typeof requestUsage!.totalPrice,
+            `iter ${i + 1} totalPrice not a number`,
+          ).toBe('number');
+          expect(
+            requestUsage!.totalPrice,
+            `iter ${i + 1} totalPrice not > 0`,
+          ).toBeGreaterThan(0);
+        }
+      } finally {
+        unsubscribe();
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // FULL-pipeline reproducer: drives every iteration's AI message through
+  // ToolExecutorNode-style tagging + AgentMessageNotificationHandler.handle
+  // exactly as the production stack would. Asserts each persisted +
+  // about-to-broadcast DTO has requestTokenUsage set. If any iteration has
+  // null requestTokenUsage at this point, the bug is reproduced and pinned
+  // to the kwarg-loss between cloneMessageForEmit and the persistence handler.
+  // ---------------------------------------------------------------------------
+  it(
+    'every iteration of a multi-iter subagent broadcasts an AI message DTO with non-null requestTokenUsage',
+    { timeout: 60_000 },
+    async () => {
+      const handler = app.get(AgentMessageNotificationHandler);
+      const graphDao = app.get(GraphDao);
+      const projectsDao = app.get(ProjectsDao);
+      const threadsDao = app.get(ThreadsDao);
+      const messagesDao = app.get(MessagesDao);
+
+      vi.spyOn(
+        litellmService,
+        'extractTokenUsageFromResponse',
+      ).mockResolvedValue(STUB_USAGE);
+      vi.spyOn(litellmService, 'supportsResponsesApi').mockResolvedValue(false);
+      vi.spyOn(litellmService, 'supportsReasoning').mockResolvedValue(false);
+      vi.spyOn(litellmService, 'supportsParallelToolCall').mockResolvedValue(
+        false,
+      );
+      vi.spyOn(litellmService, 'supportsStreaming').mockResolvedValue(false);
+      vi.spyOn(litellmService, 'supportsAssistantPrefill').mockResolvedValue(
+        true,
+      );
+
+      const TOOL_NAME = 'echo_test';
+      const TOOL_CALL_ID = 'iter1-tool-call-broadcast';
+
+      let llmCallCount = 0;
+      const mockBindToolsInvoke = vi.fn().mockImplementation(() => {
+        llmCallCount++;
+        if (llmCallCount === 1) {
+          return Promise.resolve(
+            new AIMessage({
+              content: 'Iter 1: invoking echo tool.',
+              tool_calls: [
+                {
+                  id: TOOL_CALL_ID,
+                  name: TOOL_NAME,
+                  args: { message: 'hello' },
+                  type: 'tool_call',
+                },
+              ],
+              response_metadata: { usage: { total_tokens: 15 } },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new AIMessage({
+            content: 'Iter 2: synthesised result.',
+            response_metadata: { usage: { total_tokens: 15 } },
+          }),
+        );
+      });
+
+      vi.spyOn(ChatOpenAI.prototype, 'bindTools').mockReturnValue({
+        invoke: mockBindToolsInvoke,
+      } as unknown as ReturnType<ChatOpenAI['bindTools']>);
+
+      const moduleRef = app.get(ModuleRef);
+      const subAgent = await moduleRef.resolve(SubAgent, undefined, {
+        strict: false,
+      });
+
+      const echoTool = langchainTool(
+        async (args: { message: string }) =>
+          ({ output: args.message }) as unknown as string,
+        {
+          name: TOOL_NAME,
+          description: 'Echo the message back',
+          schema: z.object({ message: z.string() }),
+        },
+      );
+
+      subAgent.setConfig({
+        instructions: 'You are a test subagent.',
+        invokeModelName: 'test-model',
+        maxIterations: 10,
+      });
+      subAgent.addTool(echoTool);
+
+      // Set up real DB rows so AgentMessageNotificationHandler can find the
+      // internal thread for persistence.
+      const project = await projectsDao.create({
+        name: 'subagent-broadcast-test',
+        createdBy: TEST_USER_ID,
+        settings: {},
+      });
+      const graph = await graphDao.create({
+        name: 'subagent-broadcast-test-graph',
+        description: 'multi-iter subagent broadcast assertion',
+        version: '1.0.0',
+        targetVersion: '1.0.0',
+        schema: { nodes: [], edges: [] },
+        status: GraphStatus.Running,
+        metadata: {},
+        createdBy: TEST_USER_ID,
+        projectId: project.id,
+        temporary: true,
+      });
+      const PARENT_THREAD_EXTERNAL = `parent-broadcast-${Date.now()}`;
+      const internalThread = await threadsDao.create({
+        graphId: graph.id,
+        createdBy: TEST_USER_ID,
+        projectId: project.id,
+        externalThreadId: PARENT_THREAD_EXTERNAL,
+        metadata: {},
+        status: ThreadStatus.Running,
+      });
+
+      const PARENT_TOOL_CALL_ID = 'parent-tc-broadcast';
+      const runnableConfig: ToolRunnableConfig<BaseAgentConfigurable> = {
+        configurable: {
+          thread_id: PARENT_THREAD_EXTERNAL,
+          caller_agent: new MinimalParentAgent(),
+          __toolCallId: PARENT_TOOL_CALL_ID,
+          graph_id: graph.id,
+          run_id: 'broadcast-run-001',
+        },
+      };
+
+      // Mirror SubagentsRunTaskTool.streamingInvoke + ToolExecutorNode tagging.
+      const broadcastEvents: Array<{
+        msgId?: string;
+        role?: string;
+        toolCallId?: string;
+        requestTokenUsage: unknown;
+      }> = [];
+
+      const messageQueue: BaseMessage[][] = [];
+      let resolveWaiting: (() => void) | null = null;
+      let runDone = false;
+
+      const unsubscribe = subAgent.subscribe((event) => {
+        if (event.type === 'message' && event.data.messages.length > 0) {
+          messageQueue.push(event.data.messages);
+          if (resolveWaiting) {
+            resolveWaiting();
+            resolveWaiting = null;
+          }
+        }
+        return Promise.resolve();
+      });
+
+      try {
+        const runPromise = subAgent
+          .runSubagent(
+            [new HumanMessage('Run two iterations.')],
+            runnableConfig,
+          )
+          .then((result) => {
+            runDone = true;
+            if (resolveWaiting) {
+              resolveWaiting();
+              resolveWaiting = null;
+            }
+            return result;
+          });
+
+        // Drain the queue and run each batch through the broadcast handler.
+        while (!runDone) {
+          if (messageQueue.length > 0) {
+            const batch = messageQueue.shift()!;
+            // ToolExecutorNode tagging (lines 213-220 of tool-executor-node.ts)
+            for (const m of batch) {
+              m.additional_kwargs = {
+                ...(m.additional_kwargs ?? {}),
+                __streamedRealtime: true,
+                __hideForLlm: true,
+                __toolCallId: PARENT_TOOL_CALL_ID,
+              };
+            }
+            // AgentMessageNotificationHandler — exactly as production
+            const enriched = await handler.handle({
+              type: NotificationEvent.AgentMessage,
+              graphId: graph.id,
+              nodeId: 'parent-node',
+              threadId: PARENT_THREAD_EXTERNAL,
+              parentThreadId: PARENT_THREAD_EXTERNAL,
+              data: { messages: batch },
+            });
+            for (const e of enriched) {
+              broadcastEvents.push({
+                msgId: (e as { data?: { id?: string } }).data?.id,
+                role: (e as { data?: { message?: { role?: string } } }).data
+                  ?.message?.role,
+                toolCallId: (
+                  e as {
+                    data?: { message?: { additionalKwargs?: { __toolCallId?: string } } };
+                  }
+                ).data?.message?.additionalKwargs?.__toolCallId,
+                requestTokenUsage: (
+                  e as { data?: { requestTokenUsage?: unknown } }
+                ).data?.requestTokenUsage,
+              });
+            }
+          } else {
+            await new Promise<void>((r) => {
+              resolveWaiting = r;
+            });
+          }
+        }
+        // Drain anything that arrived after runDone flipped.
+        while (messageQueue.length > 0) {
+          const batch = messageQueue.shift()!;
+          for (const m of batch) {
+            m.additional_kwargs = {
+              ...(m.additional_kwargs ?? {}),
+              __streamedRealtime: true,
+              __hideForLlm: true,
+              __toolCallId: PARENT_TOOL_CALL_ID,
+            };
+          }
+          const enriched = await handler.handle({
+            type: NotificationEvent.AgentMessage,
+            graphId: graph.id,
+            nodeId: 'parent-node',
+            threadId: PARENT_THREAD_EXTERNAL,
+            parentThreadId: PARENT_THREAD_EXTERNAL,
+            data: { messages: batch },
+          });
+          for (const e of enriched) {
+            broadcastEvents.push({
+              msgId: (e as { data?: { id?: string } }).data?.id,
+              role: (e as { data?: { message?: { role?: string } } }).data
+                ?.message?.role,
+              toolCallId: (
+                e as {
+                  data?: { message?: { additionalKwargs?: { __toolCallId?: string } } };
+                }
+              ).data?.message?.additionalKwargs?.__toolCallId,
+              requestTokenUsage: (
+                e as { data?: { requestTokenUsage?: unknown } }
+              ).data?.requestTokenUsage,
+            });
+          }
+        }
+        await runPromise;
+
+        // The two AI messages from invoke_llm should both have been broadcast.
+        const broadcastAi = broadcastEvents.filter(
+          (b) => b.role === 'ai' && b.toolCallId === PARENT_TOOL_CALL_ID,
+        );
+        expect(broadcastAi.length).toBe(2);
+
+        // CRITICAL ASSERTION: each broadcast AI message must carry
+        // requestTokenUsage. If iter ≥ 2 lacks it, this is the bug.
+        for (let i = 0; i < broadcastAi.length; i++) {
+          const b = broadcastAi[i]!;
+          expect(
+            b.requestTokenUsage,
+            `iter ${i + 1} broadcast DTO missing requestTokenUsage`,
+          ).not.toBeNull();
+          expect(
+            b.requestTokenUsage,
+            `iter ${i + 1} broadcast DTO has undefined requestTokenUsage`,
+          ).not.toBeUndefined();
+          const rtu = b.requestTokenUsage as Record<string, number>;
+          expect(typeof rtu.totalTokens).toBe('number');
+          expect(rtu.totalTokens).toBeGreaterThan(0);
+          expect(typeof rtu.totalPrice).toBe('number');
+          expect(rtu.totalPrice).toBeGreaterThan(0);
+        }
+      } finally {
+        unsubscribe();
+        // Cleanup: messages first (FK), then thread, then graph, then project
+        await messagesDao.hardDelete({ threadId: internalThread.id });
+        await threadsDao.deleteById(internalThread.id);
+        await graphDao.deleteById(graph.id);
+        await projectsDao.deleteById(project.id);
       }
     },
   );
