@@ -1144,7 +1144,11 @@ export const ChatsPage = () => {
                               ? undefined
                               : selectedThread.totalRunningMs
                           }
-                          threadStatus={selectedThread.status}
+                          threadStatus={
+                            'isDraft' in selectedThread
+                              ? undefined
+                              : selectedThread.status
+                          }
                         />
                       </div>
                     </div>

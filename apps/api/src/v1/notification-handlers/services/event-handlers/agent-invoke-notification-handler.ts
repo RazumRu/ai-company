@@ -62,28 +62,27 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
 
     // Look up the existing thread before upsert to compute the correct running-time
     // accumulator fields. The upsert path cannot use updateStatusWithAccumulator
-    // (which requires updateById), so we embed the transition computation inline.
+    // (which requires updateById), so we drive the transition through computeTransition.
+    // When no thread exists yet, we use a synthetic Done-status seed so that
+    // computeTransition produces the same result as the old new-thread branch
+    // (runningStartedAt = now, totalRunningMs = 0) — keeping the transition logic in
+    // a single source of truth instead of duplicating it here.
     const existing = await this.threadsDao.getOne({
       externalThreadId: externalThreadKey,
       projectId: graph.projectId,
     });
 
-    let runningStartedAt: Date | null;
-    let totalRunningMs: number;
-
-    if (existing === null) {
-      // New thread: start the clock now with zero accumulated time.
-      runningStartedAt = now;
-      totalRunningMs = 0;
-    } else {
-      const patch = this.transitionService.computeTransition(
-        existing,
-        ThreadStatus.Running,
-        now,
-      );
-      runningStartedAt = patch.runningStartedAt;
-      totalRunningMs = patch.totalRunningMs;
-    }
+    const seed = existing ?? {
+      status: ThreadStatus.Done,
+      runningStartedAt: null,
+      totalRunningMs: 0,
+    };
+    const patch = this.transitionService.computeTransition(
+      seed,
+      ThreadStatus.Running,
+      now,
+    );
+    const { runningStartedAt, totalRunningMs } = patch;
 
     // Upsert: INSERT or ON CONFLICT(externalThreadId) UPDATE status/source/lastRunId/timer fields.
     // This eliminates the race condition between executeTrigger (eager thread creation)

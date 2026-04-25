@@ -2524,28 +2524,88 @@ describe('GraphsService', () => {
 
         // Waiting→Running must go through updateStatusWithAccumulator so that
         // runningStartedAt is set atomically — no stale-drift window.
+        // metadata is passed as the 5th additionalFields arg (one DB call, not two).
         expect(threadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
           waitingThread,
           ThreadStatus.Running,
           transitionService,
           expect.anything(), // transactional em
+          expect.objectContaining({
+            metadata: expect.objectContaining({
+              customField: 'preserved',
+              effectiveCostLimitUsd: null,
+            }),
+          }),
         );
 
-        // A separate updateById for metadata only (no status field).
-        const updateCall = vi
+        // No separate updateById call for metadata on the Waiting→Running path.
+        const updateCallForWaiting = vi
           .mocked(threadsDao.updateById)
-          .mock.calls.find(([id]) => id === 'waiting-thread-id') as [
-          string,
-          { status?: ThreadStatus; metadata: Record<string, unknown> },
-          unknown,
-        ];
-        expect(updateCall).toBeDefined();
-        const [, update] = updateCall;
-        expect(update.status).toBeUndefined();
-        expect(update.metadata).toMatchObject({
-          customField: 'preserved',
-          effectiveCostLimitUsd: null,
+          .mock.calls.find(([id]) => id === 'waiting-thread-id');
+        expect(updateCallForWaiting).toBeUndefined();
+      });
+
+      it('eager-create runningStartedAt is captured before invokeAgent (regression for clock-undercount)', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-04-25T20:00:00Z'));
+
+        const mockTrigger = {
+          isStarted: true,
+          invokeAgent: vi.fn().mockImplementation(async () => {
+            vi.advanceTimersByTime(2000); // simulate 2s agent startup
+            return {
+              messages: [],
+              threadId: expectedThreadId,
+              checkpointNs: `${expectedThreadId}:agent-1`,
+            };
+          }),
+        };
+        const mockTriggerNode = {
+          id: triggerId,
+          type: NodeKind.Trigger,
+          template: 'manual-trigger',
+          instance: mockTrigger,
+          handle: {
+            provide: async () => mockTrigger,
+            configure: vi.fn().mockResolvedValue(undefined),
+            destroy: vi.fn().mockResolvedValue(undefined),
+          },
+          getStatus: vi.fn().mockReturnValue(GraphNodeStatus.Idle),
+        };
+        const mockGraph = createMockGraphEntity({
+          status: GraphStatus.Running,
         });
+        const mockCompiledGraph = createMockCompiledGraph();
+
+        vi.mocked(graphDao.getOne).mockResolvedValue(mockGraph);
+        vi.mocked(graphRegistry.get).mockReturnValue(mockCompiledGraph);
+        vi.mocked(graphRegistry.getNode).mockReturnValue(
+          mockTriggerNode as unknown as CompiledGraphNode,
+        );
+        vi.mocked(threadsDao.getOne).mockResolvedValue(null);
+        vi.mocked(threadsDao.create).mockResolvedValue({
+          id: 'thread-uuid',
+          graphId: mockGraphId,
+          externalThreadId: expectedThreadId,
+          createdBy: mockUserId,
+          status: ThreadStatus.Running,
+        } as any);
+
+        await service.executeTrigger(mockCtx, mockGraphId, triggerId, {
+          messages: ['Hello'],
+          threadSubId: 'my-thread',
+        });
+
+        const createCall = vi.mocked(threadsDao.create).mock.calls[0];
+        expect(createCall).toBeDefined();
+        const [createPayload] = createCall!;
+        // runningStartedAt must equal the timestamp captured BEFORE invokeAgent,
+        // not new Date() after the 2s simulated startup.
+        expect(
+          (createPayload as { runningStartedAt: Date }).runningStartedAt,
+        ).toEqual(new Date('2026-04-25T20:00:00Z'));
+
+        vi.useRealTimers();
       });
 
       it('should swallow unique constraint error when handler wins the race', async () => {

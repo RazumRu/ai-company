@@ -139,6 +139,10 @@ describe('useLiveThreadDuration', () => {
 
     // Must NOT be negative — the stale nowMs bug would yield a large negative value here
     expect(result.current).toBeGreaterThanOrEqual(10000);
+    // Upper bound: confirms F3 fix fired (setNowMs(Date.now()) on transition).
+    // Without the fix, nowMs would still reflect the 5-minute fast-forward and
+    // the value would be wildly large (≫ 10_500).
+    expect(result.current).toBeLessThan(10_500);
   });
 
   it('invalid runningStartedAt: gracefully returns totalRunningMs (no NaN)', () => {

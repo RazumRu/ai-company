@@ -50,10 +50,12 @@ export const ThreadTokenUsageLine: React.FC<{
   const effectiveCostLimitUsd = usage?.effectiveCostLimitUsd;
   const stopReason = usage?.stopReason;
 
-  const hasDurationProps =
-    runningStartedAt !== undefined ||
-    totalRunningMs !== undefined ||
-    threadStatus !== undefined;
+  // Show the duration suffix only when real timer data is present.
+  // Gating on threadStatus alone (without time fields) would render " · —"
+  // when no timer data exists, which looks like broken/missing data.
+  const showDuration =
+    (runningStartedAt != null && threadStatus !== undefined) ||
+    (typeof totalRunningMs === 'number' && totalRunningMs > 0);
 
   const liveDurationMs = useLiveThreadDuration({
     runningStartedAt,
@@ -84,7 +86,7 @@ export const ThreadTokenUsageLine: React.FC<{
     ? `${formatUsd(totalPrice)} / ${formatUsd(effectiveCostLimitUsd)}`
     : formatUsd(totalPrice);
 
-  const durationSuffix = hasDurationProps
+  const durationSuffix = showDuration
     ? ` · ${formatDurationMs(liveDurationMs)}`
     : '';
 

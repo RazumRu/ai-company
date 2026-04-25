@@ -43,8 +43,11 @@ export class ThreadsDao extends BaseDao<ThreadEntity> {
 
   /**
    * Inserts a thread or updates it on externalThreadId conflict.
-   * On conflict, only updates: status, lastRunId, updatedAt.
-   * Source is only set on first insert -- never overwritten on conflict.
+   * On conflict, merges: status, lastRunId, updatedAt, runningStartedAt, totalRunningMs.
+   * Source is only set on first insert — never overwritten on conflict.
+   * Metadata is intentionally excluded from onConflictMergeFields — it is preserved
+   * across conflict to avoid clobbering values set by the eager-create path (e.g.
+   * effectiveCostLimitUsd). Metadata writes flow through the dedicated updateById path.
    * Returns the upserted row.
    */
   async upsertByExternalThreadId(
@@ -72,23 +75,29 @@ export class ThreadsDao extends BaseDao<ThreadEntity> {
         'updatedAt',
         'runningStartedAt',
         'totalRunningMs',
-        'metadata',
+        // Why: metadata is excluded to prevent ON CONFLICT from writing EXCLUDED.metadata
+        // (which defaults to {}) over eagerly-created thread data containing keys such as
+        // effectiveCostLimitUsd. Metadata updates always go through updateById.
       ],
     });
   }
 
   /**
-   * Updates the thread's status and running-time accumulator fields atomically.
+   * Updates the thread's status and running-time accumulator fields atomically,
+   * optionally merging in additional fields in the same DB call.
    * The caller must supply an already-loaded ThreadEntity — this method does NOT re-fetch inside a transaction.
+   * Pass additionalFields to collapse a follow-up updateById into a single write
+   * (e.g. to persist runtimeDurationMs alongside a status transition).
    */
   async updateStatusWithAccumulator(
     thread: ThreadEntity,
     nextStatus: ThreadStatus,
     transitionService: ThreadStatusTransitionService,
     txEm?: EntityManager,
+    additionalFields?: Partial<ThreadEntity>,
   ): Promise<number> {
     const patch = transitionService.computeTransition(thread, nextStatus);
-    return this.updateById(thread.id, patch, txEm);
+    return this.updateById(thread.id, { ...patch, ...additionalFields }, txEm);
   }
 
   async touchById(id: string): Promise<void> {

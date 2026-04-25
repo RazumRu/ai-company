@@ -24,7 +24,7 @@ export class ThreadStatusTransitionService {
         // Idempotent — no clock reset, preserve existing runningStartedAt
         return {
           status: nextStatus,
-          runningStartedAt: current.runningStartedAt ?? null,
+          runningStartedAt: current.runningStartedAt,
           totalRunningMs: currentTotalMs,
         };
       }
@@ -53,7 +53,7 @@ export class ThreadStatusTransitionService {
     // non-Running → non-Running: both fields unchanged
     return {
       status: nextStatus,
-      runningStartedAt: current.runningStartedAt ?? null,
+      runningStartedAt: current.runningStartedAt,
       totalRunningMs: currentTotalMs,
     };
   }

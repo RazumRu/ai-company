@@ -93,7 +93,6 @@ export class GraphsService {
     ctx: AppContextStorage,
     data: CreateGraphDto,
   ): Promise<GraphDto> {
-    // Validate schema before creating the graph
     this.graphCompiler.validateSchema(data.schema);
 
     const userId = ctx.checkSub();
@@ -373,7 +372,6 @@ export class GraphsService {
             { enqueueImmediately: false },
           );
 
-          // Return updated graph state with the created revision
           graph.targetVersion = revision.toVersion;
           return {
             response: {
@@ -388,7 +386,6 @@ export class GraphsService {
           };
         }
 
-        // No schema change (sync-only or no-op).
         return {
           response: {
             graph: this.prepareResponse(graph),
@@ -426,7 +423,6 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    // Stop and destroy the graph if it's running
     if (graph.status === GraphStatus.Running) {
       await this.destroy(ctx, id);
     }
@@ -460,7 +456,6 @@ export class GraphsService {
 
     const schema = graph.schema;
 
-    // Update status to compiling
     await this.graphDao.updateById(id, {
       status: GraphStatus.Compiling,
       error: undefined,
@@ -485,7 +480,6 @@ export class GraphsService {
         version: graph.version,
       });
 
-      // Update status to running
       await this.graphDao.updateById(id, {
         status: GraphStatus.Running,
         error: undefined,
@@ -511,7 +505,6 @@ export class GraphsService {
 
       return this.prepareResponse(updated);
     } catch (error) {
-      // Cleanup registry if it was registered
       if (this.graphRegistry.get(id)) {
         await this.graphRegistry.destroy(id);
       }
@@ -639,7 +632,6 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    // Destroy the graph if it's in the registry
     if (this.graphRegistry.get(id)) {
       await this.graphRegistry.destroy(id);
     }
@@ -658,7 +650,6 @@ export class GraphsService {
       // Best effort: keep destroy flowing even if resume job cancellation fails
     }
 
-    // Update status to stopped
     await this.graphDao.updateById(id, {
       status: GraphStatus.Stopped,
       error: undefined,
@@ -690,7 +681,6 @@ export class GraphsService {
     dto: ExecuteTriggerDto,
   ): Promise<ExecuteTriggerResponseDto> {
     const userId = ctx.checkSub();
-    // Verify graph exists and user has access
     const graph = await this.graphDao.getOne({
       id: graphId,
       createdBy: userId,
@@ -700,7 +690,6 @@ export class GraphsService {
       throw new NotFoundException('GRAPH_NOT_FOUND');
     }
 
-    // Get the compiled graph from registry
     const compiledGraph = this.graphRegistry.get(graphId);
     if (!compiledGraph || compiledGraph.status !== GraphStatus.Running) {
       throw new BadRequestException(
@@ -709,7 +698,6 @@ export class GraphsService {
       );
     }
 
-    // Get the trigger node
     const triggerNode = this.graphRegistry.getNode<BaseTrigger>(
       graphId,
       triggerId,
@@ -727,7 +715,6 @@ export class GraphsService {
 
     const trigger = triggerNode.instance;
 
-    // Check if trigger is started
     if (!trigger.isStarted) {
       throw new BadRequestException(
         'TRIGGER_NOT_STARTED',
@@ -847,17 +834,14 @@ export class GraphsService {
         if (nextStatus === ThreadStatus.Running) {
           // Go through the accumulator helper so runningStartedAt is set
           // atomically alongside status — avoids the stale-drift window where
-          // status=Running but runningStartedAt=null.
+          // status=Running but runningStartedAt=null. Pass metadata as
+          // additionalFields to collapse status+metadata into one DB round trip.
           await this.threadsDao.updateStatusWithAccumulator(
             existingThread,
             ThreadStatus.Running,
             this.transitionService,
             em,
-          );
-          await this.threadsDao.updateById(
-            existingThread.id,
             { metadata: nextMetadata },
-            em,
           );
         } else {
           // No status transition — only refresh metadata (e.g. cost-limit fields).
@@ -870,6 +854,10 @@ export class GraphsService {
       });
     }
 
+    // Why: capture eagerStartedAt before invokeAgent so the running timer
+    // includes agent startup time (connection setup, queue drain, etc.) —
+    // using new Date() after awaiting invokeAgent would undercount elapsed ms.
+    const eagerStartedAt = new Date();
     const res = await trigger.invokeAgent(messages, {
       configurable: {
         thread_id: dto.threadSubId,
@@ -913,7 +901,7 @@ export class GraphsService {
             projectId: graph.projectId,
             externalThreadId,
             status: ThreadStatus.Running,
-            runningStartedAt: new Date(),
+            runningStartedAt: eagerStartedAt,
             totalRunningMs: 0,
             metadata: initialMetadata,
           },

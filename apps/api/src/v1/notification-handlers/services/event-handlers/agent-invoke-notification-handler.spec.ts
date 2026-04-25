@@ -562,15 +562,15 @@ describe('AgentInvokeNotificationHandler', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('should handle race condition: upsert succeeds when thread was eagerly created', async () => {
+    it('creates a new thread when no eager-create occurred (existing === null)', async () => {
       const mockGraph = createMockGraphEntity();
-      // Root thread execution where eager creation already happened
+      // Root thread execution where no eager creation happened (getOne returns null)
       const notification = createMockNotification({
         threadId: mockParentThreadId,
         parentThreadId: mockParentThreadId,
         runId: '44444444-4444-4444-8aaa-444444444444',
       });
-      // Thread was eagerly created (no name yet) — upsert updates status/lastRunId
+      // Thread was not yet created — upsert inserts a fresh row
       const upsertedThread = createMockThreadEntity({
         externalThreadId: mockParentThreadId,
         lastRunId: '44444444-4444-4444-8aaa-444444444444',
@@ -629,6 +629,57 @@ describe('AgentInvokeNotificationHandler', () => {
         parentThreadId: mockParentThreadId,
         data: { name: 'Generated Name' },
       });
+    });
+
+    it('handles eagerly-created thread via computeTransition (existing !== null, race condition)', async () => {
+      const mockGraph = createMockGraphEntity();
+      const existingStartedAt = new Date('2024-01-01T10:00:00Z');
+      // Eager-create path already inserted the thread in Running state
+      const eagerlyCreadedThread = createMockThreadEntity({
+        externalThreadId: mockParentThreadId,
+        status: ThreadStatus.Running,
+        runningStartedAt: existingStartedAt,
+        totalRunningMs: 5000,
+      });
+      const notification = createMockNotification({
+        threadId: mockParentThreadId,
+        parentThreadId: mockParentThreadId,
+        runId: '55555555-5555-4555-8aaa-555555555555',
+      });
+      const upsertedThread = createMockThreadEntity({
+        externalThreadId: mockParentThreadId,
+        status: ThreadStatus.Running,
+        runningStartedAt: existingStartedAt,
+        totalRunningMs: 5000,
+        lastRunId: '55555555-5555-4555-8aaa-555555555555',
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        upsertedThread,
+      );
+      // Pre-lookup returns the eagerly-created Running thread; post-upsert also returns it
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(eagerlyCreadedThread)
+        .mockResolvedValueOnce(upsertedThread);
+
+      await handler.handle(notification);
+
+      // computeTransition was called with the actual existing thread (not the synthetic seed)
+      // and produces an idempotent Running→Running result: runningStartedAt is preserved
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: mockParentThreadId,
+          status: ThreadStatus.Running,
+          // idempotent — clock must not be reset; preserved from eagerly-created thread
+          runningStartedAt: existingStartedAt,
+          totalRunningMs: 5000,
+          lastRunId: '55555555-5555-4555-8aaa-555555555555',
+        }),
+      );
     });
 
     it('should handle multiple agents in same execution with same parent thread', async () => {

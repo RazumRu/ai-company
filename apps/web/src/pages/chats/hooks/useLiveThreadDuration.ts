@@ -33,7 +33,11 @@ export function useLiveThreadDuration(args: {
     return () => {
       clearInterval(id);
     };
-  }, [isRunning, validStartedAt, startedAtMs]);
+    // startedAtMs is intentionally excluded: it is a render-scope derived value
+    // (not an effect dependency). Including it would cause interval teardown on
+    // every render where runningStartedAt reference changes (common via WebSocket
+    // re-renders), creating 1-second tick gaps and spurious immediate refreshes.
+  }, [isRunning, validStartedAt]);
 
   if (isRunning && validStartedAt) {
     return (totalRunningMs ?? 0) + (nowMs - startedAtMs);

@@ -26,7 +26,6 @@ export class GraphRestorationService {
   async restoreRunningGraphs(): Promise<void> {
     this.logger.log('Starting graph restoration process...');
 
-    // Destroy temporary graphs first (run destroy pipeline)
     await this.graphDao.hardDelete({ temporary: true });
 
     // Restore permanent graphs (both running and compiling)
@@ -64,7 +63,6 @@ export class GraphRestorationService {
       );
       await this.graphsService.run(contextDataStorage, id);
 
-      // Stop interrupted threads instead of resuming them
       await this.stopInterruptedThreads(id);
 
       this.logger.log(`Successfully restored graph ${id}`);
@@ -85,7 +83,7 @@ export class GraphRestorationService {
     try {
       const runningThreads = await this.threadsDao.getAll({
         graphId,
-        status: ThreadStatus.Running,
+        status: { $in: [ThreadStatus.Running, ThreadStatus.Waiting] },
       });
 
       if (runningThreads.length === 0) {

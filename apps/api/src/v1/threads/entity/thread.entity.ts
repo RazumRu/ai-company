@@ -50,7 +50,7 @@ export class ThreadEntity extends AuditEntity {
   lastRunId?: string;
 
   @Property({ type: 'timestamptz', nullable: true })
-  runningStartedAt?: Date | null;
+  runningStartedAt: Date | null = null;
 
   @Property({ type: 'bigint', default: 0 })
   totalRunningMs!: number;
