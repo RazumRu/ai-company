@@ -161,10 +161,9 @@ export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
       thread,
       ThreadStatus.Running,
       this.transitionService,
+      undefined,
+      { metadata: clearWaitMetadata(thread.metadata) },
     );
-    await this.threadsDao.updateById(data.threadId, {
-      metadata: clearWaitMetadata(thread.metadata),
-    });
 
     await this.notificationsService.emit({
       type: NotificationEvent.ThreadUpdate,
@@ -262,19 +261,22 @@ export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
 
     const thread = await this.threadsDao.getById(data.threadId);
 
+    const metadata = {
+      ...clearWaitMetadata(thread?.metadata),
+      resumeError: error.message,
+    };
+
     if (thread) {
       await this.threadsDao.updateStatusWithAccumulator(
         thread,
         ThreadStatus.Stopped,
         this.transitionService,
+        undefined,
+        { metadata },
       );
+    } else {
+      await this.threadsDao.updateById(data.threadId, { metadata });
     }
-    await this.threadsDao.updateById(data.threadId, {
-      metadata: {
-        ...clearWaitMetadata(thread?.metadata),
-        resumeError: error.message,
-      },
-    });
 
     await this.notificationsService.emit({
       type: NotificationEvent.ThreadUpdate,
@@ -334,10 +336,9 @@ export class ThreadResumeService implements OnModuleInit, OnModuleDestroy {
       thread,
       ThreadStatus.Stopped,
       this.transitionService,
+      undefined,
+      { metadata: clearWaitMetadata(thread.metadata) },
     );
-    await this.threadsDao.updateById(threadId, {
-      metadata: clearWaitMetadata(thread.metadata),
-    });
 
     await this.notificationsService.emit({
       type: NotificationEvent.ThreadUpdate,
