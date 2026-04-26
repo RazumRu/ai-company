@@ -15,7 +15,10 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -250,7 +253,11 @@ describe('ShellTool tail timeout behavior (integration)', () => {
       {
         kind: 'toolCall',
         toolName: 'finish',
-        args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+        args: {
+          purpose: 'done',
+          message: 'Command executed.',
+          needsMoreInfo: false,
+        },
       },
     );
 
@@ -281,12 +288,14 @@ describe('ShellTool tail timeout behavior (integration)', () => {
           contextDataStorage,
           execution.externalThreadId,
         );
-        return threadsService.getThreadMessages(contextDataStorage, innerThread.id);
+        return threadsService.getThreadMessages(
+          contextDataStorage,
+          innerThread.id,
+        );
       },
       (msgs) =>
         msgs.some(
-          (m) =>
-            m.message.role === 'tool' && m.message.name === 'shell',
+          (m) => m.message.role === 'tool' && m.message.name === 'shell',
         ),
       { timeout: options.shellResultTimeoutMs ?? 180_000, interval: 1_000 },
     );

@@ -14,7 +14,8 @@ import {
   ResponseJsonData,
 } from '../../../../v1/openai/openai.service';
 import { MockLlmService } from './mock-llm.service';
-import type { MockLlmReply, MockLlmRequest } from './mock-llm.types';
+import type { MockLlmRequest } from './mock-llm.types';
+import { buildUsage, padOrTruncate } from './mock-llm.utils';
 
 type CompletionParams = Parameters<OpenaiService['complete']>[1];
 type ResponsesParams = Parameters<OpenaiService['response']>[1];
@@ -47,9 +48,61 @@ export class MockOpenaiAdapter extends OpenaiService {
     super(litellmService);
   }
 
-  // ---------------------------------------------------------------------------
-  // complete — text overload
-  // ---------------------------------------------------------------------------
+  /**
+   * Shared implementation for `complete` and `response` — both accept the same
+   * message shape and delegate to `MockLlmService.match()`. The caller name is
+   * included in the kind-mismatch error so diagnostics still identify the
+   * originating method.
+   */
+  private async resolveTextOrJson<T>(
+    callerName: string,
+    data: { model: string; message: string; systemMessage?: string } & Record<
+      string,
+      unknown
+    >,
+  ): Promise<{
+    content?: T | string;
+    conversationId: string;
+    usage?: RequestTokenUsage;
+  }> {
+    const callIndex = this.mockLlm.nextCallIndex();
+    const isJson = 'jsonSchema' in data;
+
+    const request: MockLlmRequest = {
+      kind: isJson ? 'json' : 'chat',
+      model: data.model,
+      messages: [
+        ...(data.systemMessage
+          ? [{ role: 'system', content: data.systemMessage }]
+          : []),
+        { role: 'user', content: data.message },
+      ],
+      systemMessage: data.systemMessage,
+      lastUserMessage: data.message,
+      callIndex,
+    };
+
+    const reply = this.mockLlm.match(request);
+
+    if (reply.kind === 'error') {
+      throw Object.assign(new Error(reply.message), { status: reply.status });
+    }
+
+    const expectedKind = isJson ? 'json' : 'text';
+    if (reply.kind !== expectedKind) {
+      throw new Error(
+        `MockOpenaiAdapter.${callerName} expected '${expectedKind}' reply, got '${reply.kind}'`,
+      );
+    }
+
+    const usage = buildUsage(reply);
+
+    return {
+      content: reply.content as T | string,
+      conversationId: randomUUID(),
+      usage,
+    };
+  }
 
   override async complete(
     data: CompleteData,
@@ -60,10 +113,6 @@ export class MockOpenaiAdapter extends OpenaiService {
     usage?: RequestTokenUsage;
   }>;
 
-  // ---------------------------------------------------------------------------
-  // complete — JSON overload
-  // ---------------------------------------------------------------------------
-
   override async complete<T>(
     data: CompleteJsonData,
     params?: CompletionParams,
@@ -73,10 +122,6 @@ export class MockOpenaiAdapter extends OpenaiService {
     usage?: RequestTokenUsage;
   }>;
 
-  // ---------------------------------------------------------------------------
-  // complete — implementation
-  // ---------------------------------------------------------------------------
-
   override async complete<T>(
     data: CompleteData | CompleteJsonData,
     _params?: CompletionParams,
@@ -85,48 +130,8 @@ export class MockOpenaiAdapter extends OpenaiService {
     conversationId: string;
     usage?: RequestTokenUsage;
   }> {
-    const callIndex = this.mockLlm.nextCallIndex();
-    const isJson = 'jsonSchema' in data;
-
-    const request: MockLlmRequest = {
-      kind: isJson ? 'json' : 'chat',
-      model: data.model,
-      messages: [
-        ...(data.systemMessage
-          ? [{ role: 'system', content: data.systemMessage }]
-          : []),
-        { role: 'user', content: data.message },
-      ],
-      systemMessage: data.systemMessage,
-      lastUserMessage: data.message,
-      callIndex,
-    };
-
-    const reply = this.mockLlm.match(request);
-
-    if (reply.kind === 'error') {
-      throw Object.assign(new Error(reply.message), { status: reply.status });
-    }
-
-    const expectedKind = isJson ? 'json' : 'text';
-    if (reply.kind !== expectedKind) {
-      throw new Error(
-        `MockOpenaiAdapter.complete expected '${expectedKind}' reply, got '${reply.kind}'`,
-      );
-    }
-
-    const usage = buildUsage(reply);
-
-    return {
-      content: reply.content as T | string,
-      conversationId: randomUUID(),
-      usage,
-    };
+    return await this.resolveTextOrJson<T>('complete', data);
   }
-
-  // ---------------------------------------------------------------------------
-  // response — text overload
-  // ---------------------------------------------------------------------------
 
   override async response(
     data: ResponseData,
@@ -137,10 +142,6 @@ export class MockOpenaiAdapter extends OpenaiService {
     usage?: RequestTokenUsage;
   }>;
 
-  // ---------------------------------------------------------------------------
-  // response — JSON overload
-  // ---------------------------------------------------------------------------
-
   override async response<T>(
     data: ResponseJsonData,
     params?: ResponsesParams,
@@ -150,10 +151,6 @@ export class MockOpenaiAdapter extends OpenaiService {
     usage?: RequestTokenUsage;
   }>;
 
-  // ---------------------------------------------------------------------------
-  // response — implementation
-  // ---------------------------------------------------------------------------
-
   override async response<T>(
     data: ResponseData | ResponseJsonData,
     _params?: ResponsesParams,
@@ -162,48 +159,8 @@ export class MockOpenaiAdapter extends OpenaiService {
     conversationId: string;
     usage?: RequestTokenUsage;
   }> {
-    const callIndex = this.mockLlm.nextCallIndex();
-    const isJson = 'jsonSchema' in data;
-
-    const request: MockLlmRequest = {
-      kind: isJson ? 'json' : 'chat',
-      model: data.model,
-      messages: [
-        ...(data.systemMessage
-          ? [{ role: 'system', content: data.systemMessage }]
-          : []),
-        { role: 'user', content: data.message },
-      ],
-      systemMessage: data.systemMessage,
-      lastUserMessage: data.message,
-      callIndex,
-    };
-
-    const reply = this.mockLlm.match(request);
-
-    if (reply.kind === 'error') {
-      throw Object.assign(new Error(reply.message), { status: reply.status });
-    }
-
-    const expectedKind = isJson ? 'json' : 'text';
-    if (reply.kind !== expectedKind) {
-      throw new Error(
-        `MockOpenaiAdapter.response expected '${expectedKind}' reply, got '${reply.kind}'`,
-      );
-    }
-
-    const usage = buildUsage(reply);
-
-    return {
-      content: reply.content as T | string,
-      conversationId: randomUUID(),
-      usage,
-    };
+    return await this.resolveTextOrJson<T>('response', data);
   }
-
-  // ---------------------------------------------------------------------------
-  // jsonRequest — delegates to complete/response based on fixture kind
-  // ---------------------------------------------------------------------------
 
   override async jsonRequest<T>(data: JsonRequestData): Promise<{
     content?: T;
@@ -246,10 +203,6 @@ export class MockOpenaiAdapter extends OpenaiService {
       usage,
     };
   }
-
-  // ---------------------------------------------------------------------------
-  // embeddings
-  // ---------------------------------------------------------------------------
 
   override async embeddings(args: {
     model: string;
@@ -295,65 +248,4 @@ export class MockOpenaiAdapter extends OpenaiService {
 
     return { embeddings: vectors, usage };
   }
-}
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Build a `RequestTokenUsage` from a reply's optional `usage` field.
- *
- * The offline-cost rule: we never call `LitellmService.extractTokenUsageFromResponse`
- * because it always triggers a `liteLlmClient.getModelInfo` HTTP call under the
- * hood (even when a provider `cost` field is present). Instead, we read
- * `reply.usage.totalPrice` directly and return `0` when absent.
- *
- * Returns `undefined` when the reply carries no `usage` at all (matches the
- * real service behaviour when `response.usage` is absent).
- */
-function buildUsage(
-  reply: Exclude<MockLlmReply, { kind: 'error' }>,
-): RequestTokenUsage | undefined {
-  if (!reply.usage) {
-    return undefined;
-  }
-
-  const inputTokens = reply.usage.inputTokens ?? 0;
-  const outputTokens = reply.usage.outputTokens ?? 0;
-  const totalTokens = reply.usage.totalTokens ?? inputTokens + outputTokens;
-
-  return {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-    totalPrice: reply.usage.totalPrice ?? 0,
-    ...(reply.usage.cachedInputTokens !== undefined
-      ? { cachedInputTokens: reply.usage.cachedInputTokens }
-      : {}),
-    ...(reply.usage.reasoningTokens !== undefined
-      ? { reasoningTokens: reply.usage.reasoningTokens }
-      : {}),
-    ...(reply.usage.currentContext !== undefined
-      ? { currentContext: reply.usage.currentContext }
-      : {}),
-    ...(reply.usage.durationMs !== undefined
-      ? { durationMs: reply.usage.durationMs }
-      : {}),
-  };
-}
-
-/**
- * Pad a vector with zeros or truncate it to exactly `dimensions` elements.
- * Ensures mock vectors conform to the expected embedding size regardless of
- * what the fixture returns.
- */
-function padOrTruncate(vec: number[], dimensions: number): number[] {
-  if (vec.length === dimensions) {
-    return vec;
-  }
-  if (vec.length > dimensions) {
-    return vec.slice(0, dimensions);
-  }
-  return [...vec, ...new Array<number>(dimensions - vec.length).fill(0)];
 }

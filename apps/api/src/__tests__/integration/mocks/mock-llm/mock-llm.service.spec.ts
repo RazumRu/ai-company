@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { MockLlmNoMatchError } from './mock-llm.errors';
 import { MockLlmService } from './mock-llm.service';
-import { MockLlmNoMatchError, type MockLlmRequest } from './mock-llm.types';
-import { applyDefaults } from './mock-llm-defaults';
+import type { MockLlmRequest } from './mock-llm.types';
+import { applyDefaults } from './mock-llm-defaults.utils';
 
 const buildRequest = (
   overrides: Partial<MockLlmRequest> = {},
@@ -120,106 +121,79 @@ describe('MockLlmService', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Adversarial edge-case tests (F→P failing tests authored by attacker pass)
+  // Adversarial edge-case regression tests.
+  // These document specificity bugs that were fixed in Stage D (see PR #31).
+  // Each test asserts the post-fix behavior; the comments describe the original
+  // bug and the fix that resolved it.
   // ---------------------------------------------------------------------------
 
-  it('(adv-1) hasTools:[] empty array has specificity 1 and beats a catch-all {} when both match', () => {
-    // Bug: specificity() counts Object.values(matcher).filter(v => v !== undefined).length
-    // An empty array [] is not undefined, so hasTools:[] scores 1 — same as hasTools:['shell'].
-    // This means hasTools:[] is treated as MORE specific than {}, so it wins regardless
-    // of content, even though it imposes no actual tool constraint (vacuous truth).
-    // Expected: a matcher with no constraint ({}) and one with an empty-array constraint
-    // (hasTools:[]) should both score 0 specificity, making registration order decide.
-    // Actual: hasTools:[] scores 1 and always wins, even when registered AFTER {}.
+  it('(adv-1) hasTools:[] scores 0 specificity and loses to a catch-all {} when both match', () => {
+    // Original bug: specificity() counted every Object.values entry that was not
+    // undefined. An empty array [] is not undefined, so hasTools:[] scored 1 —
+    // incorrectly beating a plain {} catch-all (score 0).
+    //
+    // Fix (Stage D): specificity() now uses `score += value.length` for arrays,
+    // so hasTools:[] contributes 0 to the score, matching the semantics of "no
+    // tool constraint". Registration order then decides between two score-0
+    // matchers, and the first-registered catch-all {} wins.
     svc.onChat({}, { kind: 'text', content: 'catch-all' });
     svc.onChat({ hasTools: [] }, { kind: 'text', content: 'empty-tools' });
 
-    // A request with non-empty bound tools: hasTools:[] matches vacuously (specificity 1).
-    // The catch-all {} also matches (specificity 0). Bug: 'empty-tools' wins.
+    // Both matchers score 0. The catch-all was registered first, so it wins.
     const replyWithTools = svc.match(
       buildRequest({ boundTools: ['shell', 'finish'] }),
     );
-    // Expect the catch-all to win (first-registered, both have "no real constraint").
-    // Currently fails: 'empty-tools' wins because [] != undefined → specificity 1.
     expect(replyWithTools).toMatchObject({ content: 'catch-all' });
   });
 
-  it('(adv-2) hasTools:[a,b] loses to hasTools:[a] when both match a request — array length ignored in specificity', () => {
-    // Bug: specificity() returns 1 for hasTools:['shell'] AND for hasTools:['shell','finish']
-    // (the entire array is one Object.values entry). Registration order breaks the tie,
-    // so the FIRST registered fixture wins — even if the SECOND one matches more precisely
-    // (requires both tools to be present). A request carrying both 'shell' and 'finish'
-    // should prefer the fixture that constrains on both, but the code picks the first-registered.
-    svc.onChat(
-      { hasTools: ['shell'] },
-      { kind: 'text', content: 'one-tool' },
-    );
+  it('(adv-2) hasTools:[a,b] scores 2 and beats hasTools:[a] (score 1) when both match a request', () => {
+    // Original bug: specificity() treated the entire hasTools array as one
+    // Object.values entry worth 1, so hasTools:['shell'] and
+    // hasTools:['shell','finish'] both scored 1. Registration order decided the
+    // tie, causing the less-constraining first-registered fixture to win.
+    //
+    // Fix (Stage D): specificity() now uses `score += value.length` for arrays,
+    // so each tool name adds 1 to the score. hasTools:['shell'] scores 1 and
+    // hasTools:['shell','finish'] scores 2 — the stricter fixture wins.
+    svc.onChat({ hasTools: ['shell'] }, { kind: 'text', content: 'one-tool' });
     svc.onChat(
       { hasTools: ['shell', 'finish'] },
       { kind: 'text', content: 'two-tools' },
     );
 
-    // Request has both tools — the two-tool fixture is strictly more constraining
-    // (it would NOT match a request with only ['shell']), so it should win.
-    const reply = svc.match(
-      buildRequest({ boundTools: ['shell', 'finish'] }),
-    );
-    // Currently fails: 'one-tool' wins (same specificity 1, registered first).
+    // Request carries both tools. The two-tool fixture (score 2) outranks the
+    // one-tool fixture (score 1) and wins regardless of registration order.
+    const reply = svc.match(buildRequest({ boundTools: ['shell', 'finish'] }));
     expect(reply).toMatchObject({ content: 'two-tools' });
   });
 
-  it('(adv-3) hasTools:[] matches requests with non-empty boundTools via vacuous truth — silently widens scope', () => {
-    // Bug: hasTools:[] is intended as "no tool constraint" but is evaluated as
-    // [].every(name => bound.includes(name)) which is vacuously true for ANY request,
-    // including ones that DO have bound tools. Combined with its specificity of 1
-    // ([] is not undefined), it will match and BEAT a catch-all {} for requests
-    // carrying actual tools — an unexpected scope leak.
+  it('(adv-3) hasTools:[] only matches requests where boundTools is also empty', () => {
+    // Original bug: hasTools:[] was evaluated as [].every(...) which is
+    // vacuously true for any request, including those with non-empty boundTools.
+    // Combined with its old specificity of 1, it silently intercepted tool-call
+    // requests that should have been handled by a specific-tool fixture.
     //
-    // Concrete hazard: a test registers hasTools:[] to match "no-tool" calls and
-    // also registers a separate fixture for a specific tool. The hasTools:[] fixture
-    // silently intercepts the tool-call too, causing wrong replies.
+    // Fix (Stage D): fixtureMatches() now treats hasTools:[] as "bound tools
+    // must be empty" — it returns false when bound.length !== 0. This makes
+    // hasTools:[] an explicit "no-tool" constraint rather than a wildcard.
     svc.onChat(
       { hasTools: ['shell'] },
       { kind: 'text', content: 'shell-fixture' },
     );
-    // hasTools:[] with higher-priority specificity (registered second but still
-    // only specificity 1, same as the shell fixture above).
-    // Verification: with hasTools:['shell'] specificity=1 and hasTools:[] specificity=1,
-    // registration order decides — shell fixture wins for ['shell'] requests.
-    //
-    // But for a request with [], the hasTools:[] fixture (vacuous truth) matches
-    // while the hasTools:['shell'] fixture does NOT match (shell not in []).
-    // The vacuous match with specificity 1 is expected to beat a hypothetical {} catch-all.
-    //
-    // Core failing assertion: hasTools:[] should NOT match requests that have
-    // non-empty boundTools unless that empty constraint is deliberately intended as a
-    // wildcard (which contradicts the name "hasTools").
-    // The fix would be: hasTools:[] should have specificity 0 (equivalent to not setting hasTools)
-    // OR: hasTools:[] should only match requests where boundTools is also empty.
     svc.onChat(
       { hasTools: [] },
       { kind: 'text', content: 'no-tools-intended' },
     );
     svc.onChat({}, { kind: 'text', content: 'catch-all' });
 
-    // A request with bound tools ['shell'] — hasTools:['shell'] matches (specificity 1).
-    // hasTools:[] also matches vacuously (specificity 1, registered second — loses to first).
-    // Catch-all {} (specificity 0) loses to both. Result should be 'shell-fixture'. OK.
-    const replyWithShell = svc.match(
-      buildRequest({ boundTools: ['shell'] }),
-    );
+    // Request with ['shell']: hasTools:['shell'] matches (score 1). hasTools:[]
+    // does NOT match because bound is non-empty. Catch-all {} (score 0) loses.
+    const replyWithShell = svc.match(buildRequest({ boundTools: ['shell'] }));
     expect(replyWithShell).toMatchObject({ content: 'shell-fixture' });
 
-    // A request with bound tools ['finish'] — hasTools:['shell'] does NOT match.
-    // hasTools:[] DOES match vacuously (specificity 1, beats catch-all at specificity 0).
-    // Bug: 'no-tools-intended' wins, even though this request HAS bound tools.
-    // A test author registering hasTools:[] intended it only for requests with NO tools,
-    // but it silently captures requests with ['finish'] as well.
-    const replyWithFinish = svc.match(
-      buildRequest({ boundTools: ['finish'] }),
-    );
-    // Expected: the catch-all {} wins (hasTools:[] should not match ['finish']).
-    // Actually failing: 'no-tools-intended' wins because [] is vacuously true.
+    // Request with ['finish']: hasTools:['shell'] does NOT match (shell absent).
+    // hasTools:[] does NOT match (bound is non-empty). Only catch-all {} matches.
+    const replyWithFinish = svc.match(buildRequest({ boundTools: ['finish'] }));
     expect(replyWithFinish).toMatchObject({ content: 'catch-all' });
   });
 });

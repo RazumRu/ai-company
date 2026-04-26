@@ -2,7 +2,15 @@ import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BaseException } from '@packages/common';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
@@ -37,7 +45,10 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -1722,7 +1733,11 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
       // tool_search to discover it.
       mockLlm.onChat(
         { callIndex: 0 },
-        { kind: 'toolCall', toolName: 'tool_search', args: { query: 'search files text' } },
+        {
+          kind: 'toolCall',
+          toolName: 'tool_search',
+          args: { query: 'search files text' },
+        },
       );
 
       // Turn 2: files_search_text is now loaded — agent calls it with the params
@@ -1749,7 +1764,11 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
         {
           kind: 'toolCall',
           toolName: 'finish',
-          args: { purpose: 'done', message: 'Search completed.', needsMoreInfo: false },
+          args: {
+            purpose: 'done',
+            message: 'Search completed.',
+            needsMoreInfo: false,
+          },
         },
       );
 

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { LitellmService } from '../../../../v1/litellm/services/litellm.service';
+import { MockLlmNoMatchError } from './mock-llm.errors';
 import { MockLlmService } from './mock-llm.service';
-import { MockLlmNoMatchError } from './mock-llm.types';
 import { MockOpenaiAdapter } from './mock-openai.adapter';
 
 /**

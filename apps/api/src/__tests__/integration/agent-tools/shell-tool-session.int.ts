@@ -10,13 +10,16 @@ import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
-import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
+import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -183,12 +186,12 @@ describe('ShellTool persistent sessions (integration)', () => {
    */
   const findAllShellResults = (
     messages: ThreadMessageDto[],
-  ): Array<{
+  ): {
     command: string | undefined;
     exitCode: number;
     stdout: string;
     stderr: string;
-  }> => {
+  }[] => {
     // Reverse to chronological (oldest first) since API returns newest first.
     const msgs = [...messages].reverse().map((m) => m.message);
 
@@ -209,12 +212,12 @@ describe('ShellTool persistent sessions (integration)', () => {
       }
     }
 
-    const results: Array<{
+    const results: {
       command: string | undefined;
       exitCode: number;
       stdout: string;
       stderr: string;
-    }> = [];
+    }[] = [];
 
     for (const msg of msgs) {
       if (isShellThreadMessage(msg) && msg.toolCallId) {
@@ -251,8 +254,7 @@ describe('ShellTool persistent sessions (integration)', () => {
   ) => {
     return waitForCondition(
       () => getThreadMessages(externalThreadId),
-      (threadMessages) =>
-        findAllShellResults(threadMessages).length >= count,
+      (threadMessages) => findAllShellResults(threadMessages).length >= count,
       { timeout: timeoutMs, interval: 2_000 },
     );
   };

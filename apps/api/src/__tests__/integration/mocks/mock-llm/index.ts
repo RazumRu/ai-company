@@ -1,4 +1,8 @@
-export { getMockLlm } from '../../setup';
+import type { INestApplication } from '@nestjs/common';
+
+import { MockLlmService } from './mock-llm.service';
+
+export { MockLlmNoMatchError } from './mock-llm.errors';
 export { MockLlmModule } from './mock-llm.module';
 export { MockLlmService } from './mock-llm.service';
 export type {
@@ -7,5 +11,7 @@ export type {
   MockLlmReply,
   MockLlmRequest,
 } from './mock-llm.types';
-export { MockLlmNoMatchError } from './mock-llm.types';
-export { applyDefaults } from './mock-llm-defaults';
+export { applyDefaults } from './mock-llm-defaults.utils';
+
+export const getMockLlm = (app: INestApplication): MockLlmService =>
+  app.get(MockLlmService);

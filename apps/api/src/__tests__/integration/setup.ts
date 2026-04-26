@@ -17,14 +17,14 @@ import { environment } from '../../environments';
 import { LitellmService } from '../../v1/litellm/services/litellm.service';
 import { OpenaiService } from '../../v1/openai/openai.service';
 import {
-  getMockLlmService,
-  setMockLlmService,
-} from './mocks/mock-llm/mock-llm-singleton';
-import {
   installBaseAgentPatch,
   MockLlmModule,
 } from './mocks/mock-llm/mock-llm.module';
 import { MockLlmService } from './mocks/mock-llm/mock-llm.service';
+import {
+  getMockLlmService,
+  setMockLlmService,
+} from './mocks/mock-llm/mock-llm-singleton.utils';
 import { MockOpenaiAdapter } from './mocks/mock-llm/mock-openai.adapter';
 
 /**

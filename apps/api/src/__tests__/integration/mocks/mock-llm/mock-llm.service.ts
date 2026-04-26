@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/naming-convention -- internal counter needs leading underscore */
 import { Injectable } from '@nestjs/common';
 
 import type { RequestTokenUsage } from '../../../../v1/litellm/litellm.types';
+import { MockLlmNoMatchError } from './mock-llm.errors';
 import {
   MockLlmFixture,
   MockLlmMatcher,
-  MockLlmNoMatchError,
   MockLlmReply,
   MockLlmRequest,
 } from './mock-llm.types';
@@ -34,6 +35,7 @@ import {
  * resolution attempt. This means failed matches (those that throw) are still
  * visible via `getRequests()` for post-mortem inspection.
  */
+
 @Injectable()
 export class MockLlmService {
   private chatFixtures: MockLlmFixture[] = [];
@@ -173,13 +175,12 @@ export class MockLlmService {
   // ---------------------------------------------------------------------------
 
   private fixturesFor(kind: MockLlmRequest['kind']): MockLlmFixture[] {
-    if (kind === 'chat') {
-      return this.chatFixtures;
-    }
-    if (kind === 'json') {
-      return this.jsonFixtures;
-    }
-    return this.embeddingsFixtures;
+    const map: Record<MockLlmRequest['kind'], MockLlmFixture[]> = {
+      chat: this.chatFixtures,
+      json: this.jsonFixtures,
+      embeddings: this.embeddingsFixtures,
+    };
+    return map[kind];
   }
 
   private specificity(matcher: MockLlmMatcher): number {
@@ -240,7 +241,9 @@ export class MockLlmService {
           return false;
         }
       } else {
-        const allPresent = matcher.hasTools.every((name) => bound.includes(name));
+        const allPresent = matcher.hasTools.every((name) =>
+          bound.includes(name),
+        );
         if (!allPresent) {
           return false;
         }

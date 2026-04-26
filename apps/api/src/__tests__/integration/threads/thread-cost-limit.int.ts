@@ -29,7 +29,10 @@ import { UserPreferencesDao } from '../../../v1/user-preferences/dao/user-prefer
 import { UserPreferencesService } from '../../../v1/user-preferences/services/user-preferences.service';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { applyDefaults, getMockLlm } from '../mocks/mock-llm';
 import { createTestModule, TEST_USER_ID } from '../setup';
 

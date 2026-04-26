@@ -31,8 +31,8 @@ import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
-import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
+import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
 import {
@@ -40,7 +40,10 @@ import {
   waitForCondition,
 } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -1697,14 +1700,21 @@ describe('Graph Revisions Integration Tests', () => {
         const mockLlm = getMockLlm(app);
         mockLlm.onChat(
           { callIndex: 0 },
-          { kind: 'toolCall', toolName: 'tool_search', args: { query: 'shell' } },
+          {
+            kind: 'toolCall',
+            toolName: 'tool_search',
+            args: { query: 'shell' },
+          },
         );
         mockLlm.onChat(
           { hasTools: ['shell'] },
           {
             kind: 'toolCall',
             toolName: 'shell',
-            args: { purpose: 'run command', command: 'echo "test with runtime"' },
+            args: {
+              purpose: 'run command',
+              command: 'echo "test with runtime"',
+            },
           },
         );
         mockLlm.onChat(
@@ -1712,7 +1722,11 @@ describe('Graph Revisions Integration Tests', () => {
           {
             kind: 'toolCall',
             toolName: 'finish',
-            args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+            args: {
+              purpose: 'done',
+              message: 'Command executed.',
+              needsMoreInfo: false,
+            },
           },
         );
 
@@ -1909,14 +1923,21 @@ describe('Graph Revisions Integration Tests', () => {
         const mockLlmNewTool = getMockLlm(app);
         mockLlmNewTool.onChat(
           { callIndex: 0 },
-          { kind: 'toolCall', toolName: 'tool_search', args: { query: 'shell' } },
+          {
+            kind: 'toolCall',
+            toolName: 'tool_search',
+            args: { query: 'shell' },
+          },
         );
         mockLlmNewTool.onChat(
           { hasTools: ['shell'] },
           {
             kind: 'toolCall',
             toolName: 'shell',
-            args: { purpose: 'run command', command: 'echo "hello from new tool"' },
+            args: {
+              purpose: 'run command',
+              command: 'echo "hello from new tool"',
+            },
           },
         );
         mockLlmNewTool.onChat(
@@ -1924,7 +1945,11 @@ describe('Graph Revisions Integration Tests', () => {
           {
             kind: 'toolCall',
             toolName: 'finish',
-            args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+            args: {
+              purpose: 'done',
+              message: 'Command executed.',
+              needsMoreInfo: false,
+            },
           },
         );
 
@@ -2086,14 +2111,21 @@ describe('Graph Revisions Integration Tests', () => {
         const mockLlm = getMockLlm(app);
         mockLlm.onChat(
           { callIndex: 0 },
-          { kind: 'toolCall', toolName: 'tool_search', args: { query: 'shell' } },
+          {
+            kind: 'toolCall',
+            toolName: 'tool_search',
+            args: { query: 'shell' },
+          },
         );
         mockLlm.onChat(
           { hasTools: ['shell'] },
           {
             kind: 'toolCall',
             toolName: 'shell',
-            args: { purpose: 'run command', command: 'echo "test after resource change"' },
+            args: {
+              purpose: 'run command',
+              command: 'echo "test after resource change"',
+            },
           },
         );
         mockLlm.onChat(
@@ -2101,7 +2133,11 @@ describe('Graph Revisions Integration Tests', () => {
           {
             kind: 'toolCall',
             toolName: 'finish',
-            args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+            args: {
+              purpose: 'done',
+              message: 'Command executed.',
+              needsMoreInfo: false,
+            },
           },
         );
 

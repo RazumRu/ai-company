@@ -15,7 +15,6 @@ import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
-import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import {
   RuntimeStartParams,
   RuntimeType,
@@ -23,10 +22,14 @@ import {
 import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
+import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { wait } from '../../test-utils';
 import { createMockGraphData } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -516,7 +519,11 @@ describe('MCP Integration Tests', () => {
           {
             kind: 'toolCall',
             toolName: 'finish',
-            args: { purpose: 'done', message: 'Hello acknowledged.', needsMoreInfo: false },
+            args: {
+              purpose: 'done',
+              message: 'Hello acknowledged.',
+              needsMoreInfo: false,
+            },
           },
         );
 

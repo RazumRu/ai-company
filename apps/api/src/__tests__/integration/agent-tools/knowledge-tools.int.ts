@@ -1,7 +1,15 @@
 import { MikroORM } from '@mikro-orm/postgresql';
 import type { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
@@ -72,18 +80,27 @@ describe('Knowledge tools (integration)', () => {
     // "orionflux" is the original doc keyword in the "updates summaries" test.
     mockLlm.onJsonRequest(
       { lastUserMessage: /orionflux/i },
-      { kind: 'json', content: { summary: 'Original document summary — orionflux.' } },
+      {
+        kind: 'json',
+        content: { summary: 'Original document summary — orionflux.' },
+      },
     );
     // "novaquill" is the updated doc keyword in the "updates summaries" test.
     mockLlm.onJsonRequest(
       { lastUserMessage: /novaquill/i },
-      { kind: 'json', content: { summary: 'Updated document summary — novaquill.' } },
+      {
+        kind: 'json',
+        content: { summary: 'Updated document summary — novaquill.' },
+      },
     );
 
     // Catch-all summary fixture for all other createDoc/updateDoc calls.
     // KnowledgeService.generateSummary prompt always begins with the sentinel phrase.
     mockLlm.onJsonRequest(
-      { lastUserMessage: /You generate summaries for internal knowledge base documents/i },
+      {
+        lastUserMessage:
+          /You generate summaries for internal knowledge base documents/i,
+      },
       { kind: 'json', content: { summary: 'Test document summary.' } },
     );
 
@@ -152,7 +169,10 @@ describe('Knowledge tools (integration)', () => {
       // starts with "You select relevant knowledge documents for a query."
       // We return only the alpha doc's publicId so the assertion holds.
       getMockLlm(app).onJsonRequest(
-        { lastUserMessage: /You select relevant knowledge documents for a query/i },
+        {
+          lastUserMessage:
+            /You select relevant knowledge documents for a query/i,
+        },
         { kind: 'json', content: { ids: [alphaDoc.publicId], comment: null } },
       );
 
@@ -304,7 +324,10 @@ describe('Knowledge tools (integration)', () => {
       // callIndex 4 = 5th overall LLM call: after 2x summary (0,2) + 2x embeddings (1,3).
       getMockLlm(app).onJsonRequest(
         { callIndex: 4, lastUserMessage: /Generate 3-5 short search queries/i },
-        { kind: 'json', content: { queries: [`Alpha content ${alphaKeyword}.`] } },
+        {
+          kind: 'json',
+          content: { queries: [`Alpha content ${alphaKeyword}.`] },
+        },
       );
 
       const chunksResult = await searchChunksTool.invoke(

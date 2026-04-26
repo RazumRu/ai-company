@@ -11,13 +11,16 @@ import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
-import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
+import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -294,7 +297,11 @@ describe('GitHub Tool Integration Tests', () => {
         // Turn 1 (callIndex 0): gh_clone is not yet loaded — agent uses tool_search to find it.
         mockLlm.onChat(
           { callIndex: 0 },
-          { kind: 'toolCall', toolName: 'tool_search', args: { query: 'clone repository' } },
+          {
+            kind: 'toolCall',
+            toolName: 'tool_search',
+            args: { query: 'clone repository' },
+          },
         );
 
         // Turn 2: gh_clone is now loaded — agent calls gh_clone with the requested repo.
@@ -315,7 +322,11 @@ describe('GitHub Tool Integration Tests', () => {
           {
             kind: 'toolCall',
             toolName: 'finish',
-            args: { purpose: 'done', message: 'Repository cloned.', needsMoreInfo: false },
+            args: {
+              purpose: 'done',
+              message: 'Repository cloned.',
+              needsMoreInfo: false,
+            },
           },
         );
 
@@ -353,21 +364,13 @@ describe('GitHub Tool Integration Tests', () => {
         expect(ghCloneExecution.toolCallId).toBeDefined();
         expect(ghCloneExecution.result).toBeDefined();
 
-        // The result should contain either a path (success) or error
-        if (
-          ghCloneExecution.result &&
-          typeof ghCloneExecution.result === 'object'
-        ) {
-          const result = ghCloneExecution.result as {
-            path?: string;
-            error?: string;
-          };
-          // In a real scenario, if the PAT token is invalid, we'd get an error
-          // But since we're using a mock token, we expect either:
-          // 1. An error (if authentication fails)
-          // 2. A path (if the clone succeeds somehow)
-          expect(result.path || result.error).toBeDefined();
-        }
+        const result = ghCloneExecution.result as {
+          path?: string;
+          error?: string;
+        };
+        expect(result.path).toBeDefined();
+        expect(result.path).toMatch(/octocat[/\\-]hello-world|hello-world/i);
+        expect(result.error).toBeUndefined();
       },
     );
 

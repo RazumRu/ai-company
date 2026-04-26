@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/naming-convention -- LangChain base class methods/properties use leading underscores */
 import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
 import type { BindToolsInput } from '@langchain/core/language_models/chat_models';
 import {
@@ -8,130 +9,20 @@ import {
   AIMessage,
   AIMessageChunk,
   type BaseMessage,
-  HumanMessage,
-  SystemMessage,
-  ToolMessage,
 } from '@langchain/core/messages';
 import { ChatGenerationChunk, type ChatResult } from '@langchain/core/outputs';
 
-import type { RequestTokenUsage } from '../../../../v1/litellm/litellm.types';
 import type { MockLlmService } from './mock-llm.service';
 import type { MockLlmRequest } from './mock-llm.types';
-
-// ---------------------------------------------------------------------------
-// Content stringification helpers
-// ---------------------------------------------------------------------------
-
-function stringifyContent(content: BaseMessage['content']): string {
-  if (typeof content === 'string') {
-    return content;
-  }
-  // Array of content blocks — join text parts
-  return content
-    .map((block) => {
-      if (typeof block === 'string') {
-        return block;
-      }
-      if ('text' in block && typeof block.text === 'string') {
-        return block.text;
-      }
-      return JSON.stringify(block);
-    })
-    .join('');
-}
-
-function extractSystem(messages: BaseMessage[]): string | undefined {
-  const msg = messages.find(
-    (m) => m._getType() === 'system' || m instanceof SystemMessage,
-  );
-  return msg ? stringifyContent(msg.content) : undefined;
-}
-
-function extractLastUser(messages: BaseMessage[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m: BaseMessage | undefined = messages[i];
-    if (m && (m._getType() === 'human' || m instanceof HumanMessage)) {
-      return stringifyContent(m.content);
-    }
-  }
-  return undefined;
-}
-
-function extractLastTool(
-  messages: BaseMessage[],
-): { name: string; content: string } | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m: BaseMessage | undefined = messages[i];
-    if (m && (m._getType() === 'tool' || m instanceof ToolMessage)) {
-      const toolMsg = m as ToolMessage;
-      const name =
-        toolMsg.name ??
-        (toolMsg as unknown as { tool_call_id?: string }).tool_call_id ??
-        'unknown';
-      return { name, content: stringifyContent(toolMsg.content) };
-    }
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// Usage helpers
-// ---------------------------------------------------------------------------
-
-function buildUsageMetadata(usage: Partial<RequestTokenUsage> | undefined): {
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-} {
-  const input = usage?.inputTokens ?? 0;
-  const output = usage?.outputTokens ?? 0;
-  const total = usage?.totalTokens ?? input + output;
-  return { input_tokens: input, output_tokens: output, total_tokens: total };
-}
-
-/**
- * Build the `response_metadata.usage` shape consumed by `invoke-llm-node.ts`.
- *
- * `InvokeLlmNode` reads `res.response_metadata?.usage` and looks for a
- * `cost` field (OpenRouter-style provider-reported cost). Setting it here
- * ensures that `LitellmService.extractTokenUsageFromResponse` takes the
- * provider-cost branch and returns `totalPrice` without making any network
- * call to `liteLlmClient.getModelInfo`.
- */
-function buildResponseMetadataUsage(
-  usage: Partial<RequestTokenUsage> | undefined,
-): Record<string, unknown> {
-  const inputTokens = usage?.inputTokens ?? 0;
-  const outputTokens = usage?.outputTokens ?? 0;
-  return {
-    // LangChain normalised field names (read by extractTokenUsageFromResponse)
-    input_tokens: inputTokens,
-    output_tokens: outputTokens,
-    total_tokens: usage?.totalTokens ?? inputTokens + outputTokens,
-    // Provider-cost field consumed by InvokeLlmNode's providerCost branch
-    cost: usage?.totalPrice ?? 0,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Split text into ~4 equal chunks for streaming simulation
-// ---------------------------------------------------------------------------
-
-function splitIntoChunks(text: string, count: number): string[] {
-  if (text.length === 0) {
-    return [''];
-  }
-  const chunkSize = Math.ceil(text.length / count);
-  const chunks: string[] = [];
-  for (let i = 0; i < text.length; i += chunkSize) {
-    chunks.push(text.slice(i, i + chunkSize));
-  }
-  return chunks;
-}
-
-// ---------------------------------------------------------------------------
-// MockChatOpenAI
-// ---------------------------------------------------------------------------
+import {
+  buildResponseMetadataUsage,
+  buildUsageMetadata,
+  extractLastTool,
+  extractLastUser,
+  extractSystem,
+  splitIntoChunks,
+  stringifyContent,
+} from './mock-llm.utils';
 
 /**
  * LangChain `BaseChatModel` implementation backed by `MockLlmService`.
@@ -141,6 +32,7 @@ function splitIntoChunks(text: string, count: number): string[] {
  * This decouples `MockChatOpenAI` from the singleton module entirely — the
  * getter is wired up by Step 5's patch installer.
  */
+
 export class MockChatOpenAI extends BaseChatModel {
   private readonly _mockLlmGetter: () => MockLlmService;
   private readonly _model: string;
@@ -197,15 +89,11 @@ export class MockChatOpenAI extends BaseChatModel {
     return cloned;
   }
 
-  async _generate(
+  private buildChatRequest(
     messages: BaseMessage[],
-    _options: this['ParsedCallOptions'],
-    _runManager?: CallbackManagerForLLMRun,
-  ): Promise<ChatResult> {
-    const mockLlm = this._mockLlmGetter();
-    const callIndex = mockLlm.nextCallIndex();
-
-    const request: MockLlmRequest = {
+    callIndex: number,
+  ): MockLlmRequest {
+    return {
       kind: 'chat',
       model: this._model,
       messages: messages.map((m) => ({
@@ -219,6 +107,16 @@ export class MockChatOpenAI extends BaseChatModel {
       boundTools: this._boundTools,
       callIndex,
     };
+  }
+
+  async _generate(
+    messages: BaseMessage[],
+    _options: this['ParsedCallOptions'],
+    _runManager?: CallbackManagerForLLMRun,
+  ): Promise<ChatResult> {
+    const mockLlm = this._mockLlmGetter();
+    const callIndex = mockLlm.nextCallIndex();
+    const request = this.buildChatRequest(messages, callIndex);
 
     const reply = mockLlm.match(request);
 
@@ -304,21 +202,7 @@ export class MockChatOpenAI extends BaseChatModel {
   ): AsyncGenerator<ChatGenerationChunk> {
     const mockLlm = this._mockLlmGetter();
     const callIndex = mockLlm.nextCallIndex();
-
-    const request: MockLlmRequest = {
-      kind: 'chat',
-      model: this._model,
-      messages: messages.map((m) => ({
-        role: m._getType(),
-        content: stringifyContent(m.content),
-        name: (m as unknown as { name?: string }).name,
-      })),
-      systemMessage: extractSystem(messages),
-      lastUserMessage: extractLastUser(messages),
-      lastToolResult: extractLastTool(messages),
-      boundTools: this._boundTools,
-      callIndex,
-    };
+    const request = this.buildChatRequest(messages, callIndex);
 
     const reply = mockLlm.match(request);
 

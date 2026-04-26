@@ -88,6 +88,31 @@ describe('MockOpenaiAdapter', () => {
     expect(result.conversationId).toBeTruthy();
   });
 
+  it('(c) response() happy path returns { content, conversationId, usage } with totalPrice', async () => {
+    mockLlm.queueChat({
+      kind: 'text',
+      content: 'response output',
+      usage: {
+        inputTokens: 1,
+        outputTokens: 2,
+        totalTokens: 3,
+        totalPrice: 0.2,
+      },
+    });
+
+    const result = await adapter.response({
+      model: 'gpt-4o',
+      message: 'hello',
+    });
+
+    expect(result.content).toBe('response output');
+    expect(result.conversationId).toBeTruthy();
+    expect(result.usage?.totalPrice).toBe(0.2);
+    expect(result.usage?.inputTokens).toBe(1);
+    expect(result.usage?.outputTokens).toBe(2);
+    expect(result.usage?.totalTokens).toBe(3);
+  });
+
   it('(d) totalPrice delivered offline — extractTokenUsageFromResponse never called', async () => {
     mockLlm.queueCost(0.6);
 
@@ -100,5 +125,24 @@ describe('MockOpenaiAdapter', () => {
     // Offline guarantee: adapter reads totalPrice directly from reply.usage.totalPrice
     // and never delegates to LitellmService.extractTokenUsageFromResponse
     expect(extractSpy).not.toHaveBeenCalled();
+  });
+
+  it('(e) multi-input embeddings: array input yields one padded vector per element', async () => {
+    mockLlm.onEmbeddings({}, { kind: 'embeddings', vector: [0.1, 0.2, 0.3] });
+
+    const result = await adapter.embeddings({
+      model: 'text-embedding-3-small',
+      input: ['a', 'b', 'c'],
+    });
+
+    // One embedding per input string
+    expect(result.embeddings).toHaveLength(3);
+
+    // Each embedding is padded to 1536 dimensions
+    for (const vec of result.embeddings) {
+      expect(vec).toHaveLength(1536);
+      // The fixture values appear at the start; the rest are zero-padded
+      expect(vec.slice(0, 3)).toEqual([0.1, 0.2, 0.3]);
+    }
   });
 });

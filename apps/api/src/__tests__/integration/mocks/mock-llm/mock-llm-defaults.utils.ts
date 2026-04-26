@@ -25,7 +25,11 @@ import type { MockLlmService } from './mock-llm.service';
 export function applyDefaults(mockLlm: MockLlmService): void {
   mockLlm.onChat(
     { hasTools: ['finish'] },
-    { kind: 'toolCall', toolName: 'finish', args: { result: 'done' } },
+    {
+      kind: 'toolCall',
+      toolName: 'finish',
+      args: { purpose: 'done', message: 'OK', needsMoreInfo: false },
+    },
   );
 
   mockLlm.onChat({}, { kind: 'text', content: 'OK' });

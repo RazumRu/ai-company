@@ -1,8 +1,15 @@
 import { INestApplication } from '@nestjs/common';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
-import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
 import { SuggestAgentInstructionsDto } from '../../../v1/ai-suggestions/dto/ai-suggestions.dto';
 import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
@@ -14,6 +21,7 @@ import {
 } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
@@ -125,7 +133,10 @@ describe('AiSuggestionsController (integration)', () => {
 
       getMockLlm(app).onChat(
         { systemMessage: /rewrite agent system instructions/i },
-        { kind: 'text', content: 'You are a helpful test agent. Answer briefly.' },
+        {
+          kind: 'text',
+          content: 'You are a helpful test agent. Answer briefly.',
+        },
       );
 
       const response = await controller.suggestAgentInstructions(
@@ -137,7 +148,9 @@ describe('AiSuggestionsController (integration)', () => {
         contextDataStorage,
       );
 
-      expect(response.instructions).toBe('You are a helpful test agent. Answer briefly.');
+      expect(response.instructions).toBe(
+        'You are a helpful test agent. Answer briefly.',
+      );
       expect(response.threadId).toBeDefined();
     }, 30000);
 
@@ -163,7 +176,10 @@ describe('AiSuggestionsController (integration)', () => {
 
         getMockLlm(app).onChat(
           { systemMessage: /rewrite agent system instructions/i },
-          { kind: 'text', content: 'No thread provided — improved instructions.' },
+          {
+            kind: 'text',
+            content: 'No thread provided — improved instructions.',
+          },
         );
 
         const response = await controller.suggestAgentInstructions(
@@ -173,7 +189,9 @@ describe('AiSuggestionsController (integration)', () => {
           contextDataStorage,
         );
 
-        expect(response.instructions).toBe('No thread provided — improved instructions.');
+        expect(response.instructions).toBe(
+          'No thread provided — improved instructions.',
+        );
         expect(response.threadId).toBeDefined();
       },
     );
@@ -365,7 +383,10 @@ describe('AiSuggestionsService (integration)', () => {
 
       getMockLlm(app).onChat(
         { systemMessage: /expert AI \/ agent-ops reviewer/i },
-        { kind: 'text', content: 'Tool usage was efficient. No inefficiencies detected.' },
+        {
+          kind: 'text',
+          content: 'Tool usage was efficient. No inefficiencies detected.',
+        },
       );
 
       const result = await aiSuggestionsService.analyzeThread(
@@ -376,7 +397,9 @@ describe('AiSuggestionsService (integration)', () => {
         },
       );
 
-      expect(result.analysis).toBe('Tool usage was efficient. No inefficiencies detected.');
+      expect(result.analysis).toBe(
+        'Tool usage was efficient. No inefficiencies detected.',
+      );
       expect(result.conversationId).toBeDefined();
     },
   );

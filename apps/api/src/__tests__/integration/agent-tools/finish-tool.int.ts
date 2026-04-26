@@ -10,14 +10,17 @@ import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
-import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
+import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -258,7 +261,11 @@ describe('Finish Tool Integration Tests', () => {
         {
           kind: 'toolCall',
           toolName: 'finish',
-          args: { purpose: 'done', message: 'I am Test Agent.', needsMoreInfo: false },
+          args: {
+            purpose: 'done',
+            message: 'I am Test Agent.',
+            needsMoreInfo: false,
+          },
         },
       );
 
@@ -351,7 +358,11 @@ describe('Finish Tool Integration Tests', () => {
         {
           kind: 'toolCall',
           toolName: 'finish',
-          args: { purpose: 'answer', message: 'The answer is 4.', needsMoreInfo: false },
+          args: {
+            purpose: 'answer',
+            message: 'The answer is 4.',
+            needsMoreInfo: false,
+          },
         },
       );
 

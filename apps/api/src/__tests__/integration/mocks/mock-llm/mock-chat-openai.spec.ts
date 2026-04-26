@@ -146,7 +146,91 @@ describe('MockChatOpenAI', () => {
     expect(lastReq?.boundTools).toEqual(['shell', 'finish']);
   });
 
-  it('(e) error reply throws with .status', async () => {
+  it('(e) streaming toolCall cost-flow: final chunk carries response_metadata.usage.cost', async () => {
+    svc.queueChat({
+      kind: 'toolCall',
+      toolName: 'shell',
+      args: { command: 'ls' },
+      usage: {
+        inputTokens: 2,
+        outputTokens: 1,
+        totalTokens: 3,
+        totalPrice: 0.5,
+      },
+    });
+
+    const chunks = [];
+    for await (const chunk of model._streamResponseChunks(
+      [new HumanMessage('run ls')],
+      {} as Parameters<typeof model._streamResponseChunks>[1],
+    )) {
+      chunks.push(chunk);
+    }
+
+    // Must yield at least 2 chunks: one with tool_call_chunks, one with usage
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+
+    // First chunk carries the tool call description
+    const firstChunk = chunks[0];
+    expect(
+      (
+        firstChunk?.message as unknown as {
+          tool_call_chunks?: { name?: string; args?: string }[];
+        }
+      ).tool_call_chunks,
+    ).toHaveLength(1);
+    expect(
+      (
+        firstChunk?.message as unknown as {
+          tool_call_chunks?: { name?: string; args?: string }[];
+        }
+      ).tool_call_chunks?.[0]?.name,
+    ).toBe('shell');
+    expect(
+      (
+        firstChunk?.message as unknown as {
+          tool_call_chunks?: { name?: string; args?: string }[];
+        }
+      ).tool_call_chunks?.[0]?.args,
+    ).toBe(JSON.stringify({ command: 'ls' }));
+
+    // Final chunk carries the provider cost on response_metadata.usage
+    const lastChunk = chunks[chunks.length - 1];
+    const lastResponseMetadata = (
+      lastChunk?.message as unknown as {
+        response_metadata?: { usage?: { cost?: number } };
+      }
+    ).response_metadata;
+    expect(lastResponseMetadata?.usage?.cost).toBe(0.5);
+
+    // Only the final chunk carries usage_metadata — intermediate chunks must not
+    for (let i = 0; i < chunks.length - 1; i++) {
+      expect(
+        (chunks[i]?.message as { usage_metadata?: unknown }).usage_metadata,
+      ).toBeUndefined();
+    }
+  });
+
+  it('(f) bindTools clone isolation: bindTools returns a new instance without mutating the original', () => {
+    // Original has no bound tools
+    expect(model._boundTools).toBeUndefined();
+
+    const bound = model.bindTools([
+      { name: 'shell' } as Parameters<typeof model.bindTools>[0][number],
+      { name: 'finish' } as Parameters<typeof model.bindTools>[0][number],
+    ]);
+
+    // bindTools must return a new instance
+    expect(bound).not.toBe(model);
+
+    // The original must remain untouched
+    expect(model._boundTools).toBeUndefined();
+
+    // The clone has the tool names set
+    expect((bound as MockChatOpenAI)._boundTools).toEqual(['shell', 'finish']);
+  });
+
+  it('(g) error reply throws with .status', async () => {
     svc.queueChat({ kind: 'error', status: 429, message: 'rate limit' });
 
     try {

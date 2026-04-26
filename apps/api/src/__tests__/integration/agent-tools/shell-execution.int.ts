@@ -10,13 +10,16 @@ import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
 import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
-import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
+import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import {
+  mockLiteLlmClient,
+  mockThreadNameGenerator,
+} from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
@@ -377,7 +380,11 @@ describe('Shell Execution Integration Tests', () => {
       {
         kind: 'toolCall',
         toolName: 'finish',
-        args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+        args: {
+          purpose: 'done',
+          message: 'Command executed.',
+          needsMoreInfo: false,
+        },
       },
     );
 
@@ -423,7 +430,11 @@ describe('Shell Execution Integration Tests', () => {
         // Turn 1 (callIndex 0): shell is not yet loaded — agent uses tool_search to find it.
         mockLlm.onChat(
           { callIndex: 0 },
-          { kind: 'toolCall', toolName: 'tool_search', args: { query: 'shell' } },
+          {
+            kind: 'toolCall',
+            toolName: 'tool_search',
+            args: { query: 'shell' },
+          },
         );
 
         // Turn 2: shell is now loaded — agent calls shell with a slow command so the
@@ -435,7 +446,10 @@ describe('Shell Execution Integration Tests', () => {
           {
             kind: 'toolCall',
             toolName: 'shell',
-            args: { purpose: 'run slow command', command: 'sleep 15; echo "done-after-sleep"' },
+            args: {
+              purpose: 'run slow command',
+              command: 'sleep 15; echo "done-after-sleep"',
+            },
           },
         );
 
@@ -448,7 +462,11 @@ describe('Shell Execution Integration Tests', () => {
           {
             kind: 'toolCall',
             toolName: 'finish',
-            args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+            args: {
+              purpose: 'done',
+              message: 'Command executed.',
+              needsMoreInfo: false,
+            },
           },
         );
 

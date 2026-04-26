@@ -333,6 +333,8 @@ mockLlm.reset();
 
 **Specificity & multi-turn gotcha:** Fixtures are resolved by specificity (count of non-undefined matcher fields). Ties are broken by registration order. When agent loops `callTool → toolResult → followUp`, fixtures with `{ hasTools: ['T'] }` and `{ hasToolResult: 'T' }` both have specificity 1 and tie. To disambiguate, combine matchers: `{ hasToolResult: 'T', hasTools: ['finish'] }` (specificity 2).
 
+**Tool-call fixture args MUST satisfy the real tool's Zod schema** — e.g., a `finish` tool fixture requires `{ purpose: string, message: string, needsMoreInfo?: boolean }` (not `{ result: 'done' }`). The mock will pass schema validation through to the real tool registry; mismatched args silently break tool dispatch.
+
 **Apply defaults (optional):** `applyDefaults(mockLlm)` registers benign defaults: a finish-tool fallback, a catch-all text reply, and deterministic embeddings. Apply AFTER per-test fixtures or the catch-all swallows them.
 
 **Limitations:** Code paths requiring real LLM behavior (e.g. `ReasoningAwareChatCompletions` normalization, token-stream timing, retry/backoff) must be covered by unit tests, not integration tests.
