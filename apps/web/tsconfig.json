@@ -11,6 +11,7 @@
     "forceConsistentCasingInFileNames": true,
     "allowJs": false,
     "esModuleInterop": false,
+    "ignoreDeprecations": "6.0",
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
