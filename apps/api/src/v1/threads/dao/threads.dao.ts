@@ -75,9 +75,6 @@ export class ThreadsDao extends BaseDao<ThreadEntity> {
         'updatedAt',
         'runningStartedAt',
         'totalRunningMs',
-        // Why: metadata is excluded to prevent ON CONFLICT from writing EXCLUDED.metadata
-        // (which defaults to {}) over eagerly-created thread data containing keys such as
-        // effectiveCostLimitUsd. Metadata updates always go through updateById.
       ],
     });
   }
@@ -97,7 +94,11 @@ export class ThreadsDao extends BaseDao<ThreadEntity> {
     additionalFields?: Partial<ThreadEntity>,
   ): Promise<number> {
     const patch = transitionService.computeTransition(thread, nextStatus);
-    return this.updateById(thread.id, { ...patch, ...additionalFields }, txEm);
+    return await this.updateById(
+      thread.id,
+      { ...patch, ...additionalFields },
+      txEm,
+    );
   }
 
   async touchById(id: string): Promise<void> {
