@@ -1,7 +1,15 @@
 import { MikroORM } from '@mikro-orm/postgresql';
 import type { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
@@ -17,6 +25,7 @@ import { KnowledgeService } from '../../../v1/knowledge/services/knowledge.servi
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { QdrantService } from '../../../v1/qdrant/services/qdrant.service';
 import { createTestProject } from '../helpers/test-context';
+import { applyDefaults, getMockLlm } from '../mocks/mock-llm';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 // Assigned in beforeAll once the test project is created.
@@ -43,18 +52,62 @@ describe('Knowledge tools (integration)', () => {
     getDocTool = await app.resolve(KnowledgeGetDocTool);
     docDao = app.get(KnowledgeDocDao);
     qdrantService = app.get(QdrantService);
+    // MikroORM v7 exposes the schema generator via orm.schema (not getSchemaGenerator()).
+    // The update method is orm.schema.update() in v7, not updateSchema().
     const orm = app.get(MikroORM);
-    const schemaGenerator = (
-      orm as unknown as {
-        getSchemaGenerator(): { updateSchema(): Promise<void> };
-      }
-    ).getSchemaGenerator();
-    await schemaGenerator.updateSchema();
+    await orm.schema.update();
 
     const projectResult = await createTestProject(app);
     testProjectId = projectResult.projectId;
     contextDataStorage = projectResult.ctx;
   }, 120_000);
+
+  beforeEach(() => {
+    const mockLlm = getMockLlm(app);
+    mockLlm.reset();
+
+    // Fixture for query variant expansion (higher specificity — registered first).
+    // KnowledgeChunksService.generateQueryVariants sends a prompt starting with
+    // "Generate 3-5 short search queries or keyword phrases relevant to the user query."
+    mockLlm.onJsonRequest(
+      { lastUserMessage: /Generate 3-5 short search queries/i },
+      { kind: 'json', content: { queries: ['test query'] } },
+    );
+
+    // Fixture for document summary generation with content-aware reply.
+    // KnowledgeService.generateSummary includes the full document content in the
+    // prompt, so we match on unique doc-level keywords that appear in tests.
+    // "orionflux" is the original doc keyword in the "updates summaries" test.
+    mockLlm.onJsonRequest(
+      { lastUserMessage: /orionflux/i },
+      {
+        kind: 'json',
+        content: { summary: 'Original document summary — orionflux.' },
+      },
+    );
+    // "novaquill" is the updated doc keyword in the "updates summaries" test.
+    mockLlm.onJsonRequest(
+      { lastUserMessage: /novaquill/i },
+      {
+        kind: 'json',
+        content: { summary: 'Updated document summary — novaquill.' },
+      },
+    );
+
+    // Catch-all summary fixture for all other createDoc/updateDoc calls.
+    // KnowledgeService.generateSummary prompt always begins with the sentinel phrase.
+    mockLlm.onJsonRequest(
+      {
+        lastUserMessage:
+          /You generate summaries for internal knowledge base documents/i,
+      },
+      { kind: 'json', content: { summary: 'Test document summary.' } },
+    );
+
+    // Register deterministic embeddings and chat catch-alls.
+    // Must be called AFTER per-test specific fixtures.
+    applyDefaults(mockLlm);
+  });
 
   afterEach(async () => {
     for (const id of createdDocIds) {
@@ -110,6 +163,18 @@ describe('Knowledge tools (integration)', () => {
         tags: [betaTag],
       });
       createdDocIds.push(alphaDoc.id, betaDoc.id);
+
+      // Register the doc-selection fixture now that we know alphaDoc.publicId.
+      // KnowledgeSearchDocsTool.selectRelevantDocs sends a jsonRequest whose prompt
+      // starts with "You select relevant knowledge documents for a query."
+      // We return only the alpha doc's publicId so the assertion holds.
+      getMockLlm(app).onJsonRequest(
+        {
+          lastUserMessage:
+            /You select relevant knowledge documents for a query/i,
+        },
+        { kind: 'json', content: { ids: [alphaDoc.publicId], comment: null } },
+      );
 
       expect(alphaDoc.summary).toBeTruthy();
       expect(betaDoc.summary).toBeTruthy();
@@ -214,6 +279,11 @@ describe('Knowledge tools (integration)', () => {
     createdDocIds.push(original.id);
     expect(original.summary).toBeTruthy();
 
+    // Ensure the update happens in a different millisecond so updatedAt changes.
+    // With the mock LLM (no network latency), createDoc and updateDoc can finish
+    // within the same millisecond, making updatedAt identical.
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+
     const updated = await knowledgeService.updateDoc(
       contextDataStorage,
       original.id,
@@ -245,6 +315,20 @@ describe('Knowledge tools (integration)', () => {
         tags: ['beta-tag'],
       });
       createdDocIds.push(alphaDoc.id, betaDoc.id);
+
+      // Override the query-variant fixture with specificity 2 (callIndex + lastUserMessage)
+      // so it beats the beforeEach catch-all (specificity 1).
+      // We return the exact alpha chunk text so the query embedding is identical to
+      // the stored alpha chunk embedding — guaranteeing cosine similarity = 1.0 for
+      // alpha and < 1.0 for beta with deterministic (non-semantic) vectors.
+      // callIndex 4 = 5th overall LLM call: after 2x summary (0,2) + 2x embeddings (1,3).
+      getMockLlm(app).onJsonRequest(
+        { callIndex: 4, lastUserMessage: /Generate 3-5 short search queries/i },
+        {
+          kind: 'json',
+          content: { queries: [`Alpha content ${alphaKeyword}.`] },
+        },
+      );
 
       const chunksResult = await searchChunksTool.invoke(
         {
