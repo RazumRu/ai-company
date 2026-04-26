@@ -1,7 +1,7 @@
 import { ToolRunnableConfig } from '@langchain/core/tools';
 import { INestApplication } from '@nestjs/common';
 import { BaseException, DefaultLogger } from '@packages/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { environment } from '../../../environments';
@@ -13,7 +13,9 @@ import { SimpleAgent } from '../../../v1/agents/services/agents/simple-agent';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphRegistry } from '../../../v1/graphs/services/graph-registry';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
+import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import {
   RuntimeStartParams,
   RuntimeType,
@@ -24,6 +26,8 @@ import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thre
 import { wait } from '../../test-utils';
 import { createMockGraphData } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
+import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
 const FULL_AGENT_NODE_ID = 'agent-1';
@@ -147,7 +151,14 @@ describe('MCP Integration Tests', () => {
     });
 
     // Setup NestJS app for full integration tests
-    app = await createTestModule();
+    app = await createTestModule(async (m) =>
+      m
+        .overrideProvider(LiteLlmClient)
+        .useValue(mockLiteLlmClient)
+        .overrideProvider(ThreadNameGeneratorService)
+        .useValue(mockThreadNameGenerator)
+        .compile(),
+    );
     graphsService = app.get(GraphsService);
     graphRegistry = app.get(GraphRegistry);
 
@@ -174,6 +185,10 @@ describe('MCP Integration Tests', () => {
       await app.close();
     }
   }, 60000);
+
+  beforeEach(() => {
+    getMockLlm(app).reset();
+  });
 
   const uniqueThreadSubId = (prefix: string) =>
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -491,6 +506,19 @@ describe('MCP Integration Tests', () => {
           (t) => t.name === 'read_text_file',
         );
         expect(readFileTool).toBeDefined();
+
+        // Register mock LLM fixtures for this execution: the agent calls finish
+        // immediately on the first turn since the test only cares about metadata
+        // exposure and does not verify any specific tool interaction.
+        const mockLlm = getMockLlm(app);
+        mockLlm.onChat(
+          { callIndex: 0 },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: { purpose: 'done', message: 'Hello acknowledged.', needsMoreInfo: false },
+          },
+        );
 
         // Execute the trigger to run the agent (just to trigger graph build)
         const execution = await graphsService.executeTrigger(

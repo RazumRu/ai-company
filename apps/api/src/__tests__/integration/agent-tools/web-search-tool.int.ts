@@ -1,6 +1,7 @@
 import { ToolMessage } from '@langchain/core/messages';
+import { INestApplication } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { GraphDao } from '../../../v1/graphs/dao/graph.dao';
@@ -12,6 +13,7 @@ import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
+import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 const EMPTY_REQUEST = { headers: {} } as FastifyRequest;
@@ -22,6 +24,7 @@ const contextDataStorage = new AppContextStorage(
 );
 
 describe('Web search tool integration', () => {
+  let app: INestApplication;
   let messageTransformer: MessageTransformerService;
   let threadsDao: ThreadsDao;
   let messagesDao: MessagesDao;
@@ -33,7 +36,7 @@ describe('Web search tool integration', () => {
   let testProjectId: string;
 
   beforeAll(async () => {
-    const app = await createTestModule();
+    app = await createTestModule();
     messageTransformer = app.get<MessageTransformerService>(
       MessageTransformerService,
     );
@@ -89,6 +92,12 @@ describe('Web search tool integration', () => {
     if (testProjectId) {
       await projectsDao.deleteById(testProjectId);
     }
+
+    await app.close();
+  });
+
+  beforeEach(() => {
+    getMockLlm(app).reset();
   });
 
   it('stores tool call title from metadata in message DTO and DB', async () => {

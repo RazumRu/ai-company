@@ -1,7 +1,8 @@
 import { INestApplication } from '@nestjs/common';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
+import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { AiSuggestionsController } from '../../../v1/ai-suggestions/controllers/ai-suggestions.controller';
 import { SuggestAgentInstructionsDto } from '../../../v1/ai-suggestions/dto/ai-suggestions.dto';
 import { AiSuggestionsService } from '../../../v1/ai-suggestions/services/ai-suggestions.service';
@@ -19,6 +20,8 @@ import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { createMockGraphData } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
+import { mockLiteLlmClient } from '../helpers/test-stubs';
+import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 let app: INestApplication;
@@ -35,7 +38,12 @@ let testProjectId: string;
 let contextDataStorage: AppContextStorage;
 
 beforeAll(async () => {
-  app = await createTestModule();
+  app = await createTestModule(async (moduleBuilder) =>
+    moduleBuilder
+      .overrideProvider(LiteLlmClient)
+      .useValue(mockLiteLlmClient)
+      .compile(),
+  );
   controller = app.get(AiSuggestionsController);
   graphsService = app.get(GraphsService);
   graphRegistry = app.get(GraphRegistry);
@@ -99,6 +107,10 @@ describe('AiSuggestionsController (integration)', () => {
     await Promise.all(graphIds.map((id) => cleanupGraph(id)));
   }, 180_000);
 
+  beforeEach(() => {
+    getMockLlm(app).reset();
+  });
+
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) {
@@ -111,6 +123,11 @@ describe('AiSuggestionsController (integration)', () => {
     it('returns suggested instructions for a running graph', async () => {
       await ensureGraphRunning(runningGraphId);
 
+      getMockLlm(app).onChat(
+        { systemMessage: /rewrite agent system instructions/i },
+        { kind: 'text', content: 'You are a helpful test agent. Answer briefly.' },
+      );
+
       const response = await controller.suggestAgentInstructions(
         runningGraphId,
         'agent-1',
@@ -120,7 +137,7 @@ describe('AiSuggestionsController (integration)', () => {
         contextDataStorage,
       );
 
-      expect(response.instructions.length).toBeGreaterThan(0);
+      expect(response.instructions).toBe('You are a helpful test agent. Answer briefly.');
       expect(response.threadId).toBeDefined();
     }, 30000);
 
@@ -144,6 +161,11 @@ describe('AiSuggestionsController (integration)', () => {
       async () => {
         await ensureGraphRunning(runningGraphId);
 
+        getMockLlm(app).onChat(
+          { systemMessage: /rewrite agent system instructions/i },
+          { kind: 'text', content: 'No thread provided — improved instructions.' },
+        );
+
         const response = await controller.suggestAgentInstructions(
           runningGraphId,
           'agent-1',
@@ -151,7 +173,7 @@ describe('AiSuggestionsController (integration)', () => {
           contextDataStorage,
         );
 
-        expect(response.instructions.length).toBeGreaterThan(0);
+        expect(response.instructions).toBe('No thread provided — improved instructions.');
         expect(response.threadId).toBeDefined();
       },
     );
@@ -170,6 +192,10 @@ describe('AiSuggestionsService (integration)', () => {
       settings: {},
     });
     serviceTestProjectId = project.id;
+  });
+
+  beforeEach(() => {
+    getMockLlm(app).reset();
   });
 
   afterEach(async () => {
@@ -337,6 +363,11 @@ describe('AiSuggestionsService (integration)', () => {
         },
       });
 
+      getMockLlm(app).onChat(
+        { systemMessage: /expert AI \/ agent-ops reviewer/i },
+        { kind: 'text', content: 'Tool usage was efficient. No inefficiencies detected.' },
+      );
+
       const result = await aiSuggestionsService.analyzeThread(
         contextDataStorage,
         thread.id,
@@ -345,7 +376,7 @@ describe('AiSuggestionsService (integration)', () => {
         },
       );
 
-      expect(result.analysis.length).toBeGreaterThan(0);
+      expect(result.analysis).toBe('Tool usage was efficient. No inefficiencies detected.');
       expect(result.conversationId).toBeDefined();
     },
   );

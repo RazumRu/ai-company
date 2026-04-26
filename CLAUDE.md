@@ -302,3 +302,38 @@ When all four are set, the `GET /api/system/settings` endpoint returns `githubAp
 - **Coverage thresholds** (when enabled): 90% lines/functions/statements, 80% branches.
 - **E2E logging**: use `cy.task('log', message)` to print to terminal output.
 
+### Mocking the LLM in integration tests
+
+All integration tests **always** mock the LLM — there is no opt-out flag and no real-LLM mode. The mock is wired into `createTestModule()` automatically and covers two seams: `OpenaiService` (via NestJS DI override) and `BaseAgent.prototype.buildLLM` (via process-level patch).
+
+**Import:** `import { getMockLlm, applyDefaults, MockLlmNoMatchError } from '../mocks/mock-llm';` (path relative to test location).
+
+**API surface:**
+```typescript
+const mockLlm = getMockLlm(app);
+
+// Register matcher-based fixtures (returns first match from filters):
+mockLlm.onChat(matcher, reply);
+mockLlm.onJsonRequest(matcher, reply);
+mockLlm.onEmbeddings(matcher, reply);
+
+// Queue FIFO replies (consumed before matchers, ignores matchers):
+mockLlm.queueChat(reply);
+mockLlm.queueCost(usd);  // sugar: text reply with totalPrice
+
+// Inspect:
+mockLlm.getRequests();    // ordered request log
+mockLlm.getLastRequest();
+
+// Test cleanup (call in beforeEach):
+mockLlm.reset();
+```
+
+**Matcher fields:** `model` (string or RegExp), `lastUserMessage` (string-includes or RegExp), `systemMessage` (string-includes or RegExp), `hasTools` (string[] subset match), `hasToolResult` (string exact match), `callIndex` (number). No match throws `MockLlmNoMatchError` with context (model, call index, message, tool names, registered matchers).
+
+**Specificity & multi-turn gotcha:** Fixtures are resolved by specificity (count of non-undefined matcher fields). Ties are broken by registration order. When agent loops `callTool → toolResult → followUp`, fixtures with `{ hasTools: ['T'] }` and `{ hasToolResult: 'T' }` both have specificity 1 and tie. To disambiguate, combine matchers: `{ hasToolResult: 'T', hasTools: ['finish'] }` (specificity 2).
+
+**Apply defaults (optional):** `applyDefaults(mockLlm)` registers benign defaults: a finish-tool fallback, a catch-all text reply, and deterministic embeddings. Apply AFTER per-test fixtures or the catch-all swallows them.
+
+**Limitations:** Code paths requiring real LLM behavior (e.g. `ReasoningAwareChatCompletions` normalization, token-stream timing, retry/backoff) must be covered by unit tests, not integration tests.
+

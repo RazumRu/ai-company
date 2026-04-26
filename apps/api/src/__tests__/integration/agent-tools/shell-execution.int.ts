@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -8,12 +8,16 @@ import { SimpleAgentSchemaType } from '../../../v1/agents/services/agents/simple
 import { CreateGraphDto } from '../../../v1/graphs/dto/graphs.dto';
 import { GraphStatus } from '../../../v1/graphs/graphs.types';
 import { GraphsService } from '../../../v1/graphs/services/graphs.service';
+import { LiteLlmClient } from '../../../v1/litellm/services/litellm.client';
 import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
+import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-name-generator.service';
 import { ThreadMessageDto } from '../../../v1/threads/dto/threads.dto';
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
+import { mockLiteLlmClient, mockThreadNameGenerator } from '../helpers/test-stubs';
+import { getMockLlm } from '../mocks/mock-llm';
 import { createTestModule } from '../setup';
 
 const TRIGGER_NODE_ID = 'trigger-1';
@@ -43,7 +47,14 @@ describe('Shell Execution Integration Tests', () => {
   let testProjectId: string;
 
   beforeAll(async () => {
-    app = await createTestModule();
+    app = await createTestModule(async (m) =>
+      m
+        .overrideProvider(LiteLlmClient)
+        .useValue(mockLiteLlmClient)
+        .overrideProvider(ThreadNameGeneratorService)
+        .useValue(mockThreadNameGenerator)
+        .compile(),
+    );
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
 
@@ -103,6 +114,10 @@ describe('Shell Execution Integration Tests', () => {
 
     await app.close();
   }, 300_000);
+
+  beforeEach(() => {
+    getMockLlm(app).reset();
+  });
 
   const cleanupGraph = async (graphId: string) => {
     try {
@@ -317,13 +332,55 @@ describe('Shell Execution Integration Tests', () => {
   interface ExecuteShellOptions {
     threadSubId?: string;
     shellResultTimeoutMs?: number;
+    /** Extra args to merge into the shell tool call (e.g. timeoutMs). */
+    shellArgs?: Record<string, unknown>;
   }
 
+  /**
+   * Shared scenario helper: registers mock LLM fixtures for a single shell
+   * tool call turn (turn 1) + finish (turn 2), then drives the agent through
+   * the full thread lifecycle and returns the shell execution summary for assertion.
+   *
+   * Must be called AFTER `getMockLlm(app).reset()` (which `beforeEach` does).
+   * The caller must NOT call `getMockLlm(app).reset()` after calling this helper.
+   */
   const executeShellScenario = async (
     graphId: string,
     message: string,
+    command: string,
     options: ExecuteShellOptions = {},
   ) => {
+    const mockLlm = getMockLlm(app);
+
+    // Turn 1 (callIndex 0): shell is not yet loaded — agent uses tool_search to find it.
+    mockLlm.onChat(
+      { callIndex: 0 },
+      { kind: 'toolCall', toolName: 'tool_search', args: { query: 'shell' } },
+    );
+
+    // Turn 2: shell is now loaded — agent calls shell with the given command.
+    // Shell tool schema requires 'purpose' in addition to 'command'.
+    mockLlm.onChat(
+      { hasTools: ['shell'] },
+      {
+        kind: 'toolCall',
+        toolName: 'shell',
+        args: { purpose: 'run command', command, ...options.shellArgs },
+      },
+    );
+
+    // Turn 3: after the shell result arrives, the agent calls finish to end the thread.
+    // Using both hasToolResult + hasTools for specificity 2 so this fixture beats the
+    // hasTools-only shell fixture (specificity 1) when the shell result is in context.
+    mockLlm.onChat(
+      { hasToolResult: 'shell', hasTools: ['finish'] },
+      {
+        kind: 'toolCall',
+        toolName: 'finish',
+        args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+      },
+    );
+
     await ensureGraphRunning(graphId);
     const threadSubId = options.threadSubId ?? uniqueThreadSubId('shell');
     const execution = await graphsService.executeTrigger(
@@ -361,6 +418,40 @@ describe('Shell Execution Integration Tests', () => {
       'persists shell tool call request before the tool result message',
       { timeout: 360_000 },
       async () => {
+        const mockLlm = getMockLlm(app);
+
+        // Turn 1 (callIndex 0): shell is not yet loaded — agent uses tool_search to find it.
+        mockLlm.onChat(
+          { callIndex: 0 },
+          { kind: 'toolCall', toolName: 'tool_search', args: { query: 'shell' } },
+        );
+
+        // Turn 2: shell is now loaded — agent calls shell with a slow command so the
+        // tool result is intentionally delayed, allowing assertion that the AI request
+        // message is persisted before the tool result message arrives.
+        // Shell tool schema requires 'purpose' in addition to 'command'.
+        mockLlm.onChat(
+          { hasTools: ['shell'] },
+          {
+            kind: 'toolCall',
+            toolName: 'shell',
+            args: { purpose: 'run slow command', command: 'sleep 15; echo "done-after-sleep"' },
+          },
+        );
+
+        // Turn 3: after the slow shell completes, finish the thread cleanly.
+        // Must include valid finish schema fields (purpose, message, needsMoreInfo).
+        // Using hasToolResult + hasTools for specificity 2 so this fixture beats the
+        // hasTools-only shell fixture (specificity 1) when the shell result is in context.
+        mockLlm.onChat(
+          { hasToolResult: 'shell', hasTools: ['finish'] },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: { purpose: 'done', message: 'Command executed.', needsMoreInfo: false },
+          },
+        );
+
         await ensureGraphRunning(defaultGraphId);
 
         const execution = await graphsService.executeTrigger(
@@ -497,6 +588,7 @@ describe('Shell Execution Integration Tests', () => {
         const result = await executeShellScenario(
           defaultGraphId,
           'Execute shell command: printf "Hello from integration test"',
+          'printf "Hello from integration test"',
         );
 
         expect(result.result?.exitCode).toBe(0);
@@ -513,6 +605,7 @@ describe('Shell Execution Integration Tests', () => {
         const result = await executeShellScenario(
           envGraphId,
           'Execute shell command: printf "%s" "$FOO"',
+          'printf "%s" "$FOO"',
         );
 
         expect(result.result?.exitCode).toBe(0);
@@ -529,6 +622,7 @@ describe('Shell Execution Integration Tests', () => {
         const result = await executeShellScenario(
           alpineGraphId,
           'Execute shell command: uname -a',
+          'uname -a',
           { shellResultTimeoutMs: 240_000 },
         );
 
@@ -546,6 +640,7 @@ describe('Shell Execution Integration Tests', () => {
         const result = await executeShellScenario(
           defaultGraphId,
           'Execute shell command: invalidcommandthatdoesnotexist',
+          'invalidcommandthatdoesnotexist',
         );
 
         expect(result.result?.exitCode).not.toBe(0);
@@ -565,6 +660,8 @@ describe('Shell Execution Integration Tests', () => {
         const result = await executeShellScenario(
           defaultGraphId,
           'Execute shell command with timeoutMs=2000: sleep 5',
+          'sleep 5',
+          { shellArgs: { timeoutMs: 2000 } },
         );
 
         expect(result.result?.exitCode).toBe(124);
