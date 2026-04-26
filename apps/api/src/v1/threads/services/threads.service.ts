@@ -33,6 +33,7 @@ import { MessageEntity } from '../entity/message.entity';
 import { ThreadEntity } from '../entity/thread.entity';
 import { ThreadStatus } from '../threads.types';
 import { ThreadResumeService } from './thread-resume.service';
+import { ThreadStatusTransitionService } from './thread-status-transition.service';
 
 @Injectable()
 export class ThreadsService {
@@ -45,6 +46,7 @@ export class ThreadsService {
     private readonly checkpointStateService: CheckpointStateService,
     private readonly graphDao: GraphDao,
     private readonly threadResumeService: ThreadResumeService,
+    private readonly transitionService: ThreadStatusTransitionService,
   ) {}
 
   async getThreads(
@@ -192,9 +194,11 @@ export class ThreadsService {
 
     if (!stoppedViaEventChain) {
       // Graph not in registry or no active agent run — update DB directly
-      await this.threadDao.updateById(thread.id, {
-        status: ThreadStatus.Stopped,
-      });
+      await this.threadDao.updateStatusWithAccumulator(
+        thread,
+        ThreadStatus.Stopped,
+        this.transitionService,
+      );
       const responseThread =
         (await this.threadDao.getById(thread.id)) ?? thread;
 
@@ -344,6 +348,19 @@ export class ThreadsService {
         typeof metadata?.effectiveCostLimitUsd === 'number'
           ? metadata.effectiveCostLimitUsd
           : null;
+      // Stale-drift defense (G7-style belt-and-suspenders): if the thread is not
+      // Running but still has a non-null runningStartedAt, the DB invariant was
+      // violated (e.g. a crash before the transition could clear the field).
+      // Null out the value so the client never double-counts elapsed time.
+      let runningStartedAt = entity.runningStartedAt ?? null;
+      if (entity.status !== ThreadStatus.Running && runningStartedAt !== null) {
+        this.logger.warn(
+          'Thread has stale runningStartedAt — DB invariant violated',
+          { threadId: entity.id, status: entity.status },
+        );
+        runningStartedAt = null;
+      }
+
       return {
         ...entityWithoutExcludedFields,
         createdAt: new Date(entity.createdAt).toISOString(),
@@ -352,6 +369,10 @@ export class ThreadsService {
         agents: agentsByGraphId.get(entity.graphId) ?? null,
         stopReason,
         effectiveCostLimitUsd,
+        runningStartedAt: runningStartedAt
+          ? runningStartedAt.toISOString()
+          : null,
+        totalRunningMs: Number(entity.totalRunningMs ?? 0),
       };
     });
   }

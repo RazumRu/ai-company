@@ -101,6 +101,8 @@ import type {
   GetRepositoryByIdResponses,
   GetRuntimesData,
   GetRuntimesResponses,
+  GetRuntimeStateData,
+  GetRuntimeStateResponses,
   GetSettingsData,
   GetSettingsResponses,
   GetSetupInfoData,
@@ -207,6 +209,19 @@ export const getRuntimes = <ThrowOnError extends boolean = false>(
   (options.client ?? client).get<GetRuntimesResponses, unknown, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/v1/runtimes',
+    ...options,
+  });
+
+export const getRuntimeState = <ThrowOnError extends boolean = false>(
+  options: Options<GetRuntimeStateData, ThrowOnError>,
+) =>
+  (options.client ?? client).get<
+    GetRuntimeStateResponses,
+    unknown,
+    ThrowOnError
+  >({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/v1/runtimes/{id}/state',
     ...options,
   });
 

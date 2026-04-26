@@ -75,7 +75,6 @@ const accumulatePreparedStatistics = (
 ): SubagentStatistics | undefined => {
   let totalTokens = 0;
   let totalPrice = 0;
-  let durationMs = 0;
   let count = 0;
 
   for (const item of prepared) {
@@ -94,29 +93,18 @@ const accumulatePreparedStatistics = (
       if (typeof s.usage?.totalTokens === 'number') {
         totalTokens += s.usage.totalTokens;
       }
-      if (typeof s.usage?.durationMs === 'number') {
-        durationMs += s.usage.durationMs;
-      }
     } else if (item.type === 'tool') {
       // Tool messages carry requestTokenUsage directly (no .message wrapper).
-      // Accumulate duration independently — a tool may have durationMs even
-      // when requestTokenUsage is absent.
       const usage = item.requestTokenUsage;
-      const hasDuration = typeof item.durationMs === 'number';
-      if (!usage && !hasDuration) {
+      if (!usage) {
         continue;
       }
       count++;
-      if (usage) {
-        if (typeof usage.totalTokens === 'number') {
-          totalTokens += usage.totalTokens;
-        }
-        if (typeof usage.totalPrice === 'number') {
-          totalPrice += usage.totalPrice;
-        }
+      if (typeof usage.totalTokens === 'number') {
+        totalTokens += usage.totalTokens;
       }
-      if (hasDuration) {
-        durationMs += item.durationMs!;
+      if (typeof usage.totalPrice === 'number') {
+        totalPrice += usage.totalPrice;
       }
     } else {
       // chat / reasoning / system — have a .message (ThreadMessageDto).
@@ -132,11 +120,6 @@ const accumulatePreparedStatistics = (
       if (typeof usage.totalPrice === 'number') {
         totalPrice += usage.totalPrice;
       }
-      // Extract durationMs from the DTO's additionalKwargs.
-      const dur = extractDurationMs(item.message.message);
-      if (typeof dur === 'number') {
-        durationMs += dur;
-      }
     }
   }
 
@@ -148,33 +131,6 @@ const accumulatePreparedStatistics = (
     usage: {
       totalTokens: totalTokens || undefined,
       totalPrice: totalPrice || undefined,
-      durationMs: durationMs || undefined,
-    },
-  };
-};
-
-/** When backend-provided statistics lack durationMs, supplement it from
- *  the frontend-accumulated statistics (which derive durationMs from
- *  individual message __requestUsage fields). */
-const supplementDurationMs = (
-  backendStats: SubagentStatistics,
-  accumulatedStats: SubagentStatistics | undefined,
-): SubagentStatistics => {
-  if (
-    typeof backendStats.usage?.durationMs === 'number' &&
-    backendStats.usage.durationMs > 0
-  ) {
-    return backendStats;
-  }
-  const accDuration = accumulatedStats?.usage?.durationMs;
-  if (typeof accDuration !== 'number' || accDuration <= 0) {
-    return backendStats;
-  }
-  return {
-    ...backendStats,
-    usage: {
-      ...backendStats.usage,
-      durationMs: accDuration,
     },
   };
 };
@@ -762,10 +718,8 @@ export const prepareReadyMessages = (
           const backendStats = resultObj?.statistics as
             | SubagentStatistics
             | undefined;
-          const accumulatedStats = accumulatePreparedStatistics(innerPrepared);
-          const statistics = backendStats
-            ? supplementDurationMs(backendStats, accumulatedStats)
-            : accumulatedStats;
+          const statistics =
+            backendStats ?? accumulatePreparedStatistics(innerPrepared);
           const resultText =
             typeof resultObj?.result === 'string'
               ? resultObj.result
@@ -857,11 +811,8 @@ export const prepareReadyMessages = (
           const commBackendStats = commResultObj?.statistics as
             | SubagentStatistics
             | undefined;
-          const commAccumulatedStats =
-            accumulatePreparedStatistics(innerPrepared);
-          const commStatistics = commBackendStats
-            ? supplementDurationMs(commBackendStats, commAccumulatedStats)
-            : commAccumulatedStats;
+          const commStatistics =
+            commBackendStats ?? accumulatePreparedStatistics(innerPrepared);
 
           const parsedArgs = argsToObject(toolArgs);
           const targetNodeId =
@@ -1417,34 +1368,6 @@ export const prepareReadyMessages = (
   // place reasoning as close to the actual agent as possible (e.g. inside a
   // subagent block nested within a communication block).
   result = adoptOrphanStreamingReasoning(result, getRawMsg);
-
-  // Dev-mode invariant check: block duration must equal sum of children durations.
-  if (import.meta.env.DEV) {
-    const checkBlockDuration = (items: PreparedMessage[]): void => {
-      for (const item of items) {
-        if (item.type !== 'subagent' && item.type !== 'communication') {
-          continue;
-        }
-        if (item.innerMessages.length > 0) {
-          checkBlockDuration(item.innerMessages);
-        }
-        const blockDuration = item.statistics?.usage?.durationMs;
-        if (typeof blockDuration !== 'number') {
-          continue;
-        }
-        const childrenSum = accumulatePreparedStatistics(item.innerMessages);
-        const childDuration = childrenSum?.usage?.durationMs ?? 0;
-        if (Math.abs(blockDuration - childDuration) > 1) {
-          console.warn(
-            `[threadMessages] Block duration mismatch for ${item.id}: ` +
-              `block=${blockDuration}ms, children sum=${childDuration}ms ` +
-              `(innerMessages.length=${item.innerMessages.length})`,
-          );
-        }
-      }
-    };
-    checkBlockDuration(result);
-  }
 
   return result;
 };

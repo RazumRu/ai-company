@@ -16,6 +16,7 @@ import { ThreadEntity } from '../entity/thread.entity';
 import { ThreadStatus } from '../threads.types';
 import { ThreadResumeService } from './thread-resume.service';
 import { ThreadResumeQueueService } from './thread-resume-queue.service';
+import { ThreadStatusTransitionService } from './thread-status-transition.service';
 
 const mockQueueService = {
   setCallbacks: vi.fn(),
@@ -30,6 +31,11 @@ const mockThreadsDao = {
   getById: vi.fn(),
   getAll: vi.fn().mockResolvedValue([]),
   updateById: vi.fn().mockResolvedValue(1),
+  updateStatusWithAccumulator: vi.fn().mockResolvedValue(1),
+};
+
+const mockTransitionService = {
+  computeTransition: vi.fn(),
 };
 
 const mockGraphRegistry = {
@@ -112,6 +118,7 @@ describe('ThreadResumeService', () => {
       mockGraphRegistry as unknown as GraphRegistry,
       mockNotificationsService as unknown as NotificationsService,
       mockLogger as unknown as DefaultLogger,
+      mockTransitionService as unknown as ThreadStatusTransitionService,
     );
   });
 
@@ -211,10 +218,13 @@ describe('ThreadResumeService', () => {
         createdBy: 'user-1',
       });
 
-      // Thread status updated to Running
-      expect(mockThreadsDao.updateById).toHaveBeenCalledWith(
-        'thread-1',
-        expect.objectContaining({ status: ThreadStatus.Running }),
+      // Thread status updated to Running and wait metadata cleared in a single write
+      expect(mockThreadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        thread,
+        ThreadStatus.Running,
+        mockTransitionService,
+        undefined,
+        { metadata: expect.objectContaining({}) },
       );
 
       // Agent was invoked
@@ -317,20 +327,52 @@ describe('ThreadResumeService', () => {
         error,
       );
 
-      expect(mockThreadsDao.updateById).toHaveBeenCalledWith(
-        'thread-1',
-        expect.objectContaining({
-          status: ThreadStatus.Stopped,
+      expect(mockThreadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        thread,
+        ThreadStatus.Stopped,
+        mockTransitionService,
+        undefined,
+        {
           metadata: expect.objectContaining({
             resumeError: 'resume failed',
           }),
-        }),
+        },
       );
+      expect(mockThreadsDao.updateById).not.toHaveBeenCalled();
 
       expect(mockNotificationsService.emit).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationEvent.ThreadUpdate,
           data: { status: ThreadStatus.Stopped },
+        }),
+      );
+    });
+
+    it('writes metadata via updateById when thread is not found', async () => {
+      mockThreadsDao.getById.mockResolvedValue(null);
+
+      const error = new Error('resume failed');
+      await service.handleResumeFailed(
+        {
+          threadId: 'thread-1',
+          graphId: 'graph-1',
+          nodeId: 'node-1',
+          externalThreadId: 'ext-thread-1',
+          checkPrompt: 'Check',
+          reason: 'Reason',
+          scheduledAt: '2024-01-01T00:05:00.000Z',
+          createdBy: 'user-1',
+        },
+        error,
+      );
+
+      expect(mockThreadsDao.updateStatusWithAccumulator).not.toHaveBeenCalled();
+      expect(mockThreadsDao.updateById).toHaveBeenCalledWith(
+        'thread-1',
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            resumeError: 'resume failed',
+          }),
         }),
       );
     });
@@ -480,10 +522,14 @@ describe('ThreadResumeService', () => {
       await service.cancelWait('thread-1');
 
       expect(mockQueueService.cancelResumeJob).toHaveBeenCalledWith('thread-1');
-      expect(mockThreadsDao.updateById).toHaveBeenCalledWith(
-        'thread-1',
-        expect.objectContaining({ status: ThreadStatus.Stopped }),
+      expect(mockThreadsDao.updateStatusWithAccumulator).toHaveBeenCalledWith(
+        thread,
+        ThreadStatus.Stopped,
+        mockTransitionService,
+        undefined,
+        { metadata: expect.objectContaining({}) },
       );
+      expect(mockThreadsDao.updateById).not.toHaveBeenCalled();
       expect(mockNotificationsService.emit).toHaveBeenCalledWith(
         expect.objectContaining({
           type: NotificationEvent.ThreadUpdate,

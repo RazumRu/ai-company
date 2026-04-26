@@ -17,6 +17,7 @@ import { ProjectsDao } from '../../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadEntity } from '../../../threads/entity/thread.entity';
 import { ThreadNameGeneratorService } from '../../../threads/services/thread-name-generator.service';
+import { ThreadStatusTransitionService } from '../../../threads/services/thread-status-transition.service';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
 import { AgentInvokeNotificationHandler } from './agent-invoke-notification-handler';
@@ -78,6 +79,8 @@ describe('AgentInvokeNotificationHandler', () => {
     updatedAt: new Date('2024-01-01T00:00:00Z'),
     deletedAt: null,
     status: ThreadStatus.Running,
+    runningStartedAt: null,
+    totalRunningMs: 0,
     ...overrides,
   });
 
@@ -186,6 +189,10 @@ describe('AgentInvokeNotificationHandler', () => {
             }),
           },
         },
+        {
+          provide: ThreadStatusTransitionService,
+          useValue: new ThreadStatusTransitionService(),
+        },
       ],
     }).compile();
 
@@ -212,19 +219,25 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      // First call (pre-lookup) returns null (new thread); second call (post-upsert) returns thread.
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
 
       const result = await handler.handle(notification);
 
       expect(graphDao.getOne).toHaveBeenCalledWith({ id: mockGraphId });
-      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
-        graphId: mockGraphId,
-        createdBy: mockUserId,
-        projectId: mockProjectId,
-        externalThreadId: 'parent-thread-123',
-        status: ThreadStatus.Running,
-        lastRunId: '11111111-1111-4111-8aaa-111111111111',
-      });
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: 'parent-thread-123',
+          status: ThreadStatus.Running,
+          lastRunId: '11111111-1111-4111-8aaa-111111111111',
+          totalRunningMs: 0,
+        }),
+      );
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         externalThreadId: 'parent-thread-123',
         graphId: mockGraphId,
@@ -255,7 +268,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
       threadNameGenerator.generateFromFirstUserMessage.mockResolvedValue(
         'Thread Name',
       );
@@ -298,18 +313,23 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
 
       await handler.handle(notification);
 
-      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
-        graphId: mockGraphId,
-        createdBy: mockUserId,
-        projectId: mockProjectId,
-        externalThreadId: mockParentThreadId,
-        status: ThreadStatus.Running,
-        lastRunId: '22222222-2222-4222-8aaa-222222222222',
-      });
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: mockParentThreadId,
+          status: ThreadStatus.Running,
+          lastRunId: '22222222-2222-4222-8aaa-222222222222',
+          totalRunningMs: 0,
+        }),
+      );
       expect(threadsDao.getOne).toHaveBeenCalledWith({
         externalThreadId: mockParentThreadId,
         graphId: mockGraphId,
@@ -329,6 +349,9 @@ describe('AgentInvokeNotificationHandler', () => {
       const existingThread = createMockThreadEntity({
         name: 'Existing Thread Name',
         externalThreadId: 'parent-thread-123',
+        status: ThreadStatus.Running,
+        runningStartedAt: new Date('2024-01-01T10:00:00Z'),
+        totalRunningMs: 5000,
       });
       const notification = createMockNotification({
         runId: '33333333-3333-4333-8aaa-333333333333',
@@ -338,7 +361,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         existingThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(existingThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(existingThread)
+        .mockResolvedValueOnce(existingThread);
 
       const expectedThreadDto = buildThreadResponseDto(existingThread);
 
@@ -383,18 +408,23 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
 
       const result = await handler.handle(notification);
 
-      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
-        graphId: mockGraphId,
-        createdBy: mockUserId,
-        projectId: mockProjectId,
-        externalThreadId: 'parent-thread-123',
-        source,
-        status: ThreadStatus.Running,
-      });
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: 'parent-thread-123',
+          source,
+          status: ThreadStatus.Running,
+          totalRunningMs: 0,
+        }),
+      );
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadCreate,
         graphId: mockGraphId,
@@ -419,18 +449,23 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
 
       await handler.handle(notification);
 
-      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
-        graphId: mockGraphId,
-        createdBy: mockUserId,
-        projectId: mockProjectId,
-        externalThreadId: 'parent-thread-123',
-        status: ThreadStatus.Running,
-        metadata: threadMetadata,
-      });
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: 'parent-thread-123',
+          status: ThreadStatus.Running,
+          metadata: threadMetadata,
+          totalRunningMs: 0,
+        }),
+      );
     });
 
     it('should not include metadata in upsert when not provided', async () => {
@@ -444,17 +479,25 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
 
       await handler.handle(notification);
 
-      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
-        graphId: mockGraphId,
-        createdBy: mockUserId,
-        projectId: mockProjectId,
-        externalThreadId: 'parent-thread-123',
-        status: ThreadStatus.Running,
-      });
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: 'parent-thread-123',
+          status: ThreadStatus.Running,
+          totalRunningMs: 0,
+        }),
+      );
+      const call = vi.mocked(threadsDao.upsertByExternalThreadId).mock
+        .calls[0]![0]!;
+      expect(call).not.toHaveProperty('metadata');
     });
 
     it('should not generate thread name when existing thread already has a name', async () => {
@@ -462,6 +505,9 @@ describe('AgentInvokeNotificationHandler', () => {
       const existingThread = createMockThreadEntity({
         name: 'Existing Thread Name',
         externalThreadId: mockThreadId,
+        status: ThreadStatus.Running,
+        runningStartedAt: new Date('2024-01-01T10:00:00Z'),
+        totalRunningMs: 5000,
       });
       // Root thread execution: threadId === parentThreadId === externalThreadKey
       const notification = createMockNotification({
@@ -473,7 +519,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         existingThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(existingThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(existingThread)
+        .mockResolvedValueOnce(existingThread);
 
       await handler.handle(notification);
 
@@ -500,7 +548,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
 
       await handler.handle(notification);
 
@@ -512,15 +562,15 @@ describe('AgentInvokeNotificationHandler', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('should handle race condition: upsert succeeds when thread was eagerly created', async () => {
+    it('creates a new thread when no eager-create occurred (existing === null)', async () => {
       const mockGraph = createMockGraphEntity();
-      // Root thread execution where eager creation already happened
+      // Root thread execution where no eager creation happened (getOne returns null)
       const notification = createMockNotification({
         threadId: mockParentThreadId,
         parentThreadId: mockParentThreadId,
         runId: '44444444-4444-4444-8aaa-444444444444',
       });
-      // Thread was eagerly created (no name yet) — upsert updates status/lastRunId
+      // Thread was not yet created — upsert inserts a fresh row
       const upsertedThread = createMockThreadEntity({
         externalThreadId: mockParentThreadId,
         lastRunId: '44444444-4444-4444-8aaa-444444444444',
@@ -530,7 +580,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
       threadNameGenerator.generateFromFirstUserMessage.mockResolvedValue(
         'Generated Name',
       );
@@ -541,14 +593,17 @@ describe('AgentInvokeNotificationHandler', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Upsert should have been called (no 23505 error)
-      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith({
-        graphId: mockGraphId,
-        createdBy: mockUserId,
-        projectId: mockProjectId,
-        externalThreadId: mockParentThreadId,
-        status: ThreadStatus.Running,
-        lastRunId: '44444444-4444-4444-8aaa-444444444444',
-      });
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: mockParentThreadId,
+          status: ThreadStatus.Running,
+          lastRunId: '44444444-4444-4444-8aaa-444444444444',
+          totalRunningMs: 0,
+        }),
+      );
 
       // ThreadCreate emitted because thread has no name
       expect(notificationsService.emit).toHaveBeenCalledWith({
@@ -576,6 +631,57 @@ describe('AgentInvokeNotificationHandler', () => {
       });
     });
 
+    it('handles eagerly-created thread via computeTransition (existing !== null, race condition)', async () => {
+      const mockGraph = createMockGraphEntity();
+      const existingStartedAt = new Date('2024-01-01T10:00:00Z');
+      // Eager-create path already inserted the thread in Running state
+      const eagerlyCreadedThread = createMockThreadEntity({
+        externalThreadId: mockParentThreadId,
+        status: ThreadStatus.Running,
+        runningStartedAt: existingStartedAt,
+        totalRunningMs: 5000,
+      });
+      const notification = createMockNotification({
+        threadId: mockParentThreadId,
+        parentThreadId: mockParentThreadId,
+        runId: '55555555-5555-4555-8aaa-555555555555',
+      });
+      const upsertedThread = createMockThreadEntity({
+        externalThreadId: mockParentThreadId,
+        status: ThreadStatus.Running,
+        runningStartedAt: existingStartedAt,
+        totalRunningMs: 5000,
+        lastRunId: '55555555-5555-4555-8aaa-555555555555',
+      });
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        upsertedThread,
+      );
+      // Pre-lookup returns the eagerly-created Running thread; post-upsert also returns it
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(eagerlyCreadedThread)
+        .mockResolvedValueOnce(upsertedThread);
+
+      await handler.handle(notification);
+
+      // computeTransition was called with the actual existing thread (not the synthetic seed)
+      // and produces an idempotent Running→Running result: runningStartedAt is preserved
+      expect(threadsDao.upsertByExternalThreadId).toHaveBeenCalledWith(
+        expect.objectContaining({
+          graphId: mockGraphId,
+          createdBy: mockUserId,
+          projectId: mockProjectId,
+          externalThreadId: mockParentThreadId,
+          status: ThreadStatus.Running,
+          // idempotent — clock must not be reset; preserved from eagerly-created thread
+          runningStartedAt: existingStartedAt,
+          totalRunningMs: 5000,
+          lastRunId: '55555555-5555-4555-8aaa-555555555555',
+        }),
+      );
+    });
+
     it('should handle multiple agents in same execution with same parent thread', async () => {
       const mockGraph = createMockGraphEntity();
       const mockParentThread = createMockThreadEntity({
@@ -586,7 +692,11 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         mockParentThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockParentThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null) // first invocation pre-lookup
+        .mockResolvedValueOnce(mockParentThread) // first invocation post-upsert
+        .mockResolvedValueOnce(mockParentThread) // second invocation pre-lookup (now Running)
+        .mockResolvedValueOnce(mockParentThread); // second invocation post-upsert
 
       // First agent invocation — upserts thread
       const notification1 = createMockNotification({
@@ -629,7 +739,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         createMockThreadEntity(),
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(null);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null) // pre-lookup: new thread
+        .mockResolvedValueOnce(null); // post-upsert: not found
 
       const result = await handler.handle(notification);
 
@@ -662,7 +774,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
       threadNameGenerator.generateFromFirstUserMessage.mockResolvedValue(
         'Hello world',
       );
@@ -692,7 +806,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
       threadNameGenerator.generateFromFirstUserMessage.mockResolvedValue(
         'Hello world',
       );
@@ -722,7 +838,9 @@ describe('AgentInvokeNotificationHandler', () => {
       vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
         upsertedThread,
       );
-      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(upsertedThread);
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
 
       await handler.handle(notification);
       await new Promise((resolve) => setImmediate(resolve));
@@ -730,6 +848,113 @@ describe('AgentInvokeNotificationHandler', () => {
       expect(
         threadNameGenerator.generateFromFirstUserMessage,
       ).not.toHaveBeenCalled();
+    });
+
+    // --- Timer transition tests ---
+
+    it('new thread: upsert payload has status=Running, runningStartedAt=now, totalRunningMs=0', async () => {
+      const mockGraph = createMockGraphEntity();
+      const upsertedThread = createMockThreadEntity({
+        externalThreadId: 'parent-thread-123',
+      });
+      const notification = createMockNotification();
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        upsertedThread,
+      );
+      // Pre-lookup returns null → new thread path
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(upsertedThread);
+
+      const before = new Date();
+      await handler.handle(notification);
+      const after = new Date();
+
+      const call = vi.mocked(threadsDao.upsertByExternalThreadId).mock
+        .calls[0]![0]!;
+
+      expect(call.status).toBe(ThreadStatus.Running);
+      expect(call.totalRunningMs).toBe(0);
+      expect(call.runningStartedAt).toBeInstanceOf(Date);
+      expect((call.runningStartedAt as Date).getTime()).toBeGreaterThanOrEqual(
+        before.getTime(),
+      );
+      expect((call.runningStartedAt as Date).getTime()).toBeLessThanOrEqual(
+        after.getTime(),
+      );
+    });
+
+    it('existing Running thread: upsert runningStartedAt is unchanged (idempotent, no clock reset)', async () => {
+      const mockGraph = createMockGraphEntity();
+      const existingStartedAt = new Date('2024-01-01T10:00:00Z');
+      const existingThread = createMockThreadEntity({
+        externalThreadId: 'parent-thread-123',
+        status: ThreadStatus.Running,
+        runningStartedAt: existingStartedAt,
+        totalRunningMs: 3000,
+      });
+      const notification = createMockNotification();
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        existingThread,
+      );
+      // Pre-lookup returns the existing Running thread
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(existingThread)
+        .mockResolvedValueOnce(existingThread);
+
+      await handler.handle(notification);
+
+      const call = vi.mocked(threadsDao.upsertByExternalThreadId).mock
+        .calls[0]![0]!;
+
+      expect(call.status).toBe(ThreadStatus.Running);
+      // Clock must NOT be reset — runningStartedAt must equal the existing value
+      expect(call.runningStartedAt).toEqual(existingStartedAt);
+      // Accumulated time preserved as-is
+      expect(call.totalRunningMs).toBe(3000);
+    });
+
+    it('existing Waiting thread (resume): upsert has runningStartedAt=now and totalRunningMs preserved', async () => {
+      const mockGraph = createMockGraphEntity();
+      const existingThread = createMockThreadEntity({
+        externalThreadId: 'parent-thread-123',
+        status: ThreadStatus.Waiting,
+        runningStartedAt: null,
+        totalRunningMs: 7000,
+      });
+      const notification = createMockNotification();
+
+      vi.spyOn(graphDao, 'getOne').mockResolvedValue(mockGraph);
+      vi.spyOn(threadsDao, 'upsertByExternalThreadId').mockResolvedValue(
+        existingThread,
+      );
+      // Pre-lookup returns existing Waiting thread
+      vi.spyOn(threadsDao, 'getOne')
+        .mockResolvedValueOnce(existingThread)
+        .mockResolvedValueOnce(existingThread);
+
+      const before = new Date();
+      await handler.handle(notification);
+      const after = new Date();
+
+      const call = vi.mocked(threadsDao.upsertByExternalThreadId).mock
+        .calls[0]![0]!;
+
+      expect(call.status).toBe(ThreadStatus.Running);
+      // Clock should be resumed (new Date() within test window)
+      expect(call.runningStartedAt).toBeInstanceOf(Date);
+      expect((call.runningStartedAt as Date).getTime()).toBeGreaterThanOrEqual(
+        before.getTime(),
+      );
+      expect((call.runningStartedAt as Date).getTime()).toBeLessThanOrEqual(
+        after.getTime(),
+      );
+      // Previously accumulated time is preserved
+      expect(call.totalRunningMs).toBe(7000);
     });
   });
 

@@ -14,6 +14,7 @@ import { NotificationsService } from '../../../notifications/services/notificati
 import { ProjectsDao } from '../../../projects/dao/projects.dao';
 import { ThreadsDao } from '../../../threads/dao/threads.dao';
 import { ThreadNameGeneratorService } from '../../../threads/services/thread-name-generator.service';
+import { ThreadStatusTransitionService } from '../../../threads/services/thread-status-transition.service';
 import { ThreadsService } from '../../../threads/services/threads.service';
 import { ThreadStatus } from '../../../threads/threads.types';
 import { BaseNotificationHandler } from './base-notification-handler';
@@ -31,7 +32,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
   readonly pattern = NotificationEvent.AgentInvoke;
 
   constructor(
-    private readonly threadDao: ThreadsDao,
+    private readonly threadsDao: ThreadsDao,
     private readonly graphDao: GraphDao,
     private readonly notificationsService: NotificationsService,
     private readonly threadsService: ThreadsService,
@@ -40,6 +41,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
     private readonly graphRegistry: GraphRegistry,
+    private readonly transitionService: ThreadStatusTransitionService,
   ) {
     super();
   }
@@ -56,15 +58,43 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
     const externalThreadKey = parentThreadId ?? threadId;
     const isRootThreadExecution = threadId === externalThreadKey;
 
-    // Upsert: INSERT or ON CONFLICT(externalThreadId) UPDATE status/source/lastRunId.
+    const now = new Date();
+
+    // Look up the existing thread before upsert to compute the correct running-time
+    // accumulator fields. The upsert path cannot use updateStatusWithAccumulator
+    // (which requires updateById), so we drive the transition through computeTransition.
+    // When no thread exists yet, we use a synthetic Done-status seed so that
+    // computeTransition produces the same result as the old new-thread branch
+    // (runningStartedAt = now, totalRunningMs = 0) — keeping the transition logic in
+    // a single source of truth instead of duplicating it here.
+    const existing = await this.threadsDao.getOne({
+      externalThreadId: externalThreadKey,
+      projectId: graph.projectId,
+    });
+
+    const seed = existing ?? {
+      status: ThreadStatus.Done,
+      runningStartedAt: null,
+      totalRunningMs: 0,
+    };
+    const patch = this.transitionService.computeTransition(
+      seed,
+      ThreadStatus.Running,
+      now,
+    );
+    const { runningStartedAt, totalRunningMs } = patch;
+
+    // Upsert: INSERT or ON CONFLICT(externalThreadId) UPDATE status/source/lastRunId/timer fields.
     // This eliminates the race condition between executeTrigger (eager thread creation)
     // and this handler — both can safely write without 23505 unique violations.
-    await this.threadDao.upsertByExternalThreadId({
+    await this.threadsDao.upsertByExternalThreadId({
       graphId,
       createdBy: graph.createdBy,
       projectId: graph.projectId,
       externalThreadId: externalThreadKey,
       status: ThreadStatus.Running,
+      runningStartedAt,
+      totalRunningMs,
       ...(source ? { source } : {}),
       ...(runId ? { lastRunId: runId } : {}),
       ...(threadMetadata ? { metadata: threadMetadata } : {}),
@@ -72,7 +102,7 @@ export class AgentInvokeNotificationHandler extends BaseNotificationHandler<neve
 
     // Fetch the full entity after upsert to get all fields (including name, metadata
     // that are not overwritten on conflict).
-    const thread = await this.threadDao.getOne({
+    const thread = await this.threadsDao.getOne({
       externalThreadId: externalThreadKey,
       graphId,
     });
