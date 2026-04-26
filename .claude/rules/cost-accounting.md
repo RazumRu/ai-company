@@ -22,6 +22,19 @@ Rules for any code that tracks, aggregates, or displays LLM usage costs, token c
 - Removing a `Math.max` / `Math.min` / `value ?? fallback` reconciliation requires a replacement policy. The reconciliation may have been silently fixing the "authoritative source empty, secondary populated" case — removing it without a `primary ?? secondary` fallback regresses that cohort.
 - Tests MUST cover the "authoritative source empty" case explicitly. Fixtures that only populate both sources pass regardless of the fallback being present.
 
+## Cost-by-node invariant (writer + reader must move together)
+
+- Per-node cost breakdown reaches consumers via two source paths:
+  1. **Messages path**: `Σ messages.requestTokenUsage WHERE node_id = K` — owned by `AgentMessageNotificationHandler` on write.
+  2. **Checkpoint path**: `checkpoint-state.service.getThreadTokenUsage().byNode[K]` — owned by `tool-executor-node`'s state-fold on read.
+- These two paths MUST reconcile for every `K`: if a query returns different per-node numbers from messages vs checkpoint, that is a bug.
+- Any change to how messages are attributed to a `node_id` (e.g. introducing per-subagent surrogate keys like `${parent}::sub::${toolCallId}`) MUST be accompanied by:
+  1. A matching change to `getThreadTokenUsage.byNode` so the same surrogate keys appear there.
+  2. An integration test asserting `Σ messages.requestTokenUsage WHERE node_id = K == byNode[K]` for every `K` in a representative thread (parent + ≥2 subagents that each issue ≥1 LLM call).
+  3. A documented before/after breakpoint for legacy rows if no backfill is performed — analytics consumers need to know.
+- Single-side changes are forbidden. They look right at the call site and create silent drift across cost surfaces.
+- Per-LLM-call attribution lives in `additionalKwargs.__toolCallId` + `__subagentCommunication`. Any new aggregator that ignores those flags and groups solely by `node_id` will misattribute subagent calls to the parent until Bug 4 ships and the surrogate scheme above is introduced.
+
 ## Test matrix requirements
 
 Every change to cost-aggregation or display flow MUST cover at minimum:

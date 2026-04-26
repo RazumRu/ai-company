@@ -1713,6 +1713,59 @@ function filterTrailingMessages(
 
 const COLLAPSED_MESSAGE_COUNT = 3;
 
+/**
+ * Computes visible messages for a collapsible inner area.
+ *
+ * Walks backward through items and includes:
+ * - ALL subagent and communication blocks (never collapsed — they contain cost-accounting children)
+ * - Up to `collapsedLimit` non-reasoning narrative items (chat, tool, system)
+ * - ALL reasoning items (they don't count toward the limit)
+ *
+ * Returns items in forward order.
+ */
+export function computeVisibleCollapsibleItems(
+  items: PreparedMessage[],
+  collapsedLimit: number,
+): PreparedMessage[] {
+  const result: PreparedMessage[] = [];
+  let collapsibleCount = 0;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const m = items[i];
+    if (m.type === 'subagent' || m.type === 'communication') {
+      result.unshift(m);
+      continue;
+    }
+    if (collapsibleCount >= collapsedLimit && m.type !== 'reasoning') {
+      continue;
+    }
+    result.unshift(m);
+    if (m.type !== 'reasoning') {
+      collapsibleCount++;
+    }
+  }
+  return result;
+}
+
+/**
+ * Computes the count of narrative items hidden by collapse.
+ *
+ * Returns the number of non-reasoning, non-subagent, non-communication items
+ * that exceed the collapsed limit. Subagent and communication blocks are never
+ * hidden, so they don't contribute to the hidden count.
+ */
+export function computeCollapsedHiddenCount(
+  items: PreparedMessage[],
+  collapsedLimit: number,
+): number {
+  const narrativeCount = items.filter(
+    (m) =>
+      m.type !== 'reasoning' &&
+      m.type !== 'subagent' &&
+      m.type !== 'communication',
+  ).length;
+  return Math.max(0, narrativeCount - collapsedLimit);
+}
+
 function CollapsibleInnerArea({
   items,
   renderItem,
@@ -1726,30 +1779,21 @@ function CollapsibleInnerArea({
 }) {
   const [expanded, setExpanded] = React.useState(false);
 
-  const nonReasoningCount = items.filter((m) => m.type !== 'reasoning').length;
   const isCollapsible =
-    !isCalling && nonReasoningCount > COLLAPSED_MESSAGE_COUNT;
+    !isCalling &&
+    computeCollapsedHiddenCount(items, COLLAPSED_MESSAGE_COUNT) > 0;
 
   const visibleMessages = React.useMemo(() => {
     if (!isCollapsible || expanded) {
       return items;
     }
-    const result: PreparedMessage[] = [];
-    let count = 0;
-    for (let i = items.length - 1; i >= 0; i--) {
-      const m = items[i];
-      result.unshift(m);
-      if (m.type !== 'reasoning') {
-        count++;
-      }
-      if (count >= COLLAPSED_MESSAGE_COUNT) {
-        break;
-      }
-    }
-    return result;
+    return computeVisibleCollapsibleItems(items, COLLAPSED_MESSAGE_COUNT);
   }, [items, isCollapsible, expanded]);
 
-  const hiddenCount = nonReasoningCount - COLLAPSED_MESSAGE_COUNT;
+  const hiddenCount = computeCollapsedHiddenCount(
+    items,
+    COLLAPSED_MESSAGE_COUNT,
+  );
 
   return (
     <div className="space-y-2 overflow-x-hidden">
