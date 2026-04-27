@@ -46,6 +46,7 @@ export class GraphDao extends BaseDao<GraphEntity> {
         'projectId',
         'createdAt',
         'updatedAt',
+        'settings',
       ],
       ...options,
     });

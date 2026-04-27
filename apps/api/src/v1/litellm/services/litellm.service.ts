@@ -87,7 +87,6 @@ export class LitellmService {
     let totalPriceDecimal = new Decimal(0);
     let currentContext = 0;
     let sawAny = false;
-    let sawPrice = false;
     let sawContext = false;
 
     for (const usage of usages) {
@@ -100,10 +99,7 @@ export class LitellmService {
       outputTokens += usage.outputTokens;
       reasoningTokens += usage.reasoningTokens ?? 0;
       totalTokens += usage.totalTokens;
-      if (typeof usage.totalPrice === 'number') {
-        totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice);
-        sawPrice = true;
-      }
+      totalPriceDecimal = totalPriceDecimal.plus(usage.totalPrice ?? 0);
       if (typeof usage.currentContext === 'number') {
         currentContext = Math.max(currentContext, usage.currentContext);
         sawContext = true;
@@ -120,7 +116,7 @@ export class LitellmService {
       outputTokens,
       ...(reasoningTokens ? { reasoningTokens } : {}),
       totalTokens,
-      ...(sawPrice ? { totalPrice: totalPriceDecimal.toNumber() } : {}),
+      totalPrice: totalPriceDecimal.toNumber(),
       ...(sawContext ? { currentContext } : {}),
     };
   }
@@ -150,12 +146,13 @@ export class LitellmService {
     const cachedInputTokens =
       inputTokensDetails?.cached_tokens ?? inputTokensDetails?.cache_read ?? 0;
 
-    const outputTokensDetails =
-      usageMetadata?.output_tokens_details ||
-      usageMetadata?.completion_tokens_details;
     const reasoningTokens =
-      outputTokensDetails?.reasoning_tokens ??
-      outputTokensDetails?.reasoning ??
+      usageMetadata?.output_tokens_details?.reasoning_tokens ??
+      usageMetadata?.output_tokens_details?.reasoning ??
+      usageMetadata?.completion_tokens_details?.reasoning_tokens ??
+      usageMetadata?.completion_tokens_details?.reasoning ??
+      usageMetadata?.output_token_details?.reasoning_tokens ??
+      usageMetadata?.output_token_details?.reasoning ??
       0;
 
     // cachedInputTokens is a subset of inputTokens, and reasoningTokens is a subset

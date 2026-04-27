@@ -43,9 +43,11 @@ import {
 export type { TokenInfo } from './token-display';
 export { fmtK, StatRow, TokenBadge } from './token-display';
 
-/** Builds a TokenInfo for the StatFooter from raw consumer props. */
+/** Builds a TokenInfo for the StatFooter from a block's accumulated statistics.
+ *  Returns undefined when no statistics are available so the footer is hidden;
+ *  no fallback to a static parent-level usage figure is permitted (an unrelated
+ *  static value silently displayed in place of missing live data hides bugs). */
 const buildFooterTokens = (
-  usageIn: RawTokenUsage | null | undefined,
   statistics:
     | {
         usage?: {
@@ -56,17 +58,15 @@ const buildFooterTokens = (
       }
     | undefined,
 ): TokenInfo | undefined => {
-  if (usageIn) {
-    return toTokenInfo(usageIn, statistics?.usage?.durationMs);
+  const usage = statistics?.usage;
+  if (!usage) {
+    return undefined;
   }
-  if (statistics?.usage?.totalTokens) {
-    return {
-      total: statistics.usage.totalTokens,
-      cost: formatUsd(statistics.usage.totalPrice),
-      duration: formatDuration(statistics.usage.durationMs),
-    };
-  }
-  return undefined;
+  return {
+    total: usage.totalTokens ?? 0,
+    cost: formatUsd(usage.totalPrice),
+    duration: formatDuration(usage.durationMs),
+  };
 };
 
 function resolveConsumerDisplayStatus(
@@ -1362,12 +1362,14 @@ export interface SubagentBlockProps {
   };
   /** Pre-rendered popover content for header click. */
   popoverContent?: React.ReactNode;
-  usageIn?: RawTokenUsage | null;
-  usageOut?: RawTokenUsage | null;
   /** Show "Agent is thinking..." indicator. */
   showThinkingIndicator?: boolean;
   /** Number of hidden messages (collapsed). -1 = auto-collapse. */
   collapsedCount?: number;
+  /** When provided and count > 0, renders an "incl. N subagent(s) $X.XX" footnote
+   *  on the footer. Derived by the caller from the set of subagent PreparedMessage
+   *  children that are actually rendered inside this block. */
+  subagentRollup?: SubagentRollup;
 }
 
 export function SubagentBlock(props: SubagentBlockProps) {
@@ -1385,9 +1387,8 @@ export function SubagentBlock(props: SubagentBlockProps) {
     resultText,
     statistics,
     popoverContent,
-    usageIn,
-    usageOut: _usageOut, // not displayed in consumer mode
     showThinkingIndicator,
+    subagentRollup,
   } = props;
 
   // If children are provided, use consumer mode
@@ -1396,7 +1397,7 @@ export function SubagentBlock(props: SubagentBlockProps) {
     const displayStatus = resolveConsumerDisplayStatus(status, errorText);
     const isClickable = resolveIsClickable(status, popoverContent);
 
-    const footerTokens = buildFooterTokens(usageIn, statistics);
+    const footerTokens = buildFooterTokens(statistics);
 
     const header = (
       <BlockHeader left={null} label={headerLabel} status={displayStatus} />
@@ -1464,6 +1465,7 @@ export function SubagentBlock(props: SubagentBlockProps) {
                   tokens={footerTokens}
                   toolCount={statistics?.toolCallsMade}
                   model={model}
+                  subagentRollup={subagentRollup}
                 />
                 <span
                   className="text-[11px] italic text-muted-foreground"
@@ -1479,6 +1481,7 @@ export function SubagentBlock(props: SubagentBlockProps) {
                 tokens={footerTokens}
                 toolCount={statistics?.toolCallsMade}
                 model={model}
+                subagentRollup={subagentRollup}
               />
             )}
           </div>
@@ -1533,30 +1536,50 @@ export function SubagentBlock(props: SubagentBlockProps) {
 
 // ─── StatFooter ───────────────────────────────────────────────────────────────
 
+export interface SubagentRollup {
+  count: number;
+  cost: number | undefined;
+}
+
 export function StatFooter({
   tokens,
   toolCount,
   model,
+  subagentRollup,
 }: {
   tokens?: TokenInfo;
   toolCount?: number;
   model?: string;
+  /** When provided and count > 0, renders an "incl. N subagent(s) $X.XX" footnote
+   *  below the primary stat line and appends " total" to the primary cost. */
+  subagentRollup?: SubagentRollup;
 }) {
   if (!tokens) {
     return null;
   }
+  const showRollup = subagentRollup !== undefined && subagentRollup.count > 0;
   return (
-    <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap pt-0.5">
-      <TokenBadge tokens={tokens} />
-      {toolCount !== undefined && (
-        <span>
-          {toolCount} tool{toolCount !== 1 ? 's' : ''}
-        </span>
-      )}
-      {model && (
-        <span className="font-mono bg-muted px-1.5 py-0.5 rounded">
-          {model}
-        </span>
+    <div className="flex flex-col gap-0.5 pt-0.5">
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
+        <TokenBadge tokens={tokens} />
+        {showRollup && <span className="text-muted-foreground">total</span>}
+        {toolCount !== undefined && (
+          <span>
+            {toolCount} tool{toolCount !== 1 ? 's' : ''}
+          </span>
+        )}
+        {model && (
+          <span className="font-mono bg-muted px-1.5 py-0.5 rounded">
+            {model}
+          </span>
+        )}
+      </div>
+      {showRollup && (
+        <div className="text-[10px] text-muted-foreground pl-0.5">
+          incl. {subagentRollup.count} subagent
+          {subagentRollup.count !== 1 ? 's' : ''}{' '}
+          {formatUsd(subagentRollup.cost)}
+        </div>
       )}
     </div>
   );
@@ -1657,10 +1680,12 @@ export interface CommunicationBlockProps {
     totalPrice?: number;
   };
   popoverContent?: React.ReactNode;
-  usageIn?: RawTokenUsage | null;
-  usageOut?: RawTokenUsage | null;
   showThinkingIndicator?: boolean;
   thinkingText?: string;
+  /** When provided and count > 0, renders an "incl. N subagent(s) $X.XX" footnote
+   *  on the footer. Derived by the caller from the set of subagent PreparedMessage
+   *  children that are actually rendered inside this block. */
+  subagentRollup?: SubagentRollup;
 }
 
 export function CommunicationBlock(props: CommunicationBlockProps) {
@@ -1681,10 +1706,9 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
     statistics,
     model,
     popoverContent,
-    usageIn,
-    usageOut: _usageOut, // not displayed in consumer mode
     showThinkingIndicator,
     thinkingText,
+    subagentRollup,
     // storybook mode
     fromAgent,
     toAgent,
@@ -1719,7 +1743,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
         ? `Providing Instructions for ${cleanTarget}`
         : 'Providing Instructions');
 
-    const footerTokens = buildFooterTokens(usageIn, statistics);
+    const footerTokens = buildFooterTokens(statistics);
 
     const hasAgentPair = !!(cleanSource && cleanTarget);
 
@@ -1821,6 +1845,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
                   tokens={footerTokens}
                   toolCount={statistics?.toolCallsMade}
                   model={model}
+                  subagentRollup={subagentRollup}
                 />
                 <span
                   className="text-[11px] italic text-muted-foreground"
@@ -1839,6 +1864,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
                 tokens={footerTokens}
                 toolCount={statistics?.toolCallsMade}
                 model={model}
+                subagentRollup={subagentRollup}
               />
             )}
           </div>
