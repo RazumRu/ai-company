@@ -20,6 +20,7 @@ import { formatUsd } from '../../chats/utils/chatsPageUtils';
 import type { PreparedMessage } from './threadMessages/threadMessagesTypes';
 import {
   computeCollapsedHiddenCount,
+  computeSubagentRollup,
   computeVisibleCollapsibleItems,
   shouldShowCostLimitBanner,
 } from './ThreadMessagesView';
@@ -145,6 +146,34 @@ function makeTool(id: string): Extract<PreparedMessage, { type: 'tool' }> {
 
 function makeSystem(id: string): Extract<PreparedMessage, { type: 'system' }> {
   return { type: 'system', id, message: fakeMessage };
+}
+
+function makeSubagentWithPrice(
+  id: string,
+  price: number,
+): Extract<PreparedMessage, { type: 'subagent' }> {
+  return {
+    type: 'subagent',
+    id,
+    toolCallId: id,
+    innerMessages: [],
+    status: 'executed',
+    statistics: {
+      usage: { totalPrice: price },
+    },
+  };
+}
+
+function makeSubagentNoPrice(
+  id: string,
+): Extract<PreparedMessage, { type: 'subagent' }> {
+  return {
+    type: 'subagent',
+    id,
+    toolCallId: id,
+    innerMessages: [],
+    status: 'executed',
+  };
 }
 
 describe('computeVisibleCollapsibleItems', () => {
@@ -355,5 +384,152 @@ describe('computeCollapsedHiddenCount', () => {
   it('returns 0 when limit is very high', () => {
     const items = [makeChat('1'), makeChat('2'), makeChat('3')];
     expect(computeCollapsedHiddenCount(items, 100)).toBe(0);
+  });
+});
+
+// ─── computeSubagentRollup ────────────────────────────────────────────────────
+
+describe('computeSubagentRollup', () => {
+  it('returns { count: 0, cost: undefined } for an empty array', () => {
+    expect(computeSubagentRollup([])).toEqual({ count: 0, cost: undefined });
+  });
+
+  it('returns count 1 and cost from a single subagent with price', () => {
+    const items: PreparedMessage[] = [makeSubagentWithPrice('s1', 0.045)];
+    const result = computeSubagentRollup(items);
+    expect(result.count).toBe(1);
+    expect(result.cost).toBeCloseTo(0.045, 9);
+  });
+
+  it('returns count 3 and summed cost for 3 subagents (all priced, done)', () => {
+    // Test matrix: "All calls priced, done"
+    const items: PreparedMessage[] = [
+      makeSubagentWithPrice('s1', 0.045),
+      makeSubagentWithPrice('s2', 0.08),
+      makeSubagentWithPrice('s3', 0.108),
+    ];
+    const result = computeSubagentRollup(items);
+    expect(result.count).toBe(3);
+    // 0.045 + 0.080 + 0.108 = 0.233 (floating point: use tolerance)
+    expect(result.cost).toBeCloseTo(0.233, 9);
+  });
+
+  it('counts only subagent-type items in a mixed array', () => {
+    const items: PreparedMessage[] = [
+      makeChat('c1'),
+      makeSubagentWithPrice('s1', 0.045),
+      makeTool('t1'),
+      makeSubagentWithPrice('s2', 0.08),
+      makeCommunication('comm1'),
+      makeSubagentWithPrice('s3', 0.108),
+      makeReasoning('r1'),
+    ];
+    const result = computeSubagentRollup(items);
+    expect(result.count).toBe(3);
+    expect(result.cost).toBeCloseTo(0.045 + 0.08 + 0.108, 9);
+  });
+
+  it('increments count but keeps cost undefined when subagent has no price data', () => {
+    // Test matrix: "Subagent without cost data"
+    const items: PreparedMessage[] = [makeSubagentNoPrice('s1')];
+    const result = computeSubagentRollup(items);
+    expect(result.count).toBe(1);
+    expect(result.cost).toBeUndefined();
+  });
+
+  it('sums only defined costs when some subagents have cost and some do not', () => {
+    const items: PreparedMessage[] = [
+      makeSubagentWithPrice('s1', 0.045),
+      makeSubagentNoPrice('s2'),
+      makeSubagentWithPrice('s3', 0.108),
+    ];
+    const result = computeSubagentRollup(items);
+    expect(result.count).toBe(3);
+    expect(result.cost).toBeCloseTo(0.045 + 0.108, 9);
+  });
+
+  it('returns cost undefined when ALL subagents have no price data', () => {
+    const items: PreparedMessage[] = [
+      makeSubagentNoPrice('s1'),
+      makeSubagentNoPrice('s2'),
+    ];
+    const result = computeSubagentRollup(items);
+    expect(result.count).toBe(2);
+    expect(result.cost).toBeUndefined();
+  });
+
+  it('treats communication-type items as non-subagents (not counted)', () => {
+    const items: PreparedMessage[] = [
+      makeCommunication('comm1'),
+      makeCommunication('comm2'),
+    ];
+    const result = computeSubagentRollup(items);
+    expect(result.count).toBe(0);
+    expect(result.cost).toBeUndefined();
+  });
+});
+
+// ─── computeSubagentRollup — matrix transitions ───────────────────────────────
+
+describe('computeSubagentRollup — matrix transitions', () => {
+  /**
+   * Matrix row: "Running→done transition with fresh REST fetch"
+   *
+   * Simulates calling the pure helper twice for the same logical subagent —
+   * first while it is still running (no price yet), then after the REST fetch
+   * returns the completed statistics. Asserts no shared state between the two
+   * calls (the helper is stateless).
+   */
+  it('running → done transition: cost transitions from undefined to final price', () => {
+    // First call: subagent has no statistics yet (running, no price)
+    const runningItems: PreparedMessage[] = [makeSubagentNoPrice('s1')];
+    const runningResult = computeSubagentRollup(runningItems);
+    expect(runningResult.count).toBe(1);
+    expect(runningResult.cost).toBeUndefined();
+
+    // Second call: same subagent identity, now with completed statistics
+    const doneItems: PreparedMessage[] = [
+      makeSubagentWithPrice('s1', 0.08),
+    ];
+    const doneResult = computeSubagentRollup(doneItems);
+    expect(doneResult.count).toBe(1);
+    expect(doneResult.cost).toBeCloseTo(0.08, 9);
+
+    // Assert no shared state: running result is unchanged after the done call
+    expect(runningResult.cost).toBeUndefined();
+    expect(runningResult.count).toBe(1);
+  });
+
+  /**
+   * Matrix row: "Thread-switch during running state"
+   *
+   * Demonstrates that the helper does not memoize across distinct child arrays.
+   * Call 1 comes from thread A (one running subagent, no price).
+   * Call 2 comes from thread B (two completed subagents, both priced).
+   * Each call must return values that are entirely independent of the other.
+   */
+  it('thread-switch during running state: results are independent across distinct child arrays', () => {
+    // Thread A: one running subagent with no price data
+    const threadAItems: PreparedMessage[] = [makeSubagentNoPrice('a1')];
+    const threadAResult = computeSubagentRollup(threadAItems);
+    expect(threadAResult.count).toBe(1);
+    expect(threadAResult.cost).toBeUndefined();
+
+    // Thread B: two completed subagents, both fully priced
+    const threadBItems: PreparedMessage[] = [
+      makeSubagentWithPrice('b1', 0.05),
+      makeSubagentWithPrice('b2', 0.10),
+    ];
+    const threadBResult = computeSubagentRollup(threadBItems);
+    expect(threadBResult.count).toBe(2);
+    expect(threadBResult.cost).toBeCloseTo(0.15, 9);
+
+    // Assert that thread A result was not polluted by thread B call
+    expect(threadAResult.count).toBe(1);
+    expect(threadAResult.cost).toBeUndefined();
+
+    // Assert that thread B result was not polluted by thread A state
+    expect(threadBResult.count).toBe(2);
+    expect(threadBResult.cost).toBeCloseTo(0.15, 9);
   });
 });

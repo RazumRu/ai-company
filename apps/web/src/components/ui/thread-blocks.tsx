@@ -1366,6 +1366,10 @@ export interface SubagentBlockProps {
   showThinkingIndicator?: boolean;
   /** Number of hidden messages (collapsed). -1 = auto-collapse. */
   collapsedCount?: number;
+  /** When provided and count > 0, renders an "incl. N subagent(s) $X.XX" footnote
+   *  on the footer. Derived by the caller from the set of subagent PreparedMessage
+   *  children that are actually rendered inside this block. */
+  subagentRollup?: SubagentRollup;
 }
 
 export function SubagentBlock(props: SubagentBlockProps) {
@@ -1384,6 +1388,7 @@ export function SubagentBlock(props: SubagentBlockProps) {
     statistics,
     popoverContent,
     showThinkingIndicator,
+    subagentRollup,
   } = props;
 
   // If children are provided, use consumer mode
@@ -1460,6 +1465,7 @@ export function SubagentBlock(props: SubagentBlockProps) {
                   tokens={footerTokens}
                   toolCount={statistics?.toolCallsMade}
                   model={model}
+                  subagentRollup={subagentRollup}
                 />
                 <span
                   className="text-[11px] italic text-muted-foreground"
@@ -1475,6 +1481,7 @@ export function SubagentBlock(props: SubagentBlockProps) {
                 tokens={footerTokens}
                 toolCount={statistics?.toolCallsMade}
                 model={model}
+                subagentRollup={subagentRollup}
               />
             )}
           </div>
@@ -1529,30 +1536,50 @@ export function SubagentBlock(props: SubagentBlockProps) {
 
 // ─── StatFooter ───────────────────────────────────────────────────────────────
 
+export interface SubagentRollup {
+  count: number;
+  cost: number | undefined;
+}
+
 export function StatFooter({
   tokens,
   toolCount,
   model,
+  subagentRollup,
 }: {
   tokens?: TokenInfo;
   toolCount?: number;
   model?: string;
+  /** When provided and count > 0, renders an "incl. N subagent(s) $X.XX" footnote
+   *  below the primary stat line and appends " total" to the primary cost. */
+  subagentRollup?: SubagentRollup;
 }) {
   if (!tokens) {
     return null;
   }
+  const showRollup = subagentRollup !== undefined && subagentRollup.count > 0;
   return (
-    <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap pt-0.5">
-      <TokenBadge tokens={tokens} />
-      {toolCount !== undefined && (
-        <span>
-          {toolCount} tool{toolCount !== 1 ? 's' : ''}
-        </span>
-      )}
-      {model && (
-        <span className="font-mono bg-muted px-1.5 py-0.5 rounded">
-          {model}
-        </span>
+    <div className="flex flex-col gap-0.5 pt-0.5">
+      <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
+        <TokenBadge tokens={tokens} />
+        {showRollup && <span className="text-muted-foreground">total</span>}
+        {toolCount !== undefined && (
+          <span>
+            {toolCount} tool{toolCount !== 1 ? 's' : ''}
+          </span>
+        )}
+        {model && (
+          <span className="font-mono bg-muted px-1.5 py-0.5 rounded">
+            {model}
+          </span>
+        )}
+      </div>
+      {showRollup && (
+        <div className="text-[10px] text-muted-foreground pl-0.5">
+          incl. {subagentRollup.count} subagent
+          {subagentRollup.count !== 1 ? 's' : ''}{' '}
+          {formatUsd(subagentRollup.cost)}
+        </div>
       )}
     </div>
   );
@@ -1655,6 +1682,10 @@ export interface CommunicationBlockProps {
   popoverContent?: React.ReactNode;
   showThinkingIndicator?: boolean;
   thinkingText?: string;
+  /** When provided and count > 0, renders an "incl. N subagent(s) $X.XX" footnote
+   *  on the footer. Derived by the caller from the set of subagent PreparedMessage
+   *  children that are actually rendered inside this block. */
+  subagentRollup?: SubagentRollup;
 }
 
 export function CommunicationBlock(props: CommunicationBlockProps) {
@@ -1677,6 +1708,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
     popoverContent,
     showThinkingIndicator,
     thinkingText,
+    subagentRollup,
     // storybook mode
     fromAgent,
     toAgent,
@@ -1813,6 +1845,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
                   tokens={footerTokens}
                   toolCount={statistics?.toolCallsMade}
                   model={model}
+                  subagentRollup={subagentRollup}
                 />
                 <span
                   className="text-[11px] italic text-muted-foreground"
@@ -1831,6 +1864,7 @@ export function CommunicationBlock(props: CommunicationBlockProps) {
                 tokens={footerTokens}
                 toolCount={statistics?.toolCallsMade}
                 model={model}
+                subagentRollup={subagentRollup}
               />
             )}
           </div>

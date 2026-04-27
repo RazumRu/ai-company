@@ -38,6 +38,7 @@ import {
   ShellBlock,
   StreamingReasoningBlock,
   SubagentBlock,
+  type SubagentRollup,
   ToolBlock,
   ToolPopoverPanel,
 } from '../../../components/ui/thread-blocks';
@@ -999,6 +1000,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
           !!it.resultText,
         );
         const isCalling = it.status === 'calling';
+        const subRollup: SubagentRollup = computeSubagentRollup(filteredInner);
 
         return (
           <div key={`work-subagent-${it.id}-${idx}`}>
@@ -1019,7 +1021,8 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               resultText={it.resultText}
               statistics={it.statistics}
               popoverContent={subPopover}
-              showThinkingIndicator={isCalling && filteredInner.length > 0}>
+              showThinkingIndicator={isCalling && filteredInner.length > 0}
+              subagentRollup={subRollup}>
               {(filteredInner.length > 0 || isCalling) && (
                 <CollapsibleInnerArea
                   items={filteredInner}
@@ -1073,6 +1076,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
           !!it.resultText,
         );
         const isCalling = it.status === 'calling';
+        const commRollup: SubagentRollup = computeSubagentRollup(filteredInner);
 
         return (
           <div key={`work-comm-${it.id}-${idx}`}>
@@ -1102,6 +1106,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               statistics={it.statistics}
               popoverContent={commPopover}
               showThinkingIndicator={isCalling && filteredInner.length > 0}
+              subagentRollup={commRollup}
               thinkingText={
                 commTargetName
                   ? `${commTargetName} is thinking...`
@@ -1288,6 +1293,8 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
             !!item.resultText,
           );
           const isCalling = item.status === 'calling';
+          const topSubRollup: SubagentRollup =
+            computeSubagentRollup(filteredInner);
 
           pushRow(
             item.id,
@@ -1308,7 +1315,8 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               resultText={item.resultText}
               statistics={item.statistics}
               popoverContent={topSubPopover}
-              showThinkingIndicator={isCalling && filteredInner.length > 0}>
+              showThinkingIndicator={isCalling && filteredInner.length > 0}
+              subagentRollup={topSubRollup}>
               {(filteredInner.length > 0 || isCalling) && (
                 <CollapsibleInnerArea
                   items={filteredInner}
@@ -1367,6 +1375,8 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
             !!item.resultText,
           );
           const isCalling = item.status === 'calling';
+          const topCommRollup: SubagentRollup =
+            computeSubagentRollup(filteredInner);
 
           pushRow(
             item.id,
@@ -1397,6 +1407,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               statistics={item.statistics}
               popoverContent={topCommPopover}
               showThinkingIndicator={isCalling && filteredInner.length > 0}
+              subagentRollup={topCommRollup}
               thinkingText={
                 commTargetName
                   ? `${commTargetName} is thinking...`
@@ -1838,4 +1849,39 @@ export function shouldShowCostLimitBanner(
   isThreadStopped: boolean,
 ): boolean {
   return stopReason === 'cost_limit' && isThreadStopped;
+}
+
+/**
+ * Computes the subagent rollup for a parent CommunicationBlock or SubagentBlock.
+ *
+ * Walks the array of PreparedMessage children rendered inside the parent block
+ * and sums the `statistics.usage.totalPrice` of all subagent-typed items.
+ *
+ * Rules:
+ * - Only `type === 'subagent'` items are counted (communication blocks are not
+ *   subagent invocations; they are peer agent communications).
+ * - `count` increments for every subagent item, including those without pricing.
+ * - `cost` is the sum of all defined `statistics.usage.totalPrice` values. If
+ *   none of the subagent items have a defined price, `cost` is `undefined` so
+ *   the caller can distinguish "zero subagents priced" from "all priced at $0".
+ */
+export function computeSubagentRollup(children: PreparedMessage[]): {
+  count: number;
+  cost: number | undefined;
+} {
+  let count = 0;
+  let cost: number | undefined;
+
+  for (const item of children) {
+    if (item.type !== 'subagent') {
+      continue;
+    }
+    count++;
+    const price = item.statistics?.usage?.totalPrice;
+    if (typeof price === 'number') {
+      cost = (cost ?? 0) + price;
+    }
+  }
+
+  return { count, cost };
 }

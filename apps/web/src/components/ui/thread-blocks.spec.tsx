@@ -47,7 +47,12 @@ vi.mock('dompurify', () => ({
 
 import React from 'react';
 
-import { ReasoningBlock, SubagentBlock } from './thread-blocks';
+import {
+  CommunicationBlock,
+  ReasoningBlock,
+  StatFooter,
+  SubagentBlock,
+} from './thread-blocks';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -227,6 +232,190 @@ describe('ReasoningBlock — non-streaming branch (smoke test)', () => {
   });
 });
 
+// ── StatFooter — subagentRollup annotation ────────────────────────────────────
+
+describe('StatFooter — subagentRollup annotation', () => {
+  const baseTokens = {
+    total: 647200,
+    cost: '$0.536',
+    duration: '7m 58s',
+  };
+
+  it('renders unchanged output when no subagentRollup is provided', () => {
+    const { container } = render(<StatFooter tokens={baseTokens} />);
+    // No "total" word on the primary line
+    expect(container.textContent).not.toMatch(/\btotal\b/i);
+    // No "incl." footnote
+    expect(container.textContent).not.toContain('incl.');
+  });
+
+  it('renders "total" on the primary line and incl. footnote when count is 3', () => {
+    render(
+      <StatFooter
+        tokens={baseTokens}
+        subagentRollup={{ count: 3, cost: 0.234 }}
+      />,
+    );
+    // "total" word must appear
+    expect(screen.getByText('total')).toBeInTheDocument();
+    // Footnote line must include "incl. 3 subagents"
+    const footnote = screen.getByText(/incl\.\s+3 subagents/);
+    expect(footnote).toBeInTheDocument();
+    // USD amount must appear in the footnote
+    expect(footnote.textContent).toContain('$0.234');
+  });
+
+  it('uses singular "subagent" when count is 1', () => {
+    render(
+      <StatFooter
+        tokens={baseTokens}
+        subagentRollup={{ count: 1, cost: 0.045 }}
+      />,
+    );
+    const footnote = screen.getByText(/incl\.\s+1 subagent/);
+    expect(footnote).toBeInTheDocument();
+    // Must NOT say "subagents"
+    expect(footnote.textContent).not.toContain('subagents');
+  });
+
+  it('suppresses sub-line and "total" word when count is 0 (defensive)', () => {
+    const { container } = render(
+      <StatFooter tokens={baseTokens} subagentRollup={{ count: 0, cost: 0 }} />,
+    );
+    expect(container.textContent).not.toMatch(/\btotal\b/i);
+    expect(container.textContent).not.toContain('incl.');
+  });
+
+  it('renders incl. line with formatted cost when cost is defined', () => {
+    render(
+      <StatFooter
+        tokens={baseTokens}
+        subagentRollup={{ count: 2, cost: 0.08 }}
+      />,
+    );
+    const footnote = screen.getByText(/incl\.\s+2 subagents/);
+    expect(footnote.textContent).toContain('$0.080');
+  });
+
+  it('renders incl. line showing "$—" when cost is undefined', () => {
+    render(
+      <StatFooter
+        tokens={baseTokens}
+        subagentRollup={{ count: 2, cost: undefined }}
+      />,
+    );
+    const footnote = screen.getByText(/incl\.\s+2 subagents/);
+    // formatUsd(undefined) returns '$—'
+    expect(footnote.textContent).toContain('$—');
+  });
+});
+
+// ── SubagentBlock — nested subagent footer annotation ─────────────────────────
+
+describe('SubagentBlock — nested subagent footer annotation (consumer mode)', () => {
+  it('forwards subagentRollup to StatFooter and renders the annotation', () => {
+    render(
+      <SubagentBlock
+        status="done"
+        statistics={{
+          usage: { totalTokens: 50000, totalPrice: 0.536, durationMs: 478000 },
+        }}
+        subagentRollup={{ count: 3, cost: 0.234 }}>
+        <div>inner content</div>
+      </SubagentBlock>,
+    );
+    // "total" word must appear in the footer
+    expect(screen.getByText('total')).toBeInTheDocument();
+    // Footnote must appear
+    expect(screen.getByText(/incl\.\s+3 subagents/)).toBeInTheDocument();
+  });
+
+  // Test matrix: "All calls priced, running" — annotation still appears during running state
+  it('shows annotation when status is running (all calls priced, running)', () => {
+    render(
+      <SubagentBlock
+        status="running"
+        statistics={{
+          usage: { totalTokens: 20000, totalPrice: 0.18, durationMs: 60000 },
+        }}
+        subagentRollup={{ count: 2, cost: 0.09 }}>
+        <div>inner content</div>
+      </SubagentBlock>,
+    );
+    expect(screen.getByText('total')).toBeInTheDocument();
+    expect(screen.getByText(/incl\.\s+2 subagents/)).toBeInTheDocument();
+  });
+
+  // Test matrix: "Subagent without cost data" — cost undefined, count still shows
+  it('shows count annotation with $— cost when subagent cost is undefined', () => {
+    render(
+      <SubagentBlock
+        status="done"
+        statistics={{
+          usage: { totalTokens: 10000, totalPrice: 0.05, durationMs: 5000 },
+        }}
+        subagentRollup={{ count: 1, cost: undefined }}>
+        <div>inner content</div>
+      </SubagentBlock>,
+    );
+    expect(screen.getByText('total')).toBeInTheDocument();
+    const footnote = screen.getByText(/incl\.\s+1 subagent/);
+    expect(footnote.textContent).toContain('$—');
+  });
+});
+
+// ── CommunicationBlock — nested subagent footer annotation ────────────────────
+
+describe('CommunicationBlock — nested subagent footer annotation (consumer mode)', () => {
+  // Test matrix: "All calls priced, done"
+  it('renders annotation with 3 subagents when done', () => {
+    render(
+      <CommunicationBlock
+        status="done"
+        statistics={{
+          usage: { totalTokens: 647200, totalPrice: 0.536, durationMs: 478000 },
+        }}
+        subagentRollup={{ count: 3, cost: 0.234 }}>
+        <div>inner content</div>
+      </CommunicationBlock>,
+    );
+    expect(screen.getByText('total')).toBeInTheDocument();
+    const footnote = screen.getByText(/incl\.\s+3 subagents/);
+    expect(footnote).toBeInTheDocument();
+    expect(footnote.textContent).toContain('$0.234');
+  });
+
+  // Test matrix: "All calls priced, running"
+  it('shows annotation when status is running', () => {
+    render(
+      <CommunicationBlock
+        status="running"
+        statistics={{
+          usage: { totalTokens: 300000, totalPrice: 0.22, durationMs: 120000 },
+        }}
+        subagentRollup={{ count: 1, cost: 0.045 }}>
+        <div>inner content</div>
+      </CommunicationBlock>,
+    );
+    expect(screen.getByText('total')).toBeInTheDocument();
+    expect(screen.getByText(/incl\.\s+1 subagent/)).toBeInTheDocument();
+  });
+
+  it('does not render annotation when subagentRollup is absent', () => {
+    const { container } = render(
+      <CommunicationBlock
+        status="done"
+        statistics={{
+          usage: { totalTokens: 10000, totalPrice: 0.05, durationMs: 5000 },
+        }}>
+        <div>inner content</div>
+      </CommunicationBlock>,
+    );
+    expect(container.textContent).not.toContain('incl.');
+    expect(container.textContent).not.toMatch(/\btotal\b/i);
+  });
+});
+
 // ── SubagentBlock footer token source tests ────────────────────────────────────
 
 describe('SubagentBlock — footer tokens source', () => {
@@ -274,5 +463,54 @@ describe('SubagentBlock — footer tokens source', () => {
 
     const badge = container.querySelector('[class*="cursor-pointer"]');
     expect(badge).toBeNull();
+  });
+});
+
+// ── CommunicationBlock — rollup transitions ────────────────────────────────────
+
+describe('CommunicationBlock — rollup transitions', () => {
+  /**
+   * Matrix row: "Running→done transition with fresh REST fetch"
+   *
+   * Renders CommunicationBlock in consumer mode with status="running" and a
+   * subagentRollup whose cost is undefined (subagents still running). Asserts
+   * the footer shows "$—". Then re-renders the same element with a concrete
+   * cost and status="done". Asserts the footer now shows the formatted amount.
+   */
+  it('footer updates from running to done state', () => {
+    const statisticsBase = {
+      usage: { totalTokens: 50000, totalPrice: 0.45, durationMs: 60000 },
+    };
+
+    const { rerender } = render(
+      <CommunicationBlock
+        status="running"
+        statistics={statisticsBase}
+        subagentRollup={{ count: 2, cost: undefined }}>
+        <div>inner</div>
+      </CommunicationBlock>,
+    );
+
+    // Running state: cost not yet available — footer must show "$—"
+    const runningFootnote = screen.getByText(/incl\.\s+2 subagents/);
+    expect(runningFootnote).toBeInTheDocument();
+    expect(runningFootnote.textContent).toContain('$—');
+
+    // Transition to done with concrete cost
+    rerender(
+      <CommunicationBlock
+        status="done"
+        statistics={statisticsBase}
+        subagentRollup={{ count: 2, cost: 0.234 }}>
+        <div>inner</div>
+      </CommunicationBlock>,
+    );
+
+    // Done state: cost resolved — footer must show formatted USD
+    const doneFootnote = screen.getByText(/incl\.\s+2 subagents/);
+    expect(doneFootnote).toBeInTheDocument();
+    expect(doneFootnote.textContent).toContain('$0.234');
+    // Must no longer show the dash placeholder
+    expect(doneFootnote.textContent).not.toContain('$—');
   });
 });
