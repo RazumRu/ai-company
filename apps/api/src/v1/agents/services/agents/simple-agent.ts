@@ -1159,6 +1159,22 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
         runEntry.stopped = true;
         runEntry.stopReason = 'cost_limit';
 
+        // LiteLLM has already billed the LLM call that tripped the threshold. Persist
+        // the in-flight AIMessage (and any reasoning messages) so the per-thread cost
+        // rollup includes that spend instead of silently leaking it.
+        if (err.inFlightMessages && err.inFlightMessages.length > 0) {
+          // Already passed through updateMessagesListWithMetadata at the throw site —
+          // emit them as-is. Do NOT re-stamp.
+          this.emit({
+            type: 'message',
+            data: {
+              threadId,
+              messages: err.inFlightMessages,
+              config: mergedConfig,
+            },
+          });
+        }
+
         // Emit a user-visible SystemMessage describing the cost-limit stop.
         const limitText = err.effectiveLimitUsd.toFixed(2);
         const stopMsg = markMessageHideForLlm(

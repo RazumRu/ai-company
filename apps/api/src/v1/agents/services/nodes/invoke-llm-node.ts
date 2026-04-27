@@ -196,21 +196,7 @@ export class InvokeLlmNode extends BaseNode<
       threadUsage.durationMs = durationMs;
     }
 
-    // Enforcement runs against the agent's own accumulated spend combined
-    // with the current LLM call's contribution. The parent-level tool-executor
-    // is responsible for enforcement at sub-agent boundaries.
-    if (this.opts?.enforceCostLimit) {
-      const effectiveLimit =
-        typeof cfg.configurable?.effective_cost_limit_usd === 'number'
-          ? cfg.configurable.effective_cost_limit_usd
-          : null;
-      const projectedTotal = state.totalPrice + (threadUsage?.totalPrice ?? 0);
-      if (effectiveLimit !== null && projectedTotal >= effectiveLimit) {
-        throw new CostLimitExceededError(effectiveLimit, projectedTotal);
-      }
-    }
-
-    // Attach model metadata and request usage
+    // Stamp metadata FIRST so the in-flight message can be persisted on cost-limit throw.
     preparedRes.additional_kwargs = {
       ...preparedRes.additional_kwargs,
       __model: model,
@@ -241,6 +227,23 @@ export class InvokeLlmNode extends BaseNode<
         }),
       cfg,
     );
+
+    // Enforcement runs against the agent's own accumulated spend combined
+    // with the current LLM call's contribution. The parent-level tool-executor
+    // is responsible for enforcement at sub-agent boundaries.
+    if (this.opts?.enforceCostLimit) {
+      const effectiveLimit =
+        typeof cfg.configurable?.effective_cost_limit_usd === 'number'
+          ? cfg.configurable.effective_cost_limit_usd
+          : null;
+      const projectedTotal = state.totalPrice + (threadUsage?.totalPrice ?? 0);
+      if (effectiveLimit !== null && projectedTotal >= effectiveLimit) {
+        throw new CostLimitExceededError(effectiveLimit, projectedTotal, [
+          ...out,
+          ...reasoningMessages,
+        ]);
+      }
+    }
 
     // Destructure durationMs out of threadUsage — it is per-message metadata
     // stored in __requestUsage on the AI message kwargs, not accumulated state.

@@ -1,4 +1,8 @@
-import { type AIMessageChunk, HumanMessage } from '@langchain/core/messages';
+import {
+  AIMessage,
+  type AIMessageChunk,
+  HumanMessage,
+} from '@langchain/core/messages';
 import { RunnableConfig } from '@langchain/core/runnables';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ChatOpenAI } from '@langchain/openai';
@@ -79,6 +83,22 @@ describe('SimpleAgent', () => {
   const _mockNotificationsService = {
     emit: vi.fn(),
   } as unknown as NotificationsService;
+
+  const buildAgentState = () => ({
+    messages: [],
+    summary: '',
+    toolsMetadata: {},
+    toolUsageGuardActivated: false,
+    toolUsageGuardActivatedCount: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+    totalPrice: 0,
+    currentContext: 0,
+  });
+
   const setGraphThreadState = (state: GraphThreadState) => {
     const agentRef = agent as unknown as {
       graphThreadState?: GraphThreadState;
@@ -458,22 +478,6 @@ describe('SimpleAgent', () => {
       mcpServices: [],
     };
 
-    const buildState = () => ({
-      messages: [],
-      summary: '',
-      toolsMetadata: {},
-      toolUsageGuardActivated: false,
-      toolUsageGuardActivatedCount: 0,
-      inputTokens: 0,
-      cachedInputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      totalTokens: 0,
-      totalPrice: 0,
-
-      currentContext: 0,
-    });
-
     beforeEach(() => {
       agent.setConfig(baseConfig);
       agent['activeRuns'].clear();
@@ -507,7 +511,7 @@ describe('SimpleAgent', () => {
         configurable: { run_id: 'run-1', graph_id: 'graph-1' },
       };
 
-      const lastState = buildState();
+      const lastState = buildAgentState();
       agent['activeRuns'].set('run-1', {
         abortController: new AbortController(),
         runnableConfig: runnableConfig as RunnableConfig<BaseAgentConfigurable>,
@@ -549,7 +553,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig: runnableConfig as RunnableConfig<BaseAgentConfigurable>,
         threadId: 'thread-1',
-        lastState: buildState(),
+        lastState: buildAgentState(),
       });
 
       await agent.runOrAppend('thread-1', [new HumanMessage('hi')]);
@@ -567,7 +571,7 @@ describe('SimpleAgent', () => {
         configurable: { run_id: 'run-1', graph_id: 'graph-1' },
       };
 
-      const lastState = buildState();
+      const lastState = buildAgentState();
       agent['activeRuns'].set('run-1', {
         abortController: new AbortController(),
         runnableConfig: runnableConfig as RunnableConfig<BaseAgentConfigurable>,
@@ -843,22 +847,6 @@ describe('SimpleAgent', () => {
     const threadId = 'thread-reasoning';
     const runId = 'run-reasoning';
 
-    const buildLastState = () => ({
-      messages: [],
-      summary: '',
-      toolsMetadata: {},
-      toolUsageGuardActivated: false,
-      toolUsageGuardActivatedCount: 0,
-      inputTokens: 0,
-      cachedInputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      totalTokens: 0,
-      totalPrice: 0,
-
-      currentContext: 0,
-    });
-
     const registerActiveRun = () => {
       agent['activeRuns'].set(runId, {
         abortController: new AbortController(),
@@ -866,7 +854,7 @@ describe('SimpleAgent', () => {
           configurable: { run_id: runId, graph_id: 'graph-1' },
         } as RunnableConfig<BaseAgentConfigurable>,
         threadId,
-        lastState: buildLastState(),
+        lastState: buildAgentState(),
       });
     };
 
@@ -1044,7 +1032,7 @@ describe('SimpleAgent', () => {
           },
         } as RunnableConfig<BaseAgentConfigurable>,
         threadId,
-        lastState: buildLastState(),
+        lastState: buildAgentState(),
       });
 
       const events: AgentEventType[] = [];
@@ -1117,7 +1105,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig: persistRunnableConfig,
         threadId,
-        lastState: buildLastState(),
+        lastState: buildAgentState(),
       });
 
       // Drive a reasoning chunk to populate graphThreadState.reasoningChunks
@@ -1189,7 +1177,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig,
         threadId,
-        lastState: buildLastState(),
+        lastState: buildAgentState(),
       });
 
       const events: AgentEventType[] = [];
@@ -1272,7 +1260,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig,
         threadId,
-        lastState: buildLastState(),
+        lastState: buildAgentState(),
       });
 
       const events: AgentEventType[] = [];
@@ -1340,7 +1328,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig,
         threadId,
-        lastState: buildLastState(),
+        lastState: buildAgentState(),
       });
 
       // Seed an in-flight reasoning chunk directly in the state
@@ -1415,7 +1403,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig,
         threadId,
-        lastState: buildLastState(),
+        lastState: buildAgentState(),
       });
 
       const events: AgentEventType[] = [];
@@ -1498,21 +1486,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig,
         threadId,
-        lastState: {
-          messages: [],
-          summary: '',
-          toolsMetadata: {},
-          toolUsageGuardActivated: false,
-          toolUsageGuardActivatedCount: 0,
-          inputTokens: 0,
-          cachedInputTokens: 0,
-          outputTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 0,
-          totalPrice: 0,
-
-          currentContext: 0,
-        },
+        lastState: buildAgentState(),
       });
 
       const events: AgentEventType[] = [];
@@ -1604,21 +1578,7 @@ describe('SimpleAgent', () => {
         abortController: new AbortController(),
         runnableConfig,
         threadId,
-        lastState: {
-          messages: [],
-          summary: '',
-          toolsMetadata: {},
-          toolUsageGuardActivated: false,
-          toolUsageGuardActivatedCount: 0,
-          inputTokens: 0,
-          cachedInputTokens: 0,
-          outputTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 0,
-          totalPrice: 0,
-
-          currentContext: 0,
-        },
+        lastState: buildAgentState(),
       });
 
       const events: AgentEventType[] = [];
@@ -2169,6 +2129,98 @@ describe('SimpleAgent', () => {
       expect(runEvents).toHaveLength(0);
     });
 
+    it('Bug C: persists in-flight AIMessage carried by CostLimitExceededError before emitting the system stop message', async () => {
+      // Bug C reproduction. When the cost-limit threshold trips inside InvokeLlmNode,
+      // the LLM call has already completed (LiteLLM has charged the spend) but the
+      // throw happens BEFORE the AIMessage is folded into LangGraph state. The catch
+      // handler must emit the in-flight AIMessage so the cost rollup includes that
+      // call's spend — otherwise the per-thread cost report leaks the threshold-
+      // tripping call (~$0.144 in the original repro on thread 4da2f2ed).
+      const inFlightAI = new AIMessage('threshold-tripping LLM response');
+      // Stamp __requestUsage on the in-flight message so the message handler can
+      // attribute the leaked spend to this AI message in the messages table.
+      (inFlightAI.additional_kwargs as Record<string, unknown>).__requestUsage =
+        {
+          inputTokens: 30000,
+          outputTokens: 13801,
+          totalTokens: 43801,
+          totalPrice: 0.1441275,
+          currentContext: 43801,
+        };
+      const costError = new CostLimitExceededError(0.5, 0.576);
+      // After the proposed fix, the error carries the in-flight messages produced
+      // by InvokeLlmNode just before the cost-limit throw. Today the field doesn't
+      // exist — the test asserts the catch handler reads + emits it, which fails
+      // until both invoke-llm-node.ts and simple-agent.ts are updated together.
+      (
+        costError as unknown as { inFlightMessages: unknown[] }
+      ).inFlightMessages = [inFlightAI];
+
+      async function* mockStream() {
+        yield [
+          'updates',
+          { 'invoke_llm': { messages: { mode: 'append', items: [] } } },
+        ] as const;
+        throw costError;
+      }
+
+      const mockGraph = {
+        stream: vi.fn().mockReturnValue(mockStream()),
+      };
+      agent['buildGraph'] = vi.fn().mockReturnValue(mockGraph);
+
+      const emitSpy = vi.spyOn(agent as any, 'emit');
+
+      await agent.run('thread-bug-c', [new HumanMessage('Hello')], config, {
+        configurable: {
+          run_id: 'run-bug-c',
+          graph_id: 'graph-1',
+          thread_created_by: 'user-1',
+        },
+      } as unknown as RunnableConfig<BaseAgentConfigurable>);
+
+      const allEvents = emitSpy.mock.calls.map((c) => c[0] as AgentEventType);
+      const messageEvents = allEvents.filter(
+        (e): e is Extract<AgentEventType, { type: 'message' }> =>
+          e?.type === 'message',
+      );
+
+      // Locate the in-flight AIMessage emit and the system "Cost limit reached" emit.
+      const inFlightEmitIndex = messageEvents.findIndex((e) =>
+        (e.data.messages as unknown[]).some(
+          (m) =>
+            (m as { type?: string }).type === 'ai' &&
+            (m as { content?: string }).content ===
+              'threshold-tripping LLM response',
+        ),
+      );
+      const systemStopEmitIndex = messageEvents.findIndex((e) =>
+        (e.data.messages as unknown[]).some(
+          (m) =>
+            (m as { type?: string }).type === 'system' &&
+            typeof (m as { content?: string }).content === 'string' &&
+            (m as { content: string }).content.includes('Cost limit reached'),
+        ),
+      );
+
+      // The in-flight AIMessage MUST be emitted (proves it isn't silently dropped).
+      expect(inFlightEmitIndex).toBeGreaterThanOrEqual(0);
+      // It MUST appear before the system stop message so the messages table
+      // shows the threshold-tripping cost line right before the limit notice.
+      expect(systemStopEmitIndex).toBeGreaterThanOrEqual(0);
+      expect(inFlightEmitIndex).toBeLessThan(systemStopEmitIndex);
+
+      // The leaked spend MUST be attributed to this AI message via __requestUsage,
+      // so the message handler writes the cost row that closes the rollup gap.
+      const inFlightEvent = messageEvents[inFlightEmitIndex]!;
+      const aiMsgFromEmit = (inFlightEvent.data.messages as unknown[]).find(
+        (m) => (m as { type?: string }).type === 'ai',
+      ) as { additional_kwargs?: { __requestUsage?: { totalPrice?: number } } };
+      expect(aiMsgFromEmit.additional_kwargs?.__requestUsage?.totalPrice).toBe(
+        0.1441275,
+      );
+    });
+
     it('stopThread() emits stop event with stopReason=null (explicit clear)', async () => {
       // Register an active run for 'thread-1'
       const runnableConfig = {
@@ -2183,21 +2235,7 @@ describe('SimpleAgent', () => {
         runnableConfig:
           runnableConfig as unknown as RunnableConfig<BaseAgentConfigurable>,
         threadId: 'thread-1',
-        lastState: {
-          messages: [],
-          summary: '',
-          toolsMetadata: {},
-          toolUsageGuardActivated: false,
-          toolUsageGuardActivatedCount: 0,
-          inputTokens: 0,
-          cachedInputTokens: 0,
-          outputTokens: 0,
-          reasoningTokens: 0,
-          totalTokens: 0,
-          totalPrice: 0,
-
-          currentContext: 0,
-        },
+        lastState: buildAgentState(),
       });
 
       const emitSpy = vi.spyOn(agent as any, 'emit');

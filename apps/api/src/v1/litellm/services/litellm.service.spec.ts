@@ -391,7 +391,7 @@ describe('LitellmService', () => {
         input_tokens: 10,
         output_tokens: 20,
         total_tokens: 30,
-        output_tokens_details: {}, // empty plural — truthy, short-circuits the OR chain
+        output_tokens_details: {} as never, // empty plural — truthy, short-circuits the OR chain
         output_token_details: { reasoning: 9 }, // new 3rd-slot — silently blocked
       });
 

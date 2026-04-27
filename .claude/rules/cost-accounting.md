@@ -8,6 +8,7 @@ Rules for any code that tracks, aggregates, or displays LLM usage costs, token c
 - Subagent accumulators start at `0` on every invocation. Do NOT seed a subagent's `totalPrice` from the parent's state. Do NOT subtract a parent seed from the subagent's reported own-spend.
 - The parent's `ToolExecutorNode` spreads the returned `statistics.usage` (including `totalPrice`) into parent state via the standard reducer. That's how the parent's `totalPrice` naturally accumulates subagent costs.
 - Cost-limit enforcement is the parent's responsibility. The parent's tool-executor checks `(state.totalPrice + threadUsage.totalPrice >= effectiveLimit)` before invoking the next tool. Subagents run unbounded once invoked; the worst-case overshoot is one subagent's total cost.
+- Cost-limit checks that fire AFTER an LLM call has completed (LiteLLM has billed) MUST persist the in-flight AIMessage before throwing. The cost is already incurred — discarding the message only hides it from the per-thread rollup. Pattern: build `out`/`reasoningMessages` first, then check the limit; if the limit trips, attach the messages to `CostLimitExceededError.inFlightMessages` so the parent catch handler can emit them before the system stop message.
 
 ## Type shape
 
