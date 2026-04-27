@@ -488,9 +488,7 @@ describe('computeSubagentRollup — matrix transitions', () => {
     expect(runningResult.cost).toBeUndefined();
 
     // Second call: same subagent identity, now with completed statistics
-    const doneItems: PreparedMessage[] = [
-      makeSubagentWithPrice('s1', 0.08),
-    ];
+    const doneItems: PreparedMessage[] = [makeSubagentWithPrice('s1', 0.08)];
     const doneResult = computeSubagentRollup(doneItems);
     expect(doneResult.count).toBe(1);
     expect(doneResult.cost).toBeCloseTo(0.08, 9);
@@ -518,7 +516,7 @@ describe('computeSubagentRollup — matrix transitions', () => {
     // Thread B: two completed subagents, both fully priced
     const threadBItems: PreparedMessage[] = [
       makeSubagentWithPrice('b1', 0.05),
-      makeSubagentWithPrice('b2', 0.10),
+      makeSubagentWithPrice('b2', 0.1),
     ];
     const threadBResult = computeSubagentRollup(threadBItems);
     expect(threadBResult.count).toBe(2);

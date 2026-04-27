@@ -280,6 +280,128 @@ describe('LitellmService', () => {
       expect(result!.totalPrice).toBe(0);
     });
 
+    it('singular output_token_details with reasoning field is extracted', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_token_details: { reasoning: 7 },
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.reasoningTokens).toBe(7);
+    });
+
+    it('singular output_token_details with reasoning_tokens field alias is extracted', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_token_details: { reasoning_tokens: 5 },
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.reasoningTokens).toBe(5);
+    });
+
+    it('plural output_tokens_details regression guard: reasoning_tokens still extracted', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_tokens_details: { reasoning_tokens: 9 },
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.reasoningTokens).toBe(9);
+    });
+
+    it('returns 0 reasoningTokens when no output details are present', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.reasoningTokens).toBe(0);
+    });
+
+    it('plural output_tokens_details takes precedence over singular output_token_details', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_tokens_details: { reasoning_tokens: 11 },
+        output_token_details: { reasoning: 7 },
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.reasoningTokens).toBe(11);
+    });
+
+    it('returns 0 reasoningTokens when output_token_details is empty object', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_token_details: {},
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.reasoningTokens).toBe(0);
+    });
+
+    it('returns 0 reasoningTokens when output_token_details.reasoning is null', async () => {
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_token_details: { reasoning: null as unknown as number },
+      });
+
+      expect(result).toBeDefined();
+      expect(result!.reasoningTokens).toBe(0);
+    });
+
+    it('adversarial: empty plural output_tokens_details blocks the new singular output_token_details in the OR-chain', async () => {
+      // The OR-chain is: output_tokens_details || completion_tokens_details || output_token_details
+      // An empty object `{}` is truthy in JS — it short-circuits the chain.
+      // If a provider sends output_tokens_details: {} (no reasoning fields) alongside
+      // output_token_details: { reasoning: N }, the empty plural wins and reasoning is lost.
+      // This is a new failure mode introduced by adding output_token_details as the 3rd element:
+      // before the diff, the 3rd slot did not exist so this conflict could not arise.
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_tokens_details: {}, // empty plural — truthy, short-circuits the OR chain
+        output_token_details: { reasoning: 9 }, // new 3rd-slot — silently blocked
+      });
+
+      expect(result).toBeDefined();
+      // The OR-chain stops at the empty object; output_token_details.reasoning is never read.
+      // This documents the current (broken) behavior: reasoningTokens should be 9, but is 0.
+      // A correct implementation would skip empty/falsy-content objects in the chain.
+      expect(result!.reasoningTokens).toBe(9);
+    });
+
     // Scenario 4.3 (calculatedPrice=0, providerCost=null): model rates are zero (free model)
     // calculatedPrice resolves to 0 (not null) because rates exist but are zero-valued.
     // Result must be 0, not null — the pricing is known (zero), just cheap.

@@ -146,12 +146,13 @@ export class LitellmService {
     const cachedInputTokens =
       inputTokensDetails?.cached_tokens ?? inputTokensDetails?.cache_read ?? 0;
 
-    const outputTokensDetails =
-      usageMetadata?.output_tokens_details ||
-      usageMetadata?.completion_tokens_details;
     const reasoningTokens =
-      outputTokensDetails?.reasoning_tokens ??
-      outputTokensDetails?.reasoning ??
+      usageMetadata?.output_tokens_details?.reasoning_tokens ??
+      usageMetadata?.output_tokens_details?.reasoning ??
+      usageMetadata?.completion_tokens_details?.reasoning_tokens ??
+      usageMetadata?.completion_tokens_details?.reasoning ??
+      usageMetadata?.output_token_details?.reasoning_tokens ??
+      usageMetadata?.output_token_details?.reasoning ??
       0;
 
     // cachedInputTokens is a subset of inputTokens, and reasoningTokens is a subset

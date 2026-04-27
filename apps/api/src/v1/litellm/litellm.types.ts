@@ -48,6 +48,11 @@ export type UsageMetadata = Partial<ResponseUsage> & {
     reasoning_tokens?: number;
     reasoning?: number;
   };
+  output_token_details?: {
+    reasoning?: number;
+    reasoning_tokens?: number;
+    audio?: number;
+  };
   /**
    * Provider-reported cost (e.g. OpenRouter `usage.cost`).
    * Used as a fallback when per-token model rates are unavailable.

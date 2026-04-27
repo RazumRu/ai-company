@@ -476,6 +476,13 @@ export class ThreadsService {
     let userMessageCount = 0;
     const modelsUsedSet = new Set<string>();
 
+    // Guard against NaN values that bypass the `?? 0` null-coalescing operator.
+    // NaN is neither null nor undefined, so `NaN ?? 0` returns NaN. Math.max(x, NaN)
+    // propagates NaN, poisoning the accumulator. This helper normalises all non-finite
+    // numbers (NaN, Infinity, -Infinity) and null/undefined to 0.
+    const toFinite = (n: number | null | undefined): number =>
+      typeof n === 'number' && Number.isFinite(n) ? n : 0;
+
     // Accumulate message-based total to capture in-progress subagent costs.
     // Checkpoint-based totalUsage only includes subagent costs after the subagent completes
     // (ToolExecutorNode folds subagent usage into parent state on return).
@@ -486,6 +493,7 @@ export class ThreadsService {
       outputTokens: 0,
       reasoningTokens: 0,
       totalTokens: 0,
+      currentContext: 0,
       totalPriceDecimal: new Decimal(0),
     };
 
@@ -498,6 +506,10 @@ export class ThreadsService {
       messageTotalUsage.totalTokens += usage.totalTokens;
       messageTotalUsage.totalPriceDecimal =
         messageTotalUsage.totalPriceDecimal.plus(usage.totalPrice ?? 0);
+      messageTotalUsage.currentContext = Math.max(
+        messageTotalUsage.currentContext,
+        toFinite(usage.currentContext),
+      );
     };
 
     /**
@@ -785,9 +797,11 @@ export class ThreadsService {
      * seeded as a fallback only — message-scan entries overwrite it for
      * any nodeId that appears in messages.
      *
-     * Checkpoint remains authoritative ONLY for currentContext — it is a
-     * point-in-time context-window reading that cannot be reconstructed from
-     * messages.
+     * `currentContext`: checkpoint authoritative WHEN populated; messages
+     * authoritative WHEN checkpoint returns null (multi-agent topologies that
+     * don't write the empty-NS root checkpoint); reconciled via
+     * `Math.max(totalUsage.currentContext ?? 0, messageTotalUsage.currentContext)`
+     * — preserves the higher value, never regresses.
      */
     totalUsage = {
       inputTokens: messageTotalUsage.inputTokens,
@@ -796,7 +810,10 @@ export class ThreadsService {
       reasoningTokens: messageTotalUsage.reasoningTokens,
       totalTokens: messageTotalUsage.totalTokens,
       totalPrice: messageTotalUsage.totalPriceDecimal.toNumber(),
-      currentContext: totalUsage.currentContext,
+      currentContext: Math.max(
+        toFinite(totalUsage.currentContext),
+        messageTotalUsage.currentContext,
+      ),
     };
 
     // Build final byTool array with subCalls and toolTokens/toolPrice
