@@ -37,7 +37,6 @@ import {
   StatRow,
   TokenBadge,
   type TokenInfo,
-  TokenUsageDetail,
   toTokenInfo,
 } from './token-display';
 export type { TokenInfo } from './token-display';
@@ -509,7 +508,7 @@ function UsageRows({ usage, label }: { usage: RawTokenUsage; label?: string }) {
 /**
  * Shared popover content panel for tool call inspection.
  * Renders tool label, input args, output, and token usage using shared
- * sub-components (SectionLabel, JsonDisplay, StatusBadge, TokenUsageDetail).
+ * sub-components (SectionLabel, JsonDisplay, StatusBadge).
  *
  * Used inside ToolBlock popover and as pre-rendered popoverContent for
  * SubagentBlock / CommunicationBlock.
@@ -1536,6 +1535,9 @@ export function SubagentBlock(props: SubagentBlockProps) {
 
 // ─── StatFooter ───────────────────────────────────────────────────────────────
 
+// Cross-component contract; re-imported by ThreadMessagesView.tsx and
+// threadMessagesViewUtils.ts. Inline export matches existing file convention
+// (SubagentBlockProps, CommunicationBlockProps).
 export interface SubagentRollup {
   count: number;
   cost: number | undefined;
@@ -1557,7 +1559,12 @@ export function StatFooter({
   if (!tokens) {
     return null;
   }
+  // "total" suffix on the primary line is preserved when count > 0 even if
+  // cost is undefined — it is a count signal, not a price signal. Footnote
+  // (the "incl. N subagents $X.XX" line) is suppressed when cost is undefined
+  // to avoid the misleading "$—" placeholder. See plan O1 resolution.
   const showRollup = subagentRollup !== undefined && subagentRollup.count > 0;
+  const showRollupFootnote = showRollup && subagentRollup.cost !== undefined;
   return (
     <div className="flex flex-col gap-0.5 pt-0.5">
       <div className="flex items-center gap-3 text-[10px] text-muted-foreground flex-wrap">
@@ -1574,7 +1581,7 @@ export function StatFooter({
           </span>
         )}
       </div>
-      {showRollup && (
+      {showRollupFootnote && (
         <div className="text-[10px] text-muted-foreground pl-0.5">
           incl. {subagentRollup.count} subagent
           {subagentRollup.count !== 1 ? 's' : ''}{' '}

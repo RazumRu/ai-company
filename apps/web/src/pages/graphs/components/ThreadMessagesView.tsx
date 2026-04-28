@@ -63,6 +63,7 @@ import type {
 } from './threadMessages/threadMessagesTypes';
 import {
   centeredStateStyle,
+  computeSubagentRollup,
   ensureThinkingIndicatorStyles,
   extractDurationMs,
   extractToolErrorText,
@@ -1849,39 +1850,4 @@ export function shouldShowCostLimitBanner(
   isThreadStopped: boolean,
 ): boolean {
   return stopReason === 'cost_limit' && isThreadStopped;
-}
-
-/**
- * Computes the subagent rollup for a parent CommunicationBlock or SubagentBlock.
- *
- * Walks the array of PreparedMessage children rendered inside the parent block
- * and sums the `statistics.usage.totalPrice` of all subagent-typed items.
- *
- * Rules:
- * - Only `type === 'subagent'` items are counted (communication blocks are not
- *   subagent invocations; they are peer agent communications).
- * - `count` increments for every subagent item, including those without pricing.
- * - `cost` is the sum of all defined `statistics.usage.totalPrice` values. If
- *   none of the subagent items have a defined price, `cost` is `undefined` so
- *   the caller can distinguish "zero subagents priced" from "all priced at $0".
- */
-export function computeSubagentRollup(children: PreparedMessage[]): {
-  count: number;
-  cost: number | undefined;
-} {
-  let count = 0;
-  let cost: number | undefined;
-
-  for (const item of children) {
-    if (item.type !== 'subagent') {
-      continue;
-    }
-    count++;
-    const price = item.statistics?.usage?.totalPrice;
-    if (typeof price === 'number') {
-      cost = (cost ?? 0) + price;
-    }
-  }
-
-  return { count, cost };
 }

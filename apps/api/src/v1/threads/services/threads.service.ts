@@ -109,7 +109,6 @@ export class ThreadsService {
   ): Promise<ThreadMessageDto[]> {
     const userId = ctx.checkSub();
 
-    // First verify the thread exists and belongs to the user
     const thread = await this.threadDao.getOne({
       id: threadId,
       createdBy: userId,
@@ -131,7 +130,6 @@ export class ThreadsService {
   async deleteThread(ctx: AppContextStorage, threadId: string): Promise<void> {
     const userId = ctx.checkSub();
 
-    // First verify the thread exists and belongs to the user
     const thread = await this.threadDao.getOne({
       id: threadId,
       createdBy: userId,
@@ -141,7 +139,6 @@ export class ThreadsService {
       throw new NotFoundException('THREAD_NOT_FOUND');
     }
 
-    // Delete all messages associated with this thread first
     await this.messagesDao.hardDelete({ threadId });
 
     // Emit thread delete notification before removing the thread record
@@ -153,7 +150,6 @@ export class ThreadsService {
       data: thread,
     });
 
-    // Then delete the thread itself
     await this.threadDao.deleteById(threadId);
   }
 
@@ -379,7 +375,6 @@ export class ThreadsService {
   ): Promise<ThreadUsageStatisticsDto> {
     const userId = ctx.checkSub();
 
-    // First verify the thread exists and belongs to the user
     const thread = await this.threadDao.getOne({
       id: threadId,
       createdBy: userId,
@@ -543,7 +538,13 @@ export class ThreadsService {
           (prev?.reasoningTokens ?? 0) + (usage.reasoningTokens ?? 0),
         totalTokens: (prev?.totalTokens ?? 0) + usage.totalTokens,
         totalPrice: prev?.totalPrice ?? 0,
-        currentContext: usage.currentContext ?? prev?.currentContext ?? 0,
+        // Mirrors accumulateUsage (lines ~509-512): toFinite + Math.max protect against
+        // NaN poisoning of per-node currentContext. The ?? 0 reconciliation is replaced
+        // with explicit toFinite normalization so legacy NaN values don't propagate.
+        currentContext: Math.max(
+          toFinite(usage.currentContext),
+          toFinite(prev?.currentContext),
+        ),
       });
       const prevPriceDecimal = byNodePriceDecimal.get(nodeId) ?? new Decimal(0);
       byNodePriceDecimal.set(

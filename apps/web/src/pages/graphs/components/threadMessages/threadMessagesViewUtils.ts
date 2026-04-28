@@ -1,7 +1,8 @@
 import isPlainObject from 'lodash/isPlainObject';
 import type { JsonValue } from 'type-fest';
 
-import type { MessagePayload } from './threadMessagesTypes';
+import type { SubagentRollup } from '../../../../components/ui/thread-blocks';
+import type { MessagePayload, PreparedMessage } from './threadMessagesTypes';
 
 // ────────────────────────────────────────────
 // Token / price formatting
@@ -395,3 +396,46 @@ export const extractShellCommandFromArgs = (
   }
   return undefined;
 };
+
+// ────────────────────────────────────────────
+// Subagent rollup
+// ────────────────────────────────────────────
+
+/**
+ * Strict-partial policy: returns `cost: undefined` when ANY subagent is unpriced,
+ * so the StatFooter footnote is suppressed (avoids misleading partial-sum display).
+ * - All-priced → returns the sum.
+ * - Zero-subagent → returns `{ count: 0, cost: undefined }` (compatibility branch).
+ * - Mixed (any unpriced) → `cost: undefined` (footnote suppressed).
+ * - Subagents with non-finite `totalPrice` (NaN, Infinity, -Infinity) are also treated
+ *   as unpriced — defense-in-depth against upstream bugs that produce non-finite numerics.
+ * See plan key decision C-MED-1.
+ */
+export function computeSubagentRollup(
+  children: PreparedMessage[],
+): SubagentRollup {
+  let count = 0;
+  let cost = 0;
+  let hasUnpriced = false;
+
+  for (const item of children) {
+    if (item.type !== 'subagent') {
+      continue;
+    }
+    count++;
+    const price = item.statistics?.usage?.totalPrice;
+    if (Number.isFinite(price)) {
+      cost += price as number;
+    } else {
+      hasUnpriced = true;
+    }
+  }
+
+  if (count === 0) {
+    return { count: 0, cost: undefined };
+  }
+  if (hasUnpriced) {
+    return { count, cost: undefined };
+  }
+  return { count, cost };
+}

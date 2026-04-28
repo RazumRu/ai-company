@@ -236,7 +236,11 @@ export class InvokeLlmNode extends BaseNode<
         typeof cfg.configurable?.effective_cost_limit_usd === 'number'
           ? cfg.configurable.effective_cost_limit_usd
           : null;
-      const projectedTotal = state.totalPrice + (threadUsage?.totalPrice ?? 0);
+      // Defense in depth against legacy checkpoints predating state.totalPrice.
+      // LangGraph reducer default at base-agent.ts:212-215 is 0 for fresh threads,
+      // but pre-fix checkpoints may not encode the field — guard against undefined.
+      const projectedTotal =
+        (state.totalPrice ?? 0) + (threadUsage?.totalPrice ?? 0);
       if (effectiveLimit !== null && projectedTotal >= effectiveLimit) {
         throw new CostLimitExceededError(effectiveLimit, projectedTotal, [
           ...out,

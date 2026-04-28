@@ -378,28 +378,56 @@ describe('LitellmService', () => {
       expect(result!.reasoningTokens).toBe(0);
     });
 
-    it('adversarial: empty plural output_tokens_details blocks the new singular output_token_details in the OR-chain', async () => {
-      // The OR-chain is: output_tokens_details || completion_tokens_details || output_token_details
-      // An empty object `{}` is truthy in JS — it short-circuits the chain.
-      // If a provider sends output_tokens_details: {} (no reasoning fields) alongside
-      // output_token_details: { reasoning: N }, the empty plural wins and reasoning is lost.
-      // This is a new failure mode introduced by adding output_token_details as the 3rd element:
-      // before the diff, the 3rd slot did not exist so this conflict could not arise.
+    it('adversarial: empty plural output_tokens_details still allows the new singular output_token_details to feed reasoningTokens via the field-level ?? chain', async () => {
+      // The `??` operator only short-circuits on null/undefined, NOT on `{}`.
+      // So the field-level chain:
+      //   output_tokens_details?.reasoning_tokens ??
+      //   output_tokens_details?.reasoning ??
+      //   completion_tokens_details?.reasoning_tokens ??
+      //   completion_tokens_details?.reasoning ??
+      //   output_token_details?.reasoning_tokens ??
+      //   output_token_details?.reasoning ??
+      //   0
+      // evaluates each field individually. `output_tokens_details?.reasoning_tokens` on an
+      // empty object `{}` returns `undefined` (the field does not exist), so `??` advances
+      // to the next step. Eventually `output_token_details?.reasoning` returns 9.
+      // This test pins the field-level (NOT object-level) `??` chain semantic.
       const svc = createSvc(null);
 
       const result = await svc.extractTokenUsageFromResponse('gpt-4', {
         input_tokens: 10,
         output_tokens: 20,
         total_tokens: 30,
-        output_tokens_details: {} as never, // empty plural — truthy, short-circuits the OR chain
-        output_token_details: { reasoning: 9 }, // new 3rd-slot — silently blocked
+        output_tokens_details: {} as never, // empty plural — field accesses return undefined, so ?? advances
+        output_token_details: { reasoning: 9 }, // reached because all earlier ?? steps returned undefined
       });
 
       expect(result).toBeDefined();
-      // The OR-chain stops at the empty object; output_token_details.reasoning is never read.
-      // This documents the current (broken) behavior: reasoningTokens should be 9, but is 0.
-      // A correct implementation would skip empty/falsy-content objects in the chain.
+      // `{}` fields return undefined; `??` is not short-circuited by `{}`; output_token_details.reasoning is read.
       expect(result!.reasoningTokens).toBe(9);
+    });
+
+    it('adversarial: explicit zero on output_tokens_details.reasoning_tokens does NOT allow the next ?? step; reasoningTokens is 0 not 9', async () => {
+      // The `??` operator short-circuits on any defined value including `0`.
+      // `0 ?? 9` returns `0` — it does NOT advance past the first defined result.
+      // This is the semantic difference from `||`: `0 || 9` would return 9.
+      // This paired test pins the actual `??` semantic: explicit zero is preserved,
+      // not overwritten by a later field with a higher value.
+      // Any future `??` → `||` refactor on the reasoningTokens chain would cause this test
+      // to fail (since `0 || 9 === 9`, but the correct answer is 0).
+      const svc = createSvc(null);
+
+      const result = await svc.extractTokenUsageFromResponse('gpt-4', {
+        input_tokens: 10,
+        output_tokens: 20,
+        total_tokens: 30,
+        output_tokens_details: { reasoning_tokens: 0 }, // explicit zero — ?? stops here
+        output_token_details: { reasoning: 9 }, // never reached because 0 is defined (not null/undefined)
+      });
+
+      expect(result).toBeDefined();
+      // `0 ?? 9` returns 0; the explicit zero from output_tokens_details is preserved.
+      expect(result!.reasoningTokens).toBe(0);
     });
 
     // Scenario 4.3 (calculatedPrice=0, providerCost=null): model rates are zero (free model)

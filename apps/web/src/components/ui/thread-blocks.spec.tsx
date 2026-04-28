@@ -297,16 +297,28 @@ describe('StatFooter — subagentRollup annotation', () => {
     expect(footnote.textContent).toContain('$0.080');
   });
 
-  it('renders incl. line showing "$—" when cost is undefined', () => {
+  it('suppresses footnote when cost is undefined (post C-HIGH-1 fix)', () => {
     render(
       <StatFooter
         tokens={baseTokens}
         subagentRollup={{ count: 2, cost: undefined }}
       />,
     );
-    const footnote = screen.getByText(/incl\.\s+2 subagents/);
-    // formatUsd(undefined) returns '$—'
-    expect(footnote.textContent).toContain('$—');
+    // Footnote line must be absent — showing "$—" would be misleading
+    expect(screen.queryByText(/incl\./)).toBeNull();
+    // "total" suffix on the primary line must still appear — it is a count signal
+    expect(screen.getByText('total')).toBeInTheDocument();
+  });
+
+  it('all-priced regression guard: footnote IS present with formatted cost', () => {
+    render(
+      <StatFooter
+        tokens={baseTokens}
+        subagentRollup={{ count: 2, cost: 0.0183 }}
+      />,
+    );
+    expect(screen.getByText(/incl\.\s+2 subagents/)).toBeInTheDocument();
+    expect(screen.getByText(/\$0\.018/)).toBeInTheDocument();
   });
 });
 
@@ -346,8 +358,8 @@ describe('SubagentBlock — nested subagent footer annotation (consumer mode)', 
     expect(screen.getByText(/incl\.\s+2 subagents/)).toBeInTheDocument();
   });
 
-  // Test matrix: "Subagent without cost data" — cost undefined, count still shows
-  it('shows count annotation with $— cost when subagent cost is undefined', () => {
+  // Test matrix: "Subagent without cost data" — footnote suppressed, "total" suffix preserved
+  it('SubagentBlock: footnote suppressed when subagent cost is undefined; "total" suffix still shows', () => {
     render(
       <SubagentBlock
         status="done"
@@ -358,9 +370,10 @@ describe('SubagentBlock — nested subagent footer annotation (consumer mode)', 
         <div>inner content</div>
       </SubagentBlock>,
     );
+    // Footnote must be absent — showing "$—" would be misleading
+    expect(screen.queryByText(/incl\./)).toBeNull();
+    // "total" suffix must still appear — it is a count signal
     expect(screen.getByText('total')).toBeInTheDocument();
-    const footnote = screen.getByText(/incl\.\s+1 subagent/);
-    expect(footnote.textContent).toContain('$—');
   });
 });
 
@@ -473,9 +486,10 @@ describe('CommunicationBlock — rollup transitions', () => {
    * Matrix row: "Running→done transition with fresh REST fetch"
    *
    * Renders CommunicationBlock in consumer mode with status="running" and a
-   * subagentRollup whose cost is undefined (subagents still running). Asserts
-   * the footer shows "$—". Then re-renders the same element with a concrete
-   * cost and status="done". Asserts the footer now shows the formatted amount.
+   * subagentRollup whose cost is undefined (subagents still running). Post
+   * C-HIGH-1 fix: footnote is suppressed when cost is undefined; "total" suffix
+   * still appears. Then re-renders with a concrete cost and status="done".
+   * Asserts the footer now shows the formatted amount.
    */
   it('footer updates from running to done state', () => {
     const statisticsBase = {
@@ -491,10 +505,10 @@ describe('CommunicationBlock — rollup transitions', () => {
       </CommunicationBlock>,
     );
 
-    // Running state: cost not yet available — footer must show "$—"
-    const runningFootnote = screen.getByText(/incl\.\s+2 subagents/);
-    expect(runningFootnote).toBeInTheDocument();
-    expect(runningFootnote.textContent).toContain('$—');
+    // Running state: cost not yet available — footnote suppressed (post C-HIGH-1 fix)
+    expect(screen.queryByText(/incl\./)).toBeNull();
+    // "total" suffix still appears as a count signal
+    expect(screen.getByText('total')).toBeInTheDocument();
 
     // Transition to done with concrete cost
     rerender(
@@ -510,7 +524,7 @@ describe('CommunicationBlock — rollup transitions', () => {
     const doneFootnote = screen.getByText(/incl\.\s+2 subagents/);
     expect(doneFootnote).toBeInTheDocument();
     expect(doneFootnote.textContent).toContain('$0.234');
-    // Must no longer show the dash placeholder
+    // Must not show the dash placeholder
     expect(doneFootnote.textContent).not.toContain('$—');
   });
 });

@@ -1778,6 +1778,8 @@ describe('ThreadsService', () => {
       );
 
       expect(result.total.totalPrice).toBeCloseTo(0.07, 4);
+      // B-MED-4: currentContext is authoritative from checkpoint for Running threads
+      expect(result.total.currentContext).toBe(500);
     });
 
     it('matrix row 2 — all priced, done: message-scan wins for additive fields; currentContext from checkpoint', async () => {
@@ -1905,6 +1907,61 @@ describe('ThreadsService', () => {
       // Message-scan sum: 0.1021 + 0.2 + 0.1 = 0.4021
       expect(result.total.totalPrice).toBeCloseTo(0.4021, 4);
       expect(result.total.totalTokens).toBeGreaterThan(0);
+    });
+
+    it('B-HIGH-2: messages-only path populates reasoningTokens when checkpoint returns null', async () => {
+      // Deletion test: removing `messageTotalUsage.reasoningTokens += usage.reasoningTokens || 0`
+      // at the accumulateUsage call site must break this test.
+      // Checkpoint is null (e.g. multi-agent topology with no root checkpoint).
+      // Messages carry reasoningTokens — the message-scan path must accumulate them.
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-bhigh2-1',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.01,
+            reasoningTokens: 50,
+          },
+        }),
+        createMockMessageEntity({
+          id: 'msg-bhigh2-2',
+          nodeId: 'node-1',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280,
+            totalPrice: 0.02,
+            reasoningTokens: 50,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // Each message contributes 50 reasoningTokens; sum = 100
+      expect(result.total.reasoningTokens).toBe(100);
     });
 
     it('populates byNode from message-scan when checkpoint byNode is empty', async () => {
@@ -2542,8 +2599,8 @@ describe('ThreadsService', () => {
       // NaN poisons Math.max in accumulateUsage; the fix requires an isFinite guard.
       // Without the fix, result.total.currentContext === NaN (not a finite number).
       expect(Number.isFinite(result.total.currentContext)).toBe(true);
-      // The second message has currentContext 50_000; result should be 50_000 or 0 (not NaN)
-      expect(result.total.currentContext).toBeGreaterThanOrEqual(0);
+      // msg-1 has NaN → toFinite(NaN) = 0; msg-2 has 50_000 → Math.max(0, 50_000) = 50_000
+      expect(result.total.currentContext).toBe(50_000);
       // Additive fields must not be corrupted by the NaN
       expect(result.total.inputTokens).toBe(300);
     });
@@ -2589,6 +2646,68 @@ describe('ThreadsService', () => {
       // Additive fields must accumulate correctly regardless of NaN context
       expect(result.total.inputTokens).toBe(50);
       expect(result.total.totalTokens).toBe(75);
+    });
+
+    it('B-MED-1: accumulateByNode normalises NaN currentContext via toFinite (sibling-consistent with accumulateUsage)', async () => {
+      // Deletion test: removing the toFinite + Math.max change in Step 7 (threads.service.ts)
+      // must break this test, reverting to the bare ?? 0 which does not handle NaN.
+      // Two messages share the same nodeId='node-x':
+      //   msg-1: currentContext = NaN  → toFinite(NaN) = 0
+      //   msg-2: currentContext = 100  → toFinite(100) = 100
+      //   Math.max(0, 100) = 100       → byNode['node-x'].currentContext === 100
+      // Without toFinite: NaN ?? 0 = NaN (nullish coalescing does not catch NaN),
+      // and NaN propagates into byNode['node-x'].currentContext, breaking downstream display.
+      const mockThread = createMockThreadEntity({
+        status: ThreadStatus.Done,
+        externalThreadId: 'external-thread-123',
+      });
+
+      const mockMessages = [
+        createMockMessageEntity({
+          id: 'msg-bmed1-1',
+          nodeId: 'node-x',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 100,
+            outputTokens: 50,
+            totalTokens: 150,
+            totalPrice: 0.01,
+            currentContext: NaN,
+          } as unknown as MessageEntity['requestTokenUsage'],
+        }),
+        createMockMessageEntity({
+          id: 'msg-bmed1-2',
+          nodeId: 'node-x',
+          role: MessageRole.AI,
+          name: undefined,
+          requestTokenUsage: {
+            inputTokens: 200,
+            outputTokens: 80,
+            totalTokens: 280,
+            totalPrice: 0.02,
+            currentContext: 100,
+          },
+        }),
+      ];
+
+      vi.spyOn(threadsDao, 'getOne').mockResolvedValue(mockThread);
+      vi.spyOn(messagesDao, 'getAll').mockResolvedValue(mockMessages);
+      vi.spyOn(checkpointStateService, 'getThreadTokenUsage').mockResolvedValue(
+        null,
+      );
+
+      const result = await service.getThreadUsageStatistics(
+        mockCtx,
+        mockThreadId,
+      );
+
+      // toFinite(NaN)=0, toFinite(100)=100; Math.max(0, 100)=100 — not NaN, not 0
+      expect(result.byNode['node-x']).toBeDefined();
+      expect(result.byNode['node-x']!.currentContext).toBe(100);
+      expect(Number.isFinite(result.byNode['node-x']!.currentContext)).toBe(
+        true,
+      );
     });
   });
 

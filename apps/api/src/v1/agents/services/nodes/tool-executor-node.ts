@@ -112,6 +112,10 @@ export class ToolExecutorNode extends BaseNode<
           ? cfg.configurable.effective_cost_limit_usd
           : null;
       if (effectiveLimit !== null && state.totalPrice >= effectiveLimit) {
+        // Pre-invocation: no in-flight messages exist yet (no LLM call has been made
+        // in this node). The 2-arg ctor is intentional. Asymmetric with the
+        // post-tool-aggregate throw further below which DOES carry interleavedMessages
+        // — see Step 5 sister-site fix.
         throw new CostLimitExceededError(effectiveLimit, state.totalPrice);
       }
     }
@@ -236,7 +240,6 @@ export class ToolExecutorNode extends BaseNode<
             }
             toolInvokeResult = iterResult.value;
           } else {
-            // Standard path (unchanged)
             const rawResult = (await tool.invoke<
               unknown,
               ToolRunnableConfig<BaseAgentConfigurable>
@@ -430,7 +433,11 @@ export class ToolExecutorNode extends BaseNode<
         // seeds it to 0 and accumulates in-place).
         state.totalPrice + (aggregatedToolUsage?.totalPrice ?? 0),
       );
-      throw new CostLimitExceededError(effectiveLimit, totalSpend);
+      throw new CostLimitExceededError(
+        effectiveLimit,
+        totalSpend,
+        updateMessagesListWithMetadata(interleavedMessages, cfg),
+      );
     }
 
     const toolsMetadataUpdate = results.reduce(

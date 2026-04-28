@@ -107,9 +107,11 @@ import {
   type InnerMsg,
   ReasoningBlock,
   ShellBlock,
+  StatFooter,
   StatusTag,
   StreamingReasoningBlock,
   SubagentBlock,
+  type SubagentRollup,
   ToolBlock,
 } from '@/components/ui/thread-blocks';
 import {
@@ -2372,6 +2374,54 @@ function ThreadBlocksSection() {
                 duration: '1.8s',
               }}
               messageKind="tool"
+            />
+          </div>
+        </div>
+      </Row>
+      <Row label="StatFooter — subagentRollup variants" code="StatFooter">
+        <div className="w-full max-w-2xl space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-32">
+              All priced:
+            </span>
+            <StatFooter
+              tokens={{ total: 50000, cost: '$0.183', duration: '5.0s' }}
+              subagentRollup={
+                { count: 2, cost: 0.0183 } satisfies SubagentRollup
+              }
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-32">
+              All unpriced:
+            </span>
+            <StatFooter
+              tokens={{ total: 50000, cost: '$0.183', duration: '5.0s' }}
+              subagentRollup={
+                { count: 2, cost: undefined } satisfies SubagentRollup
+              }
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-32">
+              Mixed (post-fix):
+            </span>
+            <StatFooter
+              tokens={{ total: 75000, cost: '$0.250', duration: '8.0s' }}
+              subagentRollup={
+                { count: 3, cost: undefined } satisfies SubagentRollup
+              }
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-32">
+              Singular:
+            </span>
+            <StatFooter
+              tokens={{ total: 25000, cost: '$0.005', duration: '2.0s' }}
+              subagentRollup={
+                { count: 1, cost: 0.005 } satisfies SubagentRollup
+              }
             />
           </div>
         </div>

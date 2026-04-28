@@ -5,6 +5,7 @@ import { Tiktoken, TiktokenModel } from 'js-tiktoken/lite';
 
 import { LiteLlmModelDto } from '../dto/models.dto';
 import {
+  AggregatedTokenUsage,
   LiteLLMModelInfo,
   LLMTokenCostRates,
   RequestTokenUsage,
@@ -76,9 +77,20 @@ export class LitellmService {
     return tiktoken.encode(text).length;
   }
 
+  /**
+   * Sums an array of per-request token usages into a single aggregate.
+   *
+   * Returns `null` when no input usage was provided (all elements are null/undefined).
+   * When non-null, `totalPrice` is always a number (zero-coerced from missing/unknown
+   * pricing inputs via `Decimal.toNumber()`). Callers MUST NOT need `?? 0` or
+   * `typeof === 'number'` guards on the returned `totalPrice`. This contract widens
+   * `RequestTokenUsage.totalPrice` (which is `number | undefined`) for the sum-result
+   * use case only — per-message ingestion paths still preserve `undefined` to distinguish
+   * unpriced calls.
+   */
   sumTokenUsages(
     usages: (RequestTokenUsage | null | undefined)[],
-  ): RequestTokenUsage | null {
+  ): AggregatedTokenUsage | null {
     let inputTokens = 0;
     let cachedInputTokens = 0;
     let outputTokens = 0;
