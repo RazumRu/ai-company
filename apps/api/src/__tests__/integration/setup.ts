@@ -21,6 +21,7 @@ import {
   MockLlmModule,
 } from './mocks/mock-llm/mock-llm.module';
 import { MockLlmService } from './mocks/mock-llm/mock-llm.service';
+import { applyDefaults } from './mocks/mock-llm/mock-llm-defaults.utils';
 import {
   getMockLlmService,
   setMockLlmService,
@@ -127,6 +128,11 @@ export const createTestModule = async (
   // Bridge the DI instance to the prototype patch singleton and reset per-test state.
   const mockLlm = moduleRef.get(MockLlmService, { strict: false });
   mockLlm.reset();
+  // Pre-register catch-all chat/finish/embeddings stubs so test files that
+  // pre-date the per-test fixture-registration migration don't throw on every
+  // LLM call. Migrated tests typically call `mockLlm.reset()` in a beforeEach
+  // before registering specific fixtures, which clears these defaults.
+  applyDefaults(mockLlm);
   setMockLlmService(mockLlm);
 
   const adapter = new FastifyAdapter();

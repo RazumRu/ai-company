@@ -575,10 +575,14 @@ export class GraphRevisionService {
         status: GraphRevisionStatus.Applying,
       });
 
+      // The notification schema validates `data` as `instanceof GraphRevisionEntity`,
+      // so we must emit the entity itself, not a spread (which produces a POJO).
+      // `nativeUpdate` doesn't sync the in-memory entity, so update it explicitly.
+      revision.status = GraphRevisionStatus.Applying;
       await this.notificationsService.emit({
         type: NotificationEvent.GraphRevisionApplying,
         graphId: revision.graphId,
-        data: { ...revision, status: GraphRevisionStatus.Applying },
+        data: revision,
       });
     }
 
@@ -661,13 +665,11 @@ export class GraphRevisionService {
 
     // Emit after Phase 3 transaction commits so the enrichment handler
     // can read the committed Applied status from the database.
+    revision.status = GraphRevisionStatus.Applied;
     await this.notificationsService.emit({
       type: NotificationEvent.GraphRevisionApplied,
       graphId: revision.graphId,
-      data: {
-        ...revision,
-        status: GraphRevisionStatus.Applied,
-      },
+      data: revision,
     });
   }
 
@@ -724,14 +726,12 @@ export class GraphRevisionService {
       }
     }
 
+    revision.status = GraphRevisionStatus.Failed;
+    revision.error = error.message;
     await this.notificationsService.emit({
       type: NotificationEvent.GraphRevisionFailed,
       graphId: revision.graphId,
-      data: {
-        ...revision,
-        status: GraphRevisionStatus.Failed,
-        error: error.message,
-      },
+      data: revision,
     });
   }
 

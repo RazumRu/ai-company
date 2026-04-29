@@ -55,23 +55,22 @@ pnpm lint                             # Lint without fixing (to see remaining is
 
 ### Testing
 
-**⚠️ CRITICAL**: Always use the `pnpm run` / `pnpm` package.json scripts to run tests. Never call test runners directly (e.g. `vitest`, `npx vitest`). Never run full test suites — always target specific files.
+**⚠️ CRITICAL**: Always use the `pnpm run` / `pnpm` package.json scripts to run tests. Never call test runners directly (e.g. `vitest`, `npx vitest`).
 
 ```bash
 # ✅ CORRECT — always use package.json scripts
 pnpm test:unit                        # Vitest unit tests (*.spec.ts) — mandatory
-pnpm test:integration {filename}      # Run ONLY the related integration test file
+pnpm test:integration {filename}      # Target one integration file (preferred for iteration)
+pnpm test:integration                 # Run the full integration suite (allowed — LLM calls are mocked via MockLlmService)
 
 # ❌ WRONG — never call test runners directly
 # vitest run
 # npx vitest
 # pnpm vitest run
 
-# ❌ WRONG — NEVER run full test suites
-# pnpm test                           # runs everything — FORBIDDEN
-# pnpm test:integration               # runs ALL integration tests — FORBIDDEN
-
-# ⚠️  NEVER run bare `pnpm test:integration` without a filename — always target the specific file
+# Iteration tip: target a specific file with `pnpm test:integration <file>` to keep the loop tight.
+# The bulk run is fine for verification (e.g. before pushing) but slower because integration tests run
+# sequentially (`fileParallelism: false` in apps/api/vitest.config.ts).
 
 # E2E (Cypress) — requires server running + deps up:
 cd apps/api
@@ -311,9 +310,9 @@ When all four are set, the `GET /api/system/settings` endpoint returns `githubAp
 ## Testing conventions
 
 - **Always use package.json scripts**: Run tests via `pnpm test:unit`, `pnpm test:integration {filename}`, etc. **Never** invoke test runners directly (`vitest`, `npx vitest`, `pnpm vitest run`).
-- **Never run full test suites**: `pnpm test` and bare `pnpm test:integration` (without a filename) are **forbidden**. Always target a specific scope.
+- **Iteration vs verification**: `pnpm test` (everything) is forbidden — too coarse. `pnpm test:integration` (whole integration suite) is **allowed** because LLM calls are mocked via `MockLlmService`. Prefer the targeted form `pnpm test:integration {filename}` while iterating; the bulk form is for pre-push verification.
 - **Unit tests** (`*.spec.ts`): placed next to the source file. Run with `pnpm test:unit`. Prefer updating an existing spec file over creating a new one.
-- **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). **Mandatory** when modifying code that already has integration tests — always run with a specific filename: `pnpm test:integration {filename}`. **NEVER** run bare `pnpm test:integration` without a filename.
+- **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). **Mandatory** when modifying code that already has integration tests — run with a specific filename while iterating, run `pnpm test:integration` to verify the suite.
 - **E2E tests** (`*.cy.ts`): in `apps/api/cypress/e2e/`. Smoke-test endpoints over HTTP. Require a running server + deps.
 - **E2E type safety**: When creating or modifying E2E tests, always regenerate API type definitions first (`cd apps/api && pnpm test:e2e:generate-api`). E2E helpers and tests **must** import request/response types from `../../api-definitions` (e.g. `import type { GraphDto, GetAllGraphsData } from '../../api-definitions'`) instead of defining inline types. Use the generated `*Data['query']` types for query parameters and the generated `*Dto` types for response bodies.
 - **Must-fail policy**: Tests must never conditionally skip based on missing env vars or services. If a prerequisite is absent, the test must fail with a clear error — no `it.skip` or early returns.

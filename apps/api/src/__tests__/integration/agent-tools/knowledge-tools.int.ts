@@ -220,16 +220,17 @@ describe('Knowledge tools (integration)', () => {
     async () => {
       const keyword = 'zephyrox';
       const content = `Alpha document content ${keyword} and more text.`;
+      const alphaTag = `alpha-tag-${randomUUID()}`;
       const doc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Alpha doc',
         content,
-        tags: ['alpha-tag'],
+        tags: [alphaTag],
       });
       createdDocIds.push(doc.id);
 
       const chunksResult = await searchChunksTool.invoke(
         { docIds: [doc.publicId], query: keyword, topK: 3 },
-        { tags: ['alpha-tag'] },
+        { tags: [alphaTag] },
         {
           configurable: {
             thread_id: 'thread-1',
@@ -245,7 +246,7 @@ describe('Knowledge tools (integration)', () => {
 
       const chunkResult = await getChunksTool.invoke(
         { chunkIds: [chunkSnippets[0]!.chunkPublicId] },
-        { tags: ['alpha-tag'] },
+        { tags: [alphaTag] },
         {
           configurable: {
             thread_id: 'thread-1',
@@ -281,8 +282,9 @@ describe('Knowledge tools (integration)', () => {
 
     // Ensure the update happens in a different millisecond so updatedAt changes.
     // With the mock LLM (no network latency), createDoc and updateDoc can finish
-    // within the same millisecond, making updatedAt identical.
-    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+    // within the same millisecond, making updatedAt identical. 25ms gives enough
+    // headroom on slow CI hosts and clocks with coarse millisecond resolution.
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
 
     const updated = await knowledgeService.updateDoc(
       contextDataStorage,
@@ -304,15 +306,20 @@ describe('Knowledge tools (integration)', () => {
     async () => {
       const alphaKeyword = 'solaris';
       const betaKeyword = 'umbria';
+      // Per-run unique tags so leftover Qdrant chunks from prior tests in this
+      // file (afterEach only deletes Postgres rows; Qdrant is wiped in afterAll)
+      // cannot match this test's tag filter.
+      const alphaTag = `alpha-tag-${randomUUID()}`;
+      const betaTag = `beta-tag-${randomUUID()}`;
       const alphaDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Alpha doc',
         content: `Alpha content ${alphaKeyword}.`,
-        tags: ['alpha-tag'],
+        tags: [alphaTag],
       });
       const betaDoc = await knowledgeService.createDoc(contextDataStorage, {
         title: 'Beta doc',
         content: `Beta content ${betaKeyword}.`,
-        tags: ['beta-tag'],
+        tags: [betaTag],
       });
       createdDocIds.push(alphaDoc.id, betaDoc.id);
 
@@ -336,7 +343,7 @@ describe('Knowledge tools (integration)', () => {
           query: alphaKeyword,
           topK: 5,
         },
-        { tags: ['alpha-tag'] },
+        { tags: [alphaTag] },
         {
           configurable: {
             thread_id: 'thread-1',
@@ -358,7 +365,7 @@ describe('Knowledge tools (integration)', () => {
 
       const allowedChunks = await getChunksTool.invoke(
         { chunkIds: [chunkSnippets[0]!.chunkPublicId] },
-        { tags: ['alpha-tag'] },
+        { tags: [alphaTag] },
         {
           configurable: {
             thread_id: 'thread-1',
@@ -372,7 +379,7 @@ describe('Knowledge tools (integration)', () => {
 
       const blockedChunks = await getChunksTool.invoke(
         { chunkIds: [chunkSnippets[0]!.chunkPublicId] },
-        { tags: ['beta-tag'] },
+        { tags: [betaTag] },
         {
           configurable: {
             thread_id: 'thread-1',

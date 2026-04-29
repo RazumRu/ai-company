@@ -2747,14 +2747,22 @@ describe('ThreadsService', () => {
 
       const result = await service.stopThread(mockCtx, mockThreadId);
 
+      // The direct-DB fallback also clears stale cost-limit metadata so a
+      // manual stop after an auto-stop doesn't leave a stale stopReason.
       expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
         status: ThreadStatus.Stopped,
+        metadata: expect.any(Object),
       });
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadUpdate,
         graphId: thread.graphId,
         threadId: thread.externalThreadId,
-        data: { status: ThreadStatus.Stopped },
+        data: {
+          status: ThreadStatus.Stopped,
+          stopReason: null,
+          stopCostUsd: null,
+          costLimitHit: null,
+        },
       });
       expect(result).toMatchObject({
         id: mockThreadId,
@@ -2779,12 +2787,18 @@ describe('ThreadsService', () => {
 
       expect(threadsDao.updateById).toHaveBeenCalledWith(mockThreadId, {
         status: ThreadStatus.Stopped,
+        metadata: expect.any(Object),
       });
       expect(notificationsService.emit).toHaveBeenCalledWith({
         type: NotificationEvent.ThreadUpdate,
         graphId: thread.graphId,
         threadId: thread.externalThreadId,
-        data: { status: ThreadStatus.Stopped },
+        data: {
+          status: ThreadStatus.Stopped,
+          stopReason: null,
+          stopCostUsd: null,
+          costLimitHit: null,
+        },
       });
       expect(result).toMatchObject({
         id: mockThreadId,

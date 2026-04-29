@@ -19,7 +19,10 @@ import type { MockLlmService } from './mock-llm.service';
  *  1. finish-tool variant: responds with a `finish` tool call when `finish` is
  *     among the bound tools.
  *  2. catch-all text reply: returns `"OK"` for any remaining chat request.
- *  3. deterministic embeddings stub: returns a stable 1536-dim vector derived
+ *  3. catch-all JSON reply: returns `{}` for any structured-output request so
+ *     features like summary generation, thread-name generation, query-variant
+ *     expansion, etc. don't throw `MockLlmNoMatchError` in unmigrated tests.
+ *  4. deterministic embeddings stub: returns a stable 1536-dim vector derived
  *     from the input string via a simple FNV-1a hash.
  */
 export function applyDefaults(mockLlm: MockLlmService): void {
@@ -33,6 +36,8 @@ export function applyDefaults(mockLlm: MockLlmService): void {
   );
 
   mockLlm.onChat({}, { kind: 'text', content: 'OK' });
+
+  mockLlm.onJsonRequest({}, { kind: 'json', content: {} });
 
   mockLlm.onEmbeddings(
     {},

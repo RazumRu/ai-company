@@ -14,12 +14,23 @@ export class RepoIndexDao extends BaseDao<RepoIndexEntity> {
   }
 
   async restoreById(id: string): Promise<void> {
+    // The default `softDelete` filter restricts matches to `deletedAt IS NULL`,
+    // which would make this update a no-op for the very rows we want to revive.
+    // Disable the filter so the WHERE clause can find the soft-deleted row.
     await this.getRepo().nativeUpdate(
       { id },
-      {
-        deletedAt: null,
-      },
+      { deletedAt: null },
+      { filters: { softDelete: false } },
     );
+
+    // `nativeUpdate` bypasses the unit of work, so any cached copy of this row
+    // in the identity map keeps its stale `deletedAt`. Subsequent `findOne`
+    // calls hand back the cached entity, so callers see the row as still
+    // soft-deleted. Refresh the cached entity (if present) to sync state.
+    const cached = this.em.getUnitOfWork().getById(RepoIndexEntity, id);
+    if (cached) {
+      await this.em.refresh(cached as RepoIndexEntity);
+    }
   }
 
   /**

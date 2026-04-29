@@ -8,4 +8,7 @@ import { MockLlmService } from './mock-llm.service';
 })
 export class MockLlmModule {}
 
-export { installBaseAgentPatch } from './mock-llm-patch.utils';
+export {
+  installBaseAgentPatch,
+  uninstallBaseAgentPatch,
+} from './mock-llm-patch.utils';

@@ -12,6 +12,10 @@ export type {
   MockLlmRequest,
 } from './mock-llm.types';
 export { applyDefaults } from './mock-llm-defaults.utils';
+export {
+  installBaseAgentPatch,
+  uninstallBaseAgentPatch,
+} from './mock-llm-patch.utils';
 
 export const getMockLlm = (app: INestApplication): MockLlmService =>
   app.get(MockLlmService);
