@@ -38,7 +38,6 @@ import {
   ShellBlock,
   StreamingReasoningBlock,
   SubagentBlock,
-  type SubagentRollup,
   ToolBlock,
   ToolPopoverPanel,
 } from '../../../components/ui/thread-blocks';
@@ -63,7 +62,6 @@ import type {
 } from './threadMessages/threadMessagesTypes';
 import {
   centeredStateStyle,
-  computeSubagentRollup,
   ensureThinkingIndicatorStyles,
   extractDurationMs,
   extractToolErrorText,
@@ -1001,7 +999,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
           !!it.resultText,
         );
         const isCalling = it.status === 'calling';
-        const subRollup: SubagentRollup = computeSubagentRollup(filteredInner);
 
         return (
           <div key={`work-subagent-${it.id}-${idx}`}>
@@ -1022,8 +1019,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               resultText={it.resultText}
               statistics={it.statistics}
               popoverContent={subPopover}
-              showThinkingIndicator={isCalling && filteredInner.length > 0}
-              subagentRollup={subRollup}>
+              showThinkingIndicator={isCalling && filteredInner.length > 0}>
               {(filteredInner.length > 0 || isCalling) && (
                 <CollapsibleInnerArea
                   items={filteredInner}
@@ -1077,7 +1073,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
           !!it.resultText,
         );
         const isCalling = it.status === 'calling';
-        const commRollup: SubagentRollup = computeSubagentRollup(filteredInner);
 
         return (
           <div key={`work-comm-${it.id}-${idx}`}>
@@ -1107,7 +1102,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               statistics={it.statistics}
               popoverContent={commPopover}
               showThinkingIndicator={isCalling && filteredInner.length > 0}
-              subagentRollup={commRollup}
               thinkingText={
                 commTargetName
                   ? `${commTargetName} is thinking...`
@@ -1294,8 +1288,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
             !!item.resultText,
           );
           const isCalling = item.status === 'calling';
-          const topSubRollup: SubagentRollup =
-            computeSubagentRollup(filteredInner);
 
           pushRow(
             item.id,
@@ -1316,8 +1308,7 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               resultText={item.resultText}
               statistics={item.statistics}
               popoverContent={topSubPopover}
-              showThinkingIndicator={isCalling && filteredInner.length > 0}
-              subagentRollup={topSubRollup}>
+              showThinkingIndicator={isCalling && filteredInner.length > 0}>
               {(filteredInner.length > 0 || isCalling) && (
                 <CollapsibleInnerArea
                   items={filteredInner}
@@ -1376,8 +1367,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
             !!item.resultText,
           );
           const isCalling = item.status === 'calling';
-          const topCommRollup: SubagentRollup =
-            computeSubagentRollup(filteredInner);
 
           pushRow(
             item.id,
@@ -1408,7 +1397,6 @@ const ThreadMessagesView: React.FC<ThreadMessagesViewProps> = React.memo(
               statistics={item.statistics}
               popoverContent={topCommPopover}
               showThinkingIndicator={isCalling && filteredInner.length > 0}
-              subagentRollup={topCommRollup}
               thinkingText={
                 commTargetName
                   ? `${commTargetName} is thinking...`
