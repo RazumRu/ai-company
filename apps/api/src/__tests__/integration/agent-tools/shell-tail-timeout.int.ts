@@ -47,13 +47,16 @@ describe('ShellTool tail timeout behavior (integration)', () => {
   let testProjectId: string;
 
   beforeAll(async () => {
-    app = await createTestModule(async (m) =>
-      m
-        .overrideProvider(LiteLlmClient)
-        .useValue(mockLiteLlmClient)
-        .overrideProvider(ThreadNameGeneratorService)
-        .useValue(mockThreadNameGenerator)
-        .compile(),
+    app = await createTestModule(
+      async (m) =>
+        m
+          .overrideProvider(LiteLlmClient)
+          .useValue(mockLiteLlmClient)
+          .overrideProvider(ThreadNameGeneratorService)
+          .useValue(mockThreadNameGenerator)
+          .compile(),
+      // Tail-timeout assertions need real subprocess timing.
+      { mockRuntime: false },
     );
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);

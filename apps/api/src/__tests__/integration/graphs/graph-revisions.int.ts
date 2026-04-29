@@ -2380,13 +2380,12 @@ describe('Graph Revisions Integration Tests', () => {
         expect(beforeResult).toBeDefined();
         expect(beforeResult.output).toBeDefined();
 
-        const agentBefore = graphRegistry.getNodeInstance<SimpleAgent>(
-          graphId,
-          'agent-1',
-        );
-        const toolsBeforeAgent = agentBefore?.getTools() ?? [];
+        // MCP tools live in the agent's deferred-tools registry (loaded on
+        // demand via tool_search), not in the eager `activeTools` returned by
+        // getTools(). The MCP itself is the source of truth for which tools
+        // are exposed under the current readOnly config.
         expect(
-          toolsBeforeAgent.find((t) => t.name === 'write_file'),
+          toolsBefore.find((t: { name: string }) => t.name === 'write_file'),
         ).toBeDefined();
 
         // Update runtime config to force a revision
@@ -2483,19 +2482,26 @@ describe('Graph Revisions Integration Tests', () => {
         );
         expect(updatedMcpNode?.config.readOnly).toBe(true);
 
-        const agentAfter = graphRegistry.getNodeInstance<SimpleAgent>(
-          graphId,
-          'agent-1',
-        );
-        const toolsAfterAgent = agentAfter?.getTools() ?? [];
+        // After the readOnly=true revision, fetch the rebuilt MCP node and
+        // verify the toolset reflects the new config (write tools removed,
+        // read tools retained). Agent.getTools() would only show core +
+        // tool_search; deferred MCP tools are surfaced via the MCP itself.
+        const mcpAfterReadOnly = getMcpOutput(graphId, 'mcp-fs-1');
+        const toolsAfterReadOnly = await mcpAfterReadOnly.discoverTools();
         expect(
-          toolsAfterAgent.find((t) => t.name === 'write_file'),
+          toolsAfterReadOnly.find(
+            (t: { name: string }) => t.name === 'write_file',
+          ),
         ).toBeUndefined();
         expect(
-          toolsAfterAgent.find((t) => t.name === 'read_text_file'),
+          toolsAfterReadOnly.find(
+            (t: { name: string }) => t.name === 'read_text_file',
+          ),
         ).toBeDefined();
         expect(
-          toolsAfterAgent.find((t) => t.name === 'list_directory'),
+          toolsAfterReadOnly.find(
+            (t: { name: string }) => t.name === 'list_directory',
+          ),
         ).toBeDefined();
       },
     );

@@ -45,13 +45,16 @@ describe('ShellTool persistent sessions (integration)', () => {
   let testProjectId: string;
 
   beforeAll(async () => {
-    app = await createTestModule(async (m) =>
-      m
-        .overrideProvider(LiteLlmClient)
-        .useValue(mockLiteLlmClient)
-        .overrideProvider(ThreadNameGeneratorService)
-        .useValue(mockThreadNameGenerator)
-        .compile(),
+    app = await createTestModule(
+      async (m) =>
+        m
+          .overrideProvider(LiteLlmClient)
+          .useValue(mockLiteLlmClient)
+          .overrideProvider(ThreadNameGeneratorService)
+          .useValue(mockThreadNameGenerator)
+          .compile(),
+      // Persistent-shell session semantics need a real container.
+      { mockRuntime: false },
     );
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);

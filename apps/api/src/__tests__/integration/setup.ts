@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test, TestingModule, TestingModuleBuilder } from '@nestjs/testing';
-import { buildBootstrapper, LogLevel } from '@packages/common';
+import { buildBootstrapper, DefaultLogger, LogLevel } from '@packages/common';
 import {
   AuthContextService,
   buildAuthExtension,
@@ -15,7 +15,10 @@ import { AppModule } from '../../app.module';
 import mikroOrmConfig from '../../db/mikro-orm.config';
 import { environment } from '../../environments';
 import { LitellmService } from '../../v1/litellm/services/litellm.service';
+import { NotificationsService } from '../../v1/notifications/services/notifications.service';
 import { OpenaiService } from '../../v1/openai/openai.service';
+import { RuntimeInstanceDao } from '../../v1/runtime/dao/runtime-instance.dao';
+import { RuntimeProvider } from '../../v1/runtime/services/runtime-provider';
 import {
   installBaseAgentPatch,
   MockLlmModule,
@@ -27,6 +30,14 @@ import {
   setMockLlmService,
 } from './mocks/mock-llm/mock-llm-singleton.utils';
 import { MockOpenaiAdapter } from './mocks/mock-llm/mock-openai.adapter';
+import { MockMcpModule } from './mocks/mock-mcp/mock-mcp.module';
+import { MockMcpService } from './mocks/mock-mcp/mock-mcp.service';
+import { applyDefaults as applyMockMcpDefaults } from './mocks/mock-mcp/mock-mcp-defaults.utils';
+import { installMockMcpPatch } from './mocks/mock-mcp/mock-mcp-patch.utils';
+import { setMockMcpService } from './mocks/mock-mcp/mock-mcp-singleton.utils';
+import { MockRuntimeModule } from './mocks/mock-runtime/mock-runtime.module';
+import { MockRuntimeService } from './mocks/mock-runtime/mock-runtime.service';
+import { MockRuntimeProvider } from './mocks/mock-runtime/mock-runtime-provider';
 
 /**
  * Returns a `MockLlmService`-shaped proxy that resolves method calls to the
@@ -50,11 +61,35 @@ function getMockLlmServiceLazy(): MockLlmService {
 export const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 export const TEST_ORG_ID = '00000000-0000-0000-0000-000000000001';
 
+export interface CreateTestModuleOptions {
+  /**
+   * When `true` (default), `RuntimeProvider` is replaced with
+   * `MockRuntimeProvider`, so requests for any runtime type (`Docker`,
+   * `Daytona`, `K8s`) yield an in-process `MockRuntime` instead of a real
+   * container. Set to `false` for the small number of tests that need a real
+   * container (e.g. genuine shell-tool execution).
+   */
+  mockRuntime?: boolean;
+  /**
+   * When `true` (default), `BaseMcp.prototype.initialize` and `callTool` are
+   * patched to route through `MockMcpService`, skipping the `npx` MCP
+   * subprocess entirely. Set to `false` to use the real MCP plumbing.
+   */
+  mockMcp?: boolean;
+}
+
 export const createTestModule = async (
   cb?: (testingModule: TestingModuleBuilder) => Promise<TestingModule>,
+  options: CreateTestModuleOptions = {},
 ) => {
+  const mockRuntimeEnabled = options.mockRuntime ?? true;
+  const mockMcpEnabled = options.mockMcp ?? true;
+
   // Patch BaseAgent.prototype.buildLLM to return MockChatOpenAI (idempotent).
   installBaseAgentPatch();
+  if (mockMcpEnabled) {
+    installMockMcpPatch();
+  }
 
   const testBootstrapper = buildBootstrapper({
     environment: environment.env,
@@ -102,8 +137,13 @@ export const createTestModule = async (
     sentryDsn: environment.sentryDsn,
   });
 
-  const m = await Test.createTestingModule({
-    imports: [testBootstrapper.buildModule([AppModule]), MockLlmModule],
+  const moduleBuilder = Test.createTestingModule({
+    imports: [
+      testBootstrapper.buildModule([AppModule]),
+      MockLlmModule,
+      MockMcpModule,
+      MockRuntimeModule,
+    ],
   })
     .overrideProvider(AuthContextService)
     .useValue({
@@ -123,6 +163,23 @@ export const createTestModule = async (
         new MockOpenaiAdapter(getMockLlmServiceLazy(), litellm),
     });
 
+  const m = mockRuntimeEnabled
+    ? moduleBuilder.overrideProvider(RuntimeProvider).useFactory({
+        inject: [
+          RuntimeInstanceDao,
+          DefaultLogger,
+          NotificationsService,
+          MockRuntimeService,
+        ],
+        factory: (
+          dao: RuntimeInstanceDao,
+          logger: DefaultLogger,
+          ns: NotificationsService,
+          mockRuntimeSvc: MockRuntimeService,
+        ) => new MockRuntimeProvider(dao, logger, ns, mockRuntimeSvc),
+      })
+    : moduleBuilder;
+
   const moduleRef = cb ? await cb(m) : await m.compile();
 
   // Bridge the DI instance to the prototype patch singleton and reset per-test state.
@@ -134,6 +191,17 @@ export const createTestModule = async (
   // before registering specific fixtures, which clears these defaults.
   applyDefaults(mockLlm);
   setMockLlmService(mockLlm);
+
+  if (mockMcpEnabled) {
+    const mockMcp = moduleRef.get(MockMcpService, { strict: false });
+    mockMcp.reset();
+    applyMockMcpDefaults(mockMcp);
+    setMockMcpService(mockMcp);
+  }
+
+  if (mockRuntimeEnabled) {
+    moduleRef.get(MockRuntimeService, { strict: false }).reset();
+  }
 
   const adapter = new FastifyAdapter();
 

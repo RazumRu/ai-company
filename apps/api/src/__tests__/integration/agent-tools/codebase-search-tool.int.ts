@@ -87,11 +87,15 @@ describe('Codebase search tool (integration)', () => {
   };
 
   beforeAll(async () => {
-    app = await createTestModule(async (moduleBuilder) =>
-      moduleBuilder
-        .overrideProvider(LiteLlmClient)
-        .useValue(mockLiteLlmClient)
-        .compile(),
+    app = await createTestModule(
+      async (moduleBuilder) =>
+        moduleBuilder
+          .overrideProvider(LiteLlmClient)
+          .useValue(mockLiteLlmClient)
+          .compile(),
+      // Codebase-search clones a real repo and runs git/grep inside the
+      // runtime — needs a real container.
+      { mockRuntime: false },
     );
 
     // Register embeddings fixture: MockOpenaiAdapter intercepts all

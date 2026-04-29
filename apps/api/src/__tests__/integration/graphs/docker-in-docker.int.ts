@@ -217,7 +217,9 @@ describe('Docker Runtime Integration', () => {
   });
 
   beforeAll(async () => {
-    app = await createTestModule();
+    // Docker-in-docker tests literally exercise nested container behavior;
+    // they require the real runtime.
+    app = await createTestModule(undefined, { mockRuntime: false });
 
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);

@@ -50,13 +50,17 @@ describe('Shell Execution Integration Tests', () => {
   let testProjectId: string;
 
   beforeAll(async () => {
-    app = await createTestModule(async (m) =>
-      m
-        .overrideProvider(LiteLlmClient)
-        .useValue(mockLiteLlmClient)
-        .overrideProvider(ThreadNameGeneratorService)
-        .useValue(mockThreadNameGenerator)
-        .compile(),
+    app = await createTestModule(
+      async (m) =>
+        m
+          .overrideProvider(LiteLlmClient)
+          .useValue(mockLiteLlmClient)
+          .overrideProvider(ThreadNameGeneratorService)
+          .useValue(mockThreadNameGenerator)
+          .compile(),
+      // Shell-execution tests assert on real timeouts, exit codes, and
+      // custom container images — keep the production runtime here.
+      { mockRuntime: false },
     );
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
