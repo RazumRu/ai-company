@@ -37,6 +37,14 @@ pnpm deps:down                        # Stop all services (including Zitadel)
 cd apps/api && pnpm start:dev         # Dev server with hot-reload (port 5000)
 ```
 
+### LiteLLM model configuration (gotcha)
+
+`litellm.yaml` changes do **not** reach the running LiteLLM proxy until the container is restarted **AND** the yaml-DB reconciliation is triggered. The proxy runs with `store_model_in_db: true`, so its authoritative model table lives in Postgres — yaml additions only merge into that table on specific startup paths. Symptoms of drift: a graph configured with a model like `openai/gpt-5.4-mini` returns `totalPrice: 0` on every call because LiteLLM's `/model/info` does not list it.
+
+- Check registered models: `curl -s http://localhost:4000/model/info -H "Authorization: Bearer master" | jq '.data[] | {name: .model_name, in: .model_info.input_cost_per_token, out: .model_info.output_cost_per_token}'`
+- Look for zero-pricing entries — any `in: 0, out: 0` silently produces $0.000 cost reports in the UI.
+- To resync yaml → DB: `docker compose restart litellm` (or `podman-compose`). If the alias still doesn't appear, add it via LiteLLM's management API (`POST /model/new`) or clear the DB model table and restart.
+
 ### Build & lint
 ```bash
 pnpm build                            # Full monorepo build (Turbo)
