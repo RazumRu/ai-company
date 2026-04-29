@@ -58,6 +58,10 @@ import { ProjectsDao } from '../../../v1/projects/dao/projects.dao';
 import { MessagesDao } from '../../../v1/threads/dao/messages.dao';
 import { ThreadsDao } from '../../../v1/threads/dao/threads.dao';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
+import {
+  installBaseAgentPatch,
+  uninstallBaseAgentPatch,
+} from '../mocks/mock-llm';
 import { createTestModule, TEST_USER_ID } from '../setup';
 
 // ---------------------------------------------------------------------------
@@ -116,9 +120,18 @@ describe('Live subagent cost streaming (integration)', () => {
         .compile();
     });
     litellmService = app.get(LitellmService);
+
+    // This file's tests bring their own LLM mocking via
+    // `vi.spyOn(ChatOpenAI.prototype, 'bindTools')`. The global MockLlm patch
+    // (which swaps `BaseAgent.prototype.buildLLM` for a `MockChatOpenAI`)
+    // would defeat that spy, so we restore the original `buildLLM` here and
+    // reinstall the patch in `afterAll` to keep the global fixture intact for
+    // subsequent files.
+    uninstallBaseAgentPatch();
   }, 60_000);
 
   afterAll(async () => {
+    installBaseAgentPatch();
     await app.close();
   });
 

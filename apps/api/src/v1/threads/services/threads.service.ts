@@ -187,9 +187,19 @@ export class ThreadsService {
     }
 
     if (!stoppedViaEventChain) {
-      // Graph not in registry or no active agent run — update DB directly
+      // Graph not in registry or no active agent run — update DB directly.
+      // Clear any stale cost-limit metadata: a manual stop is intentional,
+      // so the resume guard (which keys off `costLimitHit` / `stopReason`)
+      // should not later block the user from re-running the thread.
+      const meta = (thread.metadata ?? {}) as Record<string, unknown>;
+      const nextMeta = { ...meta };
+      delete nextMeta.stopReason;
+      delete nextMeta.stopCostUsd;
+      delete nextMeta.costLimitHit;
+
       await this.threadDao.updateById(thread.id, {
         status: ThreadStatus.Stopped,
+        metadata: nextMeta,
       });
       const responseThread =
         (await this.threadDao.getById(thread.id)) ?? thread;
@@ -198,7 +208,12 @@ export class ThreadsService {
         type: NotificationEvent.ThreadUpdate,
         graphId: thread.graphId,
         threadId: thread.externalThreadId,
-        data: { status: ThreadStatus.Stopped },
+        data: {
+          status: ThreadStatus.Stopped,
+          stopReason: null,
+          stopCostUsd: null,
+          costLimitHit: null,
+        },
       });
 
       return (await this.prepareThreadsResponse([responseThread]))[0]!;

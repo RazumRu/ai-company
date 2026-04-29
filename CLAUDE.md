@@ -55,23 +55,22 @@ pnpm lint                             # Lint without fixing (to see remaining is
 
 ### Testing
 
-**⚠️ CRITICAL**: Always use the `pnpm run` / `pnpm` package.json scripts to run tests. Never call test runners directly (e.g. `vitest`, `npx vitest`). Never run full test suites — always target specific files.
+**⚠️ CRITICAL**: Always use the `pnpm run` / `pnpm` package.json scripts to run tests. Never call test runners directly (e.g. `vitest`, `npx vitest`).
 
 ```bash
 # ✅ CORRECT — always use package.json scripts
 pnpm test:unit                        # Vitest unit tests (*.spec.ts) — mandatory
-pnpm test:integration {filename}      # Run ONLY the related integration test file
+pnpm test:integration {filename}      # Target one integration file (preferred for iteration)
+pnpm test:integration                 # Run the full integration suite (allowed — LLM calls are mocked via MockLlmService)
 
 # ❌ WRONG — never call test runners directly
 # vitest run
 # npx vitest
 # pnpm vitest run
 
-# ❌ WRONG — NEVER run full test suites
-# pnpm test                           # runs everything — FORBIDDEN
-# pnpm test:integration               # runs ALL integration tests — FORBIDDEN
-
-# ⚠️  NEVER run bare `pnpm test:integration` without a filename — always target the specific file
+# Iteration tip: target a specific file with `pnpm test:integration <file>` to keep the loop tight.
+# The bulk run is fine for verification (e.g. before pushing) but slower because integration tests run
+# sequentially (`fileParallelism: false` in apps/api/vitest.config.ts).
 
 # E2E (Cypress) — requires server running + deps up:
 cd apps/api
@@ -311,12 +310,49 @@ When all four are set, the `GET /api/system/settings` endpoint returns `githubAp
 ## Testing conventions
 
 - **Always use package.json scripts**: Run tests via `pnpm test:unit`, `pnpm test:integration {filename}`, etc. **Never** invoke test runners directly (`vitest`, `npx vitest`, `pnpm vitest run`).
-- **Never run full test suites**: `pnpm test` and bare `pnpm test:integration` (without a filename) are **forbidden**. Always target a specific scope.
+- **Iteration vs verification**: `pnpm test` (everything) is forbidden — too coarse. `pnpm test:integration` (whole integration suite) is **allowed** because LLM calls are mocked via `MockLlmService`. Prefer the targeted form `pnpm test:integration {filename}` while iterating; the bulk form is for pre-push verification.
 - **Unit tests** (`*.spec.ts`): placed next to the source file. Run with `pnpm test:unit`. Prefer updating an existing spec file over creating a new one.
-- **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). **Mandatory** when modifying code that already has integration tests — always run with a specific filename: `pnpm test:integration {filename}`. **NEVER** run bare `pnpm test:integration` without a filename.
+- **Integration tests** (`*.int.ts`): in `src/__tests__/integration/`. Call services directly (no HTTP). **Mandatory** when modifying code that already has integration tests — run with a specific filename while iterating, run `pnpm test:integration` to verify the suite.
 - **E2E tests** (`*.cy.ts`): in `apps/api/cypress/e2e/`. Smoke-test endpoints over HTTP. Require a running server + deps.
 - **E2E type safety**: When creating or modifying E2E tests, always regenerate API type definitions first (`cd apps/api && pnpm test:e2e:generate-api`). E2E helpers and tests **must** import request/response types from `../../api-definitions` (e.g. `import type { GraphDto, GetAllGraphsData } from '../../api-definitions'`) instead of defining inline types. Use the generated `*Data['query']` types for query parameters and the generated `*Dto` types for response bodies.
 - **Must-fail policy**: Tests must never conditionally skip based on missing env vars or services. If a prerequisite is absent, the test must fail with a clear error — no `it.skip` or early returns.
 - **Coverage thresholds** (when enabled): 90% lines/functions/statements, 80% branches.
 - **E2E logging**: use `cy.task('log', message)` to print to terminal output.
+
+### Mocking the LLM in integration tests
+
+All integration tests **always** mock the LLM — there is no opt-out flag and no real-LLM mode. The mock is wired into `createTestModule()` automatically and covers two seams: `OpenaiService` (via NestJS DI override) and `BaseAgent.prototype.buildLLM` (via process-level patch).
+
+**Import:** `import { getMockLlm, applyDefaults, MockLlmNoMatchError } from '../mocks/mock-llm';` (path relative to test location).
+
+**API surface:**
+```typescript
+const mockLlm = getMockLlm(app);
+
+// Register matcher-based fixtures (returns first match from filters):
+mockLlm.onChat(matcher, reply);
+mockLlm.onJsonRequest(matcher, reply);
+mockLlm.onEmbeddings(matcher, reply);
+
+// Queue FIFO replies (consumed before matchers, ignores matchers):
+mockLlm.queueChat(reply);
+mockLlm.queueCost(usd);  // sugar: text reply with totalPrice
+
+// Inspect:
+mockLlm.getRequests();    // ordered request log
+mockLlm.getLastRequest();
+
+// Test cleanup (call in beforeEach):
+mockLlm.reset();
+```
+
+**Matcher fields:** `model` (string or RegExp), `lastUserMessage` (string-includes or RegExp), `systemMessage` (string-includes or RegExp), `hasTools` (string[] subset match), `hasToolResult` (string exact match), `callIndex` (number). No match throws `MockLlmNoMatchError` with context (model, call index, message, tool names, registered matchers).
+
+**Specificity & multi-turn gotcha:** Fixtures are resolved by specificity (count of non-undefined matcher fields). Ties are broken by registration order. When agent loops `callTool → toolResult → followUp`, fixtures with `{ hasTools: ['T'] }` and `{ hasToolResult: 'T' }` both have specificity 1 and tie. To disambiguate, combine matchers: `{ hasToolResult: 'T', hasTools: ['finish'] }` (specificity 2).
+
+**Tool-call fixture args MUST satisfy the real tool's Zod schema** — e.g., a `finish` tool fixture requires `{ purpose: string, message: string, needsMoreInfo?: boolean }` (not `{ result: 'done' }`). The mock will pass schema validation through to the real tool registry; mismatched args silently break tool dispatch.
+
+**Apply defaults (optional):** `applyDefaults(mockLlm)` registers benign defaults: a finish-tool fallback, a catch-all text reply, and deterministic embeddings. Apply AFTER per-test fixtures or the catch-all swallows them.
+
+**Limitations:** Code paths requiring real LLM behavior (e.g. `ReasoningAwareChatCompletions` normalization, token-stream timing, retry/backoff) must be covered by unit tests, not integration tests.
 

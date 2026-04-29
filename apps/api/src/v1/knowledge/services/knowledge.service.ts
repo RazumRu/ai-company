@@ -163,6 +163,11 @@ export class KnowledgeService {
       updateData.tags = normalizeTags(dto.tags, MAX_TAGS);
     }
 
+    // BaseDao.updateById uses `nativeUpdate`, which bypasses MikroORM's
+    // `onUpdate` lifecycle hook, so `updatedAt` is not auto-bumped. Set it
+    // explicitly so the column reflects the actual mutation time.
+    updateData.updatedAt = new Date();
+
     await this.em.transactional(async (em: EntityManager) => {
       await this.docDao.updateById(id, updateData, em);
     });
