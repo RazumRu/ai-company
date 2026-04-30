@@ -12,6 +12,19 @@
 import type { MockLlmService } from './mock-llm.service';
 
 /**
+ * Default token usage attached to `finish` and catch-all text replies so that
+ * tests verifying `totalTokens > 0` / `totalPrice > 0` see realistic non-zero
+ * values without each test having to register its own fixture. Tests that need
+ * exact-value assertions reset and register their own fixtures.
+ */
+const DEFAULT_USAGE = {
+  inputTokens: 100,
+  outputTokens: 50,
+  totalTokens: 150,
+  totalPrice: 0.0001,
+} as const;
+
+/**
  * Register benign default fixtures on `mockLlm` so that unmatched LLM calls
  * do not throw. Must be called **after** all per-test fixtures are registered.
  *
@@ -24,6 +37,9 @@ import type { MockLlmService } from './mock-llm.service';
  *     expansion, etc. don't throw `MockLlmNoMatchError` in unmigrated tests.
  *  4. deterministic embeddings stub: returns a stable 1536-dim vector derived
  *     from the input string via a simple FNV-1a hash.
+ *
+ * Default chat replies carry token usage (`DEFAULT_USAGE`) so cost/usage
+ * propagation through the agent pipeline produces non-zero numbers.
  */
 export function applyDefaults(mockLlm: MockLlmService): void {
   mockLlm.onChat(
@@ -32,10 +48,14 @@ export function applyDefaults(mockLlm: MockLlmService): void {
       kind: 'toolCall',
       toolName: 'finish',
       args: { purpose: 'done', message: 'OK', needsMoreInfo: false },
+      usage: { ...DEFAULT_USAGE },
     },
   );
 
-  mockLlm.onChat({}, { kind: 'text', content: 'OK' });
+  mockLlm.onChat(
+    {},
+    { kind: 'text', content: 'OK', usage: { ...DEFAULT_USAGE } },
+  );
 
   mockLlm.onJsonRequest({}, { kind: 'json', content: {} });
 

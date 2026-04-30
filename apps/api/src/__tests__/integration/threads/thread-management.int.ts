@@ -19,7 +19,8 @@ import {
   waitForCondition,
 } from '../helpers/graph-helpers';
 import { createTestProject } from '../helpers/test-context';
-import { createTestModule } from '../setup';
+import type { MockLlmService } from '../mocks/mock-llm/mock-llm.service';
+import { createTestModule, getMockLlm } from '../setup';
 
 // Assigned in beforeAll once the test project is created.
 let contextDataStorage: AppContextStorage;
@@ -29,6 +30,7 @@ describe('Thread Management Integration Tests', () => {
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
   let graphRegistry: GraphRegistry;
+  let mockLlm: MockLlmService;
   const createdGraphIds: string[] = [];
   let basicGraphId: string;
   let multiAgentGraphId: string;
@@ -43,6 +45,7 @@ describe('Thread Management Integration Tests', () => {
     graphsService = app.get<GraphsService>(GraphsService);
     threadsService = app.get<ThreadsService>(ThreadsService);
     graphRegistry = app.get<GraphRegistry>(GraphRegistry);
+    mockLlm = getMockLlm(app);
 
     const projectResult = await createTestProject(app);
     testProjectId = projectResult.projectId;
@@ -58,7 +61,7 @@ describe('Thread Management Integration Tests', () => {
       await waitForCondition(
         () => graphsService.findById(contextDataStorage, graphId),
         (g) => g.status === GraphStatus.Running,
-        { timeout: 60_000, interval: 1_000 },
+        { timeout: 30_000, interval: 200, maxInterval: 500 },
       );
     };
 
@@ -257,6 +260,56 @@ describe('Thread Management Integration Tests', () => {
   const uniqueThreadSubId = (prefix: string) =>
     `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+  /**
+   * Mikro-ORM 7 occasionally races when sequential `executeTrigger` calls share
+   * the application's singleton EntityManager — the inner `em.transactional`
+   * block sees an in-flight transaction from a prior call's async work and
+   * tries to use SAVEPOINT against a connection whose transaction has already
+   * been finalised, surfacing as
+   *   `SAVEPOINT can only be used in transaction blocks`
+   *   `ROLLBACK TO SAVEPOINT can only be used in transaction blocks`.
+   * Production code does not hit this because RequestContext middleware forks
+   * the EM per HTTP request, but tests call the service directly with the root
+   * EM. Retrying with a short backoff lets the in-flight transaction settle.
+   */
+  const isSavepointRace = (err: unknown): boolean => {
+    const msg =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'string'
+          ? err
+          : String(err);
+    return (
+      msg.includes('SAVEPOINT can only be used in transaction blocks') ||
+      msg.includes(
+        'ROLLBACK TO SAVEPOINT can only be used in transaction blocks',
+      )
+    );
+  };
+
+  const triggerWithRetry = async (
+    ...args: Parameters<GraphsService['executeTrigger']>
+  ): Promise<
+    ReturnType<GraphsService['executeTrigger']> extends Promise<infer R>
+      ? R
+      : never
+  > => {
+    const maxAttempts = 4;
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await graphsService.executeTrigger(...args);
+      } catch (err) {
+        if (!isSavepointRace(err) || attempt === maxAttempts - 1) {
+          throw err;
+        }
+        lastErr = err;
+        await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+      }
+    }
+    throw lastErr;
+  };
+
   const ensureGraphRunning = async (graphId: string) => {
     const graph = await graphsService.findById(contextDataStorage, graphId);
     if (graph.status === GraphStatus.Running) {
@@ -266,7 +319,7 @@ describe('Thread Management Integration Tests', () => {
     await waitForCondition(
       () => graphsService.findById(contextDataStorage, graphId),
       (g) => g.status === GraphStatus.Running,
-      { timeout: 60_000, interval: 1_000 },
+      { timeout: 30_000, interval: 200, maxInterval: 500 },
     );
   };
 
@@ -307,7 +360,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(basicGraphId);
 
         // First invocation without threadSubId
-        const trigger1Result = await graphsService.executeTrigger(
+        const trigger1Result = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -320,7 +373,7 @@ describe('Thread Management Integration Tests', () => {
         const firstThreadId = trigger1Result.externalThreadId;
 
         // Second invocation without threadSubId
-        const trigger2Result = await graphsService.executeTrigger(
+        const trigger2Result = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -369,7 +422,7 @@ describe('Thread Management Integration Tests', () => {
         const threadSubId = uniqueThreadSubId('persistent-thread');
 
         // First invocation with specific threadSubId
-        const trigger1Result = await graphsService.executeTrigger(
+        const trigger1Result = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -383,7 +436,7 @@ describe('Thread Management Integration Tests', () => {
         const threadId = trigger1Result.externalThreadId;
 
         // Second invocation with same threadSubId
-        const trigger2Result = await graphsService.executeTrigger(
+        const trigger2Result = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -430,7 +483,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(basicGraphId);
         const threadSubId = uniqueThreadSubId('thread-list-all');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -492,7 +545,7 @@ describe('Thread Management Integration Tests', () => {
     it('should execute trigger with async=true and return immediately', async () => {
       await ensureGraphRunning(basicGraphId);
 
-      const execResult = await graphsService.executeTrigger(
+      const execResult = await triggerWithRetry(
         contextDataStorage,
         basicGraphId,
         'trigger-1',
@@ -504,6 +557,23 @@ describe('Thread Management Integration Tests', () => {
 
       expect(execResult.externalThreadId).toBeDefined();
       expect(execResult.checkpointNs).toBeDefined();
+
+      // Drain pending agent work before next test starts so the in-flight
+      // em.transactional from this run doesn't collide with the next
+      // executeTrigger call (manifests as `ROLLBACK TO SAVEPOINT can only be
+      // used in transaction blocks`).
+      await waitForCondition(
+        () =>
+          threadsService.getThreadByExternalId(
+            contextDataStorage,
+            execResult.externalThreadId,
+          ),
+        (t) =>
+          t.status === ThreadStatus.Done ||
+          t.status === ThreadStatus.NeedMoreInfo ||
+          t.status === ThreadStatus.Stopped,
+        { timeout: 15_000, interval: 200 },
+      );
     });
   });
 
@@ -515,7 +585,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(multiAgentGraphId);
         const threadSubId = uniqueThreadSubId('multi-agent-thread');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           multiAgentGraphId,
           'trigger-1',
@@ -561,7 +631,7 @@ describe('Thread Management Integration Tests', () => {
         const threadSubId = uniqueThreadSubId('message-retrieval');
         const testMessage = `Hello, this is a test message ${Date.now()}`;
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -619,7 +689,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(basicGraphId);
         const threadSubId = uniqueThreadSubId('limit-test');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -705,7 +775,32 @@ describe('Thread Management Integration Tests', () => {
           `Call the finish tool with needsMoreInfo=false and set the finish message to include this token: ${token}. ` +
           'Do not call any other tools.';
 
-        const triggerResult = await graphsService.executeTrigger(
+        // Token-aware finish fixture — applyDefaults' generic finish stub returns
+        // `message: 'OK'`, but this test asserts the token round-trips through the
+        // finish tool result.
+        mockLlm.onChat(
+          {
+            lastUserMessage: token,
+            hasTools: ['finish'],
+          },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: {
+              purpose: 'done',
+              message: `Done. Including token ${token}`,
+              needsMoreInfo: false,
+            },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              totalTokens: 150,
+              totalPrice: 0.0001,
+            },
+          },
+        );
+
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           graphId,
           'trigger-1',
@@ -785,7 +880,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(graphId);
 
         const persistentMessage = 'Persistent message';
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           graphId,
           'trigger-1',
@@ -860,7 +955,7 @@ describe('Thread Management Integration Tests', () => {
         const sub2 = uniqueThreadSubId('isolation-thread-2');
 
         // Create two different threads
-        const thread1Result = await graphsService.executeTrigger(
+        const thread1Result = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -870,7 +965,7 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        const thread2Result = await graphsService.executeTrigger(
+        const thread2Result = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -965,7 +1060,7 @@ describe('Thread Management Integration Tests', () => {
       async () => {
         await ensureGraphRunning(injectModeGraphId);
         const threadSubId = uniqueThreadSubId('inject-no-active');
-        const firstResult = await graphsService.executeTrigger(
+        const firstResult = await triggerWithRetry(
           contextDataStorage,
           injectModeGraphId,
           'trigger-1',
@@ -975,7 +1070,7 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        const secondResult = await graphsService.executeTrigger(
+        const secondResult = await triggerWithRetry(
           contextDataStorage,
           injectModeGraphId,
           'trigger-1',
@@ -1037,7 +1132,7 @@ describe('Thread Management Integration Tests', () => {
       async () => {
         await ensureGraphRunning(injectModeGraphId);
         const threadSubId = uniqueThreadSubId('inject-active');
-        const firstResult = await graphsService.executeTrigger(
+        const firstResult = await triggerWithRetry(
           contextDataStorage,
           injectModeGraphId,
           'trigger-1',
@@ -1048,7 +1143,7 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        const secondResult = await graphsService.executeTrigger(
+        const secondResult = await triggerWithRetry(
           contextDataStorage,
           injectModeGraphId,
           'trigger-1',
@@ -1116,7 +1211,7 @@ describe('Thread Management Integration Tests', () => {
         const firstMessage = 'Wait mode no active - first';
         const secondMessage = 'Wait mode no active - second';
 
-        const firstResult = await graphsService.executeTrigger(
+        const firstResult = await triggerWithRetry(
           contextDataStorage,
           waitModeGraphId,
           'trigger-1',
@@ -1126,7 +1221,7 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        const secondResult = await graphsService.executeTrigger(
+        const secondResult = await triggerWithRetry(
           contextDataStorage,
           waitModeGraphId,
           'trigger-1',
@@ -1193,7 +1288,55 @@ describe('Thread Management Integration Tests', () => {
           'Start a long running reasoning task and share your thoughts.';
         const secondMessage = 'Also list some mitigation strategies.';
 
-        const firstResult = await graphsService.executeTrigger(
+        // First call must stay running long enough for the second message to be
+        // queued by WaitForCompletion mode — otherwise both messages persist near
+        // simultaneously and the createdAt ordering assertion is flaky. The second
+        // call's matcher is more specific so it overrides the first delay.
+        mockLlm.onChat(
+          {
+            lastUserMessage: secondMessage,
+            hasTools: ['finish'],
+          },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: {
+              purpose: 'done',
+              message: 'Mitigation strategies enumerated',
+              needsMoreInfo: false,
+            },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              totalTokens: 150,
+              totalPrice: 0.0001,
+            },
+          },
+        );
+        mockLlm.onChat(
+          {
+            lastUserMessage: firstMessage,
+            hasTools: ['finish'],
+          },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: {
+              purpose: 'done',
+              message: 'Reasoning complete',
+              needsMoreInfo: false,
+            },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              totalTokens: 150,
+              totalPrice: 0.0001,
+            },
+            delayMs: 3_000,
+          },
+        );
+
+        const firstResult = await triggerWithRetry(
           contextDataStorage,
           waitModeGraphId,
           'trigger-1',
@@ -1204,7 +1347,7 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        const secondResult = await graphsService.executeTrigger(
+        const secondResult = await triggerWithRetry(
           contextDataStorage,
           waitModeGraphId,
           'trigger-1',
@@ -1291,7 +1434,33 @@ describe('Thread Management Integration Tests', () => {
         const firstMessage = 'Start a long running analysis.';
         const secondMessage = 'Add mitigation strategies when ready.';
 
-        const firstResult = await graphsService.executeTrigger(
+        // Slow the first agent run so the test can observe the queued state of
+        // the second message. Without this delay the first run finishes before
+        // the second message arrives and pendingMessages stays empty.
+        mockLlm.onChat(
+          {
+            lastUserMessage: 'long running analysis',
+            hasTools: ['finish'],
+          },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: {
+              purpose: 'done',
+              message: 'Analysis complete',
+              needsMoreInfo: false,
+            },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              totalTokens: 150,
+              totalPrice: 0.0001,
+            },
+            delayMs: 5_000,
+          },
+        );
+
+        const firstResult = await triggerWithRetry(
           contextDataStorage,
           waitModeGraphId,
           'trigger-1',
@@ -1312,7 +1481,7 @@ describe('Thread Management Integration Tests', () => {
           { timeout: 30000 },
         );
 
-        await graphsService.executeTrigger(
+        await triggerWithRetry(
           contextDataStorage,
           waitModeGraphId,
           'trigger-1',
@@ -1388,7 +1557,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(basicGraphId);
         const threadSubId = uniqueThreadSubId('delete-test');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -1437,7 +1606,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(multiAgentGraphId);
         const threadSubId = uniqueThreadSubId('multi-agent-delete-test');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           multiAgentGraphId,
           'trigger-1',
@@ -1491,7 +1660,7 @@ describe('Thread Management Integration Tests', () => {
       await ensureGraphRunning(multiAgentGraphId);
       const threadSubId = uniqueThreadSubId('filter-test');
 
-      const triggerResult = await graphsService.executeTrigger(
+      const triggerResult = await triggerWithRetry(
         contextDataStorage,
         multiAgentGraphId,
         'trigger-1',
@@ -1549,7 +1718,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(basicGraphId);
         const threadSubId = uniqueThreadSubId('dedup-test');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -1600,7 +1769,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(basicGraphId);
         const threadSubId = uniqueThreadSubId('name-gen-test');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -1638,7 +1807,7 @@ describe('Thread Management Integration Tests', () => {
         const threadSubId = uniqueThreadSubId('name-persist-test');
 
         // First execution
-        const firstResult = await graphsService.executeTrigger(
+        const firstResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -1665,15 +1834,10 @@ describe('Thread Management Integration Tests', () => {
         expect(firstName).toBeDefined();
 
         // Second execution with same thread
-        await graphsService.executeTrigger(
-          contextDataStorage,
-          basicGraphId,
-          'trigger-1',
-          {
-            messages: ['Second message should not change name'],
-            threadSubId,
-          },
-        );
+        await triggerWithRetry(contextDataStorage, basicGraphId, 'trigger-1', {
+          messages: ['Second message should not change name'],
+          threadSubId,
+        });
 
         // Wait a bit for potential name update (which shouldn't happen)
         await waitForCondition(
@@ -1706,7 +1870,7 @@ describe('Thread Management Integration Tests', () => {
         await ensureGraphRunning(basicGraphId);
         const threadSubId = uniqueThreadSubId('status-done-test');
 
-        const triggerResult = await graphsService.executeTrigger(
+        const triggerResult = await triggerWithRetry(
           contextDataStorage,
           basicGraphId,
           'trigger-1',
@@ -1763,7 +1927,7 @@ describe('Thread Management Integration Tests', () => {
         const threadSubId = uniqueThreadSubId('status-stopped-test');
 
         // Start an async execution
-        const execResult = await graphsService.executeTrigger(
+        const execResult = await triggerWithRetry(
           contextDataStorage,
           interruptedGraphId,
           'trigger-1',
@@ -1853,7 +2017,7 @@ describe('Thread Management Integration Tests', () => {
         const threadSubId2 = uniqueThreadSubId('aggressive-thread-2');
 
         // Create two threads with aggressive summarization
-        const thread1Result = await graphsService.executeTrigger(
+        const thread1Result = await triggerWithRetry(
           contextDataStorage,
           graphId,
           'trigger-1',
@@ -1863,7 +2027,7 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        const thread2Result = await graphsService.executeTrigger(
+        const thread2Result = await triggerWithRetry(
           contextDataStorage,
           graphId,
           'trigger-1',
@@ -1943,13 +2107,14 @@ describe('Thread Management Integration Tests', () => {
         createdGraphIds.push(graphId);
 
         await graphsService.run(contextDataStorage, graphId);
+        await ensureGraphRunning(graphId);
 
         const threadSubId = uniqueThreadSubId(
           'conservative-summarization-test',
         );
 
         // Send multiple messages
-        const exec1 = await graphsService.executeTrigger(
+        const exec1 = await triggerWithRetry(
           contextDataStorage,
           graphId,
           'trigger-1',
@@ -1959,7 +2124,24 @@ describe('Thread Management Integration Tests', () => {
           },
         );
 
-        const exec2 = await graphsService.executeTrigger(
+        // Drain pending agent work between sequential executeTriggers — leftover
+        // em.transactional state from the first call's run can otherwise collide
+        // with the second call's pessimistic-write lock acquisition (manifests as
+        // `ROLLBACK TO SAVEPOINT can only be used in transaction blocks`).
+        await waitForCondition(
+          () =>
+            threadsService.getThreadByExternalId(
+              contextDataStorage,
+              exec1.externalThreadId,
+            ),
+          (t) =>
+            t.status === ThreadStatus.Done ||
+            t.status === ThreadStatus.NeedMoreInfo ||
+            t.status === ThreadStatus.Stopped,
+          { timeout: 15_000, interval: 200 },
+        );
+
+        const exec2 = await triggerWithRetry(
           contextDataStorage,
           graphId,
           'trigger-1',
@@ -2008,26 +2190,16 @@ describe('Thread Management Integration Tests', () => {
 
         // Start two threads in parallel with async=true
         const [exec1, exec2] = await Promise.all([
-          graphsService.executeTrigger(
-            contextDataStorage,
-            basicGraphId,
-            'trigger-1',
-            {
-              messages: ['Thread 1: Tell me about cats'],
-              threadSubId: threadSubId1,
-              async: true,
-            },
-          ),
-          graphsService.executeTrigger(
-            contextDataStorage,
-            basicGraphId,
-            'trigger-1',
-            {
-              messages: ['Thread 2: Tell me about dogs'],
-              threadSubId: threadSubId2,
-              async: true,
-            },
-          ),
+          triggerWithRetry(contextDataStorage, basicGraphId, 'trigger-1', {
+            messages: ['Thread 1: Tell me about cats'],
+            threadSubId: threadSubId1,
+            async: true,
+          }),
+          triggerWithRetry(contextDataStorage, basicGraphId, 'trigger-1', {
+            messages: ['Thread 2: Tell me about dogs'],
+            threadSubId: threadSubId2,
+            async: true,
+          }),
         ]);
 
         expect(exec1.externalThreadId).toBeDefined();

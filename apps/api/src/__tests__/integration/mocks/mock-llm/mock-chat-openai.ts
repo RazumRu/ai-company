@@ -25,6 +25,43 @@ import {
 } from './mock-llm.utils';
 
 /**
+ * Sleep for `ms` milliseconds, rejecting with `AbortError` if `signal` aborts
+ * before the timer elapses. Used to honour the LangChain caller's abort signal
+ * when a fixture sets `delayMs`, so that `agent.stop()` (graph destroy) can
+ * unblock an in-flight LLM call rather than waiting out the full delay.
+ */
+async function sleepWithAbort(
+  ms: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal?.aborted) {
+    throw makeAbortError(signal.reason);
+  }
+
+  return await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(makeAbortError(signal?.reason));
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function makeAbortError(reason: unknown): Error {
+  const err = new Error(
+    reason instanceof Error ? reason.message : 'This operation was aborted',
+  );
+  err.name = 'AbortError';
+  return err;
+}
+
+/**
  * LangChain `BaseChatModel` implementation backed by `MockLlmService`.
  *
  * Instances are constructed with a lazy getter for `MockLlmService` so the
@@ -130,6 +167,10 @@ export class MockChatOpenAI extends BaseChatModel {
       );
     }
 
+    if ('delayMs' in reply && typeof reply.delayMs === 'number') {
+      await sleepWithAbort(reply.delayMs, _options.signal);
+    }
+
     // Defensive: kind === 'json' should not reach the chat model. Convert to text.
     if (reply.kind === 'json') {
       const textContent = JSON.stringify(reply.content);
@@ -214,6 +255,10 @@ export class MockChatOpenAI extends BaseChatModel {
       throw new Error(
         'MockChatOpenAI received an embeddings reply — register via onChat instead',
       );
+    }
+
+    if ('delayMs' in reply && typeof reply.delayMs === 'number') {
+      await sleepWithAbort(reply.delayMs, _options.signal);
     }
 
     const usageMeta = buildUsageMetadata(reply.usage);

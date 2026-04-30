@@ -28,16 +28,32 @@ export interface MockLlmMatcher {
 /**
  * The reply payload that a registered fixture or queued entry returns
  * when a request is matched.
+ *
+ * `delayMs` (chat / toolCall / json only): when set, the mock awaits this many
+ * milliseconds before returning. Useful for tests that observe transient agent
+ * states (e.g. node `Running` status) which would otherwise be missed because
+ * mocked LLM calls resolve synchronously.
  */
 export type MockLlmReply =
-  | { kind: 'text'; content: string; usage?: Partial<RequestTokenUsage> }
+  | {
+      kind: 'text';
+      content: string;
+      usage?: Partial<RequestTokenUsage>;
+      delayMs?: number;
+    }
   | {
       kind: 'toolCall';
       toolName: string;
       args: Record<string, unknown>;
       usage?: Partial<RequestTokenUsage>;
+      delayMs?: number;
     }
-  | { kind: 'json'; content: unknown; usage?: Partial<RequestTokenUsage> }
+  | {
+      kind: 'json';
+      content: unknown;
+      usage?: Partial<RequestTokenUsage>;
+      delayMs?: number;
+    }
   | {
       kind: 'embeddings';
       vector: number[] | ((input: string) => number[]);
