@@ -25,12 +25,19 @@ export interface MockRuntimeExecRequest {
  * Reply for a stubbed exec. Defaults are filled in at resolution time:
  * `exitCode = 0`, `stdout = ''`, `stderr = ''`, `fail = exitCode !== 0`.
  *
+ * Set `hangUntilAbort: true` to leave the exec pending forever; the call
+ * resolves only when the caller's `AbortSignal` fires, mirroring how a real
+ * `sleep 60` behaves under stop. Without an abort signal the call still
+ * hangs — useful for stop-execution tests but never for the happy path.
+ *
  * `dynamic` lets a fixture compute the reply from the request — useful for
  * matchers that need to echo back part of the command (e.g. an `echo` stub).
  */
 export type MockRuntimeExecReply =
-  | Partial<RuntimeExecResult>
-  | ((req: MockRuntimeExecRequest) => Partial<RuntimeExecResult>);
+  | (Partial<RuntimeExecResult> & { hangUntilAbort?: boolean })
+  | ((
+      req: MockRuntimeExecRequest,
+    ) => Partial<RuntimeExecResult> & { hangUntilAbort?: boolean });
 
 /**
  * Matcher fields combine with AND semantics: every defined field must match

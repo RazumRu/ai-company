@@ -279,67 +279,71 @@ describe('Graph Agents Column Integration Tests', () => {
   });
 
   describe('revision apply updates agents', () => {
-    it('should update agents column after revision is applied', async () => {
-      const graph = await graphsService.create(
-        contextDataStorage,
-        createMockGraphData({
-          name: `Revision Agent Test ${Date.now()}`,
-        }),
-      );
-      registerGraph(graph.id);
+    it(
+      'should update agents column after revision is applied',
+      { timeout: 60_000 },
+      async () => {
+        const graph = await graphsService.create(
+          contextDataStorage,
+          createMockGraphData({
+            name: `Revision Agent Test ${Date.now()}`,
+          }),
+        );
+        registerGraph(graph.id);
 
-      // Verify initial agents
-      const initialEntity = await graphDao.getOne({ id: graph.id });
-      expect(initialEntity!.agents).toHaveLength(1);
-      expect(initialEntity!.agents![0]!.name).toBe('Test Agent');
+        // Verify initial agents
+        const initialEntity = await graphDao.getOne({ id: graph.id });
+        expect(initialEntity!.agents).toHaveLength(1);
+        expect(initialEntity!.agents![0]!.name).toBe('Test Agent');
 
-      // Update the graph schema with a renamed agent
-      await graphsService.update(contextDataStorage, graph.id, {
-        currentVersion: graph.version,
-        schema: {
-          nodes: [
-            {
-              id: 'agent-1',
-              template: 'simple-agent',
-              config: {
-                name: 'Renamed Agent',
-                description: 'Updated description',
-                instructions: 'You are updated',
-                invokeModelName: 'gpt-5-mini',
-                invokeModelReasoningEffort: ReasoningEffort.None,
-                summarizeMaxTokens: 272000,
-                summarizeKeepTokens: 30000,
+        // Update the graph schema with a renamed agent
+        await graphsService.update(contextDataStorage, graph.id, {
+          currentVersion: graph.version,
+          schema: {
+            nodes: [
+              {
+                id: 'agent-1',
+                template: 'simple-agent',
+                config: {
+                  name: 'Renamed Agent',
+                  description: 'Updated description',
+                  instructions: 'You are updated',
+                  invokeModelName: 'gpt-5-mini',
+                  invokeModelReasoningEffort: ReasoningEffort.None,
+                  summarizeMaxTokens: 272000,
+                  summarizeKeepTokens: 30000,
+                },
               },
-            },
-            {
-              id: 'trigger-1',
-              template: 'manual-trigger',
-              config: {},
-            },
-          ],
-          edges: [{ from: 'trigger-1', to: 'agent-1' }],
-        },
-      });
+              {
+                id: 'trigger-1',
+                template: 'manual-trigger',
+                config: {},
+              },
+            ],
+            edges: [{ from: 'trigger-1', to: 'agent-1' }],
+          },
+        });
 
-      // Wait for revision to be applied (polling the version)
-      await waitForCondition(
-        async () => {
-          const entity = await graphDao.getOne({ id: graph.id });
-          return entity!;
-        },
-        (entity) => entity.version !== graph.version,
-        { timeout: 30_000, interval: 500 },
-      );
+        // Wait for revision to be applied (polling the version)
+        await waitForCondition(
+          async () => {
+            const entity = await graphDao.getOne({ id: graph.id });
+            return entity!;
+          },
+          (entity) => entity.version !== graph.version,
+          { timeout: 30_000, interval: 500 },
+        );
 
-      // Verify agents column was updated
-      const updatedEntity = await graphDao.getOne({ id: graph.id });
-      expect(updatedEntity!.agents).toHaveLength(1);
-      expect(updatedEntity!.agents![0]).toMatchObject({
-        nodeId: 'agent-1',
-        name: 'Renamed Agent',
-        description: 'Updated description',
-      });
-    });
+        // Verify agents column was updated
+        const updatedEntity = await graphDao.getOne({ id: graph.id });
+        expect(updatedEntity!.agents).toHaveLength(1);
+        expect(updatedEntity!.agents![0]).toMatchObject({
+          nodeId: 'agent-1',
+          name: 'Renamed Agent',
+          description: 'Updated description',
+        });
+      },
+    );
   });
 
   describe('thread list includes agents', () => {

@@ -3,11 +3,7 @@ import { LockMode } from '@mikro-orm/core';
 import { EntityManager } from '@mikro-orm/postgresql';
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import {
-  BadRequestException,
-  DefaultLogger,
-  NotFoundException,
-} from '@packages/common';
+import { BadRequestException, NotFoundException } from '@packages/common';
 import { isEqual } from 'lodash';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
@@ -61,7 +57,6 @@ export class GraphsService {
     private readonly notificationsService: NotificationsService,
     private readonly threadsDao: ThreadsDao,
     private readonly eventEmitter: EventEmitter2,
-    private readonly logger: DefaultLogger,
     private readonly projectsDao: ProjectsDao,
     private readonly templateRegistry: TemplateRegistry,
     private readonly threadResumeQueueService: ThreadResumeQueueService,
@@ -863,59 +858,33 @@ export class GraphsService {
 
     const externalThreadId = res.threadId;
 
-    // Eagerly create thread to avoid race condition with async notification handler.
-    // The handler's check-then-create pattern will find this thread and enter the update path.
-    // Use a forked EM so a unique-constraint failure doesn't pollute the global Unit of Work.
-    const forkedEm = this.em.fork();
-    const existingThread = await this.threadsDao.getOne(
-      { externalThreadId, graphId },
-      undefined,
-      forkedEm,
-    );
-    if (!existingThread) {
-      // strip reserved server-managed keys from client-supplied metadata so
-      // clients cannot poison cost-limit state by sending these in dto.metadata.
-      const {
-        effectiveCostLimitUsd: _e,
-        stopReason: _s,
-        stopCostUsd: _c,
-        costLimitHit: _h,
-        ...clientMetadata
-      } = dto.metadata ?? {};
-      const initialMetadata: Record<string, unknown> = {
-        ...clientMetadata,
-        effectiveCostLimitUsd,
-      };
-      try {
-        await this.threadsDao.create(
-          {
-            graphId,
-            createdBy: userId,
-            projectId: graph.projectId,
-            externalThreadId,
-            status: ThreadStatus.Running,
-            metadata: initialMetadata,
-          },
-          forkedEm,
-        );
-      } catch (error: unknown) {
-        const isUniqueViolation =
-          error instanceof Error &&
-          'code' in error &&
-          (error as { code: string }).code === '23505';
-        if (isUniqueViolation) {
-          this.logger.debug(
-            `Eager thread creation skipped (race with notification handler): ${(error as Error).message}`,
-          );
-        } else {
-          this.logger.warn(
-            `Eager thread creation failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          // Don't rethrow — the notification handler will create the thread as a fallback.
-          // But log at warn level so it's visible in production.
-        }
-      }
-    }
+    // Strip reserved server-managed keys from client-supplied metadata so
+    // clients cannot poison cost-limit state by sending these in dto.metadata.
+    const {
+      effectiveCostLimitUsd: _e,
+      stopReason: _s,
+      stopCostUsd: _c,
+      costLimitHit: _h,
+      ...clientMetadata
+    } = dto.metadata ?? {};
+    const initialMetadata: Record<string, unknown> = {
+      ...clientMetadata,
+      effectiveCostLimitUsd,
+    };
+
+    // Eagerly upsert the thread row so the frontend can immediately load it.
+    // upsertByExternalThreadId merges only status/lastRunId/updatedAt on
+    // conflict, so a concurrent AgentInvokeNotificationHandler upsert and the
+    // upper transactional metadata update both remain authoritative for their
+    // respective fields — no PK race, no metadata stomp.
+    await this.threadsDao.upsertByExternalThreadId({
+      graphId,
+      createdBy: userId,
+      projectId: graph.projectId,
+      externalThreadId,
+      status: ThreadStatus.Running,
+      metadata: initialMetadata,
+    });
 
     return {
       externalThreadId,

@@ -959,16 +959,6 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     );
     const inputMessageSet = new Set(updateMessages);
 
-    // Emit invoke event
-    this.emit({
-      type: 'invoke',
-      data: {
-        threadId,
-        messages: updateMessages,
-        config: mergedConfig,
-      },
-    });
-
     const g = await this.buildGraph(config);
 
     this.graphThreadState?.applyForThread(threadId, {
@@ -1051,6 +1041,21 @@ export class SimpleAgent extends BaseAgent<SimpleAgentSchemaType> {
     };
 
     this.activeRuns.set(runId, runEntry);
+
+    // Emit invoke AFTER `activeRuns.set` so consumers reacting to
+    // status=Running (e.g. follow-up triggers calling `runOrAppend`) see the
+    // active entry and route via `appendMessages` instead of starting a new
+    // run. Otherwise: `executeTrigger`'s eager status flip beats the active
+    // mark, and a follow-up trigger arriving in that window starts a parallel
+    // `run()` for the same thread instead of appending to the in-flight one.
+    this.emit({
+      type: 'invoke',
+      data: {
+        threadId,
+        messages: updateMessages,
+        config: mergedConfig,
+      },
+    });
 
     const initialStateChange: BaseAgentStateChange = {
       messages: {

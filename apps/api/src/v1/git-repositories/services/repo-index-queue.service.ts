@@ -38,8 +38,8 @@ export class RepoIndexQueueService implements OnModuleInit, OnModuleDestroy {
   private redisWorker!: IORedis;
   private redisSub!: IORedis;
   private callbacks?: RepoIndexQueueCallbacks;
-  private readonly queueName = `repo-index-${environment.env}`;
-  private readonly cancelChannel = `repo-index-cancel:${environment.env}`;
+  private readonly queueName = `repo-index-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
+  private readonly cancelChannel = `repo-index-cancel:${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 

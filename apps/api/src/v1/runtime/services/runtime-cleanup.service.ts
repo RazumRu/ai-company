@@ -11,7 +11,7 @@ export class RuntimeCleanupService implements OnModuleInit, OnModuleDestroy {
   private queue!: Queue;
   private worker!: Worker;
   private redis!: IORedis;
-  private readonly queueName = `runtime-cleanup-${environment.env}`;
+  private readonly queueName = `runtime-cleanup-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
 
   constructor(
     private readonly runtimeProvider: RuntimeProvider,

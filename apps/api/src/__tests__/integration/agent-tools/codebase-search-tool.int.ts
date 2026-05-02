@@ -3,7 +3,7 @@ import { EntityManager } from '@mikro-orm/postgresql';
 import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { v5 as uuidv5 } from 'uuid';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { FilesCodebaseSearchTool } from '../../../v1/agent-tools/tools/common/files/files-codebase-search.tool';
@@ -19,6 +19,7 @@ import { BaseRuntime } from '../../../v1/runtime/services/base-runtime';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
 import { RuntimeProvider } from '../../../v1/runtime/services/runtime-provider';
 import { RuntimeThreadProvider } from '../../../v1/runtime/services/runtime-thread-provider';
+import { describeIfRealRuntime as describe } from '../helpers/real-runtime-gate';
 import { createTestProject } from '../helpers/test-context';
 import { mockLiteLlmClient } from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';

@@ -44,12 +44,14 @@ import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
+import { describeIfRealRuntime } from '../helpers/real-runtime-gate';
 import { createTestProject } from '../helpers/test-context';
 import {
   mockLiteLlmClient,
   mockThreadNameGenerator,
 } from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
+import { getMockRuntime } from '../mocks/mock-runtime';
 import { createTestModule } from '../setup';
 
 const THREAD_ID = `files-tools-int-${Date.now()}`;
@@ -99,7 +101,7 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
 // Assigned in beforeAll of the graph execution describe block once the test project is created.
 let contextDataStorage: AppContextStorage;
 
-describe('Files tools integration', () => {
+describeIfRealRuntime('Files tools integration', () => {
   let moduleRef: TestingModule;
   let runtime: BaseRuntime;
   let runtimeThreadProvider: RuntimeThreadProvider;
@@ -1728,6 +1730,36 @@ When the user message contains 'SEARCH_WITH_FILES_TOOL' followed by JSON, parse 
     { timeout: 45000 },
     async () => {
       const mockLlm = getMockLlm(app);
+
+      // MockRuntime doesn't run a real `rg` against the simulated workdir;
+      // register a fixture that returns the canonical `rg --json` line for the
+      // sample file the production initScript would have created.
+      const samplePath = `${SEARCH_DIR}/src/sample.ts`;
+      const sampleLine = `This line has ${SEARCH_QUERY} content.`;
+      const matchOffset = sampleLine.indexOf(SEARCH_QUERY);
+      const ripgrepJsonOutput = [
+        JSON.stringify({
+          type: 'match',
+          data: {
+            path: { text: samplePath },
+            lines: { text: `${sampleLine}\n` },
+            line_number: 1,
+            absolute_offset: 0,
+            submatches: [
+              {
+                match: { text: SEARCH_QUERY },
+                start: matchOffset,
+                end: matchOffset + SEARCH_QUERY.length,
+              },
+            ],
+          },
+        }),
+        '',
+      ].join('\n');
+      getMockRuntime(app).onExec(
+        { cmd: 'rg --json' },
+        { exitCode: 0, stdout: ripgrepJsonOutput, stderr: '' },
+      );
 
       // Turn 1 (callIndex 0): files_search_text is not yet loaded — agent uses
       // tool_search to discover it.

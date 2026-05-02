@@ -69,6 +69,16 @@ export class MockRuntime extends BaseRuntime {
       };
     }
 
+    if (params.signal?.aborted) {
+      return {
+        fail: true,
+        exitCode: 124,
+        stdout: '',
+        stderr: 'Aborted',
+        execPath: 'mock',
+      };
+    }
+
     const cmdString = Array.isArray(params.cmd)
       ? params.cmd.join(' ')
       : params.cmd;
@@ -82,7 +92,27 @@ export class MockRuntime extends BaseRuntime {
       runtimeHostname: this.hostname,
     });
 
-    return result;
+    if ('__hangUntilAbort' in result && result.__hangUntilAbort) {
+      // Fixture asked to hang until aborted. Mirror DockerRuntime semantics:
+      // resolve with exitCode=124 + stderr="Aborted" when the signal fires.
+      // If no signal is provided we still hang — caller bug, surfaces fast.
+      return await new Promise<RuntimeExecResult>((resolve) => {
+        const onAbort = () => {
+          resolve({
+            fail: true,
+            exitCode: 124,
+            stdout: '',
+            stderr: 'Aborted',
+            execPath: 'mock',
+          });
+        };
+        if (params.signal) {
+          params.signal.addEventListener('abort', onAbort, { once: true });
+        }
+      });
+    }
+
+    return result as RuntimeExecResult;
   }
 
   public override async execStream(

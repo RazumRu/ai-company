@@ -27,9 +27,15 @@ function createMockRepo(): SqlEntityRepository<TestEntity> {
 }
 
 function createMockEm(repo: SqlEntityRepository<TestEntity>): EntityManager {
+  const identityMap = { delete: vi.fn() };
+  const uow = {
+    getById: vi.fn().mockReturnValue(undefined),
+    getIdentityMap: vi.fn().mockReturnValue(identityMap),
+  };
   return {
     flush: vi.fn(),
     getRepository: vi.fn().mockReturnValue(repo),
+    getUnitOfWork: vi.fn().mockReturnValue(uow),
   } as unknown as EntityManager;
 }
 
@@ -204,6 +210,7 @@ describe('BaseDao', () => {
 
   it('hardDelete calls repo.nativeDelete with filter', async () => {
     const where = { name: 'test' };
+    vi.mocked(repo.find).mockResolvedValue([]);
     await dao.hardDelete(where as never);
 
     expect(repo.nativeDelete).toHaveBeenCalledWith(where);
@@ -213,6 +220,7 @@ describe('BaseDao', () => {
     const txRepo = createMockRepo();
     const txEm = createMockEm(txRepo);
     const where = { name: 'test' };
+    vi.mocked(txRepo.find).mockResolvedValue([]);
 
     await dao.hardDelete(where as never, txEm);
 

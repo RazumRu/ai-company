@@ -1,3 +1,9 @@
+// Side-effect import: must run before any module that reads POSTGRES_URL
+// (notably `environments/index.ts` reached via `../../db/mikro-orm.config`).
+import './worker-env';
+
+import { randomUUID } from 'node:crypto';
+
 import { INestApplication } from '@nestjs/common';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { Test, TestingModule, TestingModuleBuilder } from '@nestjs/testing';
@@ -14,6 +20,7 @@ import { buildMikroOrmExtension } from '@packages/mikroorm';
 import { AppModule } from '../../app.module';
 import mikroOrmConfig from '../../db/mikro-orm.config';
 import { environment } from '../../environments';
+import { GraphRestorationService } from '../../v1/graphs/services/graph-restoration.service';
 import { LitellmService } from '../../v1/litellm/services/litellm.service';
 import { NotificationsService } from '../../v1/notifications/services/notifications.service';
 import { OpenaiService } from '../../v1/openai/openai.service';
@@ -84,6 +91,15 @@ export const createTestModule = async (
 ) => {
   const mockRuntimeEnabled = options.mockRuntime ?? true;
   const mockMcpEnabled = options.mockMcp ?? true;
+
+  // Override BULLMQ_QUEUE_SUFFIX per app so File A's queued jobs don't get
+  // picked up by File B's worker via the shared Redis namespace. Vitest
+  // isolates the module graph per test file, so a module-scoped counter
+  // would reset between files; a randomUUID() guarantees global uniqueness
+  // across files, processes, and re-runs. The suffix is read at queue-
+  // service construction time (class field initializer), so this must be
+  // set BEFORE the testing module compiles.
+  process.env.BULLMQ_QUEUE_SUFFIX = `-test-${process.pid}-${randomUUID().slice(0, 8)}`;
 
   // Patch BaseAgent.prototype.buildLLM to return MockChatOpenAI (idempotent).
   installBaseAgentPatch();
@@ -161,7 +177,13 @@ export const createTestModule = async (
       inject: [LitellmService],
       factory: (litellm: LitellmService) =>
         new MockOpenaiAdapter(getMockLlmServiceLazy(), litellm),
-    });
+    })
+    // GraphsModule.onModuleInit fires `void restoreRunningGraphs()` as a
+    // fire-and-forget task. In tests this races with `app.close()` and, when
+    // close wins, the still-pending DB query throws "driver has already been
+    // destroyed". Replace the service with a no-op for every integration test.
+    .overrideProvider(GraphRestorationService)
+    .useValue({ restoreRunningGraphs: async () => {} });
 
   const m = mockRuntimeEnabled
     ? moduleBuilder.overrideProvider(RuntimeProvider).useFactory({

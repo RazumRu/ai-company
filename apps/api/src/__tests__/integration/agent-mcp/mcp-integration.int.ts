@@ -32,10 +32,8 @@ import {
 } from '../helpers/test-stubs';
 import { getMockLlm } from '../mocks/mock-llm';
 import { getMockMcp } from '../mocks/mock-mcp';
-import {
-  MockMcpService,
-  MockMcpToolDefinition,
-} from '../mocks/mock-mcp/mock-mcp.service';
+import { MockMcpService } from '../mocks/mock-mcp/mock-mcp.service';
+import { MockMcpToolDefinition } from '../mocks/mock-mcp/mock-mcp.types';
 import { createTestModule } from '../setup';
 
 // Mock playwright tool list — the real `@playwright/mcp` package isn't available

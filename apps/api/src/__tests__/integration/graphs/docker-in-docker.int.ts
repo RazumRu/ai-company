@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -17,6 +17,7 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
 import { waitForCondition } from '../helpers/graph-helpers';
+import { describeIfRealRuntime } from '../helpers/real-runtime-gate';
 import { createTestProject } from '../helpers/test-context';
 import { createTestModule } from '../setup';
 
@@ -35,7 +36,7 @@ const DOCKER_DIND_INIT_SCRIPT = [
 // Assigned in beforeAll once the test project is created.
 let contextDataStorage: AppContextStorage;
 
-describe('Docker Runtime Integration', () => {
+describeIfRealRuntime('Docker Runtime Integration', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;

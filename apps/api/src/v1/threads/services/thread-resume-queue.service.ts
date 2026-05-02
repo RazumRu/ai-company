@@ -38,7 +38,7 @@ export class ThreadResumeQueueService implements OnModuleInit, OnModuleDestroy {
   private redisQueue!: IORedis;
   private redisWorker!: IORedis;
   private callbacks?: ThreadResumeQueueCallbacks;
-  private readonly queueName = `thread-resume-${environment.env}`;
+  private readonly queueName = `thread-resume-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 

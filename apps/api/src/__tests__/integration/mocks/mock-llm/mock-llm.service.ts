@@ -137,7 +137,10 @@ export class MockLlmService {
   public match(request: MockLlmRequest): MockLlmReply {
     this.requestLog.push(request);
 
-    if (this.queue.length > 0) {
+    // Queue is for chat replies (text/toolCall). JSON / embedding requests
+    // can fire opportunistically (thread-name generation, summarisation,
+    // embeddings) and shouldn't drain the queue meant to drive a chat agent.
+    if (this.queue.length > 0 && request.kind === 'chat') {
       return this.queue.shift()!;
     }
 

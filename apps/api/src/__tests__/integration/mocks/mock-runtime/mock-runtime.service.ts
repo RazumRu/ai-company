@@ -95,7 +95,7 @@ export class MockRuntimeService {
 
   public resolveExec(
     request: Omit<MockRuntimeExecRequest, 'callIndex'>,
-  ): RuntimeExecResult {
+  ): RuntimeExecResult | { __hangUntilAbort: true } {
     const fullRequest: MockRuntimeExecRequest = {
       ...request,
       callIndex: this._callIndex++,
@@ -104,7 +104,11 @@ export class MockRuntimeService {
 
     const reply = this.findFixture(fullRequest);
     if (reply !== undefined) {
-      return this.materializeReply(reply, fullRequest);
+      const partial = typeof reply === 'function' ? reply(fullRequest) : reply;
+      if (partial.hangUntilAbort) {
+        return { __hangUntilAbort: true };
+      }
+      return this.materializeReply(partial, fullRequest);
     }
 
     const fallback = this.applyBuiltinFallback(fullRequest);
@@ -199,10 +203,9 @@ export class MockRuntimeService {
   }
 
   private materializeReply(
-    reply: MockRuntimeExecReply,
-    request: MockRuntimeExecRequest,
+    partial: Partial<RuntimeExecResult> & { hangUntilAbort?: boolean },
+    _request: MockRuntimeExecRequest,
   ): RuntimeExecResult {
-    const partial = typeof reply === 'function' ? reply(request) : reply;
     const exitCode = partial.exitCode ?? 0;
     return {
       fail: partial.fail ?? exitCode !== 0,

@@ -12,11 +12,11 @@ paths:
 ```bash
 pnpm test:unit                                    # all unit tests
 pnpm test:integration src/__tests__/integration/path/to/file.int.ts  # specific integration test (preferred for iteration)
-pnpm test:integration                             # full integration suite — allowed (LLM is mocked via MockLlmService)
-pnpm run full-check                               # build + lint + unit tests (mandatory before finishing)
+pnpm test:integration                             # full integration suite — hermetic (LLM mocked, runtimes mocked, services spawned via testcontainers when not already running locally)
+pnpm run full-check                               # build + lint + unit + integration (mandatory before finishing)
 ```
 
-Never call `vitest` directly. `pnpm test` (whole monorepo) is forbidden — too coarse. The bulk integration run is fine for pre-push verification; targeted runs are preferred while iterating.
+Never call `vitest` directly. `pnpm test` (whole monorepo) is forbidden — too coarse. The bulk integration run is hermetic and required by `pnpm full-check`; targeted runs are preferred while iterating. Set `INTEGRATION_USE_LOCAL_DEPS=1` to reuse `pnpm deps:up` services and skip the testcontainers boot.
 
 ## Unit Tests (*.spec.ts)
 

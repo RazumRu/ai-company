@@ -38,7 +38,7 @@ export class K8sWarmPoolService
   private watchRestartBackoffMs: number = 1000;
   private lastResourceVersion: string | null = null;
   private isShuttingDown: boolean = false;
-  private readonly queueName = `k8s-warmpool-${environment.env}`;
+  private readonly queueName = `k8s-warmpool-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 

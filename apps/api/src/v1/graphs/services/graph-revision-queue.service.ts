@@ -20,7 +20,7 @@ export class GraphRevisionQueueService
   private redisQueue!: IORedis;
   private redisWorker!: IORedis;
   private processor?: (job: GraphRevisionJobData) => Promise<void>;
-  private readonly queueName = `graph-revisions-${environment.env}`;
+  private readonly queueName = `graph-revisions-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 
