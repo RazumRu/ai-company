@@ -234,7 +234,11 @@ describe('GraphsService', () => {
           provide: EntityManager,
           useValue: {
             transactional: vi.fn(),
-            fork: vi.fn().mockReturnValue({}),
+            fork: vi.fn().mockReturnValue({
+              transactional: vi.fn(async (cb) =>
+                cb({} as unknown as EntityManager),
+              ),
+            }),
           },
         },
         {

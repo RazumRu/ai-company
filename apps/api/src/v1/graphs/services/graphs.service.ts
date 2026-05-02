@@ -753,10 +753,25 @@ export class GraphsService {
     );
 
     if (dto.threadSubId) {
-      // wrap the entire "existing thread" branch in a pessimistic-write
+      // Wrap the entire "existing thread" branch in a pessimistic-write
       // transaction to prevent TOCTOU races where two concurrent requests
       // read Stopped status simultaneously and both bypass the resume guard.
-      await this.em.transactional(async (em: EntityManager) => {
+      //
+      // Use `em.fork().transactional(...)` instead of `em.transactional(...)`
+      // so the transaction is rooted on a private fork, never on the global em.
+      // executeTrigger can be invoked concurrently (HTTP request + the BullMQ
+      // resume worker, or two follow-up triggers landing during an in-flight
+      // run); MikroORM's maintainer recommends the explicit-fork pattern for
+      // concurrent transactions because `em.transactional()` on the global em
+      // (a) merges entities back into the upper context on commit, and
+      // (b) goes through TransactionManager's NESTED-by-default propagation
+      //     which checks `em.getTransactionContext()` on the upper em — if a
+      //     prior fork's `#transactionContext` ever leaks onto the upper em,
+      //     the next call opens a SAVEPOINT on a connection that's already
+      //     been returned to the pool, and rollback explodes with
+      //     "ROLLBACK TO SAVEPOINT can only be used in transaction blocks".
+      // See: https://github.com/mikro-orm/mikro-orm/discussions/5309
+      await this.em.fork().transactional(async (em: EntityManager) => {
         const existingThread = await this.threadsDao.getOne(
           {
             externalThreadId: `${graphId}:${dto.threadSubId}`,
