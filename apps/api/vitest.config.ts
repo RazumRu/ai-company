@@ -3,11 +3,8 @@ import { defineProject, mergeConfig } from 'vitest/config';
 import { defineBaseConfig } from '../../vitest.config';
 import pkg from './package.json';
 
-const useLocalDeps = process.env.INTEGRATION_USE_LOCAL_DEPS === '1';
-const fileParallelism = !useLocalDeps;
-const workerCount = useLocalDeps
-  ? 1
-  : Number(process.env.INTEGRATION_WORKER_COUNT ?? '4');
+const workerCount = Number(process.env.INTEGRATION_WORKER_COUNT ?? '4');
+const fileParallelism = workerCount > 1;
 
 export default mergeConfig(
   defineBaseConfig(),

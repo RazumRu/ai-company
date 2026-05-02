@@ -30,7 +30,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     return async () => {};
   }
 
-  const useLocalDeps = process.env.INTEGRATION_USE_LOCAL_DEPS === '1';
+  const useLocalDeps = await resolveUseLocalDeps();
   const containers: StartedTestContainer[] = [];
 
   let postgresUrl: string;
@@ -43,6 +43,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       'postgresql://postgres:postgres@localhost:5439/geniro';
     redisUrl = process.env.REDIS_URL || 'redis://localhost:6380';
     qdrantUrl = process.env.QDRANT_URL || 'http://localhost:6333';
+    process.stdout.write(
+      `[integration] using local deps (postgres=${postgresUrl})\n`,
+    );
   } else {
     // Ryuk (the testcontainers cleanup sidecar) tries to bind-mount the
     // Docker/Podman socket; on Podman/Mac this fails with
@@ -95,6 +98,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.REDIS_URL = redisUrl;
   process.env.QDRANT_URL = qdrantUrl;
 
+  process.env.INTEGRATION_USE_LOCAL_DEPS = useLocalDeps ? '1' : '0';
+
   await ensureRequiredExtensions(postgresUrl);
   if (useLocalDeps) {
     // Local Postgres already has the schema applied via `pnpm migration:run`.
@@ -137,6 +142,48 @@ const isUnitOnlyRun = (): boolean => {
   );
 };
 
+/**
+ * Use local `pnpm deps:up` services when reachable; otherwise boot
+ * testcontainers. Honor explicit `INTEGRATION_USE_LOCAL_DEPS=1|0` overrides.
+ *
+ * Auto-detection avoids the env-var ceremony while keeping CI hermetic — CI
+ * runners don't have local Postgres on 5439, so the probe fails fast and
+ * testcontainers boots as before.
+ */
+const resolveUseLocalDeps = async (): Promise<boolean> => {
+  const explicit = process.env.INTEGRATION_USE_LOCAL_DEPS;
+  if (explicit === '1') {
+    return true;
+  }
+  if (explicit === '0') {
+    return false;
+  }
+  const probeUrl =
+    process.env.POSTGRES_URL ||
+    'postgresql://postgres:postgres@localhost:5439/geniro';
+  return await isPostgresReachable(probeUrl);
+};
+
+const isPostgresReachable = async (postgresUrl: string): Promise<boolean> => {
+  const client = new Client({
+    connectionString: postgresUrl,
+    connectionTimeoutMillis: 1_500,
+  });
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      // ignore
+    }
+  }
+};
+
 const resolveWorkerCount = (): number => {
   const explicit = process.env.INTEGRATION_WORKER_COUNT;
   if (explicit) {
@@ -147,9 +194,6 @@ const resolveWorkerCount = (): number => {
       );
     }
     return Math.floor(parsed);
-  }
-  if (process.env.INTEGRATION_USE_LOCAL_DEPS === '1') {
-    return 1;
   }
   return 4;
 };

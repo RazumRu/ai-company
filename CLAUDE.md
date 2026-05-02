@@ -69,8 +69,11 @@ pnpm test:integration                 # Run the full integration suite (allowed 
 # pnpm vitest run
 
 # Iteration tip: target a specific file with `pnpm test:integration <file>` to keep the loop tight.
-# The bulk run is fine for verification (e.g. before pushing) but slower because integration tests run
-# sequentially (`fileParallelism: false` in apps/api/vitest.config.ts).
+# The bulk run is fine for verification (e.g. before pushing). Files run in parallel by default
+# (4 workers, each with its own per-worker DB clone); within a file tests still run sequentially.
+# The setup auto-detects local `pnpm deps:up` services on localhost:5439 and falls back to
+# testcontainers when they're unreachable. Force a mode with INTEGRATION_USE_LOCAL_DEPS=1|0
+# or override worker count with INTEGRATION_WORKER_COUNT=N.
 
 # E2E (Cypress) — requires server running + deps up:
 cd apps/api

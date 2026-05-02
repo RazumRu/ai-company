@@ -27,7 +27,14 @@
       "inputs": ["src/**"]
     },
     "test:integration": {
-      "inputs": ["src/**"]
+      "inputs": ["src/**"],
+      "env": [
+        "INTEGRATION_USE_LOCAL_DEPS",
+        "INTEGRATION_WORKER_COUNT",
+        "POSTGRES_URL",
+        "REDIS_URL",
+        "QDRANT_URL"
+      ]
     },
     "test:cov": {
       "inputs": ["src/**"]
