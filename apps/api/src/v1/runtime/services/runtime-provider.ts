@@ -1,5 +1,9 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { DefaultLogger, extractErrorMessage } from '@packages/common';
+import {
+  BaseException,
+  DefaultLogger,
+  extractErrorMessage,
+} from '@packages/common';
 import isEqual from 'lodash/isEqual';
 import {
   adjectives,
@@ -462,10 +466,27 @@ export class RuntimeProvider {
       return 0;
     }
 
+    // Bulk-cleanup paths (idle reaper, node-id sweep, temp sweep, thread
+    // teardown) can race against each other and against the periodic
+    // RuntimeCleanupService. If a concurrent run already hard-deleted a row,
+    // `stopRuntime`'s `transitionStatus` would throw RUNTIME_INSTANCE_NOT_FOUND
+    // and crash the whole Promise.all. Tolerating "already gone" is safe here
+    // — bulk cleanup is idempotent by design.
     await Promise.all(
       instances.map(async (instance) => {
-        await this.stopRuntime(instance);
-        await this.runtimeInstanceDao.hardDeleteById(instance.id);
+        try {
+          await this.stopRuntime(instance);
+        } catch (error) {
+          if (
+            !(error instanceof BaseException) ||
+            error.errorCode !== 'RUNTIME_INSTANCE_NOT_FOUND'
+          ) {
+            throw error;
+          }
+        }
+        await this.runtimeInstanceDao
+          .hardDeleteById(instance.id)
+          .catch(() => undefined);
       }),
     );
 

@@ -1132,23 +1132,81 @@ describe('Thread Management Integration Tests', () => {
       async () => {
         await ensureGraphRunning(injectModeGraphId);
         const threadSubId = uniqueThreadSubId('inject-active');
+        const firstUserMessage = 'Tell me what is the 2+2?';
+        const secondUserMessage = 'Oh not, 2+3, sorry';
+
+        // Slow the first agent call so the second trigger lands while the run
+        // is still active — otherwise the first call finishes before the
+        // second message arrives, the messages persist within microseconds of
+        // each other, and the createdAt ordering assertion is flaky (or the
+        // test never observes the inject_after_tool_call path at all). The
+        // second call's matcher is more specific so it doesn't pick up this
+        // delay. Same pattern as the wait_for_completion test below.
+        mockLlm.onChat(
+          { lastUserMessage: firstUserMessage, hasTools: ['finish'] },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: {
+              purpose: 'done',
+              message: '2+3 equals 5',
+              needsMoreInfo: false,
+            },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              totalTokens: 150,
+              totalPrice: 0.0001,
+            },
+            delayMs: 3_000,
+          },
+        );
+        mockLlm.onChat(
+          { lastUserMessage: secondUserMessage, hasTools: ['finish'] },
+          {
+            kind: 'toolCall',
+            toolName: 'finish',
+            args: {
+              purpose: 'done',
+              message: '2+3 equals 5',
+              needsMoreInfo: false,
+            },
+            usage: {
+              inputTokens: 100,
+              outputTokens: 50,
+              totalTokens: 150,
+              totalPrice: 0.0001,
+            },
+          },
+        );
+
         const firstResult = await triggerWithRetry(
           contextDataStorage,
           injectModeGraphId,
           'trigger-1',
           {
-            messages: ['Tell me what is the 2+2?'],
+            messages: [firstUserMessage],
             threadSubId,
             async: true,
           },
         );
+
+        // Wait for the first human message to land in the DB before sending
+        // the second trigger. With async:true the first message is persisted
+        // by the agent's notification handler on a separate event chain, so
+        // sending the second (synchronous) trigger immediately can persist the
+        // second message microseconds before the first lands — flipping the
+        // createdAt ordering. The 3s mock-LLM delay above keeps the first run
+        // active well past this wait, so the second message still hits the
+        // inject_after_tool_call path.
+        await waitForHumanMessageContents(firstResult.externalThreadId, 1);
 
         const secondResult = await triggerWithRetry(
           contextDataStorage,
           injectModeGraphId,
           'trigger-1',
           {
-            messages: ['Oh not, 2+3, sorry'],
+            messages: [secondUserMessage],
             threadSubId,
           },
         );
@@ -1163,11 +1221,11 @@ describe('Thread Management Integration Tests', () => {
         );
 
         const firstMessage = humanMessages.find(
-          (m) => m.message.content === 'Tell me what is the 2+2?',
+          (m) => m.message.content === firstUserMessage,
         );
 
         const secondMessage = humanMessages.find(
-          (m) => m.message.content === 'Oh not, 2+3, sorry',
+          (m) => m.message.content === secondUserMessage,
         );
 
         expect(firstMessage).toBeDefined();
