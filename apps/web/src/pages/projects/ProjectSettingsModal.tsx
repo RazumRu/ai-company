@@ -95,6 +95,7 @@ export const ProjectSettingsModal = ({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch settings each time modal opens
       loadData();
     }
   }, [open, loadData]);

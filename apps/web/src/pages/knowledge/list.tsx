@@ -104,6 +104,7 @@ export const KnowledgeListPage = () => {
   useEffect(() => {
     let mounted = true;
     const requestId = ++requestIdRef.current;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- enter loading state for new search/tag filter
     setLoading(true);
     setError(null);
 

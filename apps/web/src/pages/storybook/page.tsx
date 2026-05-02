@@ -107,7 +107,6 @@ import {
   type InnerMsg,
   ReasoningBlock,
   ShellBlock,
-  StatFooter,
   StatusTag,
   StreamingReasoningBlock,
   SubagentBlock,

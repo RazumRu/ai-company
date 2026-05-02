@@ -1,4 +1,5 @@
 // ThreadMessagesView.tsx
+/* eslint-disable react-refresh/only-export-components -- intentional: helper renderers and message-block components are co-located */
 import isPlainObject from 'lodash/isPlainObject';
 import {
   AlertTriangle,

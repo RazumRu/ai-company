@@ -213,6 +213,7 @@ const EditSecretDialog = ({
 
   useEffect(() => {
     if (secret) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate edit form when secret prop changes
       setDescription(secret.description ?? '');
       setValue('');
       setShowValue(false);
@@ -415,6 +416,7 @@ export const SecretsPage = () => {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot secrets fetch on mount
     fetchSecrets();
   }, [fetchSecrets]);
 

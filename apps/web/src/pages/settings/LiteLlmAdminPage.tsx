@@ -385,6 +385,7 @@ function ModelFormDialog({
   useEffect(() => {
     if (open) {
       if (mode === 'edit' && editingModel) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate form from selected row when dialog opens
         setForm(formFromModel(editingModel));
       } else {
         setForm(EMPTY_FORM);

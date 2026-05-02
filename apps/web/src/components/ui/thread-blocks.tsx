@@ -23,7 +23,6 @@ import { formatDurationMs } from '../../pages/graphs/components/threadMessages/t
 import { getStatusBadgeClass } from '../../utils/statusColors';
 import { MarkdownContent } from '../markdown/MarkdownContent';
 import { AgentAvatar, getAgentInitials } from './agent-avatar';
-import { Avatar, AvatarFallback } from './avatar';
 import { Badge } from './badge';
 import { JsonViewer } from './json-view';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';

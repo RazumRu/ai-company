@@ -275,6 +275,7 @@ export const GraphPage = () => {
     },
     [id, loading],
   );
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- intentional manual memoization; React Compiler not enabled
   const selectedNodeUnsavedFromServer = useMemo(() => {
     if (!selectedNode?.id) {
       return false;
@@ -378,6 +379,7 @@ export const GraphPage = () => {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot fetch of compiled nodes on mount
     fetchCompiledNodes();
   }, [fetchCompiledNodes]);
 
@@ -495,6 +497,7 @@ export const GraphPage = () => {
       const updatedNode = nodes.find((n) => n.id === selectedNodeId);
       if (updatedNode && updatedNode !== selectedNode) {
         // Only update if the node actually changed (by reference)
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror node mutations into selection
         setSelectedNode(updatedNode);
       } else if (!updatedNode) {
         // Node was deleted, clear selection

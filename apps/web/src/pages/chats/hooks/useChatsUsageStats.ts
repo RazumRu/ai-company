@@ -287,6 +287,7 @@ export const useChatsUsageStats = (deps: UseChatsUsageStatsDeps) => {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- merge per-node usage stats from REST snapshot
     setThreadTokenUsageByNode((prev) => {
       const existing = prev[selectedThreadId] ?? {};
       const merged = mergeTokenUsageByNode(byNode, existing);

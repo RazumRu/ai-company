@@ -1,7 +1,7 @@
 import isPlainObject from 'lodash/isPlainObject';
 import type { JsonValue } from 'type-fest';
 
-import type { MessagePayload, PreparedMessage } from './threadMessagesTypes';
+import type { MessagePayload } from './threadMessagesTypes';
 
 // ────────────────────────────────────────────
 // Token / price formatting

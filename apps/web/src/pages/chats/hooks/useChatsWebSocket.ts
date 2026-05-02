@@ -859,9 +859,6 @@ export const useChatsWebSocket = (deps: UseChatsWebSocketDeps) => {
           const msgAsRecord = incomingMessage.message as unknown as
             | Record<string, unknown>
             | undefined;
-          const additionalKwargs = msgAsRecord?.additionalKwargs as
-            | Record<string, unknown>
-            | undefined;
           const toolName = msgAsRecord?.name as string | undefined;
           // Detect subagent-tool messages by tool name ONLY.
           // The __subagentCommunication kwarg is a context-propagation flag
