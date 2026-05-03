@@ -19,7 +19,7 @@ import { buildMikroOrmExtension } from '@packages/mikroorm';
 
 import { AppModule } from '../../app.module';
 import mikroOrmConfig from '../../db/mikro-orm.config';
-import { environment } from '../../environments';
+import { environment, setInstanceFingerprint } from '../../environments';
 import { GraphRestorationService } from '../../v1/graphs/services/graph-restoration.service';
 import { LitellmService } from '../../v1/litellm/services/litellm.service';
 import { NotificationsService } from '../../v1/notifications/services/notifications.service';
@@ -92,14 +92,12 @@ export const createTestModule = async (
   const mockRuntimeEnabled = options.mockRuntime ?? true;
   const mockMcpEnabled = options.mockMcp ?? true;
 
-  // Override BULLMQ_QUEUE_SUFFIX per app so File A's queued jobs don't get
-  // picked up by File B's worker via the shared Redis namespace. Vitest
-  // isolates the module graph per test file, so a module-scoped counter
-  // would reset between files; a randomUUID() guarantees global uniqueness
-  // across files, processes, and re-runs. The suffix is read at queue-
-  // service construction time (class field initializer), so this must be
-  // set BEFORE the testing module compiles.
-  process.env.BULLMQ_QUEUE_SUFFIX = `-test-${process.pid}-${randomUUID().slice(0, 8)}`;
+  // Assign a unique instance fingerprint per app so File A's queued jobs
+  // don't get picked up by File B's worker via the shared Redis namespace.
+  // randomUUID() guarantees global uniqueness across files, processes, and
+  // re-runs. Read at queue-service construction time, so this must be set
+  // BEFORE the testing module compiles.
+  setInstanceFingerprint(`test-${process.pid}-${randomUUID().slice(0, 8)}`);
 
   // Patch BaseAgent.prototype.buildLLM to return MockChatOpenAI (idempotent).
   installBaseAgentPatch();

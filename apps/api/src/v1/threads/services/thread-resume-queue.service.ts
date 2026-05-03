@@ -1,9 +1,10 @@
+import { MikroORM, RequestContext } from '@mikro-orm/postgresql';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { Job, Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
-import { environment } from '../../../environments';
+import { environment, getInstanceFingerprint } from '../../../environments';
 
 export interface ThreadResumeJobData {
   threadId: string;
@@ -38,9 +39,12 @@ export class ThreadResumeQueueService implements OnModuleInit, OnModuleDestroy {
   private redisQueue!: IORedis;
   private redisWorker!: IORedis;
   private callbacks?: ThreadResumeQueueCallbacks;
-  private readonly queueName = `thread-resume-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
+  private readonly queueName = `thread-resume-${getInstanceFingerprint()}`;
 
-  constructor(private readonly logger: DefaultLogger) {}
+  constructor(
+    private readonly logger: DefaultLogger,
+    private readonly orm: MikroORM,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     this.redisQueue = new IORedis(environment.redisUrl, {
@@ -201,7 +205,12 @@ export class ThreadResumeQueueService implements OnModuleInit, OnModuleDestroy {
     if (!this.callbacks) {
       throw new Error('Queue callbacks not configured');
     }
-    await this.callbacks.onProcess(job.data);
+    // Fork the EM for the job so identity-map state doesn't leak between
+    // jobs or into the global EM. See GraphRevisionQueueService for the
+    // full rationale.
+    await RequestContext.create(this.orm.em, async () => {
+      await this.callbacks!.onProcess(job.data);
+    });
   }
 
   private async handleJobFailed(

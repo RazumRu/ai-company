@@ -1,26 +1,17 @@
 /**
  * Side-effect module: rewrites `POSTGRES_URL` to the per-worker database name
- * and assigns a per-process BullMQ queue suffix before any other module reads
- * `process.env`.
+ * before any other module reads `process.env`.
  *
  * Imported at the top of `setup.ts` (must come before any import that
- * transitively pulls `environments`/`mikro-orm.config` or any BullMQ queue
- * service). Each vitest worker gets a unique slot in
- * `INTEGRATION_WORKER_DB_NAMES` keyed by `VITEST_POOL_ID`. Falls back to the
- * base DB if pool ID is absent or worker names weren't seeded by
- * `globalSetup` (e.g. running an .int.ts file via the base monorepo
- * `vitest.config.ts` instead of the api project config).
+ * transitively pulls `environments`/`mikro-orm.config`). Each vitest worker
+ * gets a unique slot in `INTEGRATION_WORKER_DB_NAMES` keyed by
+ * `VITEST_POOL_ID`. Falls back to the base DB if pool ID is absent or worker
+ * names weren't seeded by `globalSetup` (e.g. running an .int.ts file via
+ * the base monorepo `vitest.config.ts` instead of the api project config).
  *
- * BullMQ queues are shared via Redis across processes by name. Without a
- * per-process suffix, jobs queued by test file A stay in Redis and get
- * picked up by test file B's worker, then fail because file A's graph was
- * already cleaned up. The suffix isolates each test process.
+ * BullMQ queue isolation is handled separately by `setInstanceFingerprint()`
+ * called in `createTestModule()` — no env-var dance needed here.
  */
-if (!process.env.BULLMQ_QUEUE_SUFFIX) {
-  const poolId = process.env.VITEST_POOL_ID ?? '';
-  process.env.BULLMQ_QUEUE_SUFFIX = `-test-${process.pid}${poolId ? `-p${poolId}` : ''}`;
-}
-
 const baseUrl =
   process.env.INTEGRATION_BASE_POSTGRES_URL ?? process.env.POSTGRES_URL;
 if (baseUrl) {

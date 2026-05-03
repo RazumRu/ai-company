@@ -7,7 +7,7 @@ import { DefaultLogger } from '@packages/common';
 import { Job, Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
-import { environment } from '../../../environments';
+import { environment, getInstanceFingerprint } from '../../../environments';
 import {
   GENIRO_CLAIMED_LABEL,
   GENIRO_GRAPH_LABEL,
@@ -38,7 +38,7 @@ export class K8sWarmPoolService
   private watchRestartBackoffMs: number = 1000;
   private lastResourceVersion: string | null = null;
   private isShuttingDown: boolean = false;
-  private readonly queueName = `k8s-warmpool-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
+  private readonly queueName = `k8s-warmpool-${getInstanceFingerprint()}`;
 
   constructor(private readonly logger: DefaultLogger) {}
 

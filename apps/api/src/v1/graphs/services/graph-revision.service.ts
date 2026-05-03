@@ -675,31 +675,6 @@ export class GraphRevisionService {
       { clear: true },
     );
 
-    // After Phase 3 commits the new graph version to the DB, the global EM's
-    // identity map (which auto-resolved reads outside any transactional hit)
-    // still holds the pre-revision graph entity from concurrent reads. Without
-    // explicit invalidation, callers that load the graph via the global EM
-    // (HTTP polling, post-revision notifications, sibling services) keep
-    // seeing the stale `version`. Evicting via `getUnitOfWork(false)` reaches
-    // the global EM directly, bypassing any async-context fork that may still
-    // be on the stack. Safe here: Phase 3's fork has been disposed, so no
-    // shared entity instance can be corrupted.
-    const globalUow = this.em.getUnitOfWork(false);
-    const cachedGraph = globalUow.getById<GraphEntity>(
-      GraphEntity,
-      revision.graphId as never,
-    );
-    if (cachedGraph) {
-      globalUow.unsetIdentity(cachedGraph);
-    }
-    const cachedRevision = globalUow.getById<GraphRevisionEntity>(
-      GraphRevisionEntity,
-      revision.id as never,
-    );
-    if (cachedRevision) {
-      globalUow.unsetIdentity(cachedRevision);
-    }
-
     // Emit after Phase 3 transaction commits so the enrichment handler
     // can read the committed Applied status from the database.
     revision.status = GraphRevisionStatus.Applied;

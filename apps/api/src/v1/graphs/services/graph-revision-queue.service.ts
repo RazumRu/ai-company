@@ -1,9 +1,10 @@
+import { MikroORM, RequestContext } from '@mikro-orm/postgresql';
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DefaultLogger } from '@packages/common';
 import { Job, Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 
-import { environment } from '../../../environments';
+import { environment, getInstanceFingerprint } from '../../../environments';
 import { GraphRevisionEntity } from '../entity/graph-revision.entity';
 
 export interface GraphRevisionJobData {
@@ -20,9 +21,12 @@ export class GraphRevisionQueueService
   private redisQueue!: IORedis;
   private redisWorker!: IORedis;
   private processor?: (job: GraphRevisionJobData) => Promise<void>;
-  private readonly queueName = `graph-revisions-${environment.env}${process.env.BULLMQ_QUEUE_SUFFIX ?? ''}`;
+  private readonly queueName = `graph-revisions-${getInstanceFingerprint()}`;
 
-  constructor(private readonly logger: DefaultLogger) {}
+  constructor(
+    private readonly logger: DefaultLogger,
+    private readonly orm: MikroORM,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     this.redisQueue = new IORedis(environment.redisUrl, {
@@ -128,7 +132,15 @@ export class GraphRevisionQueueService
       throw new Error('Graph revision processor not set');
     }
 
-    await this.processor(job.data);
+    // Fork the EM for the lifetime of this job. Without this, the processor
+    // and everything downstream resolve `this.em` to the global EM, whose
+    // identity map accumulates stale entities across jobs. RequestContext
+    // gives the job its own forked EM (with its own identity map), isolating
+    // it from concurrent jobs and HTTP requests (which get their own forks
+    // via @mikro-orm/nestjs HTTP middleware).
+    await RequestContext.create(this.orm.em, async () => {
+      await this.processor!(job.data);
+    });
   }
 
   private handleJobFailure(

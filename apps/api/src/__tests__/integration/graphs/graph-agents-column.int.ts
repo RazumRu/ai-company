@@ -324,10 +324,17 @@ describe('Graph Agents Column Integration Tests', () => {
           },
         });
 
-        // Wait for revision to be applied (polling the version)
+        // Wait for revision to be applied (polling the version). Pass
+        // `refresh: true` so each poll re-fetches from the DB instead of
+        // returning the cached pre-revision instance — tests share the
+        // global EM with the worker, unlike HTTP requests which get their
+        // own EM fork via @mikro-orm/nestjs middleware.
         await waitForCondition(
           async () => {
-            const entity = await graphDao.getOne({ id: graph.id });
+            const entity = await graphDao.getOne(
+              { id: graph.id },
+              { refresh: true },
+            );
             return entity!;
           },
           (entity) => entity.version !== graph.version,
@@ -335,7 +342,10 @@ describe('Graph Agents Column Integration Tests', () => {
         );
 
         // Verify agents column was updated
-        const updatedEntity = await graphDao.getOne({ id: graph.id });
+        const updatedEntity = await graphDao.getOne(
+          { id: graph.id },
+          { refresh: true },
+        );
         expect(updatedEntity!.agents).toHaveLength(1);
         expect(updatedEntity!.agents![0]).toMatchObject({
           nodeId: 'agent-1',
