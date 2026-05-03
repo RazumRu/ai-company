@@ -1,14 +1,14 @@
 /**
  * Standalone integration test script for DaytonaRuntime refactor.
  *
- * Run with:
- *   cd apps/api && DAYTONA_API_KEY=<key> DAYTONA_API_URL=<url> pnpm test:integration src/__tests__/scripts/daytona-runtime-test.ts
- *
- * Requires a live Daytona instance. Tests exec, timeout, abort, recovery, and PTY execStream.
+ * Skipped by default. Opt in with `RUN_REAL_DAYTONA_TESTS=1` plus
+ * `DAYTONA_API_KEY` / `DAYTONA_API_URL` set to a reachable Daytona instance.
+ * Tests exec, timeout, abort, recovery, and PTY execStream.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { DaytonaRuntime } from '../../v1/runtime/services/daytona-runtime';
+import { describeIfRealDaytona as describe } from '../integration/helpers/real-runtime-gate';
 
 const API_KEY = process.env.DAYTONA_API_KEY ?? '';
 const API_URL = process.env.DAYTONA_API_URL ?? '';
@@ -19,12 +19,6 @@ describe('DaytonaRuntime Refactor — Live Verification', () => {
   let runtime: DaytonaRuntime;
 
   beforeAll(async () => {
-    if (!API_KEY || !API_URL) {
-      throw new Error(
-        'DAYTONA_API_KEY and DAYTONA_API_URL must be set to run this test',
-      );
-    }
-
     runtime = new DaytonaRuntime(
       { apiKey: API_KEY, apiUrl: API_URL },
       { snapshot: IMAGE },

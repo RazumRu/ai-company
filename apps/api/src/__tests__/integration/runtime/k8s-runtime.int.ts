@@ -1,32 +1,23 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, expect, it } from 'vitest';
 
 import { K8sRuntime } from '../../../v1/runtime/services/k8s-runtime';
 import { K8sRuntimeConfig } from '../../../v1/runtime/services/k8s-runtime.types';
+import { describeIfRealK8s as describe } from '../helpers/real-runtime-gate';
 
 /**
  * Integration tests for K8sRuntime lifecycle against a real Kubernetes cluster.
  *
- * Prerequisites:
- *  - A reachable Kubernetes cluster configured via KUBECONFIG (e.g. Docker Desktop K8s, kind, k3d)
- *    OR in-cluster auth when running inside a pod (K8S_IN_CLUSTER=true).
- *  - A namespace matching K8S_INT_TEST_NAMESPACE (default: geniro-runtimes-test) must exist
- *    with RBAC permissions to create/exec/delete Pods.
- *
- * If neither KUBECONFIG nor K8S_IN_CLUSTER=true is set, the tests will fail with
- * a clear error message (no silent skipping per project policy).
- *
- * Override defaults via environment variables:
- *  - K8S_INT_TEST_NAMESPACE  — target namespace (default: geniro-runtimes-test)
- *  - K8S_INT_TEST_IMAGE      — container image (default: busybox:1.36)
- *  - K8S_IN_CLUSTER          — set to "true" when running inside a pod
- *  - KUBECONFIG              — path to kubeconfig file (standard K8s env var)
+ * Skipped by default. Opt in with `RUN_REAL_K8S_TESTS=1` plus either
+ * `K8S_IN_CLUSTER=true` (running inside a pod) or `KUBECONFIG` pointing at a
+ * reachable cluster (Docker Desktop K8s, kind, k3d). The target namespace
+ * (default `geniro-runtimes-test`) must exist with RBAC for create/exec/delete
+ * Pods. Override defaults via `K8S_INT_TEST_NAMESPACE` / `K8S_INT_TEST_IMAGE`.
  */
 
 const TEST_NAMESPACE =
   process.env.K8S_INT_TEST_NAMESPACE ?? 'geniro-runtimes-test';
 const TEST_IMAGE = process.env.K8S_INT_TEST_IMAGE ?? 'busybox:1.36';
 const IN_CLUSTER = process.env.K8S_IN_CLUSTER === 'true';
-const KUBECONFIG_PATH = process.env.KUBECONFIG;
 
 describe('K8sRuntime (integration)', () => {
   let runtime: K8sRuntime;
@@ -43,17 +34,6 @@ describe('K8sRuntime (integration)', () => {
     readyTimeoutMs: 60_000,
     inCluster: IN_CLUSTER,
   };
-
-  beforeAll(() => {
-    if (!IN_CLUSTER && !KUBECONFIG_PATH) {
-      throw new Error(
-        'K8sRuntime integration tests require either K8S_IN_CLUSTER=true or the KUBECONFIG ' +
-          'environment variable pointing at a reachable cluster (e.g. Docker Desktop K8s, kind, k3d). ' +
-          `Also ensure the namespace '${TEST_NAMESPACE}' exists with appropriate RBAC ` +
-          '(create/exec/delete Pods).',
-      );
-    }
-  });
 
   afterAll(async () => {
     await runtime?.stop().catch(() => undefined);
