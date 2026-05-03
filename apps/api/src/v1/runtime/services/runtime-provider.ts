@@ -468,10 +468,14 @@ export class RuntimeProvider {
 
     // Bulk-cleanup paths (idle reaper, node-id sweep, temp sweep, thread
     // teardown) can race against each other and against the periodic
-    // RuntimeCleanupService. If a concurrent run already hard-deleted a row,
-    // `stopRuntime`'s `transitionStatus` would throw RUNTIME_INSTANCE_NOT_FOUND
-    // and crash the whole Promise.all. Tolerating "already gone" is safe here
-    // — bulk cleanup is idempotent by design.
+    // RuntimeCleanupService. Two outcomes both surface as exceptions but
+    // are benign for bulk cleanup (which is idempotent by design):
+    //  - RUNTIME_INSTANCE_NOT_FOUND: concurrent path already hard-deleted.
+    //  - INVALID_RUNTIME_STATUS_TRANSITION: concurrent path already moved
+    //    the row to a terminal state (Stopped/Failed) between our snapshot
+    //    read and our transitionStatus call; nothing left to stop.
+    // Both mean "someone else finished the work" — skip and try the
+    // best-effort hard-delete.
     await Promise.all(
       instances.map(async (instance) => {
         try {
@@ -479,7 +483,8 @@ export class RuntimeProvider {
         } catch (error) {
           if (
             !(error instanceof BaseException) ||
-            error.errorCode !== 'RUNTIME_INSTANCE_NOT_FOUND'
+            (error.errorCode !== 'RUNTIME_INSTANCE_NOT_FOUND' &&
+              error.errorCode !== 'INVALID_RUNTIME_STATUS_TRANSITION')
           ) {
             throw error;
           }
