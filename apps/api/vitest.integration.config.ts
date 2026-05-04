@@ -9,10 +9,11 @@ export default mergeConfig(
     test: {
       name: pkg.name,
       disableConsoleIntercept: true,
-      include: ['src/**/*.spec.ts'],
+      include: ['src/**/*.int.ts'],
       projects: undefined,
       fileParallelism: true,
       maxWorkers: 5,
+      globalSetup: ['./src/__tests__/integration/global-setup.ts'],
     },
   }),
 );

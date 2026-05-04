@@ -18,7 +18,7 @@ pnpm run full-check                               # build + lint + unit + integr
 
 Never call `vitest` directly. `pnpm test` (whole monorepo) is forbidden — too coarse. The bulk integration run is hermetic and required by `pnpm full-check`; targeted runs are preferred while iterating.
 
-The integration setup auto-detects local deps: if `pnpm deps:up` Postgres on `localhost:5439` is reachable, it's used directly; otherwise testcontainers boots ephemeral Postgres/Redis/Qdrant. Override with `INTEGRATION_USE_LOCAL_DEPS=1|0` if you need to force a mode. Files run in parallel by default (4 workers, each with its own DB clone); within a file, tests still run sequentially. Override worker count with `INTEGRATION_WORKER_COUNT=N`.
+The integration setup always boots ephemeral Postgres/Redis/Qdrant testcontainers and runs migrations against the base DB before cloning per-worker databases. Files run in parallel (5 workers, each with its own DB clone); within a file, tests still run sequentially.
 
 ## Unit Tests (*.spec.ts)
 
