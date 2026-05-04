@@ -7,7 +7,7 @@ export default mergeConfig(
   defineBaseConfig(),
   defineProject({
     test: {
-      name: pkg.name,
+      name: `${pkg.name}/integration`,
       disableConsoleIntercept: true,
       include: ['src/**/*.int.ts'],
       projects: undefined,
