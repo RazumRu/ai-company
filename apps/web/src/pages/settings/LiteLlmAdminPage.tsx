@@ -47,6 +47,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -585,6 +586,10 @@ function ModelFormDialog({
           <DialogTitle>
             {mode === 'create' ? 'Add Model' : 'Edit Model'}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Configure the LiteLLM model settings including provider, model name,
+            and optional credentials.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2 overflow-y-auto flex-1 px-1">

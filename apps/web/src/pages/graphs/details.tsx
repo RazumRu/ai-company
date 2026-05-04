@@ -33,6 +33,7 @@ import { Button } from '../../components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -1022,6 +1023,9 @@ export const GraphPage = () => {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Edit graph</DialogTitle>
+            <DialogDescription className="sr-only">
+              Update the name and description for this graph.
+            </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 py-2">
             <div className="flex flex-col gap-1.5">

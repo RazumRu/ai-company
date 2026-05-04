@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -115,6 +116,10 @@ const CreateSecretDialog = ({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create Secret</DialogTitle>
+          <DialogDescription className="sr-only">
+            Add a new secret value that can be injected into agent
+            configurations.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
@@ -258,6 +263,9 @@ const EditSecretDialog = ({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit Secret</DialogTitle>
+          <DialogDescription className="sr-only">
+            Update the value or description of an existing secret.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
