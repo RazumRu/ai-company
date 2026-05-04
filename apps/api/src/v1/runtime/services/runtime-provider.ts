@@ -437,9 +437,16 @@ export class RuntimeProvider {
     return this.stopAndDeleteInstances(instances);
   }
 
-  async cleanupRuntimesByNodeId(nodeId: string): Promise<number> {
+  async cleanupRuntimesByNodeId(
+    nodeId: string,
+    graphId?: string | null,
+  ): Promise<number> {
+    // Multiple graphs in the same DB can share a node id (e.g. tests reuse
+    // `runtime-1`). Filter by graphId so destroying one graph doesn't nuke
+    // sibling graphs' runtime instances.
     const instances = await this.runtimeInstanceDao.getAll({
       nodeId,
+      ...(graphId !== undefined ? { graphId } : {}),
     });
 
     return this.stopAndDeleteInstances(instances);
