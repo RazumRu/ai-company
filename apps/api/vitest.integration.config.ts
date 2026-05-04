@@ -13,6 +13,7 @@ export default mergeConfig(
       projects: undefined,
       fileParallelism: true,
       maxWorkers: 5,
+      sequence: { groupOrder: 1 },
       globalSetup: ['./src/__tests__/integration/global-setup.ts'],
     },
   }),
