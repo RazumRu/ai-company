@@ -570,15 +570,14 @@ export class GraphRevisionService {
     // BullMQ automatically retries jobs that weren't acknowledged.
     // We just continue with the work - the transaction will be idempotent or handle the state.
     if (revision.status === GraphRevisionStatus.Pending) {
-      // Mark as "Applying" OUTSIDE the transaction so observers can see it in real-time
+      // Mark as "Applying" OUTSIDE the transaction so observers can see it in real-time.
+      // The UoW path keeps the in-memory `revision` in sync with the DB write,
+      // so the notification (which requires `instanceof GraphRevisionEntity`)
+      // can emit the same entity reference.
       await this.graphRevisionDao.updateById(revision.id, {
         status: GraphRevisionStatus.Applying,
       });
 
-      // The notification schema validates `data` as `instanceof GraphRevisionEntity`,
-      // so we must emit the entity itself, not a spread (which produces a POJO).
-      // `nativeUpdate` doesn't sync the in-memory entity, so update it explicitly.
-      revision.status = GraphRevisionStatus.Applying;
       await this.notificationsService.emit({
         type: NotificationEvent.GraphRevisionApplying,
         graphId: revision.graphId,

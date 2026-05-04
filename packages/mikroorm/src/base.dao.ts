@@ -65,10 +65,14 @@ export abstract class BaseDao<T extends object> {
     data: Partial<T>,
     txEm?: EntityManager,
   ): Promise<number> {
-    const repo = this.getRepo(txEm);
-    const result = await repo.nativeUpdate({ id } as FilterQuery<T>, data as T);
-    this.evictById(id, txEm);
-    return result;
+    const em = txEm ?? this.em;
+    const entity = await this.getRepo(txEm).findOne({ id } as FilterQuery<T>);
+    if (!entity) {
+      return 0;
+    }
+    Object.assign(entity, data);
+    await em.flush();
+    return 1;
   }
 
   async updateAndReturn(
@@ -86,70 +90,60 @@ export abstract class BaseDao<T extends object> {
   }
 
   async deleteById(id: string, txEm?: EntityManager): Promise<void> {
-    await this.getRepo(txEm).nativeUpdate(
-      { id } as FilterQuery<T>,
-      { deletedAt: new Date() } as T,
-    );
-    this.evictById(id, txEm);
+    const em = txEm ?? this.em;
+    const entity = await this.getRepo(txEm).findOne({ id } as FilterQuery<T>);
+    if (!entity) {
+      return;
+    }
+    (entity as unknown as { deletedAt: Date | null }).deletedAt = new Date();
+    await em.flush();
+    this.evictFromIdentityMap(entity, em);
   }
 
   async delete(where: FilterQuery<T>, txEm?: EntityManager): Promise<void> {
-    const repo = this.getRepo(txEm);
-    // Find first so we can evict matching rows from the identity map after the
-    // write. Without eviction, subsequent `findOne(id)` reads return the cached
-    // entity with deletedAt=null even though the DB row has been soft-deleted.
-    const matches = await repo.find(where);
-    await repo.nativeUpdate(where, { deletedAt: new Date() } as T);
-    // Evict from the calling EM only — see `evictById` for rationale.
-    const em = (txEm ?? this.em) as EntityManager;
+    const em = txEm ?? this.em;
+    const matches = await this.getRepo(txEm).find(where);
+    if (matches.length === 0) {
+      return;
+    }
+    const now = new Date();
     for (const entity of matches) {
-      this.evictById((entity as unknown as { id: string }).id, em);
+      (entity as unknown as { deletedAt: Date | null }).deletedAt = now;
+    }
+    await em.flush();
+    for (const entity of matches) {
+      this.evictFromIdentityMap(entity, em);
     }
   }
 
   async hardDeleteById(id: string, txEm?: EntityManager): Promise<void> {
-    await this.getRepo(txEm).nativeDelete({ id } as FilterQuery<T>);
-    this.evictById(id, txEm);
+    const em = txEm ?? this.em;
+    const ref = em.getReference(this.entityClass, id as never);
+    em.remove(ref);
+    await em.flush();
   }
 
   async hardDelete(where: FilterQuery<T>, txEm?: EntityManager): Promise<void> {
-    const repo = this.getRepo(txEm);
-    const matches = await repo.find(where);
-    await repo.nativeDelete(where);
-    // Evict from the calling EM only — see `evictById` for rationale.
-    const em = (txEm ?? this.em) as EntityManager;
-    for (const entity of matches) {
-      this.evictById((entity as unknown as { id: string }).id, em);
+    const em = txEm ?? this.em;
+    const matches = await this.getRepo(txEm).find(where);
+    if (matches.length === 0) {
+      return;
     }
+    for (const entity of matches) {
+      em.remove(entity);
+    }
+    await em.flush();
   }
 
-  private evictById(id: string, txEm?: EntityManager): void {
-    // Evict from the EM that performed the write — the caller's transactional
-    // fork (txEm) when given, otherwise the auto-resolved current EM (which
-    // is the global EM outside any transactional context).
-    //
-    // We delete from the identity map directly instead of calling
-    // `unsetIdentity`. `unsetIdentity` ALSO flips `__managed = false`,
-    // `__originalEntityData = undefined`, `__identifier = undefined` on the
-    // entity object. When the same JS instance is referenced from another
-    // closure (e.g., a notification handler's `thread` variable, the data
-    // field of a previously-emitted notification, or the parent side of a
-    // M:N collection), that orphaned reference becomes a "ghost NEW
-    // entity": next time MikroORM's UoW walks it (e.g., via cascade from a
-    // related entity in `persistStack`, or because something re-`persist`s
-    // it), it computes a CREATE changeset with the original `id` and emits
-    // INSERT — failing with a PK constraint violation on the row that
-    // already exists in the DB.
-    //
-    // Removing only the identity-map entry avoids that: callers who hold the
-    // old reference still see a coherent (managed-looking) snapshot, the
-    // next read goes to the DB (which is what eviction wants), and the
-    // entity does not silently become a flush hazard.
-    const em = (txEm ?? this.em) as EntityManager;
+  /**
+   * Soft-deleted entities stay in the identity map after flush, so subsequent
+   * `findOne({ id })` calls hand back the cached entity and bypass the
+   * `softDelete` filter — making the row look alive. Evict the cached entry
+   * (without flipping `__managed = false`) so the next read goes to the DB
+   * and the filter takes effect. Pre-existing JS references stay coherent.
+   */
+  private evictFromIdentityMap(entity: T, em: EntityManager): void {
     const uow = em.getUnitOfWork();
-    const cached = uow.getById(this.entityClass, id as never);
-    if (cached) {
-      uow.getIdentityMap().delete(cached);
-    }
+    uow.getIdentityMap().delete(entity);
   }
 }

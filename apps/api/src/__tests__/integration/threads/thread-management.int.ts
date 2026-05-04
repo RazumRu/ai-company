@@ -1842,10 +1842,15 @@ describe('Thread Management Integration Tests', () => {
         expect(firstName).toBeDefined();
 
         // Second execution with same thread
-        await graphsService.executeTrigger(contextDataStorage, basicGraphId, 'trigger-1', {
-          messages: ['Second message should not change name'],
-          threadSubId,
-        });
+        await graphsService.executeTrigger(
+          contextDataStorage,
+          basicGraphId,
+          'trigger-1',
+          {
+            messages: ['Second message should not change name'],
+            threadSubId,
+          },
+        );
 
         // Wait a bit for potential name update (which shouldn't happen)
         await waitForCondition(
@@ -2198,16 +2203,26 @@ describe('Thread Management Integration Tests', () => {
 
         // Start two threads in parallel with async=true
         const [exec1, exec2] = await Promise.all([
-          graphsService.executeTrigger(contextDataStorage, basicGraphId, 'trigger-1', {
-            messages: ['Thread 1: Tell me about cats'],
-            threadSubId: threadSubId1,
-            async: true,
-          }),
-          graphsService.executeTrigger(contextDataStorage, basicGraphId, 'trigger-1', {
-            messages: ['Thread 2: Tell me about dogs'],
-            threadSubId: threadSubId2,
-            async: true,
-          }),
+          graphsService.executeTrigger(
+            contextDataStorage,
+            basicGraphId,
+            'trigger-1',
+            {
+              messages: ['Thread 1: Tell me about cats'],
+              threadSubId: threadSubId1,
+              async: true,
+            },
+          ),
+          graphsService.executeTrigger(
+            contextDataStorage,
+            basicGraphId,
+            'trigger-1',
+            {
+              messages: ['Thread 2: Tell me about dogs'],
+              threadSubId: threadSubId2,
+              async: true,
+            },
+          ),
         ]);
 
         expect(exec1.externalThreadId).toBeDefined();

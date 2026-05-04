@@ -61,6 +61,7 @@ vi.mock('../../../environments', () => {
       k8sWarmPoolTtlMs: 1800000,
       k8sInCluster: false,
     },
+    getInstanceFingerprint: () => 'test',
   };
 });
 
