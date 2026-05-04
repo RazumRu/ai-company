@@ -4,6 +4,7 @@ import { GenericContainer, StartedTestContainer, Wait } from 'testcontainers';
 import migrationConfig from '../../db/mikro-orm.migration-config';
 
 const WORKER_COUNT = 5;
+const CONTAINER_LABELS = { 'io.geniro.test': 'true' };
 
 /**
  * Boot ephemeral Postgres / Redis / Qdrant containers, run MikroORM migrations
@@ -19,6 +20,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const [postgresContainer, redisContainer, qdrantContainer] =
     await Promise.all([
       new GenericContainer('pgvector/pgvector:pg17')
+        .withLabels(CONTAINER_LABELS)
         .withEnvironment({
           POSTGRES_USER: 'postgres',
           POSTGRES_PASSWORD: 'postgres',
@@ -33,10 +35,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
         )
         .start(),
       new GenericContainer('redis:7-alpine')
+        .withLabels(CONTAINER_LABELS)
         .withExposedPorts(6379)
         .withWaitStrategy(Wait.forLogMessage(/Ready to accept connections/))
         .start(),
       new GenericContainer('qdrant/qdrant:latest')
+        .withLabels(CONTAINER_LABELS)
         .withExposedPorts(6333)
         .withWaitStrategy(Wait.forLogMessage(/Qdrant HTTP listening/))
         .start(),
