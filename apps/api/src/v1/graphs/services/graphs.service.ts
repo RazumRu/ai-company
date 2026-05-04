@@ -267,8 +267,11 @@ export class GraphsService {
     // Use transaction with row-level locking to prevent simultaneous updates.
     // Post-transaction data (revision to enqueue, notification to emit) is returned
     // from the transaction callback so TypeScript can track it through control flow.
-    const { response, postCommit } = await this.em.transactional(
-      async (em: EntityManager) => {
+    // Fork the EM first so concurrent callers don't share a transactionContext
+    // pointer (avoids spurious "SAVEPOINT can only be used in transaction blocks").
+    const { response, postCommit } = await this.em
+      .fork()
+      .transactional(async (em: EntityManager) => {
         // Lock the graph row for update (prevents race conditions)
         const graph = await this.graphDao.getOne(
           {
@@ -388,8 +391,7 @@ export class GraphsService {
           } as UpdateGraphResponseDto,
           postCommit: null,
         };
-      },
-    );
+      });
 
     // Post-transaction: emit notification and enqueue processing.
     // These run after the transaction commits so the enrichment handler
