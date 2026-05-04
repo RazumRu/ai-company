@@ -15,14 +15,6 @@ const WORKER_COUNT = 5;
  * `setup.ts` can read deterministic values from `process.env`.
  */
 export default async function globalSetup(): Promise<() => Promise<void>> {
-  // Ryuk (the testcontainers cleanup sidecar) tries to bind-mount the
-  // Docker/Podman socket; on Podman/Mac this fails with
-  // "operation not supported". Disabling Ryuk leaves cleanup to the
-  // teardown function and works reliably across Docker Desktop, Podman
-  // machine, and Colima. Only set when not already overridden.
-  if (process.env.TESTCONTAINERS_RYUK_DISABLED === undefined) {
-    process.env.TESTCONTAINERS_RYUK_DISABLED = 'true';
-  }
   const startedAt = Date.now();
   const [postgresContainer, redisContainer, qdrantContainer] =
     await Promise.all([
