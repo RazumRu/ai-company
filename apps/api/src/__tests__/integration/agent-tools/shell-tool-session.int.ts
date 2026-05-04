@@ -1,6 +1,13 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -15,7 +22,6 @@ import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { describeIfRealRuntime as describe } from '../helpers/real-runtime-gate';
 import { createTestProject } from '../helpers/test-context';
 import {
   mockLiteLlmClient,

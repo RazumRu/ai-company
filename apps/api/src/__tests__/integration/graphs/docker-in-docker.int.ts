@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { BaseException } from '@packages/common';
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AppContextStorage } from '../../../auth/app-context-storage';
 import { ReasoningEffort } from '../../../v1/agents/agents.types';
@@ -17,9 +17,8 @@ import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { wait } from '../../test-utils';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { describeIfRealRuntime } from '../helpers/real-runtime-gate';
 import { createTestProject } from '../helpers/test-context';
-import { createTestModule } from '../setup';
+import { createTestModule, getMockLlm } from '../setup';
 
 const DOCKER_RUNTIME_NODE_ID = 'runtime-1';
 const SHELL_TOOL_NODE_ID = 'shell-tool-1';
@@ -36,7 +35,7 @@ const DOCKER_DIND_INIT_SCRIPT = [
 // Assigned in beforeAll once the test project is created.
 let contextDataStorage: AppContextStorage;
 
-describeIfRealRuntime('Docker Runtime Integration', () => {
+describe('Docker Runtime Integration', () => {
   let app: INestApplication;
   let graphsService: GraphsService;
   let threadsService: ThreadsService;
@@ -300,6 +299,17 @@ describeIfRealRuntime('Docker Runtime Integration', () => {
       expect(runResponse.status).toBe(GraphStatus.Running);
 
       await waitForGraphToBeRunning(graphId);
+
+      // Drive the mocked agent to call shell(docker ps); applyDefaults handles
+      // the follow-up finish call after the tool result returns.
+      getMockLlm(app).queueChat({
+        kind: 'toolCall',
+        toolName: 'shell',
+        args: {
+          purpose: 'Run docker ps inside the docker-in-docker runtime',
+          command: 'docker ps',
+        },
+      });
 
       const execution = await graphsService.executeTrigger(
         contextDataStorage,

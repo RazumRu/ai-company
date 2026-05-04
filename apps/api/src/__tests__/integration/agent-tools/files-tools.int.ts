@@ -44,7 +44,6 @@ import { ThreadNameGeneratorService } from '../../../v1/threads/services/thread-
 import { ThreadsService } from '../../../v1/threads/services/threads.service';
 import { ThreadStatus } from '../../../v1/threads/threads.types';
 import { waitForCondition } from '../helpers/graph-helpers';
-import { describeIfRealRuntime } from '../helpers/real-runtime-gate';
 import { createTestProject } from '../helpers/test-context';
 import {
   mockLiteLlmClient,
@@ -101,7 +100,7 @@ const hasTextMatch = (result: SearchTextResult, snippet: string) =>
 // Assigned in beforeAll of the graph execution describe block once the test project is created.
 let contextDataStorage: AppContextStorage;
 
-describeIfRealRuntime('Files tools integration', () => {
+describe('Files tools integration', () => {
   let moduleRef: TestingModule;
   let runtime: BaseRuntime;
   let runtimeThreadProvider: RuntimeThreadProvider;

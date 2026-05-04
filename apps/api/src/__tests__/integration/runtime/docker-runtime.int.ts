@@ -1,8 +1,7 @@
-import { afterAll, beforeAll, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { environment } from '../../../environments';
 import { DockerRuntime } from '../../../v1/runtime/services/docker-runtime';
-import { describeIfRealRuntime as describe } from '../helpers/real-runtime-gate';
 
 describe('DockerRuntime Timeout Recovery Integration', () => {
   let runtime: DockerRuntime;
